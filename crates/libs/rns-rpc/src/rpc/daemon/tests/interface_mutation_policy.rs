@@ -522,7 +522,7 @@
     fn set_interfaces_rejects_duplicate_tcp_server_bind_addresses() {
         let daemon = RpcDaemon::test_instance();
 
-        let err = daemon
+        let response = daemon
             .handle_rpc(rpc_request(
                 129,
                 "set_interfaces",
@@ -545,16 +545,17 @@
                     ]
                 }),
             ))
-            .expect_err("duplicate tcp_server binds should be rejected");
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(err.to_string().contains("duplicate legacy tcp_server bind address"));
+            .expect("duplicate tcp_server binds should return an RPC error");
+        let error = response.error.expect("duplicate bind error");
+        assert_eq!(error.code, "CONFIG_INVALID_INTERFACE");
+        assert_eq!(error.machine_code.as_deref(), Some("INVALID_INTERFACE_CONFIGURATION"));
     }
 
     #[test]
     fn set_interfaces_rejects_duplicate_localhost_tcp_server_alias_bind_addresses() {
         let daemon = RpcDaemon::test_instance();
 
-        let err = daemon
+        let response = daemon
             .handle_rpc(rpc_request(
                 134,
                 "set_interfaces",
@@ -577,16 +578,17 @@
                     ]
                 }),
             ))
-            .expect_err("duplicate tcp_server localhost alias binds should be rejected");
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(err.to_string().contains("duplicate legacy tcp_server bind address"));
+            .expect("duplicate tcp_server localhost alias binds should return an RPC error");
+        let error = response.error.expect("duplicate alias bind error");
+        assert_eq!(error.code, "CONFIG_INVALID_INTERFACE");
+        assert_eq!(error.machine_code.as_deref(), Some("INVALID_INTERFACE_CONFIGURATION"));
     }
 
     #[test]
     fn set_interfaces_rejects_duplicate_ipv6_tcp_server_bind_addresses() {
         let daemon = RpcDaemon::test_instance();
 
-        let err = daemon
+        let response = daemon
             .handle_rpc(rpc_request(
                 131,
                 "set_interfaces",
@@ -609,16 +611,17 @@
                     ]
                 }),
             ))
-            .expect_err("duplicate tcp_server IPv6 binds should be rejected");
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(err.to_string().contains("duplicate legacy tcp_server bind address"));
+            .expect("duplicate tcp_server IPv6 binds should return an RPC error");
+        let error = response.error.expect("duplicate IPv6 bind error");
+        assert_eq!(error.code, "CONFIG_INVALID_INTERFACE");
+        assert_eq!(error.machine_code.as_deref(), Some("INVALID_INTERFACE_CONFIGURATION"));
     }
 
     #[test]
     fn set_interfaces_rejects_duplicate_wildcard_tcp_server_bind_addresses() {
         let daemon = RpcDaemon::test_instance();
 
-        let err = daemon
+        let response = daemon
             .handle_rpc(rpc_request(
                 137,
                 "set_interfaces",
@@ -641,9 +644,10 @@
                     ]
                 }),
             ))
-            .expect_err("duplicate tcp_server wildcard binds should be rejected");
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(err.to_string().contains("duplicate legacy tcp_server bind address"));
+            .expect("duplicate tcp_server wildcard binds should return an RPC error");
+        let error = response.error.expect("duplicate wildcard bind error");
+        assert_eq!(error.code, "CONFIG_INVALID_INTERFACE");
+        assert_eq!(error.machine_code.as_deref(), Some("INVALID_INTERFACE_CONFIGURATION"));
     }
 
     #[test]
@@ -896,7 +900,7 @@
         daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
         daemon.set_interface_mutation_bridge(std::sync::Arc::new(FailingInterfaceMutationBridge));
 
-        let err = daemon
+        let response = daemon
             .handle_rpc(rpc_request(
                 24,
                 "set_interfaces",
@@ -912,18 +916,37 @@
                     ]
                 }),
             ))
-            .expect_err("bridge failure should bubble up");
-        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+            .expect("bridge failure should be returned as an RPC error");
+        let error = response.error.expect("bridge failure error");
+        assert_eq!(error.code, "CONFIG_INTERFACE_APPLY_FAILED");
+        assert_eq!(error.machine_code.as_deref(), Some("INTERFACE_MUTATION_FAILED"));
+        assert_eq!(error.retryable, Some(false));
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
         assert_eq!(interfaces, vec![tcp_interface("primary", "127.0.0.1", 4242)]);
     }
 
     #[test]
+    fn interface_mutation_error_maps_typed_ifac_failure_without_display_matching() {
+        let error = std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            InterfaceMutationFailure::InvalidIfacConfiguration,
+        );
+
+        let response = RpcDaemon::interface_mutation_error_response(26, &error);
+        let error = response.error.expect("typed IFAC configuration error");
+
+        assert_eq!(error.code, "CONFIG_INVALID_IFAC");
+        assert_eq!(error.machine_code.as_deref(), Some("INVALID_IFAC_CONFIGURATION"));
+        assert_eq!(error.message, "IFAC interface configuration was rejected");
+        assert_eq!(error.is_user_actionable, Some(true));
+    }
+
+    #[test]
     fn set_interfaces_rejects_duplicate_legacy_tcp_keys() {
         let daemon = RpcDaemon::test_instance();
 
-        let err = daemon
+        let response = daemon
             .handle_rpc(rpc_request(
                 25,
                 "set_interfaces",
@@ -934,20 +957,22 @@
                             "enabled": true,
                             "host": "127.0.0.1",
                             "port": 4242,
-                            "name": "duplicate"
+                            "name": "ifac-duplicate"
                         },
                         {
                             "type": "tcp_client",
                             "enabled": true,
                             "host": "127.0.0.1",
                             "port": 4243,
-                            "name": "duplicate"
+                            "name": "ifac-duplicate"
                         }
                     ]
                 }),
             ))
-            .expect_err("duplicate keys should be rejected");
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+            .expect("duplicate keys should return an RPC error");
+        let error = response.error.expect("duplicate key error");
+        assert_eq!(error.code, "CONFIG_INVALID_INTERFACE");
+        assert_eq!(error.machine_code.as_deref(), Some("INVALID_INTERFACE_CONFIGURATION"));
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
         assert!(interfaces.is_empty());
@@ -957,7 +982,7 @@
     fn set_interfaces_rejects_duplicate_udp_bind_addresses() {
         let daemon = RpcDaemon::test_instance();
 
-        let err = daemon
+        let response = daemon
             .handle_rpc(rpc_request(
                 35,
                 "set_interfaces",
@@ -980,7 +1005,8 @@
                     ]
                 }),
             ))
-            .expect_err("duplicate udp binds should be rejected");
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(err.to_string().contains("duplicate legacy udp bind address"));
+            .expect("duplicate udp binds should return an RPC error");
+        let error = response.error.expect("duplicate UDP bind error");
+        assert_eq!(error.code, "CONFIG_INVALID_INTERFACE");
+        assert_eq!(error.machine_code.as_deref(), Some("INVALID_INTERFACE_CONFIGURATION"));
     }

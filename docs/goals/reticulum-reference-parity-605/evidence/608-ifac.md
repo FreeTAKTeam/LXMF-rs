@@ -3,8 +3,9 @@
 Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child
 IFAC policy evidenced; serial and KISS stream runtime paths have deterministic
 software regressions; outbound I2P fake-SAM stream IFAC rejection and
-authenticated ingress/egress are covered; full interface-family acceptance
-remains open**.
+authenticated ingress/egress are covered; invalid live IFAC reconfiguration
+returns a structured RPC error without disabling the active authenticated
+configuration; full interface-family acceptance remains open**.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
@@ -340,3 +341,46 @@ format check, module-size check, and `git diff --check`.
 The fake-SAM regression adds software evidence for one tunneled carrier path;
 remaining I2P lifecycle, incoming-peer, interface-family, support-matrix, and
 operational acceptance remain open.
+
+## Rejected live IFAC reconfiguration and fail-closed restart
+
+The UDP credential-rotation regression now submits a `set_interfaces` update
+with an IFAC tag size but no credentials. The daemon returns a framed
+`CONFIG_INVALID_IFAC` RPC error, the already-active rotated Python peer remains
+usable, and after daemon restart a plaintext Python peer is still rejected by
+the IFAC-protected interface. The RPC error uses static text, so credentials
+and raw configuration values are not reflected to the caller. A focused RPC
+test checks the typed IFAC error mapping, ensures a duplicate interface named
+`ifac-duplicate` is still classified as a generic interface error, and verifies
+that a stopped-worker `BrokenPipe` failure is not marked retryable or allowed
+to replace stored interfaces. The daemon hot-apply tests also verify the IFAC
+failure retains its typed source and does not queue the rejected update.
+
+```text
+cargo fmt --all -- --check
+# passed
+cargo test -p reticulum-rs-rpc
+# 751 passed; 0 failed
+cargo test -p reticulum-rs-rpc set_interfaces_keeps_stored_interfaces_unchanged_when_bridge_fails
+# 1 passed; 0 failed
+cargo test -p reticulum-rs-rpc interface_mutation_error_maps_typed_ifac_failure_without_display_matching
+# 1 passed; 0 failed
+cargo test -p reticulumd --bin reticulumd interface_hot_apply
+# 35 passed; 0 failed
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+LXMD_TEST_LOGS=1 cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  python_rust_lxmd_ifac_udp_credential_rotation_and_restart_e2e \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; 0 failed
+cargo clippy -p reticulum-rs-rpc --all-targets --all-features --no-deps -- -D warnings
+# passed
+cargo clippy -p reticulumd --bin reticulumd --all-targets --all-features --no-deps -- -D warnings
+# passed
+cargo clippy -p lxmf-cli --test python_lxmd_remote_relay --all-features --no-deps -- -D warnings
+# passed
+```
+
+This closes the invalid-reconfiguration error-reporting and rollback subpath;
+it does not complete #608's broader carrier-family, startup/error matrix, or
+physical/public-network acceptance.

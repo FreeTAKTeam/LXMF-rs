@@ -111,7 +111,11 @@ authenticated delivery across daemon restart. Another pinned-Python trace
 exercises an IFAC-protected UDP shared-instance owner, an attached Rust local
 client, and a separate Python peer, with bidirectional delivery and zero IFAC
 violations; a focused ingress regression verifies inherited policy on a
-virtual child. The packet decoder now derives authentication and verified-wire
+virtual child. Invalid live IFAC reconfiguration now returns a static,
+structured `CONFIG_INVALID_IFAC` RPC error without displacing the active
+authenticated configuration; after restart a plaintext peer remains rejected.
+The focused RPC regression also verifies that failed interface application
+does not replace stored interfaces. The packet decoder now derives authentication and verified-wire
 provenance from one IFAC-state snapshot across hot reconfiguration. A Unix
 subprocess regression also exercises the production PipeInterface worker with
 the reference 8-byte default IFAC tag and authenticated HDLC echo; this is

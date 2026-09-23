@@ -1,4 +1,4 @@
-use rns_rpc::{InterfaceMutationBridge, InterfaceRecord, RpcDaemon};
+use rns_rpc::{InterfaceMutationBridge, InterfaceMutationFailure, InterfaceRecord, RpcDaemon};
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::pipe::{PipeInterface, PipeRuntimeStatusHandle};
 use rns_transport::iface::tcp_client::TcpClient;
@@ -187,7 +187,7 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
 }
 
 fn validate_hot_apply_ifac_configuration(interfaces: &[InterfaceRecord]) -> Result<(), io::Error> {
-    for (index, record) in interfaces.iter().enumerate() {
+    for record in interfaces {
         let config = InterfaceSharedConfig {
             ifac_size: setting_u64(record, "ifac_size"),
             network_name: setting_string(record, "network_name")
@@ -198,10 +198,10 @@ fn validate_hot_apply_ifac_configuration(interfaces: &[InterfaceRecord]) -> Resu
                 .or_else(|| setting_string(record, "ifac_netkey")),
             ..InterfaceSharedConfig::default()
         };
-        if let Err(error) = config.ifac_context() {
+        if config.ifac_context().is_err() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("interfaces[{index}] has invalid Reticulum IFAC configuration: {error}"),
+                InterfaceMutationFailure::InvalidIfacConfiguration,
             ));
         }
     }

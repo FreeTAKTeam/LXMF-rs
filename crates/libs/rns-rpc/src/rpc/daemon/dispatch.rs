@@ -147,6 +147,13 @@ impl RpcDaemon {
                 }
                 Ok(mapped)
             }
+            Err(error) if method == "set_interfaces" => {
+                let mapped = Self::interface_mutation_error_response(request_id, &error);
+                self.record_sdk_cursor_hint(method.as_str(), &mapped);
+                let elapsed_ms = metrics_started.elapsed().as_millis() as u64;
+                self.metrics_record_rpc_response(method.as_str(), elapsed_ms, &mapped);
+                Ok(mapped)
+            }
             Err(error) => {
                 let elapsed_ms = metrics_started.elapsed().as_millis() as u64;
                 self.metrics_record_rpc_io_error(method.as_str(), elapsed_ms);

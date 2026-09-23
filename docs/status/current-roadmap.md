@@ -26,7 +26,10 @@ not the canonical release baseline. Pinned Python/Rust IFAC Channel and
 Resource interoperability is exercised over TCP and UDP; the `lxmd`/`reticulumd`
 UDP path also has bidirectional IFAC direct-message evidence, valid-frame tamper
 rejection, live credential rotation, fail-closed restart evidence, and an
-IFAC-protected shared-instance path with an attached Rust client. Packet-level
+IFAC-protected shared-instance path with an attached Rust client. Invalid live
+IFAC reconfiguration now returns a structured RPC error while preserving the
+active authenticated configuration; a plaintext peer remains rejected after
+restart. Packet-level
 IFAC decoding now uses one locked context for frame authentication and
 verified-wire provenance across live reconfiguration. The spawned
 `PipeInterface` worker also has a Unix subprocess loopback regression for its
