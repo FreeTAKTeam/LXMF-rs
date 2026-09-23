@@ -405,6 +405,34 @@ This closes that specific local persistence scenario; it is not a Python↔Rust
 restart trace, a carrier-stream reconnect result, or broad duplicate-proof
 coverage.
 
+## Expired persisted route restart and recovery
+
+`expired_persisted_route_is_not_reused_before_fresh_announce_recovery` follows
+a learned remote route through production save, deterministic expiry, and
+replacement transport restore. The replacement uses the same
+`restore_reticulum_path_table_report` method wired by `reticulumd` bootstrap.
+Before any new announce, the expired path is absent and its cached destination
+identity is unavailable. A fresh announce for the same destination then passes
+through production `handle_announce` and restores both route availability and
+identity. The test expires both the persisted timestamp and deadline, avoiding
+wall-clock sleeps.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  expired_persisted_route_is_not_reused_before_fresh_announce_recovery -- --nocapture
+# 1 passed
+```
+
+At pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`, startup loads
+active path rows and the jobs loop culls stale paths using the persisted
+timestamp plus the interface-specific timeout; fresh announces replace an
+existing route after its expiry. The Rust scenario reaches the same final
+expired then recovered state and additionally asserts the route is unavailable
+immediately after replacement. Python's transient visibility before its next
+table-cull job was not measured. This does not claim full daemon-process
+restart timing or close the broader #609 row. No production behavior change
+was needed.
+
 ## Underlying TCP carrier reconnect
 
 The real-socket integration test `tcp_carrier_reconnect_resumes_bidirectional_packet_traffic_on_same_iface`
