@@ -383,6 +383,62 @@
         restarted.stop().await;
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn auto_runtime_startup_failure_releases_discovery_socket_before_retry() {
+        let discovery_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .expect("reserve discovery loopback UDP port");
+        let data_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .expect("reserve data loopback UDP port");
+        let discovery_port =
+            discovery_reservation.local_addr().expect("read discovery port").port();
+        let data_port = data_reservation.local_addr().expect("read data port").port();
+        drop((data_reservation, discovery_reservation));
+
+        let mut plan = build_startup_plan_from_candidates(&auto_iface(), Vec::new())
+            .expect("startup plan");
+        plan.startup_plan.discovery_listeners.push(AutoDiscoveryListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            unicast_bind_address: "127.0.0.1".to_string(),
+            unicast_bind_port: discovery_port,
+            multicast_group_address: "239.255.0.1".to_string(),
+            multicast_bind_address: "239.255.0.1".to_string(),
+            multicast_bind_port: discovery_port,
+        });
+        plan.startup_plan.data_listeners.push(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "not-an-ip-address".to_string(),
+            bind_port: data_port,
+        });
+
+        let startup_error = match plan.spawn_discovery_runtime_with_native_scope_ids().await {
+            Ok(runtime) => {
+                runtime.stop().await;
+                panic!("invalid data listener unexpectedly started the runtime");
+            }
+            Err(error) => error,
+        };
+        assert!(startup_error.contains("invalid"), "unexpected bind error: {startup_error}");
+
+        let released_discovery_port = std::net::UdpSocket::bind((
+            std::net::Ipv4Addr::LOCALHOST,
+            discovery_port,
+        ))
+        .expect("failed startup should release its already-bound discovery socket");
+        drop(released_discovery_port);
+
+        plan.startup_plan.data_listeners[0].bind_address = "127.0.0.1".to_string();
+        let retry = plan
+            .spawn_discovery_runtime_with_native_scope_ids()
+            .await
+            .expect("retry after failed startup released discovery socket");
+        assert_eq!(retry.summary.bound_socket_count, 2);
+        assert_eq!(retry.summary.data_socket_count, 1);
+        retry.stop().await;
+    }
+
     #[test]
     fn auto_carrier_runtime_json_exposes_events_and_link_local_restart() {
         let plan = build_startup_plan_from_candidates(
