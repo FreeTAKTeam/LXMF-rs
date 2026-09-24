@@ -595,6 +595,23 @@ public-network run, hardware run, or performance claim is included.
 
 ## Current `rnsh` channel increment
 
+### Terminal-size client slice (2026-09-24)
+
+Compared with the pinned Reticulum 1.5.4 `RNS/Utilities/rnsh/initiator.py`
+and `session.py`, the Rust initiator now selects the first available terminal
+size from stdin/stdout/stderr on Unix, sends its rows, columns, and pixel size
+in `ExecuteCommand`, and emits `WindowSize` messages after SIGWINCH. The
+selection policy has deterministic unit coverage; non-Unix builds send no
+initial dimensions and install no resize listener.
+
+This is only the initiating half of parity. Rust's listener still launches
+pipe/null stdio, does not create a PTY/controlling terminal, and discards
+window-size messages; therefore the transmitted sizes do not yet resize a
+remote terminal. Python's listener creates a PTY whenever any stream is
+terminal-backed and applies initial and subsequent dimensions. PTY-backed
+process/session setup and listener-side resize application remain open, as do
+the broader #611 acceptance gaps. No hardware/manual testing is implied.
+
 Commits `f24e0038` and `a32b6d71` replace the former local-only `rnsh` implementation with a
 bounded native network workflow while preserving local mode when no network
 flags are supplied. The listener and initiator use the existing Reticulum

@@ -4,6 +4,9 @@ use crate::rnsh_parts::protocol::{
     CommandExitedMessage, ErrorMessage, ExecuteCommandMessage, NoopMessage, StreamDataMessage,
     VersionInfoMessage, WindowSizeMessage, PROTOCOL_VERSION,
 };
+use crate::rnsh_parts::terminal_size::current_terminal_window_size;
+#[cfg(unix)]
+use crate::rnsh_parts::terminal_size::send_window_size_changes;
 use rns_transport::hash::AddressHash;
 use rns_transport::transport::{SendPacketOutcome, TransportChannel};
 use std::io;
@@ -221,6 +224,7 @@ pub(crate) async fn initiate(
         return Err(io::Error::other("remote rnsh protocol version is incompatible"));
     }
 
+    let initial_window_size = current_terminal_window_size();
     channel
         .send_typed(&ExecuteCommandMessage {
             command: (!command.is_empty()).then_some(command),
@@ -228,18 +232,25 @@ pub(crate) async fn initiate(
             pipe_stdout: true,
             pipe_stderr: true,
             term: std::env::var("TERM").ok(),
-            rows: None,
-            cols: None,
-            hpix: None,
-            vpix: None,
+            rows: initial_window_size.map(|size| size.rows),
+            cols: initial_window_size.map(|size| size.cols),
+            hpix: initial_window_size.map(|size| size.hpix),
+            vpix: initial_window_size.map(|size| size.vpix),
         })
         .await
         .map_err(channel_error)?;
+    #[cfg(unix)]
+    let mut resize_task = tokio::spawn(send_window_size_changes(channel.clone()));
     let stdin = tokio::io::stdin();
     let stdin_task = tokio::spawn(send_stdin(channel.clone(), stdin));
 
     let return_code = wait_for_command(&mut message_rx, &queue_overflowed, runtime.timeout).await;
     stdin_task.abort();
+    #[cfg(unix)]
+    {
+        resize_task.abort();
+        let _ = (&mut resize_task).await;
+    }
     close_link(&runtime.transport, &link).await;
     return_code
 }

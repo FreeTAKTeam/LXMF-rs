@@ -40,5 +40,8 @@ tokio = { workspace = true }
 # release builds do not try to probe a host glibc dbus installation.
 dbus = { version = "0.9.11", features = ["vendored"] }
 
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1.2", features = ["termios"] }
+
 [lints]
 workspace = true
