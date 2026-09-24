@@ -672,6 +672,22 @@ and ffmpeg-family argv used `-q:v` instead of the reference `-quality`; both
 were corrected. This establishes argument and selection parity only, not
 successful encoding by every backend.
 
+An additional ignored Rust differential imports the pinned Python helper,
+injects each backend as available, calls `_configured_backend(quality=85,
+max_dimension=640)`, and compares its returned name and complete argv against
+Rust's configured vector for all five backend families. This verifies actual
+helper output rather than relying only on copied expected vectors; it does not
+exercise those encoder binaries. The focused differential passed with the
+pinned checkout at
+`/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum`:
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --bin rngit --all-features \
+  configured_backend_argv_matches_pinned_python_helper -- --ignored --nocapture
+  PASS (1 test)
+```
+
 The local environment reports `/usr/bin/ffmpeg`; `magick`, `convert`, `gm`, and
 `avconv` are unavailable. The pinned helper source was read from the exact
 GitHub commit because its local reference checkout was absent. The installed

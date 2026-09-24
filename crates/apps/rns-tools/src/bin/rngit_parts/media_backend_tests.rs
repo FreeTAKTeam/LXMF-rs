@@ -158,6 +158,53 @@ fn configured_argv_matches_pinned_python_for_every_backend_family() {
 }
 
 #[test]
+#[ignore = "requires the pinned Python Reticulum checkout"]
+fn configured_backend_argv_matches_pinned_python_helper() {
+    let python_repo = std::env::var_os("RETICULUM_PY_REPO")
+        .expect("set RETICULUM_PY_REPO to the pinned Reticulum checkout");
+    let helper = std::path::PathBuf::from(python_repo).join("RNS/Utilities/rngit/media.py");
+    assert!(helper.is_file(), "pinned rngit media helper not found: {}", helper.display());
+
+    let script = r#"
+import importlib.util
+import json
+import sys
+import types
+
+sys.modules["RNS"] = types.SimpleNamespace(log=lambda *_args: None, LOG_WARNING=2)
+spec = importlib.util.spec_from_file_location("rngit_media_reference", sys.argv[1])
+media = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(media)
+available = {argv[0] for _name, argv in media.BACKENDS}
+media.shutil.which = lambda program: program if program in available else None
+configured = []
+for name, _argv in media.BACKENDS:
+    media._ENV_BACKEND = name
+    configured.append(media._configured_backend(quality=85, max_dimension=640))
+print(json.dumps(configured))
+"#;
+    let python = std::env::var_os("LXMF_PYTHON_BIN").unwrap_or_else(|| "python3".into());
+    let output = Command::new(python)
+        .arg("-c")
+        .arg(script)
+        .arg(&helper)
+        .output()
+        .expect("run pinned Python media helper");
+    assert!(
+        output.status.success(),
+        "pinned Python media helper failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let reference: Vec<(String, Vec<String>)> = serde_json::from_slice(&output.stdout)
+        .expect("decode configured backend argv from pinned Python");
+    assert_eq!(reference.len(), BACKENDS.len());
+    for ((name, argv), backend) in reference.iter().zip(BACKENDS) {
+        assert_eq!(name, backend.name);
+        assert_eq!(argv, &configured_argv(backend, Some(85), Some(640)), "backend {name}");
+    }
+}
+
+#[test]
 fn configured_argv_preserves_python_clamping_and_omission_rules() {
     for backend in BACKENDS {
         let argv = configured_argv(backend, Some(0), Some(0));
