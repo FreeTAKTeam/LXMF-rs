@@ -180,7 +180,9 @@ impl ReticulumGitNode {
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
-                let Some((_, id, _, _)) = self.work_request_document(&root, request) else {
+                let Some((_, id, _, _)) =
+                    self.work_request_document_ignoring_scope(&root, request)
+                else {
                     return response(Self::RES_NOT_FOUND, "Document not found", None);
                 };
                 let can_read = self.resolve_doc_permission(
@@ -232,8 +234,17 @@ impl ReticulumGitNode {
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
-                let Some((_, id, _, document)) = self.work_request_document(&root, request) else {
+                let Some((_, id, directory, _)) =
+                    self.work_request_document_ignoring_scope(&root, request)
+                else {
                     return response(Self::RES_NOT_FOUND, "Document not found", None);
+                };
+                let root_path = directory.join("root");
+                if !root_path.is_file() {
+                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                }
+                let Some(document) = self.work_load_document(&root_path) else {
+                    return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
                 };
                 if !Self::work_author_matches(&document, &remote)
                     || !self.work_manage_allowed(&remote, &group, &repository, id)

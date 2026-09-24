@@ -274,7 +274,8 @@ impl ReticulumGitNode {
         request: &[(rmpv::Value, rmpv::Value)],
         peer_identity: Option<Identity>,
     ) -> Vec<u8> {
-        let Some((scope, id, directory, mut document)) = self.work_request_document(root, request)
+        let Some((_, _, directory, mut document)) =
+            self.work_request_document_ignoring_scope(root, request)
         else {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
         };
@@ -319,17 +320,7 @@ impl ReticulumGitNode {
             }
         }
         match self.work_save_document(&directory.join("root"), &document) {
-            Ok(()) => response(
-                Self::RES_OK,
-                "",
-                Some(&rmpv::Value::Map(vec![
-                    (rmpv::Value::String("id".into()), rmpv::Value::from(id)),
-                    (
-                        rmpv::Value::String("scope".into()),
-                        rmpv::Value::String(scope.into()),
-                    ),
-                ])),
-            ),
+            Ok(()) => vec![Self::RES_OK],
             Err(error) => response(Self::RES_REMOTE_FAIL, error, None),
         }
     }

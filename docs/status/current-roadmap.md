@@ -65,6 +65,15 @@ completed, then proposed. Rust now matches that behavior for delete only. The
 regression covers an active item requested as completed, both author success
 and non-author denial; remaining work-operation and storage cases stay open.
 
+A focused pinned-Python production-handler differential now confirms the same
+fixed active → completed → proposed lookup for #612 view, edit, and comment
+when an active-only document is requested as completed. The edit uses a valid
+identity signature; statuses, view/comment payloads, status-only edit success,
+and the active-directory read/write locations match Python. Rust continues to
+validate the allowed scope strings, and other operations retain their prior
+selection rules. This closes only that scope-selection seam; broad #612
+acceptance remains open.
+
 For #612 acceptance row 3, the pinned RNS 1.5.4 server dispatches each Link
 request on its own thread, while rngit's work ID selection is scan-then-use and
 document writes use a fixed `<path>.tmp` followed by `os.rename`, without a

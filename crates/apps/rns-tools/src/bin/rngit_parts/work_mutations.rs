@@ -18,9 +18,12 @@ impl ReticulumGitNode {
         request: &[(rmpv::Value, rmpv::Value)],
         remote: [u8; 16],
     ) -> Vec<u8> {
-        let Some((_, _, directory, _)) = self.work_request_document(root, request) else {
+        let Some((_, _, directory, _)) = self.work_request_document_ignoring_scope(root, request) else {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
         };
+        if !directory.join("root").is_file() {
+            return response(Self::RES_NOT_FOUND, "Document not found", None);
+        }
         let content = map_string(request, &rmpv::Value::String("content".into()))
             .unwrap_or_default()
             .trim()
