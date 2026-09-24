@@ -527,6 +527,28 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
   rngit_returns_raw_media_when_webp_backend_is_unavailable \
   -- --ignored --exact --nocapture                                  PASS (1 test)
 ```
+
+### Configured WebP encoder failure fallback and cleanup
+
+At pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`media.py::convert_to_webp` returns failure when its configured encoder exits
+nonzero; the page handler then serves the original media. The production
+`rngit` test injects a deterministic `ffmpeg` stub that exits 23 with a known
+stderr diagnostic, requests the image through a pinned-Python Link, and
+verifies the original 68-byte PNG (`name=valid.png`, SHA-256
+`431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460`). It
+also checks that the backend diagnostic is retained and the failed conversion
+directory is removed. This is one failure/fallback case for the `ffmpeg`
+selection only; successful conversion by the other backend families and the
+broader #613 acceptance remain open.
+
+```text
+TMPDIR=/dev/shm RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_failed_webp_encoder_returns_raw_media_and_cleans_conversion_directory \
+  -- --ignored --nocapture --test-threads=1                       PASS (1 test)
+```
+
 - Reticulum public-key work-document signature verification,
   restart/concurrent-writer/fault
   transcripts, and end-to-end rngit Git/work network workflows remain open
