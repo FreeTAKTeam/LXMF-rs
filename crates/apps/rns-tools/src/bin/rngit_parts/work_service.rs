@@ -159,6 +159,9 @@ impl ReticulumGitNode {
                 self.work_list(&root, request, remote, &group, &repository)
             }
             "view" => {
+                if map_value(request, &rmpv::Value::String("doc_id".into())).is_none() {
+                    return response(Self::RES_INVALID_REQ, "No document ID specified", None);
+                }
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }

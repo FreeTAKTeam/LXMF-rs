@@ -98,6 +98,12 @@ completion failure, and special permission-alias casing. These are unit-level
 additions only; hosted checks and mixed-peer
 coverage for these specific cases remain pending, so #612 stays partial.
 
+A focused #612 production-handler differential also covers a `view` request
+without `doc_id`: pinned Python and Rust both return `INVALID_REQ` with
+`No document ID specified` and leave the work root absent. Rust now matches
+this operation-specific request error; the remaining work-operation matrix
+and hosted evidence are still open.
+
 The new bidirectional MessagePack work-record regression verifies exact binary
 author/identity/signature values and integer document IDs/timestamps across
 Python↔Rust storage and production Link response boundaries. It also corrected
