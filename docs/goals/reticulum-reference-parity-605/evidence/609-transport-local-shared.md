@@ -709,3 +709,25 @@ LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib \
 
 No production mismatch was found; other duplicate classes and the broad #609
 acceptance matrix remain open.
+
+## Per-interface paced announce queue capacity
+
+The production interface manager now uses the pinned 1.5.4 limit of 4,096
+queued paced announces per interface. The ignored differential
+`paced_announce_queue_matches_pinned_python_capacity` reads the exact pinned
+`RNS/Reticulum.py` source at
+`99de23c040d507e3fefca19e87b182302902725d`, verifies the capacity, accepts the
+4,096th distinct queued announce, and rejects the next one while preserving
+the first transmission.
+
+```text
+RETICULUM_PY_REPO=/path/to/Reticulum-99de23c \
+LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib \
+  paced_announce_queue_matches_pinned_python_capacity -- \
+  --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed
+```
+
+This verifies the paced-queue capacity boundary only; other announcement,
+retry, duplicate, transport-recovery, and broader #609 acceptance remain
+separate.
