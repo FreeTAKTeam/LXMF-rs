@@ -934,6 +934,7 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
         wait_for_known_path_without_announce(relay_a_rpc_port, &hash_b)?;
         wait_for_known_path_without_announce(relay_b_rpc_port, &hash_a)?;
 
+        let mut outbound_message_hashes = Vec::new();
         for (sender, receiver, destination, content) in [
             (python_control_a_port, python_control_b_port, &hash_b, "multi-hop-after-restart-a-to-b"),
             (python_control_b_port, python_control_a_port, &hash_a, "multi-hop-after-restart-b-to-a"),
@@ -943,16 +944,59 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
                 "wait_path",
                 Some(json!({ "destination": destination, "timeout": 10.0 })),
             )?;
-            python_control_call(
+            let outbound = python_control_call(
                 sender,
                 "send_message",
                 Some(json!({ "destination": destination, "title": "", "content": content })),
             )?;
+            let message_hash = outbound
+                .get("message_hash")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("Python sender returned no LXMF message hash: {outbound}"))?;
             python_control_call(
                 receiver,
                 "wait_message",
                 Some(json!({ "content": content, "timeout": 30.0 })),
             )?;
+            outbound_message_hashes.push((sender, message_hash.to_string()));
+        }
+        for (sender, message_hash) in outbound_message_hashes {
+            python_control_call(
+                sender,
+                "wait_outbound_state",
+                Some(json!({ "message_hash": message_hash, "state": "delivered", "timeout": 30.0 })),
+            )?;
+        }
+
+        for (sender, receiver, destination, content) in [
+            (python_control_a_port, python_control_b_port, &hash_b, "raw-multi-hop-after-restart-a-to-b"),
+            (python_control_b_port, python_control_a_port, &hash_a, "raw-multi-hop-after-restart-b-to-a"),
+        ] {
+            python_control_call(
+                sender,
+                "wait_path",
+                Some(json!({ "destination": destination, "timeout": 10.0 })),
+            )?;
+            python_control_call(
+                sender,
+                "open_raw_link",
+                Some(json!({ "destination": destination, "timeout": 20.0 })),
+            )?;
+            python_control_call(sender, "send_raw", Some(json!({ "content": content })))?;
+            python_control_call(
+                receiver,
+                "wait_raw_message",
+                Some(json!({ "content": content, "timeout": 10.0 })),
+            )?;
+        }
+        for (label, port) in [
+            ("Python peer A", python_control_a_port),
+            ("Python peer B", python_control_b_port),
+        ] {
+            let link_status = python_control_call(port, "raw_link_status", None)?;
+            if link_status.get("status_name").and_then(Value::as_str) != Some("active") {
+                return Err(format!("{label} multi-hop raw Link was not active: {link_status}"));
+            }
         }
         Ok(())
     })();

@@ -767,6 +767,11 @@ restarted relay has no restored active paths, its shared-instance client is
 attached, the downstream relay's TCP client has reconnected, and both Python
 endpoints explicitly request and rediscover the remote path. Fresh bidirectional
 LXMF messages are then delivered end-to-end over the recovered multi-hop path.
+Each sender also waits for the corresponding outbound message to reach the
+`delivered` state, verifying delivery-proof processing rather than only
+receiver-side content. Each direction then opens a fresh raw Reticulum Link over
+the recovered path, exchanges application bytes, and asserts both peer-side
+Link states are active.
 
 ```text
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
@@ -777,11 +782,12 @@ cargo test -p lxmf-cli --test python_lxmd_remote_relay \
   -- --ignored --nocapture --test-threads=1
 # pinned Reticulum 99de23c040d507e3fefca19e87b182302902725d
 # pinned LXMF 727830cefda83d9c6e3982b48675425f3f988f9c
-# 1 passed; 0 failed
+# 2 consecutive passes; each 1 passed; 0 failed
 ```
 
 The regression required no production change: the first experiment reused
 pre-restart Python LXMF direct Links, so the acceptance now sends only fresh
-application traffic after restart. This closes this combined software
-scenario, not #609's broader transport/recovery matrix; other failure modes,
-network environments, and HIL remain outside this evidence.
+application traffic after restart. This closes the shared-instance/multi-hop
+discovery, delivery-proof, raw-Link traffic, and daemon-replacement slice of
+#609. It does not close the umbrella issue or its separate discrepancy-tracking
+row; other transport/recovery behaviors remain open.
