@@ -6,6 +6,9 @@ use rns_transport::transport::Transport;
 use serde_json::{json, Value as JsonValue};
 use std::sync::Arc;
 
+#[path = "bridge_path_lookup_parts/path_table.rs"]
+mod path_table;
+
 pub(crate) struct DaemonPathLookupBridge {
     transport: Arc<Transport>,
     discovery_store: Option<InterfaceDiscoveryStore>,
@@ -145,27 +148,32 @@ impl PathLookupBridge for DaemonPathLookupBridge {
             let status_transport = transport.clone();
             let status =
                 runtime.block_on(async move { status_transport.path_status(&destination).await });
-            let (interface_bitrate, interface_mtu) = runtime.block_on(async {
+            let (interface_bitrate, interface_mtu, interface_name) = runtime.block_on(async {
                 let Some(interface) = status.interface else {
-                    return (None, None);
+                    return (None, None, None);
                 };
                 let manager = transport.iface_manager();
                 let manager = manager.lock().await;
                 let bitrate = manager.announce_pacing(&interface).map(|(bitrate, _)| bitrate);
                 let mtu = manager.mtu(&interface).map(|value| value as u64);
-                (bitrate, mtu)
+                let name = manager.display_name(&interface).map(ToOwned::to_owned);
+                (bitrate, mtu, name)
             });
             Ok(json!({
                 "destination_hash": Self::hash_hex(status.destination),
                 "path_found": status.path_found,
                 "next_hop": status.next_hop.map(Self::hash_hex),
                 "interface": status.interface.map(Self::hash_hex),
-                "interface_name": status.interface.map(Self::hash_hex),
+                "interface_name": interface_name,
                 "interface_bitrate": interface_bitrate,
                 "interface_mtu": interface_mtu,
                 "hops": status.hops,
             }))
         })
+    }
+
+    fn path_table(&self, max_hops: Option<u64>) -> Result<JsonValue, std::io::Error> {
+        self.path_table_impl(max_hops)
     }
 
     fn remove_paths_for_identity(&self, identity: &str) -> Result<usize, std::io::Error> {
@@ -466,6 +474,13 @@ mod tests {
             AddressHash::new_from_hex_string("fedcba98765432100123456789abcdef").expect("hash");
         assert_eq!(DaemonPathLookupBridge::hash_hex(next_hop), "8899aabbccddeeff0011223344556677");
         assert_eq!(DaemonPathLookupBridge::hash_hex(interface), "fedcba98765432100123456789abcdef");
+    }
+
+    #[test]
+    fn path_table_bridge_returns_empty_table_when_no_paths_are_known() {
+        let bridge = bridge();
+
+        assert_eq!(bridge.path_table(None).expect("path table"), json!([]));
     }
 
     #[test]

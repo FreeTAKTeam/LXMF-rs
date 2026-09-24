@@ -53,6 +53,24 @@ impl InterfaceManager {
         self.ifaces.iter().map(|iface| iface.address).collect()
     }
 
+    pub fn display_name(&self, address: &AddressHash) -> Option<&str> {
+        self.ifaces
+            .iter()
+            .find(|iface| iface.address == *address)
+            .and_then(|iface| iface.display_name.as_deref())
+    }
+
+    pub fn set_display_name(&mut self, address: AddressHash, display_name: Option<String>) -> bool {
+        let mut updated = false;
+        for iface in &mut self.ifaces {
+            if iface.address == address || iface.parent == Some(address) {
+                iface.display_name = display_name.clone();
+                updated |= iface.address == address;
+            }
+        }
+        updated
+    }
+
     pub fn is_shared_instance(&self, address: &AddressHash) -> bool {
         self.ifaces
             .iter()

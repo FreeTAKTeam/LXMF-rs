@@ -19,6 +19,18 @@ const MAX_RANDOM_BLOBS: usize = 64;
 
 pub(super) type RandomBlob = [u8; RAND_HASH_LENGTH];
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransportPathTableEntry {
+    pub destination: AddressHash,
+    pub timestamp_secs: f64,
+    pub next_hop: AddressHash,
+    pub hops: u8,
+    pub expires_secs: f64,
+    pub interface: AddressHash,
+    pub interface_name: Option<String>,
+    pub interface_hash: Hash,
+}
+
 pub struct PathEntry {
     pub timestamp: Instant,
     pub received_from: AddressHash,

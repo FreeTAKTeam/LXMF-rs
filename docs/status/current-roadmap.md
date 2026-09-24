@@ -53,6 +53,12 @@ the production CLI returns failure with no apparent success output and a
 connection-refused diagnostic. This does not exercise transport or a Python peer and
 does not close the broader #611 utility matrix.
 
+The current #631 path-table slice adds a `get_path_table` daemon RPC and
+`rnpath-rs --table`/`--max` output backed by the transport path table, with
+focused hop-filter, RPC-shape, bridge-serialization, and CLI-ordering tests.
+This is local software evidence, not a live non-empty Python/Rust path-table
+trace; interface-label parity and the broader #611 matrix remain open.
+
 The current #631 `rncp` increment observes packed and received Resource
 advertisement sizes/flags for all six Python/Rust compression roles, with a
 focused exact-target Verify step; the utility row remains partial because its

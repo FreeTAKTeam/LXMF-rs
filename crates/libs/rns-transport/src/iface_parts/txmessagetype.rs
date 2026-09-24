@@ -292,6 +292,7 @@ struct LocalInterface {
     address: AddressHash,
     parent: Option<AddressHash>,
     full_hash: Hash,
+    display_name: Option<String>,
     tx_send: InterfaceTxSender,
     stop: CancellationToken,
     online: Arc<AtomicBool>,
