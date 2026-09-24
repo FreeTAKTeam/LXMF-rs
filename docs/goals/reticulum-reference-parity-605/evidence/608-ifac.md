@@ -1,5 +1,21 @@
 # Issue #608 — IFAC carrier wiring evidence
 
+## Malformed IFAC startup status
+
+`bootstrap_reports_invalid_ifac_config_without_creating_interface` verifies that
+an enabled UDP interface with `ifac_size` but no usable IFAC credential is not
+started, while the existing `list_interfaces` management RPC reports it once
+with `_runtime.startup_status = "failed"` and a fixed `startup_error`. The
+diagnostic contains no raw configuration values or credentials. This is a
+software regression; other startup parse failures and the broader #608
+acceptance remain open.
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  bootstrap_reports_invalid_ifac_config_without_creating_interface -- --nocapture
+  1 passed; 0 failed
+```
+
 Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child
 IFAC policy evidenced; serial and KISS stream runtime paths have deterministic
 software regressions; outbound I2P fake-SAM stream IFAC rejection,
@@ -650,6 +666,27 @@ has been exercised.
 cargo test -p reticulum-rs-transport live_ifac_rotation_never_admits_plaintext_during_reconfiguration -- --nocapture
 # 1 passed; synchronized ingress remained fail-closed across 2,000 live credential updates
 ```
+
+## Invalid IFAC startup configuration is reported without admission
+
+The production daemon bootstrap regression supplies a UDP interface with an
+IFAC size but no credentials, then queries `list_interfaces` through the
+daemon RPC API. The invalid configuration is rejected by `DaemonConfig` and
+the interface is not started, but the existing `list_interfaces` response
+contains one sanitized record with `_runtime.startup_status = "failed"` and a
+fixed IFAC validation message. The record contains no raw config values or
+credentials. Config loading continues to log its parse error; no interface
+transport is created for the rejected entry.
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  bootstrap_reports_invalid_ifac_config_without_creating_interface -- --nocapture
+# 1 passed; malformed config reported through list_interfaces, no UDP interface started
+```
+
+This verifies reporting for the missing-credential IFAC configuration case. It
+does not complete other parse/startup reporting, carrier-family,
+physical-device, or broader #608 acceptance.
 
 ## PR #628 hosted PR-HIL fixture follow-up
 
