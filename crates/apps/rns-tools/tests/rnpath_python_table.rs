@@ -27,6 +27,25 @@ fn python_bin() -> String {
     std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string())
 }
 
+fn assert_pinned_python_checkout(repo: &Path) -> io::Result<()> {
+    let output = Command::new("git").arg("-C").arg(repo).args(["rev-parse", "HEAD"]).output()?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "could not verify pinned Python Reticulum checkout at {}: {}",
+            repo.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    let revision = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if revision != "99de23c040d507e3fefca19e87b182302902725d" {
+        return Err(io::Error::other(format!(
+            "rnpath parity requires Reticulum 99de23c040d507e3fefca19e87b182302902725d, found {revision} at {}",
+            repo.display()
+        )));
+    }
+    Ok(())
+}
+
 fn wait_for_port(port: u16, child: &mut Child, label: &str) -> io::Result<()> {
     let deadline = Instant::now() + Duration::from_secs(15);
     while Instant::now() < deadline {
@@ -110,6 +129,7 @@ fn rnpath_table_matches_frozen_python_route_fields_over_live_tcp() -> io::Result
     let _guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let python_repo = python_repo();
+    assert_pinned_python_checkout(&python_repo)?;
     let python_script = python_repo.join("RNS/Utilities/rnpath.py");
     if !python_script.is_file() {
         return Err(io::Error::new(
