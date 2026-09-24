@@ -5,6 +5,7 @@ mod tests {
     use std::process::Command;
 
     include!("iface_tests_parts/closed_tx_queue_cleanup.rs");
+    include!("iface_tests_parts/issue_609_announce_queue_limit.rs");
 
     #[test]
     fn new_channel_defaults_to_unicast_role() {

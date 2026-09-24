@@ -478,6 +478,11 @@ Scoped release evidence is split as follows:
   queued announces or an active announce cap block the request, while a
   recursive request admitted by the gate advances the next allowed
   announce/path slot.
+- Per-interface paced announce queues now use the pinned Python 1.5.4 limit of
+  4,096 entries. A pinned-source differential and production interface test
+  verify the 4,096th queued announce is accepted and the next unique announce
+  is rejected; this establishes queue capacity only, not all announce
+  deduplication or pacing behavior.
 - Path-request duplicate/throttle state now has bounded software coverage:
   inbound duplicate request suppression is scoped by destination, requesting
   transport, request tag, and ingress interface and expires after the request
