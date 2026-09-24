@@ -232,6 +232,17 @@ including `native_windows_paired_device_query_matches_reference_id_suffixes`
 and `extracts_sorted_unique_addresses_from_reference_device_ids`. The new
 WinRT query test is target-gated and was not executed by the local Linux run.
 
+The `macOS interface runtime software tests` lane was added to the shared CI
+workflow. It runs `cargo test -p reticulum-rs-transport --features rnode-ble
+--lib -- --nocapture` on `macos-latest`: this compiles the BLE-enabled
+transport library for macOS and executes its library unit tests, including
+software-only AutoInterface, pipe, UDP, and simulated BLE runtime regressions.
+The Windows-only native paired-device query remains exclusive to the Windows
+job. This macOS lane does not open a Bluetooth device, exercise native GATT
+discovery/pairing, or establish physical carrier behavior; it also does not
+complete the Linux/Windows/macOS/mobile platform matrix. Hosted evidence is
+pending until this workflow runs on the updated PR head.
+
 The Windows target is installed, but this Linux host has neither a MinGW
 compiler/sysroot nor Windows SDK headers. The normal target check stopped in
 `bzip2-sys` because `x86_64-w64-mingw32-gcc` is unavailable. A retry with the
