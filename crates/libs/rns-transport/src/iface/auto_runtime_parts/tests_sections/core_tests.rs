@@ -418,13 +418,21 @@
                 data_port,
                 ..AutoInterfaceConfig::default()
             },
-            AutoInterfaceDeviceFilter { allowed: vec!["lo".to_string()], ignored: Vec::new() },
-            vec![AutoInterfaceDeviceCandidate {
-                ifname: "lo".to_string(),
-                ipv6_addresses: vec!["fe80::1111".to_string()],
-            }],
+            AutoInterfaceDeviceFilter {
+                allowed: vec!["lo".to_string(), "lo-secondary".to_string()],
+                ignored: Vec::new(),
+            },
+            vec![
+                AutoInterfaceDeviceCandidate {
+                    ifname: "lo".to_string(),
+                    ipv6_addresses: vec!["fe80::1111".to_string()],
+                },
+                AutoInterfaceDeviceCandidate {
+                    ifname: "lo-secondary".to_string(),
+                    ipv6_addresses: vec!["fe80::2222".to_string()],
+                },
+            ],
         );
-        let device = plan.adopted_devices[0].clone();
         plan.startup_plan.discovery_listeners = vec![AutoDiscoveryListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
@@ -443,7 +451,7 @@
 
         let status = AutoRuntimeStatusHandle::from_startup_plan(&plan.startup_plan);
         let state = Arc::new(tokio::sync::Mutex::new(AutoDiscoveryState::from_timing(
-            vec![device],
+            plan.adopted_devices.clone(),
             AutoInterfaceTiming::for_platform(plan.platform),
         )));
         let announce_socket = plan
@@ -463,6 +471,7 @@
         assert!(no_change.carrier_events.is_empty());
 
         let echo_packet = plan.config.multicast_peering_packet(&plan.adopted_devices[0]);
+        let secondary_echo_packet = plan.config.multicast_peering_packet(&plan.adopted_devices[1]);
         let echo_at = plan.startup_plan.initial_peering_wait;
         let mut state_guard = state.lock().await;
         let echo = plan
@@ -484,6 +493,28 @@
             .expect("authenticate reference-shaped local echo")
             .expect("process echo after initial peering wait");
         assert_eq!(echo.event, AutoDiscoveryEvent::LocalMulticastEcho { ifname: "lo".into() });
+        let secondary_echo = plan
+            .process_discovery_datagram(
+                &mut state_guard,
+                AutoDiscoveryDatagram {
+                    kind: AutoDiscoverySocketKind::Unicast,
+                    ifname: "lo-secondary".to_string(),
+                    bind_addr: (std::net::Ipv4Addr::LOCALHOST, discovery_port).into(),
+                    multicast_group_addr: None,
+                    source_addr: std::net::SocketAddr::new(
+                        "fe80::2222".parse().expect("parse secondary adopted test address"),
+                        discovery_port,
+                    ),
+                    payload: secondary_echo_packet.token.to_vec(),
+                },
+                echo_at,
+            )
+            .expect("authenticate secondary reference-shaped local echo")
+            .expect("process secondary echo after initial peering wait");
+        assert_eq!(
+            secondary_echo.event,
+            AutoDiscoveryEvent::LocalMulticastEcho { ifname: "lo-secondary".into() }
+        );
         drop(state_guard);
         let _ = plan
             .send_due_peer_job_with_runtime_socket(
@@ -499,6 +530,30 @@
         let lost_at = echo_at
             + AutoInterfaceTiming::for_platform(plan.platform).multicast_echo_timeout
             + core::time::Duration::from_millis(1);
+        let mut state_guard = state.lock().await;
+        let secondary_echo = plan
+            .process_discovery_datagram(
+                &mut state_guard,
+                AutoDiscoveryDatagram {
+                    kind: AutoDiscoverySocketKind::Unicast,
+                    ifname: "lo-secondary".to_string(),
+                    bind_addr: (std::net::Ipv4Addr::LOCALHOST, discovery_port).into(),
+                    multicast_group_addr: None,
+                    source_addr: std::net::SocketAddr::new(
+                        "fe80::2222".parse().expect("parse secondary adopted test address"),
+                        discovery_port,
+                    ),
+                    payload: secondary_echo_packet.token.to_vec(),
+                },
+                lost_at,
+            )
+            .expect("authenticate continuing secondary echo")
+            .expect("process continuing secondary echo");
+        assert_eq!(
+            secondary_echo.event,
+            AutoDiscoveryEvent::LocalMulticastEcho { ifname: "lo-secondary".into() }
+        );
+        drop(state_guard);
         let lost = plan
             .send_due_peer_job_with_runtime_socket(
                 Arc::clone(&state),
@@ -516,6 +571,7 @@
         let lost_status = status.to_json();
         assert_eq!(lost_status["carrier_events"][0]["event"], "carrier_lost");
         assert_eq!(lost_status["carrier_events"][0]["ifname"], "lo");
+        assert_eq!(lost_status["carrier_events"].as_array().map(Vec::len), Some(1));
 
         let mut state_guard = state.lock().await;
         let echo = plan
@@ -556,6 +612,7 @@
         let recovered_status = status.to_json();
         assert_eq!(recovered_status["carrier_events"][0]["event"], "carrier_recovered");
         assert_eq!(recovered_status["carrier_events"][0]["ifname"], "lo");
+        assert_eq!(recovered_status["carrier_events"].as_array().map(Vec::len), Some(1));
         drop(announce_socket);
 
         let first = plan
