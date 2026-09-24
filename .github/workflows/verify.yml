@@ -187,7 +187,7 @@ jobs:
           rncp_python_fetch_client_save_error_is_reported_but_never_resolved
           -- --ignored --exact --nocapture
 
-      - name: Verify rnpath discovery against pinned Python over TCP
+      - name: Verify rnpath, rnprobe, rncp and rnsd against pinned Python
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -208,6 +208,9 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
           cargo test -p rns-tools --test rnprobe_python_interop \
             rnprobe_invalid_destination_identity_matches_pinned_python_failure \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnsd_python_example_config \
+            rnsd_example_config_matches_pinned_python_without_starting_daemon \
             -- --ignored --exact --nocapture --test-threads=1
           RETICULUM_PY_REPO="$GITHUB_WORKSPACE/Reticulum-parity" \
             cargo test -p rns-tools --test rncp_python_missing_source \

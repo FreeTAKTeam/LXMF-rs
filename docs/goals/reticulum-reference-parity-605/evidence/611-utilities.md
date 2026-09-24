@@ -1,5 +1,12 @@
 # #611 utility/network evidence
 
+The `rnsd --exampleconfig` process option now prints the frozen Python
+configuration example without launching the daemon. An ignored exact-target
+differential compares byte-for-byte output with Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`; the focused test passed locally.
+This restores one documented utility option and does not complete the broader
+#611 utility matrix.
+
 Status: **partial / unverified**. This record covers the bounded native `rncp`,
 `rnprobe`, and `rnsh` slices on the forward parity branch, including
 authenticated pinned-Python and Rust sender/listener roles. The mixed-runtime compression increment is

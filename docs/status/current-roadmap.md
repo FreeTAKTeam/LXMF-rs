@@ -121,6 +121,11 @@ Resource hash. This records transport delivery separately from local save
 success; it does not add a negative acknowledgment or complete the broader
 #611 utility row.
 
+The `rnsd --exampleconfig` utility option now returns the frozen Python
+configuration example byte-for-byte without starting the daemon. Its focused
+process differential uses the pinned Reticulum revision and leaves the broader
+#611 utility matrix partial.
+
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted
