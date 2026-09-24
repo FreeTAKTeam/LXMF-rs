@@ -123,6 +123,13 @@ move the author-owned work item from `active/7` to `completed/7`. This adds one
 successful state transition; the complete #612 operation and permission
 matrix remains open.
 
+A separate pinned-RNS 1.5.4 `activate` differential covers an authorized
+proposed work item: both production handlers return `RES_OK` with the exact
+MessagePack body `{id: 9, scope: "active"}` and move `proposed/9` to `active/9`.
+Permission resolvers are stubbed to isolate the state transition. This adds
+one activation success case; the full #612 operation and permission matrix
+remains open.
+
 A new pinned-Python production-handler differential covers `list` with an
 unknown scope: Rust now returns `RES_OK` and the same empty `active`,
 `completed`, and `proposed` arrays as RNS 1.5.4. A separate local regression
