@@ -127,6 +127,7 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
     fs::write(source.join("image.png"), &media)?;
     fs::create_dir_all(source.join("assets"))?;
     fs::write(source.join("assets/space name.bin"), b"percent decoded media path\0\xff\n")?;
+    fs::write(source.join("assets/nested image.png"), b"\x89PNG\xffnested image")?;
     fs::write(source.join("large.png"), vec![0x5a; 8 * 1024 * 1024])?;
     fs::write(
         source.join("valid.png"),
@@ -240,6 +241,7 @@ import os
 import sys
 import threading
 import time
+import urllib.parse
 import RNS
 
 config_dir, identity_path, destination_hex, media_temp_directory = sys.argv[1:5]
@@ -402,6 +404,18 @@ media = request(
         "path": "/media/group/repo/HEAD/image.png",
     },
 )
+image_page = request(
+    "/page/blob.mu",
+    {
+        "var_g": "group",
+        "var_r": "repo",
+        "var_ref": "HEAD",
+        "var_path": "assets/nested image.png",
+    },
+)
+expected_image_markup = "`(Image file`w=n`a=c`:/media/group/repo/HEAD/" + urllib.parse.quote_plus("assets/nested image.png") + ")"
+if expected_image_markup not in image_page["body"]:
+    raise RuntimeError(f"nested image markup differs from pinned quote_plus behavior: {image_page['body']}")
 converted_media = request(
     "/media",
     {
@@ -461,6 +475,7 @@ print(json.dumps({
     "denied_repository": denied_repository,
     "download": download,
     "media": media,
+    "image_page": image_page,
     "converted_media": converted_media,
     "media_temp_directories_during_link": len(media_temp_directories_during_link),
     "missing_media_key": missing_media_key,
@@ -1045,7 +1060,6 @@ fn rngit_work_survives_process_restart_for_pinned_python_client() -> io::Result<
             format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
         ));
     }
-
     let port = free_port()?;
     let identity_seed = "rngit-python-restart-server";
     let config_dir = temp.path().join("python-client");

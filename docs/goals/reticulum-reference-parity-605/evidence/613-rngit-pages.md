@@ -24,7 +24,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
 | NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
-| Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
+| Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression now checks a nested image path containing a space against frozen `pages.py`'s `urllib.parse.quote_plus(file_path)` output; missing repository, invalid ref, missing blob are covered; visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and converted-output reads (32 MiB media-response cap), output validation, temporary-directory cleanup, raw fallback | local code/tests; deterministic software differential coverage matches pinned-Python backend selection and configured argv for all five backend families; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; exact-limit/over-limit converted-file regression; pinned-Python production-Link test with an explicitly unavailable backend returns the original `image.png` name and all 8,192 raw bytes unchanged; timeout regression verifies both pipeline children are terminated and reaped; real encoder operation for `magick`, `convert`, `gm`, and `avconv`, plus visual parity, remain unverified |
@@ -101,6 +101,21 @@ media requests with a missing key, missing path, and insufficient path
 components. Each receives the reference's scalar `False` response, with no
 Resource metadata or media bytes. This does not promote visual-rendering
 parity.
+
+The same production-Link trace now requests the binary image at
+`assets/nested image.png`. It checks the exact Micron `/media/` markup against
+the pinned `pages.py` `urllib.parse.quote_plus(file_path)` expression and the
+Python standard-library result (`assets%2Fnested+image.png`). This confirms
+nested-path and space encoding for this case only; it does not establish full
+page-rendering parity.
+
+```text
+TMPDIR="$PWD/target/tmp" \
+RETICULUM_PY_REPO="$PWD/target/tmp/pinned-reticulum" \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_serves_pages_and_media_to_pinned_python_client -- --ignored --exact --nocapture
+  PASS (1 test; Reticulum 99de23c040d507e3fefca19e87b182302902725d)
+```
 
 The focused precompressed-media regression uses the deterministic, valid 1x1
 PNG already committed as `valid.png` in the interop fixture, with server-side

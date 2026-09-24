@@ -102,6 +102,10 @@ configuration still wins, and a missing cached executable falls back to normal
 preference order. Rust unit regressions cover that sequence, with a separate
 ignored test exercising the pinned Python helper directly; the broader #613
 acceptance remains partial.
+The production-Link page/media differential also covers one nested image path
+containing a space and confirms that rendered Micron markup matches the frozen
+Python `quote_plus(file_path)` encoding. Other template and rendering behavior
+remains unverified, so #613 stays partial.
 The frozen handler's key check is presence-only: a `None` value with a valid
 media path still returns the Resource and filename metadata. A production-Link
 regression now proves that response alongside absent-key denial; Rust already

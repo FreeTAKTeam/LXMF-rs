@@ -11,6 +11,11 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
             format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
         ));
     }
+    let reference_pages = fs::read_to_string(python_repo.join("RNS/Utilities/rngit/pages.py"))?;
+    assert!(
+        reference_pages.contains("urllib.parse.quote_plus(file_path)"),
+        "pinned pages.py image markup must use quote_plus on the repository path"
+    );
 
     let port = free_port()?;
     let identity_seed = "rngit-python-interop-server";
