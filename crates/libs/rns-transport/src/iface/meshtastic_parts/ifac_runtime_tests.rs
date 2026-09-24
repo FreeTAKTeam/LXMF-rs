@@ -147,3 +147,46 @@ async fn meshtastic_tunnel_rejects_wrong_ifac_and_authenticates_ingress_egress()
     worker.abort();
     let _ = worker.await;
 }
+
+#[tokio::test]
+async fn meshtastic_ifac_worker_stops_cleanly_without_clearing_authentication() {
+    let config = MeshtasticInterfaceConfig {
+        send_delay: std::time::Duration::from_millis(5),
+        ..MeshtasticInterfaceConfig::default()
+    };
+    let interface = MeshtasticInterface::new("in-memory Meshtastic stop", config);
+    let mut manager = InterfaceManager::new(4);
+    let context = manager.new_context(interface);
+    let stop = context.channel.stop.clone();
+    let cancel = context.cancel.clone();
+    let ifac_state = context.channel.ifac_state.clone();
+    assert!(manager.set_shared_config(
+        *context.channel.address(),
+        InterfaceSharedConfig {
+            network_name: Some("meshtastic-stop-test".to_string()),
+            passphrase: Some("meshtastic-stop-secret".to_string()),
+            ..InterfaceSharedConfig::default()
+        }
+    ));
+    let probe = Packet {
+        destination: AddressHash::new_from_slice(&[0x74; 16]),
+        data: PacketDataBuffer::new_from_slice(b"IFAC remains required after worker stop"),
+        ..Packet::default()
+    };
+    let authenticated_before_stop =
+        encode_packet_ifac(&ifac_state, &probe).expect("configured IFAC state");
+
+    let worker = tokio::spawn(MeshtasticInterface::spawn(context));
+    tokio::task::yield_now().await;
+    cancel.cancel();
+    timeout(std::time::Duration::from_secs(1), worker)
+        .await
+        .expect("Meshtastic IFAC worker stops promptly")
+        .expect("Meshtastic IFAC worker exits normally");
+
+    assert!(stop.is_cancelled(), "worker publishes its stopped state");
+    assert_eq!(
+        encode_packet_ifac(&ifac_state, &probe).expect("IFAC remains configured after stop"),
+        authenticated_before_stop
+    );
+}

@@ -509,6 +509,25 @@ git diff --check
 The uncovered carrier families and broad startup/configuration/error matrix
 remain open, so these additions do not close #608 or promote #605.
 
+## Meshtastic IFAC worker cancellation cleanup
+
+`meshtastic_ifac_worker_stops_cleanly_without_clearing_authentication` starts
+the production in-memory Meshtastic tunnel worker with IFAC configured, requests
+interface stop, and bounds the worker join. It verifies the worker exits
+normally, publishes its stopped state, and retains the same authenticated wire
+context across shutdown. This complements the existing wrong-key and
+authenticated ingress/egress regression; it does not cover external Meshtastic
+startup failures, daemon error reporting, restart/reconfiguration, or other
+carrier families.
+
+```text
+cargo test -p reticulum-rs-transport \
+  meshtastic_ifac_worker_stops_cleanly_without_clearing_authentication -- --nocapture
+# 1 passed; graceful worker stop; IFAC context unchanged
+```
+
+The broad #608 carrier-family and lifecycle matrix remains open.
+
 ## AutoInterface and RNode-family IFAC regressions
 
 The follow-up software tests exercise the AutoInterface peer-data bridge and
