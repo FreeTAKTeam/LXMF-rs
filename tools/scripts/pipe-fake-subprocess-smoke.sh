@@ -12,10 +12,11 @@ mkdir -p "$LOG_DIR"
 RUN_DIR="$(mktemp -d "${LOG_DIR}/run.XXXXXX")"
 CONFIG_PATH="${RUN_DIR}/reticulumd-pipe.toml"
 DB_PATH="${RUN_DIR}/reticulum.db"
-RPC_UNIX="${RUN_DIR}/rpc.sock"
+RPC_UNIX="${TMPDIR:-/tmp}/lxmf-pipe-${$}.sock"
 RETICULUMD_LOG="${RUN_DIR}/reticulumd.log"
 RNSTATUS_JSON="${RUN_DIR}/rnstatus.json"
 RNSTATUS_HUMAN="${RUN_DIR}/rnstatus.txt"
+PEER_PID_FILE="${RUN_DIR}/pipe-peer.pid"
 
 : >"$RETICULUMD_LOG"
 
@@ -82,6 +83,9 @@ if json_path.exists():
             report["respawn_attempts"] = pipe_status.get("respawn_attempts")
             report["last_error"] = pipe_status.get("last_error")
             report["command"] = pipe_status.get("command")
+        traffic = ((payload.get("reticulum") or {}).get("transport") or {}).get("traffic") or {}
+        report["traffic_rx_bytes"] = traffic.get("rx_bytes")
+        report["traffic_tx_bytes"] = traffic.get("tx_bytes")
     except Exception as exc:
         report["status_parse_error"] = str(exc)
 human_path = pathlib.Path(rnstatus_human)
@@ -113,6 +117,14 @@ fail() {
   exit 1
 }
 
+export PEER_PID_FILE
+cat >"${RUN_DIR}/pipe-peer.sh" <<'SH'
+#!/bin/sh
+echo "$$" >"${PEER_PID_FILE}"
+exec cat
+SH
+chmod +x "${RUN_DIR}/pipe-peer.sh"
+
 python3 - <<'PY' "$CONFIG_PATH" || fail "failed to generate PipeInterface config"
 import pathlib
 import sys
@@ -125,7 +137,7 @@ pathlib.Path(config_path).write_text(
             'type = "PipeInterface"',
             "enabled = true",
             'name = "pipe-fake-subprocess"',
-            'command = "cat"',
+            f'command = "sh {pathlib.Path(sys.argv[1]).parent}/pipe-peer.sh"',
             "respawn_delay = 0.1",
             "configured_bitrate = 256000",
         ]
@@ -143,6 +155,7 @@ cargo build -p rns-tools --bin rnstatus-rs --quiet
   --rpc-unix "$RPC_UNIX" \
   --db "$DB_PATH" \
   --config "$CONFIG_PATH" \
+  --announce-interval-secs 1 \
   --strict-interface-startup >"$RETICULUMD_LOG" 2>&1 &
 RET_PID=$!
 
@@ -176,7 +189,7 @@ runtime_iface = runtime_root.get("runtime_iface") or runtime_root.get("iface")
 if not isinstance(runtime_iface, str) or not runtime_iface:
     raise SystemExit(1)
 status = ((runtime_root.get("pipe") or {}).get("status") or {})
-if status.get("command") != "cat":
+if not str(status.get("command", "")).endswith("/pipe-peer.sh"):
     raise SystemExit(1)
 if status.get("process_state") != "running":
     raise SystemExit(1)
@@ -186,6 +199,9 @@ if status.get("respawn_attempts") != 0:
     raise SystemExit(1)
 if status.get("last_error") is not None:
     raise SystemExit(1)
+traffic = ((payload.get("reticulum") or {}).get("transport") or {}).get("traffic") or {}
+if (traffic.get("tx_bytes") or 0) <= 0 or (traffic.get("rx_bytes") or 0) <= 0:
+    raise SystemExit(1)
 human = open(human_path, "r", encoding="utf-8", errors="replace").read()
 if "pipe-fake-subprocess" not in human:
     raise SystemExit(1)
@@ -193,6 +209,14 @@ if "pipe state=running open=true respawns=0" not in human:
     raise SystemExit(1)
 PY
     then
+      [[ -s "$PEER_PID_FILE" ]] || fail "Pipe peer did not start"
+      PEER_PID="$(<"$PEER_PID_FILE")"
+      kill -INT "$RET_PID" >/dev/null 2>&1 || fail "could not request daemon shutdown"
+      wait "$RET_PID" || fail "daemon shutdown returned a failure status"
+      RET_PID=""
+      if kill -0 "$PEER_PID" >/dev/null 2>&1; then
+        fail "Pipe peer process $PEER_PID survived daemon shutdown"
+      fi
       write_report "pass"
       echo "[pipe-fake-subprocess-smoke] pass"
       echo "[pipe-fake-subprocess-smoke] report=${REPORT_PATH}"

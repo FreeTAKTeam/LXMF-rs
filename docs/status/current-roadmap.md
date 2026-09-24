@@ -135,11 +135,12 @@ Strict I2P startup now also has one negative fake-SAM daemon-path regression:
 a rejected SAM HELLO prevents interface registration and leaves a contextual
 startup failure. This does not replace destination-creation/session coverage
 or real-router/public-network evidence; #614/#605 remain partial.
-The Linux PipeInterface lifecycle now also has a deterministic production-
-worker regression: child EOF causes one respawn, and interface cancellation
-stops the worker and reaps the restarted child. This remains Linux software
-evidence only; daemon-level, cross-platform, peer-exchange, and physical
-acceptance remain unverified.
+The Linux PipeInterface lifecycle now has deterministic production-worker and
+configured-daemon process evidence: child EOF causes one respawn; a local peer
+process echoes a scheduled, HDLC-framed announce with nonzero daemon RX/TX
+counters; SIGINT shutdown exits and reaps the peer. This remains Linux software
+evidence only; Windows/macOS behavior, independent remote-peer interoperability,
+and physical acceptance remain unverified.
 
 The Linux UDP production worker also has a loopback cancellation regression:
 it reaches `bound`, exits on interface cancellation, reports `closed`, and
