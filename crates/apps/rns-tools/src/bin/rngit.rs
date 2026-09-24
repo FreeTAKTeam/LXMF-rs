@@ -348,6 +348,7 @@ mod tests {
 
     include!("rngit_parts/issue_612_tests.rs");
     include!("rngit_parts/issue_612_executable_python_differential_tests.rs");
+    include!("rngit_parts/issue_612_delete_missing_sidecar_differential_tests.rs");
     include!("rngit_parts/issue_612_blocked_admin_permission_differential_tests.rs");
     include!("rngit_parts/issue_612_scope_selection_differential_tests.rs");
     include!("rngit_parts/issue_612_list_unknown_scope_differential_tests.rs");
