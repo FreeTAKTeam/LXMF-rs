@@ -98,6 +98,111 @@ print(json.dumps({"status": response[0], "body": response[1:].decode("utf-8", "r
 
 #[test]
 #[ignore = "requires the pinned Python Reticulum reference"]
+fn work_edit_missing_document_id_matches_pinned_python_error() {
+    use std::path::PathBuf;
+
+    const PYTHON_REFERENCE_REVISION: &str = "99de23c040d507e3fefca19e87b182302902725d";
+    let reference = PathBuf::from(
+        std::env::var_os("RETICULUM_PY_REPO")
+            .expect("RETICULUM_PY_REPO must point to the pinned Python checkout"),
+    );
+    let revision = Command::new("git")
+        .arg("-C")
+        .arg(&reference)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .expect("read Python reference revision");
+    assert!(revision.status.success());
+    assert_eq!(String::from_utf8_lossy(&revision.stdout).trim(), PYTHON_REFERENCE_REVISION);
+
+    let signer = rns_transport::identity::PrivateIdentity::new_from_name("issue-612-edit-missing-id");
+    let remote: [u8; 16] = signer.address_hash().as_slice().try_into().expect("identity hash");
+    let content = "signed edit request";
+    let signature = signer.sign(content.as_bytes()).to_bytes().to_vec();
+    let public_key = [
+        signer.as_identity().public_key_bytes().as_slice(),
+        signer.as_identity().verifying_key_bytes().as_slice(),
+    ]
+    .concat();
+
+    let rust_temp = tempfile::tempdir().expect("Rust fixture");
+    let rust_group = rust_temp.path().join("group");
+    fs::create_dir_all(&rust_group).expect("Rust group directory");
+    assert!(Command::new("git")
+        .args(["init", "--bare", "--quiet", rust_group.join("repo").to_string_lossy().as_ref()])
+        .status()
+        .expect("initialize Rust repository")
+        .success());
+    let mut rust_node = ReticulumGitNode::default();
+    rust_node.load_repository_group("group", &rust_group).expect("load Rust group");
+    let permissions = &mut rust_node.groups.get_mut("group").expect("Rust group").permissions;
+    permissions.read.add(PermissionTarget::All);
+    permissions.write.add(PermissionTarget::All);
+    permissions.interact.add(PermissionTarget::All);
+
+    let python_temp = tempfile::tempdir().expect("Python fixture");
+    let python_group = python_temp.path().join("group");
+    fs::create_dir_all(&python_group).expect("Python group directory");
+    assert!(Command::new("git")
+        .args(["init", "--bare", "--quiet", python_group.join("repo").to_string_lossy().as_ref()])
+        .status()
+        .expect("initialize Python repository")
+        .success());
+    let script = r#"
+import json, sys
+from types import SimpleNamespace
+from RNS.Utilities.rngit.server import ReticulumGitNode
+from RNS.Identity import Identity
+repo, public_hex, content, signature_hex = sys.argv[1:]
+node = ReticulumGitNode.__new__(ReticulumGitNode)
+node.groups = {"group": {"repositories": {"repo": {"path": repo}}}}
+node.blocked_identities = {}
+node.log_request = lambda *args: None
+node.parse_request_repository_path = lambda _path: ("group", "repo")
+node.resolve_permission = lambda *_args: True
+node.resolve_doc_permission = lambda *_args: True
+identity = Identity(create_keys=False)
+assert identity.load_public_key(bytes.fromhex(public_hex))
+response = node.handle_work("/mgmt/work", {
+    0: "group/repo", "operation": "edit", "content": content,
+    "signature": bytes.fromhex(signature_hex),
+}, 1, identity, 0)
+print(json.dumps({"status": response[0], "body": response[1:].decode()}))
+"#;
+    let python = Command::new(std::env::var_os("LXMF_PYTHON_BIN").unwrap_or_else(|| "python3".into()))
+        .env("PYTHONPATH", &reference)
+        .arg("-c")
+        .arg(script)
+        .arg(python_group.join("repo"))
+        .arg(hex::encode(public_key))
+        .arg(content)
+        .arg(hex::encode(&signature))
+        .output()
+        .expect("run pinned Python production work handler");
+    assert!(python.status.success(), "Python handler failed: {}", String::from_utf8_lossy(&python.stderr));
+    let python: serde_json::Value = serde_json::from_slice(&python.stdout).expect("Python response JSON");
+
+    let request = [
+        (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
+        (rmpv::Value::from("operation"), rmpv::Value::from("edit")),
+        (rmpv::Value::from("content"), rmpv::Value::from(content)),
+        (rmpv::Value::from("signature"), rmpv::Value::Binary(signature)),
+    ];
+    let rust_response = rust_node.handle_work_request_with_peer_identity(
+        &request,
+        remote,
+        Some(*signer.as_identity()),
+    );
+    assert_eq!(python["status"], ReticulumGitNode::RES_INVALID_REQ);
+    assert_eq!(python["body"], "No document ID specified");
+    assert_eq!(rust_response[0], python["status"].as_u64().expect("Python status") as u8);
+    assert_eq!(std::str::from_utf8(&rust_response[1..]).expect("Rust error"), python["body"]);
+    assert!(!rust_group.join("repo.work").exists());
+    assert!(!python_group.join("repo.work").exists());
+}
+
+#[test]
+#[ignore = "requires the pinned Python Reticulum reference"]
 fn work_view_negative_document_id_matches_pinned_python_not_found() {
     use std::path::PathBuf;
 

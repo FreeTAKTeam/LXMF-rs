@@ -227,6 +227,22 @@ impl ReticulumGitNode {
                 self.work_create(&root, request, remote, false, peer_identity)
             }
             "edit" => {
+                if map_value(request, &rmpv::Value::String("doc_id".into())).is_none() {
+                    if !self.resolve_permission(&remote, &group, &repository, Self::PERM_WRITE)
+                        || !self.resolve_permission(
+                            &remote,
+                            &group,
+                            &repository,
+                            Self::PERM_INTERACT,
+                        )
+                    {
+                        return response(Self::RES_DISALLOWED, "Not allowed", None);
+                    }
+                    if let Err(error) = Self::validate_work_signature(request, peer_identity) {
+                        return response(Self::RES_INVALID_REQ, error, None);
+                    }
+                    return response(Self::RES_INVALID_REQ, "No document ID specified", None);
+                }
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
