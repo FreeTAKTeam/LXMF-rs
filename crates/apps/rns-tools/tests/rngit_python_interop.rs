@@ -13,6 +13,9 @@ mod issue_613_media_access;
 mod issue_613_media_compression;
 #[path = "rngit_python_interop/issue_613_media_invalid_ref.rs"]
 mod issue_613_media_invalid_ref;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_media_read_failure.rs"]
+mod issue_613_media_read_failure;
 #[path = "rngit_python_interop/issue_613_media_url.rs"]
 mod issue_613_media_url;
 #[path = "rngit_python_interop/issue_613_no_ident.rs"]

@@ -169,8 +169,13 @@ canary is also checked for leakage. The frozen `pages.py::serve_media` returns
 sends non-`None` results as scalar responses. Rust preflights object info so
 absent blobs map to `False`; a later content-read failure remains no-response.
 The media-denial and updated URL/access/page-media interop tests passed against
-the exact pinned checkout. The later content-read failure has not been
-fault-injected, and the broader #613 row remains partial.
+the exact pinned checkout. A Unix-only production-Link regression now allows
+object-info lookup and injects failure into the following blob read; the Python
+client receives no response or failed callback before timeout, matching the
+frozen handler's `None` return and `Link.py` send behavior. Rust already
+matches, so no production change was needed; Verify runs the exact ignored
+regression against the pinned reference. The broader #613 row remains
+partial.
 The frozen handler checks only whether `key` is present, so `key: None` with a
 valid path must still return the exact media Resource and filename metadata;
 the production-Link differential now proves that falsey-present case alongside

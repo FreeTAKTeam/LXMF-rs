@@ -181,6 +181,16 @@ jobs:
             issue_613_media_invalid_ref::rngit_media_validation_denials_return_false_over_python_link \
             -- --ignored --exact --nocapture --test-threads=1
 
+      - name: Verify pinned Python rngit media read-failure behavior
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_read_failure::rngit_media_content_read_failure_has_no_python_link_response \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Verify pinned Python rngit precompressed media Resource flag
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity

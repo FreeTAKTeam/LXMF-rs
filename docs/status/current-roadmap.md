@@ -70,8 +70,13 @@ successful `main` Resource control and scalar-`False` denials for missing or
 malformed request fields, denied private access, absent blobs, and invalid
 refs, with no Resource metadata or media bytes on denial. Object-info failure
 maps to `False`; a later media-content read failure still maps to no response
-and has not been separately fault-injected. The utility and full operational
-parity rows remain partial.
+and is now fault-injected over the production TCP Link: the Rust process allows
+`cat-file -s` to succeed and fails the subsequent blob read, while the pinned
+Python client observes neither a response nor a failed callback before
+timeout. This matches the frozen Python handler and Link semantics, so no
+production change was needed. Verify runs this exact ignored regression
+against its pinned Reticulum checkout. The utility and full operational parity
+rows remain partial.
 The frozen handler's key check is presence-only: a `None` value with a valid
 media path still returns the Resource and filename metadata. A production-Link
 regression now proves that response alongside absent-key denial; Rust already

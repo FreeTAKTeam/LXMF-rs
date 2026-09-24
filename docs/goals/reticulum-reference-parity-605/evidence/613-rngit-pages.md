@@ -179,9 +179,16 @@ committed canary does not leak. The cases correspond to the pinned
 `pages.py::serve_media` false-return branches, and pinned `Link.py` sends each
 non-`None` value as a scalar response. Rust checks object presence before
 reading media bytes: failed object-info resolution returns `False`, while a
-later `page_blob` read failure remains no-response. That latter failure path
-is preserved in code but is not separately fault-injected by this suite. The
-whole #613 acceptance remains partial pending other named page/media and
+later `page_blob` read failure remains no-response. A production-TCP-service
+fault-injection test now allows `cat-file -s` to resolve the committed object,
+then fails `cat-file blob`; the pinned Python Link observes neither a response
+nor a failed callback before its request timeout. This matches the frozen
+`pages.py::serve_media` `None` return and `Link.py` send behavior. Rust already
+matches, so no production behavior change was needed. The Unix-only regression
+passed against pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
+Verify is configured to run this exact ignored regression against its pinned
+`Reticulum-parity` checkout.
+The whole #613 acceptance remains partial pending other named page/media and
 network-workflow conditions.
 
 ```text
@@ -189,6 +196,13 @@ RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   rngit_media_validation_denials_return_false_over_python_link \
   -- --ignored --nocapture                                      PASS (1 test)
+```
+
+```text
+TMPDIR=/dev/shm RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_read_failure::rngit_media_content_read_failure_has_no_python_link_response \
+  -- --ignored --exact --nocapture --test-threads=1              PASS (1 test)
 ```
 
 The follow-up also reran the updated encoded-path, private-access, and main
