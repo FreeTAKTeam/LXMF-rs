@@ -10,7 +10,7 @@ const PINNED_RETICULUM_REVISION: &str = "99de23c040d507e3fefca19e87b182302902725
 
 static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-#[path = "rncp_transfer_diagnostics.rs"]
+#[path = "rncp_python_interop/transfer_diagnostics.rs"]
 mod rncp_transfer_diagnostics;
 
 fn free_port() -> io::Result<u16> {
