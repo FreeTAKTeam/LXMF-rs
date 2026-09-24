@@ -1061,6 +1061,10 @@ direction.
   now signals and joins the owned session, kills/reaps its remote child, and
   awaits the command/pipe tasks. The timeout regression now observes the child
   alive before client timeout; the corrected focused process suite passes 3/3.
+  Authenticated listener rejection now sends the frozen Python fatal error
+  `Identity not allowed` before Link teardown; the shipped client reports the
+  reason on stderr, exits 1, and does not execute the command in a separate-
+  process loopback regression. Other rnsh failure cases remain open.
   Rust `rnsh` now requests PTY mode for terminal-backed stdio, spawns the remote
   command with a controlling PTY, applies initial rows/columns/pixel dimensions,
   and applies later `WindowSize` updates. A real loopback client-under-PTY test

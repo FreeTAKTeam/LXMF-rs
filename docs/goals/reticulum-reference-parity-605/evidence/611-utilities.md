@@ -28,7 +28,13 @@ output regression added by `a32b6d71`. Its Rust process tests cover command
 output, mirrored exit status, allow-list rejection, and flow-control output,
 while both pinned-Python initiator/listener roles are covered by the ignored
 interop fixture at `e57afb99`, with the command-before-stdin and bounded EOF
-grace fix at `662dcdbe`.
+grace fix at `662dcdbe`. The authenticated-listener process test also verifies
+the denied-identity failure boundary end-to-end: after a separate Rust `rnsh`
+client identifies over TCP/Link, the listener sends the frozen Python protocol
+error `Identity not allowed` before closing the Link; the shipped client exits
+1, reports that reason on stderr, and does not run the requested command. This
+matches the deny branch in pinned `RNS/Utilities/rnsh/session.py` while proving
+only this software loopback authorization failure case.
 The two-direction pinned-Python/native `rnprobe` process exchange is covered
 by `f86ecc1c`. A separate late-announce process test starts the pinned Python
 peer without announcing its `rnstransport.probe` destination, starts native

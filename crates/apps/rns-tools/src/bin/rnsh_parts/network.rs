@@ -1,3 +1,4 @@
+use crate::rnsh_parts::protocol::ErrorMessage;
 use crate::rnsh_parts::{identity, session};
 use crate::Cli;
 use rns_transport::destination::{DestinationDesc, DestinationName, SingleInputDestination};
@@ -205,7 +206,23 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
                                 spawn_session(&runtime, event.id, &mut sessions);
                             } else {
                                 if !runtime.no_auth {
-                                    eprintln!("rnsh: rejected unauthorised identity {}", identity.address_hash.to_hex_string());
+                                    log::warn!(
+                                        "rnsh rejected unauthorised identity {} on link {}",
+                                        identity.address_hash.to_hex_string(),
+                                        event.id.to_hex_string()
+                                    );
+                                }
+                                let channel = runtime.transport.channel(event.id);
+                                if let Err(error) = channel
+                                    .send_typed(&ErrorMessage::fatal("Identity not allowed"))
+                                    .await
+                                {
+                                    log::warn!(
+                                        "rnsh could not report rejected identity {} on link {}: {:?}",
+                                        identity.address_hash.to_hex_string(),
+                                        event.id.to_hex_string(),
+                                        error
+                                    );
                                 }
                                 close_inbound_link(&runtime.transport, event.id).await;
                             }

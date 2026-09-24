@@ -565,6 +565,16 @@ fn rnsh_authenticated_listener_accepts_allowlisted_identity_and_rejects_another(
             .current_dir(temp.path())
             .output()?;
         assert!(!denied.status.success(), "non-allowlisted rnsh client succeeded");
+        assert_eq!(denied.status.code(), Some(1));
+        assert!(
+            !String::from_utf8_lossy(&denied.stdout).contains("denied\n"),
+            "denied rnsh command ran: {}",
+            String::from_utf8_lossy(&denied.stdout)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&denied.stderr).trim(),
+            "rnsh: remote rnsh error: Identity not allowed"
+        );
         Ok(())
     })();
 
