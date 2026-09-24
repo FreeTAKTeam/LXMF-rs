@@ -45,6 +45,8 @@ media-path differential also verifies that group, repository, and ref
 components remain literal while only the file-path tail is URL-decoded, as in
 the pinned Python `serve_media`; encoded `%67roup` is denied rather than
 resolving the `group` repository. #613 remains partial.
+The decoded media file path now also matches Python's `strip("/")` edge
+normalization before Git lookup; interior empty components remain invalid.
 The pinned-Python `/media` differential now also sends a file tail that
 decodes to `assets/../README.md`. The frozen handler passes that path to Git's
 `cat-file` object lookup, which returns no blob; the Rust path validation also

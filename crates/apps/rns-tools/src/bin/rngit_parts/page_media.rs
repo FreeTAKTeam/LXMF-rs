@@ -111,7 +111,9 @@ impl ReticulumGitNode {
         let group = components.next()?.to_string();
         let repository = components.next()?.to_string();
         let reference = components.next()?.to_string();
-        let file_path = media_unquote_plus(components.next()?);
+        // Python's media handler strips leading/trailing slashes before Git
+        // lookup, so an extra slash after the ref is accepted as a path edge.
+        let file_path = media_unquote_plus(components.next()?).trim_matches('/').to_string();
         if group.is_empty() || repository.is_empty() || reference.is_empty() {
             return None;
         }

@@ -143,6 +143,22 @@ not decode the group, repository, or ref components; accordingly this case
 uses the literal ref `HEAD`. This is a focused acceptance slice only and does
 not establish complete `/media` parity or #613 completion.
 
+Comparing the exact pinned `pages.py::serve_media` path to Rust exposed an
+edge-slash difference: Python's `get_blob_info` and `get_blob_stream` each
+apply `path.strip("/")` after decoding. Rust had rejected a leading slash in
+the decoded file tail. The production-Link URL regression now requests
+`/media/group/repo/HEAD//assets%2Fspace+name.bin` and verifies the same binary
+Resource filename, size, and SHA-256 as the ordinary path. Rust strips only
+leading/trailing slashes before existing path validation; interior empty
+components remain invalid. This focused delta does not complete #613.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_media_decodes_encoded_path_and_returns_resource_metadata \
+  -- --ignored --nocapture                                      PASS (1 test)
+```
+
 ```text
 RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \

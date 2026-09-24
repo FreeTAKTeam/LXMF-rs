@@ -71,6 +71,12 @@ fn rngit_media_decodes_encoded_path_and_returns_resource_metadata() -> io::Resul
         assert_eq!(response["encoded_path"], "/media/group/repo/HEAD/assets%2Fspace+name.bin");
         assert_eq!(response["name"], "space name.bin");
         assert_eq!(response["size"], 29);
+        assert_eq!(response["leading_slash_name"], "space name.bin");
+        assert_eq!(response["leading_slash_size"], 29);
+        assert_eq!(response["leading_slash_sha256"], response["sha256"]);
+        assert_eq!(response["trailing_slash_name"], "space name.bin");
+        assert_eq!(response["trailing_slash_size"], 29);
+        assert_eq!(response["trailing_slash_sha256"], response["sha256"]);
         assert_eq!(
             response["sha256"],
             "78acd6db2006e4da7531327f95f5b00b97c53d18e59326e90dacdee2cba1e1a7"
@@ -170,6 +176,18 @@ missing_blob = request("/media", {
     "key": b"rngit-percent-encoded-media-path",
     "path": "/media/group/repo/HEAD/assets%2Fabsent+file.bin",
 }, timeout=3)
+leading_slash = request("/media", {
+    "key": b"rngit-percent-encoded-media-path",
+    "path": "/media/group/repo/HEAD//assets%2Fspace+name.bin",
+})
+if "sha256" not in leading_slash:
+    raise RuntimeError("media file path with a leading slash did not return a Resource")
+trailing_slash = request("/media", {
+    "key": b"rngit-percent-encoded-media-path",
+    "path": "/media/group/repo/HEAD/assets%2Fspace+name.bin//",
+})
+if "sha256" not in trailing_slash:
+    raise RuntimeError("media file path with a trailing slash did not return a Resource")
 link.teardown()
 if not missing_blob.get("response_is_false"):
     raise RuntimeError("absent media blob did not return the reference False response")
@@ -178,6 +196,12 @@ print(json.dumps({
     "name": media["name"],
     "sha256": media["sha256"],
     "size": media["size"],
+    "leading_slash_name": leading_slash["name"],
+    "leading_slash_size": leading_slash["size"],
+    "leading_slash_sha256": leading_slash["sha256"],
+    "trailing_slash_name": trailing_slash["name"],
+    "trailing_slash_size": trailing_slash["size"],
+    "trailing_slash_sha256": trailing_slash["sha256"],
     "absent_blob_response_is_false": missing_blob.get("response_is_false", False),
     "absent_blob_metadata_present": missing_blob.get("metadata_present", False),
     "absent_blob_media_bytes_received": missing_blob.get("media_bytes_received", True),
