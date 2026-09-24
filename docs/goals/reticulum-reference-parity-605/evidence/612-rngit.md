@@ -193,6 +193,24 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --bin rngit \
   -- --ignored --nocapture                                          PASS (blocked identity denied by production work handler despite read:all)
 ```
 
+Permission-focused rerun on 2026-09-24 used the existing PR #639 worktree and
+the pinned Reticulum checkout at
+`/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0`:
+
+```text
+cargo test -p rns-tools --bin rngit --all-features permission_handler_revocation_and_blocked_identity_match_pinned_python -- --ignored --nocapture --test-threads=1 PASS
+cargo test -p rns-tools --bin rngit --all-features configured_group_access_merges_with_sidecar_like_pinned_python -- --ignored --nocapture --test-threads=1 PASS
+cargo test -p rns-tools --bin rngit --all-features group_permission_refresh_preserves_configured_access_like_pinned_python -- --ignored --nocapture --test-threads=1 PASS
+cargo test -p rns-tools --bin rngit --all-features blocked_work_handler_response_matches_pinned_python -- --ignored --nocapture --test-threads=1 PASS
+cargo test -p rns-tools --bin rngit --all-features repository_admin_ -- --ignored --nocapture --test-threads=1 PASS (5 production-handler document-operation differentials)
+cargo test -p rns-tools --bin rngit --all-features permission_resolution_obeys_repository_group_and_admin_fallbacks -- --nocapture PASS
+cargo test -p rns-tools --bin rngit --all-features repository_permission_set_takes_effect_before_handler_returns_without_restart -- --nocapture PASS
+```
+
+These runs verify the existing focused permission evidence; they did not expose
+a new mismatch. The broad group/repository/document permission criterion remains
+open because these cases do not exhaust the authorization combinations.
+
 The Verify workflow has a dedicated step for ignored permission differentials.
 It verifies that `Reticulum-parity` HEAD equals
 `PYTHON_RETICULUM_PARITY_REF` (`99de23c040d507e3fefca19e87b182302902725d`)
