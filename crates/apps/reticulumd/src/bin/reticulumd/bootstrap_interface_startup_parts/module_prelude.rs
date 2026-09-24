@@ -3317,6 +3317,54 @@ interfaces = [
         let _ = std::fs::remove_dir_all(root.as_path());
     }
 
+    #[tokio::test]
+    async fn strict_i2p_startup_records_fake_sam_handshake_rejection_without_spawning() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("fake SAM address");
+        let server = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.expect("accept preflight");
+            let mut reader = BufReader::new(socket);
+            let mut command = String::new();
+            reader.read_line(&mut command).await.expect("read HELLO");
+            reader
+                .get_mut()
+                .write_all(b"HELLO REPLY RESULT=I2P_ERROR MESSAGE=disabled\n")
+                .await
+                .expect("reject HELLO");
+            command
+        });
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(&format!(
+            r#"interfaces = [{{ type = "I2PInterface", enabled = true, name = "i2p-rejected", sam_ip = "{}", sam_port = {} }}]"#,
+            sam_addr.ip(), sam_addr.port()
+        ))
+        .expect("parse I2P config");
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(), enabled: true, host: None, port: None,
+            name: iface.name.clone(), settings: iface.settings_json(),
+        };
+        let mut failures = Vec::new();
+        let mut args = test_args();
+        args.strict_interface_startup = true;
+
+        let started = startup_i2p(
+            &args, iface, "i2p-rejected", &manager, &mut record, &mut failures,
+            std::path::Path::new("."), None,
+        ).await;
+
+        let command = server.await.expect("fake SAM task");
+        assert_eq!(command.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+        assert!(started.is_none());
+        assert!(manager.lock().await.interface_hashes().is_empty());
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].error.contains("preflight hello failed"));
+        assert!(failures[0].error.contains("disabled"));
+    }
+
     fn fake_i2p_private_key() -> String {
         let mut private = vec![0_u8; 500];
         for (index, byte) in private.iter_mut().enumerate() {

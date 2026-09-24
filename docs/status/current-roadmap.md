@@ -120,6 +120,10 @@ fresh-backend restart, and cancellation closes the restarted backend. This was
 compared with pinned Python `99de23c040d507e3fefca19e87b182302902725d`'s
 five-second `ble_detect_timeout`; it is not physical BLE support or device
 evidence, and #614/#605 remain partial.
+Strict I2P startup now also has one negative fake-SAM daemon-path regression:
+a rejected SAM HELLO prevents interface registration and leaves a contextual
+startup failure. This does not replace destination-creation/session coverage
+or real-router/public-network evidence; #614/#605 remain partial.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
