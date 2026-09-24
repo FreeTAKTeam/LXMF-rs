@@ -73,9 +73,13 @@ Resource/file state, Linux server child process, or media temp directory
 remains; the transport link-close unit regression also verifies its Resource
 state maps are empty. The periodic sweep removes stale/closed/missing-link
 directories while preserving active-link media, with a deterministic
-regression; abrupt-process stale transition and other filesystem failures
-remain unverified. A failure-injection regression proves a failed directory
-deletion stays tracked and succeeds on a later link-cleanup retry; cleanup
+regression. A matched abrupt-client-exit trace showed pinned Python cleans the
+media directory immediately, while Rust's failed Resource response left its
+page Link `ACTIVE`; Rust now closes that page Link on the detected response
+failure, with a deterministic regression. Silent peer exits without a failed
+response and other filesystem failures remain unverified. A failure-injection
+regression proves a failed directory deletion stays tracked and succeeds on a
+later link-cleanup retry; cleanup
 handlers log the path and Link ID, including under `--silent`. A focused
 timeout regression also proves both WebP pipeline subprocesses are terminated
 and reaped. A same-Link pinned-Python media differential now verifies the

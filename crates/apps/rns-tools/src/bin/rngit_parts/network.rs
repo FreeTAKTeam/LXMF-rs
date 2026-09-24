@@ -4,6 +4,7 @@ use super::{
 };
 use rns_transport::destination::link::{LinkEvent, LinkStatus};
 use rns_transport::destination::DestinationName;
+use rns_transport::error::RnsError;
 use rns_transport::hash::AddressHash;
 use rns_transport::identity::{Identity, PrivateIdentity};
 use rns_transport::iface::tcp_client::TcpClient;
@@ -328,6 +329,13 @@ async fn process_request(
             if !runtime.silent {
                 eprintln!("rngit: could not send NomadNet response: {error}");
             }
+            if matches!(service, RequestService::Pages)
+                && error.kind() == io::ErrorKind::NotConnected
+            {
+                if let Some(link) = runtime.transport.find_in_link(&link_id).await {
+                    link.lock().await.close();
+                }
+            }
         }
     }
 }
@@ -418,8 +426,12 @@ async fn send_response(
                 false,
             )
             .await
-            .map_err(|error| {
-                io::Error::other(format!("media Resource response failed: {error:?}"))
+            .map_err(|error| match error {
+                connection @ RnsError::ConnectionError => io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    format!("media Resource response failed: {connection:?}"),
+                ),
+                other => io::Error::other(format!("media Resource response failed: {other:?}")),
             })?;
         return Ok(());
     }
@@ -461,7 +473,13 @@ async fn send_response(
             .transport
             .send_response_resource(&link_id, request_id, encoded, None)
             .await
-            .map_err(|error| io::Error::other(format!("page Resource response failed: {error:?}")))?;
+            .map_err(|error| match error {
+                connection @ RnsError::ConnectionError => io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    format!("page Resource response failed: {connection:?}"),
+                ),
+                other => io::Error::other(format!("page Resource response failed: {other:?}")),
+            })?;
         Ok(())
     }
 }

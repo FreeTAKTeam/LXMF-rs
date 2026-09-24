@@ -5,7 +5,10 @@ live pinned-Python trace at candidate commit `e41189c8` on
 `codex/issue-605-parity`; it does not claim the
 full #613 or #605 acceptance gate. The current issue-specific increment adds a
 deterministic failure-injection regression for temporary-directory cleanup
-and a pinned-Python cancellation trace for an in-flight `/media` Resource.
+and a pinned-Python cancellation trace for an in-flight `/media` Resource. A
+matched abrupt-client-exit comparison also found and fixed a narrower Rust
+lifecycle difference: the pinned Python server cleans on disconnect, while
+Rust kept the page Link active after a failed Resource response.
 
 ## Reference and ownership
 
@@ -29,7 +32,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and converted-output reads (32 MiB media-response cap), output validation, temporary-directory cleanup, raw fallback | local code/tests; deterministic software differential coverage matches pinned-Python backend selection and configured argv for all five backend families; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; exact-limit/over-limit converted-file regression; pinned-Python production-Link test with an explicitly unavailable backend returns the original `image.png` name and all 8,192 raw bytes unchanged; timeout regression verifies both pipeline children are terminated and reaped; real encoder operation for `magick`, `convert`, `gm`, and `avconv`, plus visual parity, remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; pinned Python inspects the production Resource advertisement and confirms no compression for a precompressed PNG |
-| Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown and in-flight `/media` Resource cancellation are exercised against pinned Python | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` and `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown` | active, stale, closed, missing-link, graceful-disconnect, and synchronized partial-Resource cancellation paths verified; abrupt-process stale transition and other filesystem failures remain open |
+| Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown, response-send-detected abrupt client exit, and in-flight `/media` Resource cancellation are exercised against pinned Python | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client`, `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown`, and `rngit_python_interop::rngit_cleans_media_after_response_fails_on_abrupt_client_exit` | active, stale, closed, missing-link, graceful-disconnect, synchronized partial-Resource cancellation, and abrupt client exit detected by a failed response verified; silent exits without a failed response and other filesystem failures remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault paths remain open |
 
 ### Automatic WebP backend winner
@@ -297,10 +300,22 @@ removes tracked links whose status is not `ACTIVE`. A deterministic service
 regression gives separate media directories to active, stale, closed, and
 missing links; only the active link's directory remains. The ignored
 pinned-Python process test runs in Verify CI and covers the real graceful
-`LinkEvent::Closed` path. Two abrupt-process-exit traces did not observe cleanup
+`LinkEvent::Closed` path. Earlier abrupt-process traces did not observe cleanup
 within 90 or 150 seconds; the latter observed the Rust Link still `Active` after
-104 seconds without inbound traffic. This does not prove the transport's
-eventual stale transition, so abrupt-exit timing remains explicitly unverified.
+104 seconds without inbound traffic. A later matched comparison isolated the
+cause under the response-send path: a pinned Python client called `os._exit(0)`
+after observing the active media directory, and pinned Python `remote_disconnected`
+cleaned it; under the same local TCP Link/process-exit pattern, Rust attempted
+the media Resource after client exit, got `ConnectionError`, logged the failed
+send, and still had an `ACTIVE` Link at the 60-second sweep (the directory
+remained beyond 70 seconds). This establishes a concrete lifecycle difference,
+not a claim about eventual transport staleness for a silent peer. Rust now maps
+that Resource `ConnectionError` to `NotConnected` and closes the corresponding
+page Link, publishing the existing `LinkEvent::Closed` cleanup event. The
+regression gates fake conversion on a parent-controlled marker, releases it
+only after the Python client exits, and asserts directory removal; it failed
+before the fix and passes after it. Silent exits that trigger no failed
+response remain unverified.
 The new failure-injection regression proves that a failed `remove_dir_all`
 leaves its directory tracked and the subsequent Link cleanup removes it. The
 conversion-fallback and link-cleanup handlers log path and Link ID on failure,
@@ -429,17 +444,26 @@ cargo test -p rns-tools --bin rngit stale_page_links_are_cleaned_while_active_li
 cargo test -p rns-tools --bin rngit page_link_cleanup_retries_failed_removal PASS (1 test)
 ```
 
+```text
+TMPDIR=/dev/shm RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 \
+cargo test -p rns-tools --test rngit_python_interop \
+  rngit_cleans_media_after_response_fails_on_abrupt_client_exit \
+  -- --ignored --nocapture                                  PASS (2 runs)
+```
+
 - The pinned Python/NomadNet-compatible client now completes one real TCP
   Reticulum link, identifies, exercises successful and negative page/file
   requests, and downloads raw media as a Resource with deterministic
   metadata/content checks. It also proves one generated conversion directory
   is present during the active link and gone after graceful client teardown.
   This is one bounded role trace, not proof of every page, file, or
-  public-network path. Status-driven stale cleanup and one synchronized
-  in-flight Resource cancellation are covered, but abrupt-process stale
-  transition, other filesystem-failure paths, and the complete media lifecycle
-  remain open. The timeout regression establishes only that both conversion
-  subprocesses are terminated and reaped.
+  public-network path. Status-driven stale cleanup, synchronized in-flight
+  Resource cancellation, and response-send-detected cleanup after abrupt client
+  exit are covered; silent exits without a failed response, other
+  filesystem-failure paths, and the complete media lifecycle remain open. The
+  timeout regression establishes only that both conversion subprocesses are
+  terminated and reaped.
 - The Rust page rendering is intentionally a compact service implementation;
   full Markdown highlighting, pagination, diff rendering, signed work-document
   presentation, and every reference template detail remain open.

@@ -91,6 +91,129 @@ fn rngit_cancels_in_flight_media_resource_on_python_link_teardown() -> io::Resul
     result
 }
 
+#[cfg(unix)]
+#[test]
+#[ignore = "requires local pinned Python Reticulum checkout"]
+fn rngit_cleans_media_after_response_fails_on_abrupt_client_exit() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let root = create_repository_fixture(temp.path())?;
+    let media_temp_directory = temp.path().join("rust-media-temp");
+    let converter_directory = temp.path().join("converter");
+    let release_conversion = temp.path().join("release-conversion");
+    fs::create_dir(&media_temp_directory)?;
+    fs::create_dir(&converter_directory)?;
+    let converter = converter_directory.join("ffmpeg");
+    fs::write(
+        &converter,
+        b"#!/bin/sh\ncat >/dev/null\nwhile [ ! -e \"$RNGIT_TEST_CONVERT_RELEASE\" ]; do sleep 0.01; done\nprintf 'RIFF\\036\\000\\000\\000WEBPVP8X\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000'\n",
+    )?;
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&converter, fs::Permissions::from_mode(0o755))?;
+    let port = free_port()?;
+    let identity_seed = "rngit-rust-abrupt-media-exit-trace";
+    let mut server = Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--listen",
+            &format!("127.0.0.1:{port}"),
+            "--identity-seed",
+            identity_seed,
+        ])
+        .env("RNGIT_MEDIA_BACKEND", "ffmpeg")
+        .env("RNGIT_TEST_CONVERT_RELEASE", &release_conversion)
+        .env("TMPDIR", &media_temp_directory)
+        .env("TEMP", &media_temp_directory)
+        .env("PATH", {
+            let mut paths = vec![converter_directory];
+            paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
+            std::env::join_paths(paths).map_err(io::Error::other)?
+        })
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let result = (|| {
+        wait_for_port(port, &mut server)?;
+        let destination = rust_destination(&root, identity_seed)?;
+        let client_config = temp.path().join("python-client");
+        fs::create_dir(&client_config)?;
+        write_python_config(&client_config, port)?;
+        let client = Command::new(python_bin())
+            .arg("-c")
+            .arg(RUST_ABRUPT_EXIT_CLIENT)
+            .arg(&client_config)
+            .arg(&destination)
+            .arg(&media_temp_directory)
+            .env("PYTHONPATH", python_repo())
+            .output()?;
+        if !client.status.success() {
+            return Err(io::Error::other(format!(
+                "abrupt-exit client against Rust server failed: {}\nstdout:\n{}\nstderr:\n{}",
+                client.status,
+                String::from_utf8_lossy(&client.stdout),
+                String::from_utf8_lossy(&client.stderr)
+            )));
+        }
+        assert!(
+            String::from_utf8_lossy(&client.stdout).contains("temporary_media_observed"),
+            "client did not exit after observing the active media directory"
+        );
+        fs::write(&release_conversion, b"complete")?;
+
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            if fs::read_dir(&media_temp_directory)?.next().transpose()?.is_none() {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "rngit retained conversion data after the response send detected the abrupt client exit",
+                ));
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    })();
+    let _ = server.kill();
+    let _ = server.wait();
+    result
+}
+
+#[cfg(unix)]
+const RUST_ABRUPT_EXIT_CLIENT: &str = r#"
+import os
+import sys
+import time
+import threading
+import RNS
+
+config_dir, destination_hex, media_temp_directory = sys.argv[1:4]
+RNS.Reticulum(configdir=config_dir, loglevel=0)
+destination_hash = bytes.fromhex(destination_hex)
+if not RNS.Transport.await_path(destination_hash, timeout=30):
+    raise RuntimeError("could not resolve page destination")
+remote_identity = RNS.Identity.recall(destination_hash)
+if remote_identity is None:
+    raise RuntimeError("could not recall page identity")
+destination = RNS.Destination(remote_identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "nomadnetwork", "node")
+ready = threading.Event()
+link = RNS.Link(destination)
+link.set_link_established_callback(lambda _link: ready.set())
+if not ready.wait(30):
+    raise RuntimeError("Link establishment timed out")
+if link.request("/media", {"key": b"abrupt-exit", "path": "/media/group/repo/HEAD/valid.png"}) is False:
+    raise RuntimeError("media request was not sent")
+deadline = time.monotonic() + 20
+while time.monotonic() < deadline:
+    if os.listdir(media_temp_directory):
+        os.write(1, b"temporary_media_observed\n")
+        os._exit(0)
+    time.sleep(0.01)
+raise RuntimeError("conversion temporary directory was never observed")
+"#;
+
 fn run_python_media_cancellation_client(
     repo: &Path,
     config_dir: &Path,
