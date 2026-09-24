@@ -191,6 +191,18 @@ jobs:
             --output target/interop/python-compat-matrix/verify-${{ github.run_id }}/matrix.json \
             --timeout 420
 
+      - name: Run pinned Python rngit work-list differential regressions
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            work_list_success_matches_pinned_python_scopes_order_metadata_and_comment_counts \
+            -- --ignored --nocapture --test-threads=1
+          cargo test -p rns-tools --bin rngit \
+            work_list_completed_scope_matches_pinned_python_and_is_read_only \
+            -- --ignored --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
