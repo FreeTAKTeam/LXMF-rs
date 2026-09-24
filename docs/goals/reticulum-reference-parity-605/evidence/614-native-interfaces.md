@@ -16,21 +16,34 @@ acceptance gate.
 
 ## Implemented behavior
 
-### LocalClientInterface Linux abstract Unix teardown and restart
+### LocalClientInterface TCP and Linux abstract Unix teardown and restart
 
-The pinned-Python shared-instance process smoke exercises the
-`LocalClientInterface` configuration path for Linux abstract AF_UNIX from
-daemon startup through live announce traffic, status, graceful teardown, and
-restart. It requires the Python server's Rust-client count to fall back to the
-surviving Python traffic client after `reticulumd` receives SIGINT, then checks
-that a restarted daemon is again reported as `attached` and visible to the
-Python server. The frozen Reticulum 1.5.4-dev reference at
+The pinned-Python shared-instance process smoke exercises both TCP and Linux
+abstract AF_UNIX `LocalClientInterface` configuration paths through daemon
+startup, live announce traffic, status, graceful teardown, and restart. For
+each transport, it requires the Python server's Rust-client count to fall back
+to the surviving Python traffic client after `reticulumd` receives SIGINT,
+then checks that a restarted daemon is again reported as `attached` and visible
+to the Python server. The frozen Reticulum 1.5.4-dev reference at
 `99de23c040d507e3fefca19e87b182302902725d`,
-`RNS/Interfaces/LocalInterface.py`, implements this family with AF_UNIX stream
-connect, HDLC-framed packet send/receive, Rx/Tx frame counters, reconnect after
-shared-server EOF, and explicit detach/teardown. This assertion does not claim
-packet-content delivery parity, application-level shared-instance parity,
-TCP teardown, other operating systems, or hardware coverage.
+`RNS/Interfaces/LocalInterface.py`, implements the family with stream connect,
+HDLC-framed packet send/receive, Rx/Tx frame counters, reconnect after
+shared-server EOF, and explicit detach/teardown. On the exact PR #634 worktree
+head `8b61daf9`, the smoke passed with pinned Reticulum from
+`/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum`. The
+fresh report at `/tmp/lxmf614-verify.6QIxp8/report.json` set both
+`unix_teardown_restart_verified` and `tcp_teardown_restart_verified` to true.
+This does not claim packet-content delivery parity, broad application-level
+shared-instance parity, other operating systems, or hardware coverage.
+
+Focused validation:
+
+```text
+bash -n tools/scripts/local-interface-python-shared-smoke.sh PASS
+cargo test -p reticulumd --test local_interface_smoke_contract local_interface_python_shared_smoke_preserves_interop_evidence_contract -- --exact --nocapture PASS (1 test)
+LOG_DIR="$(mktemp -d /tmp/lxmf614-verify.XXXXXX)" RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum TIMEOUT_SECS=120 ./tools/scripts/local-interface-python-shared-smoke.sh PASS
+git diff --check PASS
+```
 
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |

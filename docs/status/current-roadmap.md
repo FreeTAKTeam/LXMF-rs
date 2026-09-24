@@ -696,10 +696,10 @@ direction.
   Linux abstract Unix listener/client attach, Python local MTU, bitrate alias
   reporting, and `rnstatus-rs` JSON/human output, plus pinned Python Reticulum
   shared-instance attach and Python-origin announce-fanout evidence over TCP
-  and Linux abstract Unix sockets; the Unix process smoke now also observes
+  and Linux abstract Unix sockets; the process smoke now observes TCP and Unix
   client teardown on daemon SIGINT and successful status/client-count recovery
-  after restart. This is one Linux software lifecycle increment, not broad
-  application-traffic or platform evidence. The Reticulum interface parity
+  after restart for both transports. This is one Linux software lifecycle
+  increment, not broad application-traffic or platform evidence. The Reticulum interface parity
   audit records
   LocalInterface #384 evidence under
   `target/reticulum-interface-parity-audit/report.json` with

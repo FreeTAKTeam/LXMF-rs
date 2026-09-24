@@ -42,6 +42,7 @@ PY_UNIX_TRAFFIC_STATE="${RUN_DIR}/python-traffic-unix-state.json"
 PY_TCP_PORT_FILE="${RUN_DIR}/python-shared-tcp.port"
 PY_UNIX_INSTANCE="codex-py-shared-$$"
 UNIX_TEARDOWN_RESTART_VERIFIED=false
+TCP_TEARDOWN_RESTART_VERIFIED=false
 mkdir -p "$PY_TCP_CONFIG_DIR" "$PY_UNIX_CONFIG_DIR" "$PY_TCP_TRAFFIC_CONFIG_DIR" "$PY_UNIX_TRAFFIC_CONFIG_DIR"
 : >"$RETICULUMD_LOG"
 : >"$PY_TCP_LOG"
@@ -126,7 +127,7 @@ EOF
 write_report() {
   local status="$1"
   local reason="${2:-}"
-  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$RPC_ADDR" "$RUN_DIR" "$RUST_CONFIG_PATH" "$RETICULUMD_LOG" "$RNSTATUS_JSON" "$RNSTATUS_HUMAN" "$RETICULUM_PY_REPO" "$PY_TCP_CONFIG_DIR" "$PY_UNIX_CONFIG_DIR" "$PY_TCP_TRAFFIC_CONFIG_DIR" "$PY_UNIX_TRAFFIC_CONFIG_DIR" "$PY_TCP_LOG" "$PY_UNIX_LOG" "$PY_TCP_TRAFFIC_LOG" "$PY_UNIX_TRAFFIC_LOG" "$PY_TCP_STATE" "$PY_UNIX_STATE" "$PY_TCP_TRAFFIC_STATE" "$PY_UNIX_TRAFFIC_STATE" "$PY_TCP_PORT" "$PY_UNIX_INSTANCE" "$UNIX_TEARDOWN_RESTART_VERIFIED"
+  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$RPC_ADDR" "$RUN_DIR" "$RUST_CONFIG_PATH" "$RETICULUMD_LOG" "$RNSTATUS_JSON" "$RNSTATUS_HUMAN" "$RETICULUM_PY_REPO" "$PY_TCP_CONFIG_DIR" "$PY_UNIX_CONFIG_DIR" "$PY_TCP_TRAFFIC_CONFIG_DIR" "$PY_UNIX_TRAFFIC_CONFIG_DIR" "$PY_TCP_LOG" "$PY_UNIX_LOG" "$PY_TCP_TRAFFIC_LOG" "$PY_UNIX_TRAFFIC_LOG" "$PY_TCP_STATE" "$PY_UNIX_STATE" "$PY_TCP_TRAFFIC_STATE" "$PY_UNIX_TRAFFIC_STATE" "$PY_TCP_PORT" "$PY_UNIX_INSTANCE" "$UNIX_TEARDOWN_RESTART_VERIFIED" "$TCP_TEARDOWN_RESTART_VERIFIED"
 import json
 import pathlib
 import subprocess
@@ -158,7 +159,8 @@ import sys
     py_tcp_port,
     py_unix_instance,
     unix_teardown_restart_verified,
-) = sys.argv[1:26]
+    tcp_teardown_restart_verified,
+) = sys.argv[1:27]
 
 def read_json(path):
     value_path = pathlib.Path(path)
@@ -213,10 +215,10 @@ report = {
         "This proves reticulumd LocalClientInterface attaches to real pinned "
         "Python Reticulum shared instances over TCP and Linux abstract Unix "
         "sockets, and that Python-origin announces move across the shared "
-        "instance fanout toward attached local clients. The Linux abstract Unix "
-        "path additionally observes graceful reticulumd client teardown and "
-        "reattachment after daemon restart; it does not prove broad application- "
-        "level shared-instance traffic parity."
+        "instance fanout toward attached local clients. Both transports observe "
+        "graceful reticulumd client teardown and reattachment after daemon "
+        "restart; this does not prove broad application-level shared-instance "
+        "traffic parity."
     ),
     "reason": reason or None,
     "rpc_addr": rpc_addr,
@@ -242,6 +244,7 @@ report = {
     "python_tcp_port": int(py_tcp_port),
     "python_unix_socket_path": f"@rns/{py_unix_instance}",
     "unix_teardown_restart_verified": unix_teardown_restart_verified == "true",
+    "tcp_teardown_restart_verified": tcp_teardown_restart_verified == "true",
     "interfaces": read_interfaces(rnstatus_json),
 }
 human_path = pathlib.Path(rnstatus_human)
@@ -543,6 +546,61 @@ PY
   fail "Python Unix shared instance did not reattach after reticulumd restart"
 }
 
+verify_tcp_detach_and_restart() {
+  kill -INT "$RET_PID"
+  wait "$RET_PID"
+  RET_PID=""
+
+  local teardown_deadline=$((SECONDS + 15))
+  while (( SECONDS < teardown_deadline )); do
+    if python3 - <<'PY' "$PY_TCP_STATE"
+import json
+import sys
+state = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+raise SystemExit(0 if state.get("local_client_count") == 1 else 1)
+PY
+    then
+      break
+    fi
+    sleep 0.2
+  done
+  if ! python3 - <<'PY' "$PY_TCP_STATE"
+import json
+import sys
+state = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+raise SystemExit(0 if state.get("local_client_count") == 1 else 1)
+PY
+  then
+    fail "Python TCP shared instance did not observe reticulumd client teardown"
+  fi
+
+  start_reticulumd
+  local restart_deadline=$((SECONDS + TIMEOUT_SECS))
+  while (( SECONDS < restart_deadline )); do
+    if ! kill -0 "$RET_PID" >/dev/null 2>&1; then
+      fail "reticulumd exited during TCP shared-instance restart"
+    fi
+    if "${ROOT_DIR}/target/debug/rnstatus-rs" --rpc "$RPC_ADDR" --json >"$RNSTATUS_JSON" 2>>"$RETICULUMD_LOG" \
+      && python3 - <<'PY' "$RNSTATUS_JSON" "$PY_TCP_STATE"
+import json
+import sys
+status_path, state_path = sys.argv[1:3]
+status = json.load(open(status_path, "r", encoding="utf-8"))
+state = json.load(open(state_path, "r", encoding="utf-8"))
+row = next((item for item in status.get("interfaces", []) if item.get("name") == "local-python-tcp-attach"), None)
+runtime = ((row or {}).get("settings") or {}).get("_runtime") or {}
+raise SystemExit(0 if state.get("local_client_count", 0) >= 2 and runtime.get("startup_status") == "attached" else 1)
+PY
+    then
+      TCP_TEARDOWN_RESTART_VERIFIED=true
+      deadline=$((SECONDS + TIMEOUT_SECS))
+      return 0
+    fi
+    sleep 0.2
+  done
+  fail "Python TCP shared instance did not reattach after reticulumd restart"
+}
+
 while (( SECONDS < deadline )); do
   if ! kill -0 "$RET_PID" >/dev/null 2>&1; then
     fail "reticulumd exited before Python shared-instance attach status became healthy"
@@ -676,6 +734,10 @@ PY
     then
       if [[ "$UNIX_TEARDOWN_RESTART_VERIFIED" == false ]]; then
         verify_unix_detach_and_restart
+        continue
+      fi
+      if [[ "$TCP_TEARDOWN_RESTART_VERIFIED" == false ]]; then
+        verify_tcp_detach_and_restart
         continue
       fi
       write_report "pass"
