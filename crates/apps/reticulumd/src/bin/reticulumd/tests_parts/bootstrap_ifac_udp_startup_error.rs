@@ -212,6 +212,53 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_reports_nonnumeric_ifac_size_without_exposing_credentials() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "udp", enabled = true, name = "nonnumeric-ifac-size", host = "127.0.0.1", port = 42420, target_host = "127.0.0.1", target_port = 42421, ifac_size = "not-a-number", passphrase = "credential-must-not-appear" }
+]
+"#,
+    )
+    .expect("write mistyped IFAC size config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path, Some(config_path), None, false)).await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .expect("interfaces array")
+        .clone();
+
+    let rejected = interfaces
+        .iter()
+        .find(|entry| entry.get("name").and_then(|value| value.as_str()) == Some("nonnumeric-ifac-size"))
+        .expect("mistyped IFAC config should remain visible as a management diagnostic");
+    assert_eq!(rejected.get("type").and_then(|value| value.as_str()), Some("udp"));
+    let runtime = rejected
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("runtime startup diagnostic");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("failed"));
+    let error = runtime.get("startup_error").and_then(|value| value.as_str()).expect("safe error");
+    assert!(error.contains("IFAC configuration rejected"));
+    assert!(!error.contains("credential-must-not-appear"));
+}
+
+#[test]
 fn bootstrap_prefers_pinned_python_ifac_credential_alias_on_conflict() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

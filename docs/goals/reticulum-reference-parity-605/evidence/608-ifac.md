@@ -749,6 +749,21 @@ This verifies reporting for the missing-credential IFAC configuration case. It
 does not complete other parse/startup reporting, carrier-family,
 physical-device, or broader #608 acceptance.
 
+The bootstrap regression `bootstrap_reports_nonnumeric_ifac_size_without_exposing_credentials`
+supplies a nonnumeric `ifac_size` string while providing a passphrase. Pinned
+Python RNS 1.5.4's `ConfigObj.as_int` rejects this value with `ValueError`; the
+production Rust bootstrap retains one failed `list_interfaces` diagnostic and
+returns its fixed IFAC validation message without reflecting the passphrase.
+This verifies the Rust startup/error-reporting path for this malformed input;
+it does not assert identical error text or cover other parse failures or the
+broader acceptance row.
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  bootstrap_reports_nonnumeric_ifac_size_without_exposing_credentials -- --nocapture
+# 1 passed; 0 failed
+```
+
 ## Conflicting IFAC credential aliases follow pinned startup precedence
 
 Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
