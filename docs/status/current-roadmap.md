@@ -110,6 +110,15 @@ receipt, status transition, or fabricated delivered content. The broader #610
 failure/consumer matrix remains open; the identical payload then completes
 with exact bytes on a fresh Link after the failed Link is removed.
 
+A separate production-daemon regression now gates a partial inbound Resource,
+then cancels it through the peer's public `Transport::cancel_resource` path.
+The daemon observes `InboundFailed(remote_cancelled)` with partial progress,
+creates no completion, receipt, or delivered content, and accepts a subsequent
+exact-payload Resource over the same active Link. The pinned Python
+`Resource.cancel()`/`Link.py` callback and ICL-routing behavior is recorded in
+the #610 evidence file. This closes only that software consumer path; the
+broader callback/status matrix remains open.
+
 A production-daemon Resource-timeout consumer regression now holds an outbound
 request on an active Link through its terminal timeout and verifies the
 correlated `resource-failed` receipt, tracking cleanup, and persisted failure

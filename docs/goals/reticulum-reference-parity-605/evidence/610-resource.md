@@ -1009,6 +1009,38 @@ git diff --check
 # all passed
 ```
 
+## Peer cancellation of a partial inbound Resource through the daemon consumer
+
+At PR #638 candidate `16a232b86bd326291f354b8b6ae1c036b47c7982`,
+`daemon_observes_remote_cancel_of_partial_inbound_resource_without_false_delivery`
+uses the production `Transport`, active Link, and `spawn_inbound_worker`. A
+test-only interface gate forwards the advertisement and first Resource part,
+holds a later data packet, then allows the peer's public
+`Transport::cancel_resource` call to send its initiator-cancel control packet.
+The daemon observes a correlated `InboundFailed(reason=remote_cancelled)` with
+nonzero but incomplete progress, and no `Complete`. The existing message keeps
+its pre-transfer status and empty content; no receipt or delivered record is
+created. A second Resource then completes with exact bytes over that same
+still-active Link, demonstrating that cancellation removed the partial
+receiver state without requiring Link teardown.
+
+This matches pinned Reticulum revision
+`99de23c040d507e3fefca19e87b182302902725d`:
+`RNS/Resource.py:1090-1123` sets `FAILED`, removes the Resource through
+`resource_concluded`, and calls the callback; `RNS/Link.py:1112-1119` routes
+`RESOURCE_ICL` to the matching inbound Resource. It establishes this one
+daemon-consumer cancellation path, not every callback/status consumer or the
+unchecked compound acceptance item.
+
+Focused validation on the isolated PR-head worktree:
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  daemon_observes_remote_cancel_of_partial_inbound_resource_without_false_delivery \
+  -- --nocapture
+# 1 passed; 474 filtered out
+```
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
@@ -1019,7 +1051,9 @@ represented as complete:
   missing-fragment terminal failure in both directions;
 - callbacks/status transitions observed through every library and daemon
   consumer after each injected failure; outbound completion, timeout-failure,
-  rejection, and cancellation now have focused daemon-consumer regressions;
+  rejection, local cancellation, partial inbound teardown, and peer
+  cancellation of a partial inbound Resource now have focused daemon-consumer
+  regressions;
 - hosted, physical-interface, public-network, and long-running soak evidence.
 
 The current conclusion is therefore: collision regeneration, shutdown cleanup,
