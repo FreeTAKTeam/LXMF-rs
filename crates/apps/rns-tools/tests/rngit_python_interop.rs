@@ -10,6 +10,8 @@ mod issue_613_cleanup;
 #[cfg(unix)]
 #[path = "rngit_python_interop/issue_613_cleanup_isolation.rs"]
 mod issue_613_cleanup_isolation;
+#[path = "rngit_python_interop/issue_613_configured_backend.rs"]
+mod issue_613_configured_backend;
 #[path = "rngit_python_interop/issue_613_media_access.rs"]
 mod issue_613_media_access;
 #[path = "rngit_python_interop/issue_613_media_compression.rs"]

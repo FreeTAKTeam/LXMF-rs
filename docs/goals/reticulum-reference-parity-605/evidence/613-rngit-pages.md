@@ -31,9 +31,9 @@ Rust kept the page Link active after a failed Resource response.
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression checks nested file-path encoding; unit regression confirms that only `file_path` receives `quote_plus`, while group/repository/ref remain literal as in frozen `pages.py`; missing repository, invalid ref, missing blob are covered; visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
-| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and converted-output reads (32 MiB media-response cap), output validation, temporary-directory cleanup, raw fallback | local code/tests; deterministic software differential coverage matches pinned-Python backend selection and configured argv for all five backend families; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; exact-limit/over-limit converted-file regression; pinned-Python production-Link test with an explicitly unavailable backend returns the original `image.png` name and all 8,192 raw bytes unchanged; timeout and child-status-error regressions verify both pipeline children are terminated and reaped; real encoder operation for `magick`, `convert`, `gm`, and `avconv`, plus visual parity, remain unverified |
+| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and converted-output reads (32 MiB media-response cap), output validation, temporary-directory cleanup, raw fallback | local code/tests; deterministic software differential coverage matches pinned-Python backend selection and configured argv for all five backend families; production-Link regression explicitly selects installed `ffmpeg`, returns a decodable 1x1 WebP Resource, falls back to the exact original 8,192-byte payload for invalid image data, and verifies Link-scoped temp cleanup; exact-limit/over-limit converted-file regression; timeout and child-status-error regressions verify both pipeline children are terminated and reaped; real encoder operation for `magick`, `convert`, `gm`, and `avconv`, plus visual parity, remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; pinned Python inspects the production Resource advertisement and confirms no compression for a precompressed PNG |
-| Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown, response-send-detected abrupt client exit, in-flight `/media` Resource cancellation, and pipeline child-status errors are exercised | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client`, `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown`, `rngit_python_interop::rngit_cleans_media_after_response_fails_on_abrupt_client_exit`, and `rngit_python_interop::issue_613_cleanup_isolation::rngit_disconnect_cleanup_preserves_an_independent_active_media_response` | active, stale, closed, missing-link, graceful-disconnect, synchronized partial-Resource cancellation, abrupt client exit detected by a failed response, cross-Link cleanup/active-response isolation, and child-status-error termination/reaping verified; silent exits without a failed response and other filesystem failures remain open |
+| Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown, response-send-detected abrupt client exit, periodic cleanup after silent Link disappearance, in-flight `/media` Resource cancellation, and pipeline child-status errors are exercised | deterministic `periodic_sweep_removes_media_for_silently_disappeared_link` test plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client`, `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown`, `rngit_python_interop::rngit_cleans_media_after_response_fails_on_abrupt_client_exit`, and `rngit_python_interop::issue_613_cleanup_isolation::rngit_disconnect_cleanup_preserves_an_independent_active_media_response` | active, stale, closed, missing-link, graceful-disconnect, synchronized partial-Resource cancellation, abrupt client exit detected by a failed response, periodic sweep after silent Link disappearance, cross-Link cleanup/active-response isolation, and child-status-error termination/reaping verified; other filesystem/media lifecycle fault paths remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault paths remain open |
 
 ### Disconnect cancels an in-flight conversion
@@ -65,7 +65,7 @@ helper and injects executable availability to assert the same sequence.
 ```text
 cargo test -p rns-tools --bin rngit --all-features automatic_backend_selection
   PASS (2 tests)
-RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+RETICULUM_PY_REPO=<temporary RNS extraction from 99de23c040d507e3fefca19e87b182302902725d> \
   LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   pinned_python_media_backend_selection_reuses_available_automatic_winner \
   -- --ignored --nocapture
@@ -92,6 +92,36 @@ needed; the broader #613 acceptance remains open.
 TMPDIR="$PWD/target/tmp" RETICULUM_PY_REPO="$PWD/target/tmp/pinned-reticulum" \
   cargo test -p rns-tools --test rngit_python_interop \
   rngit_passes_media_cli_options_to_the_selected_webp_backend \
+  -- --ignored --nocapture --test-threads=1                    PASS (1 test)
+```
+
+### Configured real backend through the production page service
+
+The installed `ffmpeg` backend is explicitly selected with
+`RNGIT_MEDIA_BACKEND=ffmpeg` and exercised through the production `/media`
+page handler and a Python Link using the exact pinned Reticulum source. The
+test prepends a failing `magick` executable (the earlier automatic preference)
+to the server's `PATH` and confirms it is not invoked, proving the configured
+backend wins. The regression saves the returned Resource bytes and verifies
+them with `ffprobe` as a 1x1 WebP image, observes the conversion directory while
+the Link is active, and verifies Link teardown removes it. A second request
+uses deliberately invalid PNG bytes and checks that the successful Link
+response preserves the original `image.png` metadata, length, and SHA-256
+rather than presenting conversion failure as a failed Resource. This
+establishes real `ffmpeg` selection and binary validity, not visual equivalence
+or parity for the other encoder families.
+
+Existing bounded-process regressions separately cover timeout and nonzero
+child-status handling, including terminating and reaping pipeline children;
+the injected encoder-failure regression checks raw fallback, conversion
+directory cleanup, and diagnostic detail. Real `magick`, `convert`, `gm`, and
+`avconv` operation, visual/reference parity, and other filesystem/media
+lifecycle fault paths remain unverified.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  configured_ffmpeg_serves_decodable_webp_and_falls_back_to_raw_media \
   -- --ignored --nocapture --test-threads=1                    PASS (1 test)
 ```
 
@@ -381,8 +411,12 @@ that Resource `ConnectionError` to `NotConnected` and closes the corresponding
 page Link, publishing the existing `LinkEvent::Closed` cleanup event. The
 regression gates fake conversion on a parent-controlled marker, releases it
 only after the Python client exits, and asserts directory removal; it failed
-before the fix and passes after it. Silent exits that trigger no failed
-response remain unverified.
+before the fix and passes after it. Commit `21bc314e` also adds a deterministic
+test of the production page-service loop: a Link disappears without a close
+event or failed response, then the scheduled 60-second cleanup sweep removes
+its media directory and stale registry entry. This proves the periodic fallback
+path; real transport timing for a silently exited remote process remains an
+environment-dependent lifecycle case.
 The new failure-injection regression proves that a failed `remove_dir_all`
 leaves its directory tracked and the subsequent Link cleanup removes it. The
 conversion-fallback and link-cleanup handlers log path and Link ID on failure,
@@ -543,9 +577,10 @@ cargo test -p rns-tools --test rngit_python_interop \
   metadata/content checks. It also proves one generated conversion directory
   is present during the active link and gone after graceful client teardown.
   This is one bounded role trace, not proof of every page, file, or
-  public-network path. Status-driven stale cleanup, synchronized in-flight
-  Resource cancellation, and response-send-detected cleanup after abrupt client
-  exit are covered; silent exits without a failed response, other
+  public-network path. Status-driven stale cleanup, the periodic sweep for a
+  silently disappeared Link, synchronized in-flight Resource cancellation, and
+  response-send-detected cleanup after abrupt client exit are covered; live
+  transport timing for an actual silently exited remote process, other
   filesystem-failure paths, and the complete media lifecycle remain open. The
   timeout regression establishes only that both conversion subprocesses are
   terminated and reaped.
