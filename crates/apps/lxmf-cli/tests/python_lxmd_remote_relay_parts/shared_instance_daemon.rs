@@ -957,7 +957,7 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
         Ok(())
     })();
 
-    let failure_details = outcome.as_ref().err().map(|err| format!("{err}"));
+    let failure_details = outcome.as_ref().err().map(|err| err.to_string());
 
     if let Some(node) = relay_a.as_mut() {
         terminate_child(&mut node.child);
