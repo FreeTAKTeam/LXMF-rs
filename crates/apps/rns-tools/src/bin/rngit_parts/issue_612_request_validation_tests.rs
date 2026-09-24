@@ -127,3 +127,34 @@ fn work_request_missing_operation_returns_exact_invalid_request_without_state_ch
         b"Invalid request",
     );
 }
+
+#[test]
+fn work_request_missing_operation_is_invalid_before_repository_read_authorization() {
+    let (_temp, group_path, mut node) = request_validation_fixture();
+    let group = node.groups.get_mut("group").expect("group state");
+    group.permissions.read = Default::default();
+    group.permissions.admin = Default::default();
+    group
+        .repositories
+        .get_mut("repo")
+        .expect("repository state")
+        .permissions
+        .read = Default::default();
+    group
+        .repositories
+        .get_mut("repo")
+        .expect("repository state")
+        .permissions
+        .admin = Default::default();
+    let request = encode_work_request(vec![(
+        rmpv::Value::from(0_u64),
+        rmpv::Value::String("group/repo".into()),
+    )]);
+
+    assert_work_request_error_without_state_change(
+        &mut node,
+        &group_path,
+        &request,
+        b"Invalid request",
+    );
+}

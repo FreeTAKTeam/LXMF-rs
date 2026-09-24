@@ -141,8 +141,11 @@ impl ReticulumGitNode {
             Ok(value) => value,
             Err(error) => return error,
         };
-        let operation =
-            map_string(request, &rmpv::Value::String("operation".into())).unwrap_or_default();
+        let Some(operation) = map_string(request, &rmpv::Value::String("operation".into()))
+            .filter(|operation| !operation.is_empty())
+        else {
+            return response(Self::RES_INVALID_REQ, "Invalid request", None);
+        };
         if !self.resolve_permission(&remote, &group, &repository, Self::PERM_READ) {
             return response(Self::RES_NOT_FOUND, "Not found", None);
         }

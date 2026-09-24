@@ -43,7 +43,10 @@ concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted
 result is pending on the implementing PR. Local tests now also verify that a
 failed configured-permission refresh, resolver execution, or atomic sidecar
-replacement leaves the cached policy unchanged. Storage regressions also reject
+replacement leaves the cached policy unchanged. A missing work operation now
+returns `Invalid request` before repository read authorization, matching the
+pinned Python handler; a denied-read regression verifies the ordering and no
+state mutation. Storage regressions also reject
 malformed MessagePack roots and trailing bytes; an exact-reference Python CLI
 request over a production Link observes `Remote error: Error loading document`
 for a corrupt persisted root. The process-restart trace now also writes a
