@@ -7,12 +7,19 @@ an enabled UDP interface with `ifac_size` but no usable IFAC credential is not
 started, while the existing `list_interfaces` management RPC reports it once
 with `_runtime.startup_status = "failed"` and a fixed `startup_error`. The
 diagnostic contains no raw configuration values or credentials. This is a
-software regression; other startup parse failures and the broader #608
-acceptance remain open.
+software regression. The companion
+`bootstrap_reports_invalid_ifac_size_without_exposing_credentials` case verifies
+that a config rejected during deserialization for a seven-bit IFAC tag receives
+the same safe management diagnostic even when a credential is present. The
+reported message is static and excludes the supplied credential. Other startup
+parse failures and the broader #608 acceptance remain open.
 
 ```text
 TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
   bootstrap_reports_invalid_ifac_config_without_creating_interface -- --nocapture
+  1 passed; 0 failed
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  bootstrap_reports_invalid_ifac_size_without_exposing_credentials -- --nocapture
   1 passed; 0 failed
 ```
 

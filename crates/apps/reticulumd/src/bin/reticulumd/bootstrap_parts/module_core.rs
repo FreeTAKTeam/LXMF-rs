@@ -65,12 +65,16 @@ fn rejected_ifac_interface_records(path: &std::path::Path) -> Vec<InterfaceRecor
         .enumerate()
         .filter_map(|(index, (section_name, value))| {
             let table = value.as_table()?;
-            table.get("ifac_size")?;
+            let ifac_size = table.get("ifac_size")?;
+            let valid_ifac_size = ifac_size
+                .as_integer()
+                .and_then(|value| u64::try_from(value).ok())
+                .is_some_and(|bits| (8..=512).contains(&bits) && bits % 8 == 0);
             let credential_present = ["network_name", "networkname", "passphrase", "pass_phrase"]
                 .iter()
                 .filter_map(|key| table.get(*key).and_then(toml::Value::as_str))
                 .any(|credential| !credential.trim().is_empty());
-            if credential_present {
+            if valid_ifac_size && credential_present {
                 return None;
             }
             let name = table.get("name").and_then(toml::Value::as_str).or(section_name)
@@ -79,7 +83,7 @@ fn rejected_ifac_interface_records(path: &std::path::Path) -> Vec<InterfaceRecor
                 .unwrap_or("unknown").to_owned();
             let settings = json!({"_runtime": {
                 "startup_status": "failed",
-                "startup_error": "IFAC configuration rejected: ifac_size requires a non-empty network_name or passphrase"
+                "startup_error": "IFAC configuration rejected: ifac_size must be 8..=512 whole bits divisible by 8 and requires a non-empty network_name or passphrase"
             }});
             Some(InterfaceRecord {
                 kind,
