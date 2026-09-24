@@ -1640,6 +1640,135 @@ mod tests {
         assert!(!accept_error_requires_session_recreate(&timeout));
     }
 
+    #[tokio::test]
+    async fn i2p_accept_loop_recreates_expired_sam_session_before_accepting_peer() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("fake SAM address").to_string();
+        let (release_peer_tx, release_peer_rx) = oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            let mut release_peer_rx = Some(release_peer_rx);
+            for session_number in 1..=2 {
+                let (session_socket, _) =
+                    listener.accept().await.expect("accept SAM session connection");
+                let mut session_reader = BufReader::new(session_socket);
+                let mut hello = String::new();
+                session_reader.read_line(&mut hello).await.expect("read session HELLO");
+                assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+                session_reader
+                    .get_mut()
+                    .write_all(b"HELLO REPLY RESULT=OK VERSION=3.3\n")
+                    .await
+                    .expect("reply to session HELLO");
+                let mut create = String::new();
+                session_reader.read_line(&mut create).await.expect("read SESSION CREATE");
+                assert!(create.starts_with("SESSION CREATE STYLE=STREAM ID="));
+                session_reader
+                    .get_mut()
+                    .write_all(
+                        format!(
+                            "SESSION STATUS RESULT=OK DESTINATION=fake-{session_number}.b32.i2p\n"
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .expect("reply to SESSION CREATE");
+
+                let (accept_socket, _) =
+                    listener.accept().await.expect("accept SAM stream request");
+                let mut accept_reader = BufReader::new(accept_socket);
+                let mut hello = String::new();
+                accept_reader.read_line(&mut hello).await.expect("read accept HELLO");
+                assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+                accept_reader
+                    .get_mut()
+                    .write_all(b"HELLO REPLY RESULT=OK VERSION=3.3\n")
+                    .await
+                    .expect("reply to accept HELLO");
+                let mut accept = String::new();
+                accept_reader.read_line(&mut accept).await.expect("read STREAM ACCEPT");
+                assert!(accept.starts_with("STREAM ACCEPT ID="));
+
+                if session_number == 1 {
+                    accept_reader
+                        .get_mut()
+                        .write_all(
+                            b"STREAM STATUS RESULT=OK\nSTREAM STATUS RESULT=I2P_ERROR MESSAGE=\"specified ID lxmf-rs-accept is not a STREAM session\"\n",
+                        )
+                        .await
+                        .expect("report expired SAM session");
+                } else {
+                    accept_reader
+                        .get_mut()
+                        .write_all(b"STREAM STATUS RESULT=OK\nfake-incoming-peer\n")
+                        .await
+                        .expect("accept peer on recreated SAM session");
+                    if let Some(release_peer_rx) = release_peer_rx.take() {
+                        let _ = release_peer_rx.await;
+                    }
+                }
+            }
+        });
+
+        let mut interface_manager = crate::iface::InterfaceManager::new(8);
+        let parent_channel = interface_manager.new_channel_with_role(8, IfaceRole::Multicast);
+        let parent_iface = parent_channel.address;
+        let iface_stop = parent_channel.stop.clone();
+        let interface_manager = Arc::new(tokio::sync::Mutex::new(interface_manager));
+        let runtime_status =
+            Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(sam_addr.clone(), true, &[])));
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let peer_routes = Arc::new(tokio::sync::Mutex::new(BTreeMap::new()));
+        let accept_loop = tokio::spawn(run_i2p_accept_loop(
+            parent_iface,
+            "i2p-recreate-session".to_string(),
+            sam_addr,
+            None,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            Duration::from_millis(1),
+            runtime_status.clone(),
+            cancel.clone(),
+            iface_stop.clone(),
+            rx_channel,
+            interface_manager,
+            peer_routes.clone(),
+        ));
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let status = runtime_status.lock().expect("I2P runtime status").to_json();
+                let accepted_peer = status["peers"].as_array().is_some_and(|peers| {
+                    peers.iter().any(|peer| {
+                        peer["peer"].as_str() == Some("fake-incoming-peer")
+                            && peer["direction"].as_str() == Some("incoming")
+                    })
+                });
+                if status["accept_reconnect_attempts"].as_u64() == Some(1)
+                    && status["accept_state"].as_str() == Some("listening")
+                    && accepted_peer
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("expired SAM session should be recreated and accept a peer");
+
+        cancel.cancel();
+        iface_stop.cancel();
+        let _ = release_peer_tx.send(());
+        tokio::time::timeout(Duration::from_secs(2), accept_loop)
+            .await
+            .expect("I2P accept loop shutdown timeout")
+            .expect("I2P accept loop task");
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .expect("fake SAM shutdown timeout")
+            .expect("fake SAM server task");
+    }
+
     #[test]
     fn i2p_sam_session_id_includes_transport_identity_when_available() {
         let iface_address = crate::hash::AddressHash::new([0x33; 16]);

@@ -728,9 +728,13 @@ direction.
   feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
   in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
   children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an
-  outbound I2P SAM peer baseline. Enabled unknown interface kinds remain
-  parseable for operator visibility but are covered as explicit failed startup
-  records with `unsupported interface kind` runtime metadata.
+  outbound I2P SAM peer baseline, plus a deterministic fake-SAM regression for
+  connectable-listener recovery after the router reports an expired STREAM
+  session. This exercises the production accept loop through session
+  recreation and incoming-peer registration only; the broader I2P and #614
+  interface-family matrix remains partial. Enabled unknown interface kinds
+  remain parseable for operator visibility but are covered as explicit failed
+  startup records with `unsupported interface kind` runtime metadata.
 - Meshtastic tunnel support includes the reference `RETICULUM_TUNNEL_APP`
   chunk metadata, modem-preset pacing, missing-chunk requests,
   node/destination route learning, an injectable bearer handle, daemon TOML

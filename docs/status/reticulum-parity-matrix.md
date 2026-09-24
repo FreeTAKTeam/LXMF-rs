@@ -509,10 +509,13 @@ placeholders:
   connect, HDLC writes, connectable accept-loop incoming `STREAM ACCEPT`,
   virtual child registration, HDLC ingress, direct outbound egress over accepted
   streams, cleanup, and daemon/RPC status refresh for connected outbound and
-  incoming peer rows without requiring a prepared I2P router. SAM session IDs
-  now include the daemon transport identity when available to avoid
-  cross-process ID collisions on a shared router, and expired accept-session IDs
-  recreate the connectable session instead of retrying a dead ID indefinitely.
+  incoming peer rows without requiring a prepared I2P router. A production
+  accept-loop fake-SAM regression now drives an expired STREAM session through
+  session recreation and successful incoming-peer registration. This is local
+  software evidence only; SAM session IDs now include the daemon transport
+  identity when available to avoid cross-process ID collisions on a shared
+  router, and expired accept-session IDs recreate the connectable session
+  instead of retrying a dead ID indefinitely.
   The config parser recognises I2P-local IFAC aliases `ifac_netname` and
   `ifac_netkey`, but rejects them until Reticulum IFAC authentication is
   implemented.
