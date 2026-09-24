@@ -217,6 +217,41 @@ async fn daemon_auto_activation_stops_adapter_and_restarts_on_owned_loopback_por
 }
 
 #[tokio::test]
+async fn daemon_auto_competing_activation_preserves_owner_and_retries_after_stop() {
+    let plan = auto_loopback_plan();
+    let config =
+        InterfaceConfig { kind: "AutoInterface".to_string(), ..InterfaceConfig::default() };
+    let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+
+    let owner = activate_auto_plan(&plan, &config, &iface_manager)
+        .await
+        .expect("activate the daemon AutoInterface socket owner");
+    let owner_iface = owner.host_iface;
+    assert_eq!(owner.runtime.summary.data_socket_count, 1);
+    assert_eq!(iface_manager.lock().await.interface_hashes().len(), 1);
+
+    let competing = activate_auto_plan(&plan, &config, &iface_manager).await;
+    assert!(competing.is_err(), "a second runtime must not claim the active data port");
+    let registered_ifaces = iface_manager.lock().await.interface_hashes();
+    assert_eq!(registered_ifaces.len(), 1, "failed activation must not leak a host channel");
+    assert!(
+        registered_ifaces.contains(&owner_iface),
+        "failed competing activation must preserve the active owner channel"
+    );
+
+    assert!(owner.stop(&iface_manager).await, "stop should release the active owner");
+    assert!(iface_manager.lock().await.interface_hashes().is_empty());
+
+    let restarted = activate_auto_plan(&plan, &config, &iface_manager)
+        .await
+        .expect("retry the same daemon plan after its socket owner stops");
+    assert_eq!(restarted.runtime.summary.data_socket_count, 1);
+    assert_eq!(iface_manager.lock().await.interface_hashes().len(), 1);
+    assert!(restarted.stop(&iface_manager).await);
+    assert!(iface_manager.lock().await.interface_hashes().is_empty());
+}
+
+#[tokio::test]
 async fn daemon_auto_toml_ports_reach_production_adapter_and_are_reusable_after_restart() {
     let discovery_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .expect("reserve daemon AutoInterface discovery port");
