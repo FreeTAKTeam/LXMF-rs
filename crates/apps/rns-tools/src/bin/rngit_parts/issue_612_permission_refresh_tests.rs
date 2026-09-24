@@ -7,9 +7,18 @@ mod issue_612_permission_refresh_tests {
     const AUTHOR: [u8; 16] = [1; 16];
     const ADMIN: [u8; 16] = [3; 16];
 
+    fn permission_test_tempdir() -> tempfile::TempDir {
+        #[cfg(target_os = "linux")]
+        if let Ok(temp) = tempfile::tempdir_in("/dev/shm") {
+            return temp;
+        }
+
+        tempfile::tempdir().expect("temporary directory")
+    }
+
     #[test]
     fn repository_permission_set_takes_effect_before_handler_returns_without_restart() {
-        let temp = tempfile::tempdir().expect("temporary directory");
+        let temp = permission_test_tempdir();
         let group_path = temp.path().join("group");
         let repository_path = group_path.join("repo");
         fs::create_dir_all(&repository_path).expect("repository directory");
@@ -52,7 +61,7 @@ mod issue_612_permission_refresh_tests {
 
     #[test]
     fn document_admin_can_complete_work_through_production_handler() {
-        let temp = tempfile::tempdir().expect("temporary directory");
+        let temp = permission_test_tempdir();
         let group_path = temp.path().join("group");
         let repository_path = group_path.join("repo");
         fs::create_dir_all(&repository_path).expect("repository directory");
@@ -89,9 +98,12 @@ mod issue_612_permission_refresh_tests {
                 (Value::from("content"), Value::from("Body")),
             ]
         };
+        let created = node.handle_work_request(&request("create"), AUTHOR);
         assert_eq!(
-            node.handle_work_request(&request("create"), AUTHOR)[0],
-            ReticulumGitNode::RES_OK
+            created[0],
+            ReticulumGitNode::RES_OK,
+            "create response: {}",
+            String::from_utf8_lossy(&created[1..]),
         );
         fs::write(
             group_path.join("repo.work").join("1.allowed"),
@@ -99,10 +111,12 @@ mod issue_612_permission_refresh_tests {
         )
         .expect("document administrator policy");
 
+        let completed = node.handle_work_request(&request("complete"), ADMIN);
         assert_eq!(
-            node.handle_work_request(&request("complete"), ADMIN)[0],
+            completed[0],
             ReticulumGitNode::RES_OK,
-            "document-scoped admin should authorize the work transition",
+            "document-scoped admin should authorize the work transition; response: {}",
+            String::from_utf8_lossy(&completed[1..]),
         );
         assert!(group_path.join("repo.work/completed/1/root").is_file());
     }
