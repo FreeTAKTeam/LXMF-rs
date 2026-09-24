@@ -24,6 +24,10 @@ impl ReticulumGitNode {
         if !directory.join("root").is_file() {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
         }
+        let content_value = map_value(request, &rmpv::Value::String("content".into()));
+        if content_value.is_some_and(|value| value.as_str().is_none() && !value.is_bin()) {
+            return response(Self::RES_REMOTE_FAIL, "Remote error", None);
+        }
         let content = map_string(request, &rmpv::Value::String("content".into()))
             .unwrap_or_default()
             .trim()

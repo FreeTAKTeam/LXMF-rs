@@ -186,6 +186,13 @@ legacy float-valued records remain readable and no data migration is applied.
 This closes only that typed-value compatibility seam; #612 and #605 remain
 partial.
 
+A focused #612 malformed-comment differential now confirms that an authorized
+array-valued `content` raises in pinned Python's `_work_comment` and returns
+`REMOTE_FAIL` / `Remote error`. Rust maps this malformed shape to the same
+response; both production handlers leave the document root unchanged and
+create no comment file. Only this request shape is covered, so the broader
+#612 operation/error matrix remains open.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits
