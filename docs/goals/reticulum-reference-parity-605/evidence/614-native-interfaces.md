@@ -243,6 +243,16 @@ establish physical Windows pairing or carrier behavior.
 
 ## Deliberate remaining gaps
 
+- Android's configured paired-device failure path now bounds the best-effort
+  disconnect before starting its scan fallback. A deterministic pending-future
+  regression exercises the same timeout wrapper without requiring Bluetooth
+  hardware; it proves bounded software behavior, not platform disconnect or
+  pairing interoperability. Focused command:
+
+  ```text
+  TMPDIR=/dev/shm cargo test -p reticulum-rs-transport --lib --features rnode-ble a_stalled_configured_device_disconnect_is_bounded_before_scan_fallback -- --nocapture
+  ```
+
 - A native Windows build and paired RNode test still need to prove bonded
   selection, stale paired references, native partial service discovery,
   physical detection timeout, native cancellation, and bounded cleanup. The software worker
