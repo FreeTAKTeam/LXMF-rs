@@ -426,3 +426,4 @@ include!("issue_612_activation_authorization_differential_tests.rs");
 include!("issue_612_view_missing_id_differential_tests.rs");
 include!("issue_612_propose_success_differential_tests.rs");
 include!("issue_612_create_success_differential_tests.rs");
+include!("issue_612_list_success_differential_tests.rs");
