@@ -31,7 +31,10 @@ IFAC reconfiguration now returns a structured RPC error while preserving the
 active authenticated configuration; a plaintext peer remains rejected after
 restart. Packet-level
 IFAC decoding now uses one locked context for frame authentication and
-verified-wire provenance across live reconfiguration. The spawned
+verified-wire provenance across live reconfiguration. An active-carrier
+software regression also probes ingress during 2,000 live IFAC credential
+rotations and verifies plaintext remains rejected; it does not claim
+physical-carrier coverage. The spawned
 `PipeInterface` worker also has a Unix subprocess loopback regression for its
 8-byte IFAC default and authenticated HDLC packet admission. Other carrier
 families now include duplex-stream serial and KISS IFAC regressions for wrong-key

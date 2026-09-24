@@ -230,6 +230,107 @@ mod tests {
     }
 
     #[test]
+    fn live_ifac_rotation_never_admits_plaintext_during_reconfiguration() {
+        use std::sync::{
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+            Arc, Barrier, Mutex,
+        };
+
+        let mut manager = InterfaceManager::new(16);
+        let channel = manager.new_channel(16);
+        let address = *channel.address();
+        assert!(manager.set_shared_config(
+            address,
+            InterfaceSharedConfig {
+                network_name: Some("rotation-net".to_string()),
+                passphrase: Some("credential-a".to_string()),
+                ..InterfaceSharedConfig::default()
+            }
+        ));
+        let state = channel.ifac_state.clone();
+        let manager = Arc::new(Mutex::new(manager));
+        let start = Arc::new(Barrier::new(2));
+        let writer_active = Arc::new(AtomicBool::new(false));
+        let writer_done = Arc::new(AtomicBool::new(false));
+        let plaintext_admitted = Arc::new(AtomicBool::new(false));
+        let reads_during_rotation = Arc::new(AtomicUsize::new(0));
+        let plaintext = vec![0x00, 0x01];
+
+        let reader_state = state.clone();
+        let reader_start = start.clone();
+        let reader_writer_active = writer_active.clone();
+        let reader_writer_done = writer_done.clone();
+        let reader_plaintext_admitted = plaintext_admitted.clone();
+        let reader_reads_during_rotation = reads_during_rotation.clone();
+        let reader = std::thread::spawn(move || {
+            reader_start.wait();
+            let mut attempts = 0usize;
+            while !reader_writer_done.load(Ordering::Acquire) {
+                if decode_packet_ifac(&reader_state, &plaintext).is_ok() {
+                    reader_plaintext_admitted.store(true, Ordering::Release);
+                    break;
+                }
+                if reader_writer_active.load(Ordering::Acquire) {
+                    reader_reads_during_rotation.fetch_add(1, Ordering::Relaxed);
+                }
+                attempts += 1;
+                if attempts % 64 == 0 {
+                    std::thread::yield_now();
+                }
+            }
+        });
+
+        let writer_start = start;
+        let writer_manager = manager.clone();
+        let writer_active = writer_active.clone();
+        let writer_plaintext_admitted = plaintext_admitted.clone();
+        let writer_reads_during_rotation = reads_during_rotation.clone();
+        let writer_done_for_join = writer_done.clone();
+        let writer = std::thread::spawn(move || {
+            writer_start.wait();
+            for (index, passphrase) in ["credential-b", "credential-a"]
+                .into_iter()
+                .cycle()
+                .take(2_000)
+                .enumerate()
+            {
+                let config = InterfaceSharedConfig {
+                    network_name: Some("rotation-net".to_string()),
+                    passphrase: Some(passphrase.to_string()),
+                    ..InterfaceSharedConfig::default()
+                };
+                assert!(writer_manager
+                    .lock()
+                    .expect("interface manager lock")
+                    .set_shared_config(address, config));
+                if index == 0 {
+                    writer_active.store(true, Ordering::Release);
+                    while writer_reads_during_rotation.load(Ordering::Acquire) == 0
+                        && !writer_plaintext_admitted.load(Ordering::Acquire)
+                    {
+                        std::thread::yield_now();
+                    }
+                }
+            }
+            writer_active.store(false, Ordering::Release);
+            writer_done.store(true, Ordering::Release);
+        });
+
+        let writer_result = writer.join();
+        writer_done_for_join.store(true, Ordering::Release);
+        reader.join().expect("plaintext admission monitor");
+        writer_result.expect("live IFAC reconfiguration");
+        assert!(
+            reads_during_rotation.load(Ordering::Acquire) > 0,
+            "plaintext ingress was checked after credential rotation began"
+        );
+        assert!(
+            !plaintext_admitted.load(Ordering::Acquire),
+            "plaintext ingress must stay rejected while IFAC credentials rotate"
+        );
+    }
+
+    #[test]
     fn interface_context_uses_carrier_specific_ifac_default_size() {
         struct EightByteCarrier;
 

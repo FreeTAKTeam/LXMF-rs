@@ -624,6 +624,33 @@ The baseline generic TCP daemon test also passed once with `/dev/shm` temporary
 storage before applying this Backbone-only adaptation. #608 remains open and
 partial.
 
+## Active-carrier IFAC rotation stays fail-closed
+
+The production `InterfaceManager::set_shared_config` path validates the new
+IFAC context before touching a live interface and replaces the shared context
+under one write lock. A concurrent ingress regression exercises that path on
+an active interface channel while rotating between two valid credentials. It
+synchronizes a plaintext-ingress probe after the first live credential
+replacement, keeps the reader active through the remaining updates, and
+verifies no plaintext frame is admitted across 2,000 credential updates. No
+production fix was indicated. The common carrier decoder takes the matching
+read lock, so ingress observes the previous or replacement authenticated
+context, never an intermediate plaintext state.
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d` has no live
+credential hot-apply path: `RNS/Reticulum.py::_add_interface` assigns
+`ifac_size`, `ifac_netname`, and `ifac_netkey`, derives the IFAC identity, and
+only then registers the interface with `RNS.Transport` and calls
+`interface.final_init()`. The Rust runtime reconfiguration regression
+therefore checks a stronger live-update invariant than Python's startup-only
+ordering. This does not claim that every carrier family or physical interface
+has been exercised.
+
+```text
+cargo test -p reticulum-rs-transport live_ifac_rotation_never_admits_plaintext_during_reconfiguration -- --nocapture
+# 1 passed; synchronized ingress remained fail-closed across 2,000 live credential updates
+```
+
 ## PR #628 hosted PR-HIL fixture follow-up
 
 Run `35907636125` failed one virtual `python-channel-interop` case,
