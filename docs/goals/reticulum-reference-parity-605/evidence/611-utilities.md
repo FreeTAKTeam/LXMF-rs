@@ -509,13 +509,24 @@ discovery case.
 The current #631 worktree adds a local daemon-backed path-table slice. The
 transport exports path rows with an optional maximum-hop filter; `get_path_table`
 validates its RPC parameters, and `rnpath-rs --table` supports optional
-human-mode destination filtering, `--max`, JSON/human output, and Python's interface-then-
-hop ordering. As in the pinned Python CLI, destination is ignored in JSON
-table output. Focused transport, RPC, bridge-serialization, and CLI regressions
-cover the row fields and filtering. This is software unit/RPC evidence only:
-there is not yet a non-empty live daemon/Python path-table trace, and configured
-interface labels are not proven equivalent to Python's `str(interface)`.
-Path-table parity and the wider `rnpath` management matrix remain open.
+human-mode destination filtering, `--max`, JSON/human output, and Python's
+interface-then-hop ordering. As in the pinned Python CLI, destination is ignored
+in JSON table output. For configured TCP clients with explicit name and endpoint
+metadata, `reticulumd` now renders the path-table `interface` field as the pinned
+Python `TCPInterface[name/host:port]` representation while keeping the ordinary
+interface display name and path-status field unchanged; unsupported/incomplete
+interface metadata falls back to the prior display-name behavior.
+
+`rnpath_python_table::rnpath_table_matches_frozen_python_route_fields_over_live_tcp`
+connects a Rust daemon and pinned-Python observer to a Python announcing peer.
+The Rust and Python observers use TCP-client interfaces with the same configured
+name and endpoint, and the live `rnpath-rs --table --json` row now exactly matches
+the pinned Python `get_path_table()` value for `interface` as well as destination,
+next hop, and hop count. Focused formatter tests cover IPv4 output and Python's
+IPv6 bracket rule; a hot-apply regression verifies the metadata follows endpoint
+replacement without changing the ordinary display name. Other interface
+families, JSON/human behavior beyond this focused path-table case, and the wider
+`rnpath` management matrix remain open.
 
 ## Current `rnprobe` packet increment
 

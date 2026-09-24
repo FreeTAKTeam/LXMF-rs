@@ -58,9 +58,13 @@ The current #631 path-table slice adds a `get_path_table` daemon RPC and
 focused hop-filter, RPC-shape, bridge-serialization, and CLI-ordering tests.
 An ignored live loopback trace now connects the Rust daemon and a separate
 pinned-Python observer to a Python announcing peer and compares a non-empty
-table row: destination hash, via, and hop count match, with numeric expiry
-fields. The configured Rust interface label differs from Python's interface
-object string; this limitation and the broader #611 matrix remain open.
+table row: destination hash, via, hop count, and the exact TCP-client
+`interface` representation match, with numeric expiry fields. The daemon carries
+optional configured TCP-client name/endpoint metadata separately from ordinary
+interface display names and renders the pinned Python `TCPInterface[...]` value
+only for that supported case; formatter tests also cover IPv6 brackets and
+hot-apply endpoint replacement. Other interface families and the broader #611
+matrix remain open.
 
 The current #631 `rncp` increment observes packed and received Resource
 advertisement sizes/flags for all six Python/Rust compression roles, with a

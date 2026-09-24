@@ -218,7 +218,7 @@ while True: time.sleep(1)
                      loglevel = 0\n\
                      \n\
                      [interfaces]\n\
-                     [[TCP Client Interface]]\n\
+                     [[python-rnpath-table-peer]]\n\
                      type = TCPClientInterface\n\
                      enabled = yes\n\
                      target_host = 127.0.0.1\n\
@@ -309,14 +309,19 @@ print(json.dumps(table))
             assert_eq!(rust_row["hash"], python_row["hash"]);
             assert_eq!(rust_row["via"], python_row["via"]);
             assert_eq!(rust_row["hops"], python_row["hops"]);
+            assert_eq!(
+                rust_row["interface"], python_row["interface"],
+                "TCP path-table interface representations differ: Rust={:?}, Python={:?}",
+                rust_row["interface"], python_row["interface"]
+            );
             assert_eq!(rust_row["hops"], 1);
             assert!(rust_row["expires"].as_f64().is_some(), "Rust expiry field: {rust_row}");
             assert!(python_row["expires"].as_f64().is_some(), "Python expiry field: {python_row}");
             assert!(rust_row["interface"].is_string(), "Rust interface field: {rust_row}");
             assert!(python_row["interface"].is_string(), "Python interface field: {python_row}");
             eprintln!(
-                "path-table fields matched: hash={}, via={}, hops={}; expires are numeric; interface labels differ by representation (Rust={:?}, Python={:?})",
-                rust_row["hash"], rust_row["via"], rust_row["hops"], rust_row["interface"], python_row["interface"]
+                "path-table fields matched: hash={}, via={}, hops={}, interface={:?}; expires are numeric",
+                rust_row["hash"], rust_row["via"], rust_row["hops"], rust_row["interface"]
             );
             Ok(())
         })();
