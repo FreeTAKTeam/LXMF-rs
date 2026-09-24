@@ -1,7 +1,16 @@
 use super::PipeInterface;
-use crate::iface::{InterfaceManager, InterfaceSharedConfig, TxMessage, TxMessageType};
+use crate::buffer::OutputBuffer;
+use crate::iface::{
+    encode_packet_ifac, hdlc::Hdlc, IfacState, InterfaceManager, InterfaceSharedConfig, TxMessage,
+    TxMessageType,
+};
 use crate::packet::{Packet, PacketDataBuffer};
+use std::sync::{atomic::Ordering, Arc};
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc;
+use tokio::time::{sleep, timeout};
+use tokio_util::sync::CancellationToken;
 
 #[test]
 fn pipe_command_parser_matches_python_shlex_baseline() {
@@ -110,4 +119,77 @@ async fn pipe_worker_roundtrips_authenticated_packet_with_reference_default_tag_
     })
     .await
     .expect("stopping the interface should terminate its child process");
+}
+
+#[tokio::test]
+async fn pipe_stream_rejects_wrong_ifac_key_before_admission() {
+    let mut manager = InterfaceManager::new(8);
+    let context = manager.new_context(PipeInterface::new("cat"));
+    let address = *context.channel.address();
+    let ifac_state = context.channel.ifac_state.clone();
+    let ifac_violations = context.channel.ifac_violations.clone();
+    assert!(manager.set_shared_config(
+        address,
+        InterfaceSharedConfig {
+            network_name: Some("pipe-ifac-ingress".to_string()),
+            passphrase: Some("pipe-ifac-ingress-secret".to_string()),
+            ..InterfaceSharedConfig::default()
+        },
+    ));
+
+    let wrong_state: IfacState = Arc::new(std::sync::RwLock::new(
+        InterfaceSharedConfig {
+            network_name: Some("pipe-ifac-ingress".to_string()),
+            passphrase: Some("wrong-pipe-ifac-ingress-secret".to_string()),
+            ..InterfaceSharedConfig::default()
+        }
+        .ifac_context_with_default_size(8)
+        .expect("derive wrong-key IFAC context"),
+    ));
+    let packet = Packet {
+        destination: crate::hash::AddressHash::new_from_slice(&[0x43; 16]),
+        data: PacketDataBuffer::new_from_slice(b"wrong-key Pipe frame"),
+        ..Packet::default()
+    };
+    let payload = encode_packet_ifac(&wrong_state, &packet).expect("encode wrong-key packet");
+    let mut frame = vec![0_u8; payload.len().saturating_mul(2) + 8];
+    let mut output = OutputBuffer::new(&mut frame[..]);
+    Hdlc::encode(&payload, &mut output).expect("HDLC encode wrong-key packet");
+
+    let (stream, mut peer) = tokio::io::duplex(4096);
+    let (rx_channel, mut rx_receiver) = mpsc::channel(8);
+    let (_tx_sender, tx_receiver) = mpsc::channel(8);
+    let runtime_status = Arc::new(std::sync::Mutex::new(super::PipeRuntimeStatus::new("test")));
+    let cancel = CancellationToken::new();
+    let worker = tokio::spawn(super::run_pipe_stream(
+        stream,
+        tokio::io::sink(),
+        address,
+        PipeInterface::DEFAULT_MTU,
+        cancel.clone(),
+        CancellationToken::new(),
+        rx_channel,
+        Arc::new(tokio::sync::Mutex::new(tx_receiver)),
+        runtime_status,
+        ifac_state,
+        ifac_violations.clone(),
+    ));
+
+    peer.write_all(output.as_slice()).await.expect("write wrong-key Pipe frame");
+    timeout(Duration::from_secs(1), async {
+        while ifac_violations.load(Ordering::Relaxed) == 0 {
+            sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("wrong-key Pipe frame should be counted as an IFAC violation");
+    assert!(
+        rx_receiver.try_recv().is_err(),
+        "wrong-key Pipe packet must not reach transport admission"
+    );
+    cancel.cancel();
+    timeout(Duration::from_secs(1), worker)
+        .await
+        .expect("Pipe stream worker should stop")
+        .expect("Pipe stream worker task");
 }

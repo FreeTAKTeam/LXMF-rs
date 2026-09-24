@@ -373,6 +373,20 @@ This is carrier-runtime evidence, not Python-peer interoperability. TCP and
 UDP retain the mixed Python/Rust evidence above; other carrier-family software
 paths and physical-support rows remain open.
 
+The complementary `pipe_stream_rejects_wrong_ifac_key_before_admission`
+regression feeds a wrong-key authenticated HDLC packet through the production
+Pipe stream worker's duplex-stream boundary. It verifies the IFAC violation
+counter increments and the packet is not delivered to transport admission.
+Together with the subprocess round-trip above, this covers Pipe worker
+authentication in both directions at the software boundary; it does not claim
+Python-peer interoperability or physical carrier acceptance.
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulum-rs-transport --lib \
+  pipe_stream_rejects_wrong_ifac_key_before_admission -- --nocapture
+# 1 passed; wrong-key Pipe frame counted and not admitted
+```
+
 ## Serial stream IFAC admission, rejection, and egress
 
 `serial_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_packets`
