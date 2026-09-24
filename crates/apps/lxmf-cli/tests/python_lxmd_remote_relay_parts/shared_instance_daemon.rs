@@ -332,6 +332,10 @@ fn python_shared_instance_rust_lxmd_application_and_restart_e2e() {
     }
 }
 
+fn is_terminal_outbound_status(status: &Value) -> bool {
+    matches!(status["state_name"].as_str(), Some("delivered" | "rejected" | "cancelled" | "failed"))
+}
+
 #[test]
 #[ignore = "requires local Python Reticulum/LXMF repos and daemon runtime"]
 fn python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e() {
@@ -542,10 +546,7 @@ fn python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e() {
             "outbound_status",
             Some(json!({ "message_hash": queued_message_hash })),
         )?;
-        if matches!(
-            queued_status.get("state_name").and_then(Value::as_str),
-            Some("delivered" | "rejected" | "cancelled" | "failed")
-        ) {
+        if is_terminal_outbound_status(&queued_status) {
             return Err(format!(
                 "LXMF message did not remain queued while the Rust relay was stopped: {queued_status}"
             ));
@@ -1024,14 +1025,19 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
                      {python_b_diagnostics}"
                 ));
             }
-            outbound_message_hashes.push((sender, message_hash.to_string()));
+            outbound_message_hashes.push((sender, message_hash));
         }
         for (sender, message_hash) in outbound_message_hashes {
             python_control_call(
                 sender,
                 "wait_outbound_state",
-                Some(json!({ "message_hash": message_hash, "state": "delivered", "timeout": 30.0 })),
-            )?;
+                Some(json!({
+                    "message_hash": message_hash,
+                    "state": "delivered",
+                    "timeout": 30.0
+                })),
+            )
+            .map_err(|error| format!("outbound message {message_hash}: {error}"))?;
         }
 
         for (sender, receiver, destination, content) in [
@@ -1065,36 +1071,49 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
             }
         }
 
-        let resource_size = 131_101;
-        let resource_metadata = "restart-resource.bin;application=octet-stream";
-        let sent_resource = python_control_call(
-            python_control_a_port,
-            "send_raw_resource",
-            Some(json!({
-                "size": resource_size,
-                "metadata": resource_metadata,
-                "timeout": 45.0,
-            })),
-        )?;
-        if sent_resource.get("completed") != Some(&Value::Bool(true)) {
-            return Err(format!("Python sender did not report Resource completion: {sent_resource}"));
-        }
-        let digest = sent_resource
-            .get("sha256")
-            .and_then(Value::as_str)
-            .ok_or_else(|| format!("Python sender returned no Resource digest: {sent_resource}"))?;
-        let received_resource = python_control_call(
-            python_control_b_port,
-            "wait_raw_resource",
-            Some(json!({
-                "size": resource_size,
-                "sha256": digest,
-                "metadata": resource_metadata,
-                "timeout": 45.0,
-            })),
-        )?;
-        if received_resource.get("received") != Some(&Value::Bool(true)) {
-            return Err(format!("Python receiver did not verify Resource: {received_resource}"));
+        for (direction, sender, receiver, size, metadata) in [
+            (
+                "forward",
+                python_control_a_port,
+                python_control_b_port,
+                131_101,
+                "restart-resource.bin;application=octet-stream",
+            ),
+            (
+                "reverse",
+                python_control_b_port,
+                python_control_a_port,
+                98_317,
+                "restart-resource-reverse.bin;application=octet-stream",
+            ),
+        ] {
+            let sent = python_control_call(
+                sender,
+                "send_raw_resource",
+                Some(json!({ "size": size, "metadata": metadata, "timeout": 45.0 })),
+            )?;
+            if sent.get("completed") != Some(&Value::Bool(true)) {
+                return Err(format!("Python {direction} sender did not complete Resource: {sent}"));
+            }
+            let digest = sent
+                .get("sha256")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("Python {direction} sender returned no digest: {sent}"))?;
+            let received = python_control_call(
+                receiver,
+                "wait_raw_resource",
+                Some(json!({
+                    "size": size,
+                    "sha256": digest,
+                    "metadata": metadata,
+                    "timeout": 45.0,
+                })),
+            )?;
+            if received.get("received") != Some(&Value::Bool(true)) {
+                return Err(format!(
+                    "Python {direction} receiver did not verify Resource: {received}"
+                ));
+            }
         }
         Ok(())
     })();

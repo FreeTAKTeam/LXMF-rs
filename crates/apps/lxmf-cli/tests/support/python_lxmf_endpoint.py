@@ -59,6 +59,14 @@ class EndpointState:
         self.link_closed_count = 0
         self.last_teardown_reason = None
         self.suppress_keepalive_responses = False
+        self.resource_gate_enabled = False
+        self.resource_gate_reached = threading.Event()
+        self.resource_gate_release = threading.Event()
+        self.resource_gate_observations = []
+        self.resource_gate_target = None
+        self.resource_gate_installed = False
+        self.preserve_router_resource_callback = False
+        self.resource_request_original = RNS.Resource.request
 
     def start(self, config_dir: str) -> None:
         print("python_lxmf_endpoint: starting Reticulum", file=sys.stderr, flush=True)
@@ -85,19 +93,123 @@ class EndpointState:
         self.delivery_destination.set_link_established_callback(observe_delivery_link)
         print("python_lxmf_endpoint: endpoint state ready", file=sys.stderr, flush=True)
 
+    def _install_resource_gate(self) -> None:
+        if self.resource_gate_installed:
+            return
+        original_request = self.resource_request_original
+
+        def observe_request(resource, request_data):
+            if not getattr(resource, "initiator", False):
+                return original_request(resource, request_data)
+
+            link_id = getattr(resource.link, "link_id", b"").hex()
+            key = (resource.hash.hex(), link_id)
+            is_first_gated_request = False
+            is_gated_resource = False
+            with self.lock:
+                if self.resource_gate_enabled:
+                    if self.resource_gate_target is None:
+                        self.resource_gate_target = key
+                        is_first_gated_request = True
+                        is_gated_resource = True
+                    elif key == self.resource_gate_target:
+                        is_gated_resource = True
+
+            if is_gated_resource and not is_first_gated_request:
+                # Do not let a later receiver request advance the selected Resource
+                # before Rust has stopped the relay at the first-batch barrier.
+                if not self.resource_gate_reached.wait(120):
+                    raise RuntimeError("first Resource request did not reach the gate")
+                if not self.resource_gate_release.wait(180):
+                    raise RuntimeError("timed out waiting for the Rust test to release the Resource gate")
+
+            original_request(resource, request_data)
+            observation = {
+                "resource_id": resource.hash.hex(),
+                "link_id": link_id,
+                "status": resource.status,
+                "sent_parts": resource.sent_parts,
+                "total_parts": len(resource.parts),
+            }
+            should_pause = False
+            with self.lock:
+                if not self.resource_gate_enabled:
+                    return None
+                if key not in [
+                    (item["resource_id"], item["link_id"])
+                    for item in self.resource_gate_observations
+                ]:
+                    self.resource_gate_observations.append(observation)
+                if is_first_gated_request:
+                    should_pause = True
+                    self.resource_gate_reached.set()
+
+            if should_pause:
+                self.resource_gate_release.wait(180)
+
+        RNS.Resource.request = observe_request
+        self.resource_gate_installed = True
+
+    def arm_resource_gate(self) -> dict:
+        with self.lock:
+            self.resource_gate_observations = []
+            self.resource_gate_target = None
+            self.resource_gate_reached.clear()
+            self.resource_gate_release.clear()
+            self.resource_gate_enabled = True
+        self._install_resource_gate()
+        return {"armed": True}
+
+    def wait_resource_gate(self, timeout: float = 120.0) -> dict:
+        if not self.resource_gate_reached.wait(timeout):
+            raise RuntimeError("timed out waiting for an in-flight LXMF Resource")
+        with self.lock:
+            observation = dict(self.resource_gate_observations[0])
+        if observation["status"] != RNS.Resource.TRANSFERRING:
+            raise RuntimeError(f"gated Resource was not transferring: {observation}")
+        if not 0 < observation["sent_parts"] < observation["total_parts"]:
+            raise RuntimeError(f"gated Resource was not incomplete: {observation}")
+        return observation
+
+    def release_resource_gate(self) -> dict:
+        self.resource_gate_release.set()
+        with self.lock:
+            self.resource_gate_enabled = False
+            if self.resource_gate_installed:
+                RNS.Resource.request = self.resource_request_original
+                self.resource_gate_installed = False
+        return {"released": True}
+
+    def resource_gate_snapshot(self) -> dict:
+        with self.lock:
+            return {
+                "target": self.resource_gate_target,
+                "reached": self.resource_gate_reached.is_set(),
+                "observations": list(self.resource_gate_observations),
+            }
+
+    def set_router_resource_callback_chaining(self, enabled: bool) -> dict:
+        with self.lock:
+            self.preserve_router_resource_callback = enabled
+        return {"enabled": enabled}
+
     def _on_raw_link_established(self, link) -> None:
         link.set_resource_strategy(RNS.Link.ACCEPT_ALL)
+        router_resource_concluded = link.callbacks.resource_concluded
 
         def on_resource_concluded(resource) -> None:
-            if resource.status != RNS.Resource.COMPLETE:
-                return
-            data = resource.data.read()
-            with self.lock:
-                self.raw_resources.append({
-                    "size": len(data),
-                    "sha256": hashlib.sha256(data).hexdigest(),
-                    "metadata": resource.metadata,
-                })
+            if resource.status == RNS.Resource.COMPLETE:
+                resource.data.seek(0)
+                data = resource.data.read()
+                with self.lock:
+                    self.raw_resources.append({
+                        "size": len(data),
+                        "sha256": hashlib.sha256(data).hexdigest(),
+                        "metadata": resource.metadata,
+                    })
+                resource.data.seek(0)
+            if self.preserve_router_resource_callback and router_resource_concluded is not None:
+                router_resource_concluded(resource)
 
         link.set_resource_concluded_callback(on_resource_concluded)
         if not getattr(link, "_codex_raw_packet_capture_installed", False):
@@ -285,6 +397,19 @@ class EndpointState:
 
         raise RuntimeError(f"timed out waiting for inbound message content {content!r}")
 
+    def wait_message_prefix(self, prefix: str, timeout: float = 60.0) -> dict:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self.lock:
+                matching = [
+                    message for message in self.messages
+                    if message.get("content", "").startswith(prefix)
+                ]
+                if matching:
+                    return {"count": len(matching)}
+            time.sleep(0.05)
+        raise RuntimeError(f"timed out waiting for inbound message prefix {prefix!r}")
+
     def send_message(
         self,
         destination_hex: str,
@@ -292,7 +417,19 @@ class EndpointState:
         content: str,
         wait_for_path: bool = True,
         method: str = "direct",
+        content_bytes: int = 0,
     ) -> dict:
+        if content_bytes:
+            marker = f"LXMF-RS-INFLIGHT-RESOURCE-{self.display_name}:"
+            payload_bytes = content_bytes - len(marker)
+            if payload_bytes < 0:
+                raise ValueError("content_bytes is smaller than the in-flight marker")
+            digest = hashlib.shake_256(
+                f"lxmf-rs-inflight-resource:{self.display_name}".encode("utf-8")
+            ).hexdigest((payload_bytes + 1) // 2)[:payload_bytes]
+            content = marker + digest
+            if len(content.encode("utf-8")) != content_bytes:
+                raise RuntimeError("generated test message content has an unexpected UTF-8 byte length")
         destination_hash = bytes.fromhex(destination_hex)
 
         if wait_for_path:
@@ -361,6 +498,14 @@ class EndpointState:
             "state_name": OUTBOUND_STATE_NAMES.get(state, f"unknown_{state}"),
             "delivery_attempts": message.delivery_attempts,
             "progress": message.progress,
+            "resource_id": getattr(message.resource_representation, "hash", b"").hex()
+            if message.resource_representation is not None
+            else None,
+            "link_id": getattr(
+                getattr(message.resource_representation, "link", None), "link_id", b""
+            ).hex()
+            if message.resource_representation is not None
+            else None,
         }
 
     def wait_outbound_state(
@@ -622,6 +767,11 @@ class ControlHandler(socketserver.StreamRequestHandler):
                     params["content"],
                     float(params.get("timeout", 60.0)),
                 )
+            elif method == "wait_message_prefix":
+                result = self.server.state.wait_message_prefix(
+                    params["prefix"],
+                    float(params.get("timeout", 60.0)),
+                )
             elif method == "send_message":
                 result = self.server.state.send_message(
                     params["destination"],
@@ -629,6 +779,21 @@ class ControlHandler(socketserver.StreamRequestHandler):
                     params.get("content", ""),
                     bool(params.get("wait_for_path", True)),
                     params.get("method", "direct"),
+                    int(params.get("content_bytes", 0)),
+                )
+            elif method == "arm_resource_gate":
+                result = self.server.state.arm_resource_gate()
+            elif method == "wait_resource_gate":
+                result = self.server.state.wait_resource_gate(
+                    float(params.get("timeout", 120.0)),
+                )
+            elif method == "release_resource_gate":
+                result = self.server.state.release_resource_gate()
+            elif method == "resource_gate_snapshot":
+                result = self.server.state.resource_gate_snapshot()
+            elif method == "set_router_resource_callback_chaining":
+                result = self.server.state.set_router_resource_callback_chaining(
+                    bool(params.get("enabled", False))
                 )
             elif method == "outbound_status":
                 result = self.server.state.outbound_status(params["message_hash"])

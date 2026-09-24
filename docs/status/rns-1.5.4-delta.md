@@ -76,7 +76,7 @@ behavioral coverage remains incomplete:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
-| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery including one queued opportunistic LXMF delivery after relay replacement, plus three consecutive pinned-Python two-relay post-restart passes after fixing reverse-direction proof forwarding for a destination identity unknown to the relay; attached-client duplicate delegation, standalone repeated-LinkRequest suppression, pinned-Python clean-close reason mapping, five-attempt Channel retry exhaustion over localhost TCP, transport-disabled local LinkRequest delivery from a virtual child, and expired persisted-route rejection followed by fresh-announce recovery are also evidenced; pinned Python announce-job differential verifies strict deadline equality and exactly one local-client retransmit. Direct/resource retry modes, deeper relay replacement, and other duplicate cases remain open |
+| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery delivers one queued OPPORTUNISTIC LXMF message after relay replacement; the two-relay restart test transfers fresh raw Resources in both directions. An isolated pinned-Python test verifies in-flight large DIRECT LXMF Resource retry after upstream relay replacement, on a distinct Link and Resource, with exactly one message delivery. Other evidence includes attached-client duplicate delegation, standalone repeated-LinkRequest suppression, pinned-Python clean-close reason mapping, five-attempt Channel retry exhaustion over localhost TCP, transport-disabled local LinkRequest delivery from a virtual child, expired persisted-route rejection followed by fresh-announce recovery, and strict announce-job deadline equality with exactly one local-client retransmit. Deeper relay replacement and duplicate behavior remain open; the broad reverse-delivery scenario has an intermittent B-to-A timeout |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are regression-tested; Python peers verify response packet selection at MDU-1 and MDU and Resource selection at MDU+1; compression above the 64 MiB limit, broader timeout/reconnect, and consumer callback/status evidence remain open |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
@@ -134,10 +134,18 @@ partial; broader shared-instance
 and multi-hop production traces comparing other packet/proof duplicate classes
 remain unverified. A new two-peer pinned-Python shared-instance
 trace verifies path relearning, fresh links, and raw packet exchange in both
-directions after replacing the transport-enabled Rust daemon. It also queues
-one short opportunistic LXMF message while the relay is down and verifies the
-same message is received and acknowledged after restart. This does not establish
-direct/resource retry modes or deeper multi-relay replacement. A focused
+directions after replacing the transport-enabled Rust daemon. It queues an
+OPPORTUNISTIC LXMF message while the relay is down and verifies receipt and
+acknowledgement after restart; this does not establish queued DIRECT delivery.
+The two-relay restart test also transfers fresh raw Resources in both directions
+after recovery. A separate isolated pinned-Python test pauses a large DIRECT
+LXMF Resource transfer in flight, restarts and replaces its upstream relay,
+then verifies retry on a distinct Link and Resource and exactly one message
+delivery. These are bounded acceptance cells: deeper multi-relay replacement
+and duplicate behavior remain open, and the broad reverse-delivery scenario
+still has an intermittent B-to-A timeout. #609 therefore remains partial; none
+of this evidence completes #609 or parent issue #605. Physical/HIL evidence is
+excluded. A focused
 transport save/restart regression proves a newer cached `PATH_RESPONSE`
 announce supersedes scheduled state without becoming retransmission work after
 restore. A real-socket `TcpClient` regression also proves redial preserves the

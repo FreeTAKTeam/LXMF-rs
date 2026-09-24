@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-23
+Last reassessed: 2026-09-24
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -26,30 +26,38 @@ not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
 open. The #609 software slice now additionally proves that attached shared-
 instance clients defer duplicate filtering to their owner and that standalone
-transports suppress identical LinkRequests. A two-peer pinned-Python scenario
-also verifies one queued opportunistic LXMF message is delivered after Rust
-relay replacement; direct/resource retry modes and other packet/proof classes
-remain unverified. A pinned-Python clean-close trace over TCP verifies that
-Python `Link.teardown()` reaches the Rust caller as `INITIATOR_CLOSED`.
-Channel retry exhaustion also has a pinned-Python localhost TCP trace: the
-test drops delivery proofs, observes all five default Python attempts, and
-verifies Rust receives the initiator close reason. This does not cover physical
-carriers or public-network recovery. A focused shared-instance regression also
-proves that an announce for a locally hosted destination is neither learned as
-a remote route nor fanned out to sibling clients; the broader #609 matrix
-remains open. Mixed Python/Rust recovery evidence now covers two Rust relays in
-series: after the upstream relay restarts with an empty route table, both
-Python endpoints rediscover paths and exchange fresh LXMF messages in both
-directions in passing runs; one real Resource then completes over the recovered
-path with receiver-verified digest/metadata and sender-visible completion.
-Direct and opportunistic LXMF retry modes and #609's broader matrix remain
-open. Replays of the exact post-restart test are not stable: a recent
-55.11-second run timed out on B-to-A delivery, while the immediate rerun passed
-in 9.47 seconds. The failure showed an attempted outbound message and a
-two-hop cached path at B, but no A inbox delivery; the missing route-table
-entry at relay A is not itself a failure because the destination is local to
-its Python shared-instance owner. Keep post-restart reverse delivery unresolved
-until the intermittent behavior is explained. A
+transports suppress identical LinkRequests. A two-peer pinned-Python test queues
+one opportunistic LXMF message while the Rust relay is down, then verifies it is
+delivered and acknowledged after restart. A pinned-Python
+clean-close trace over TCP verifies that Python `Link.teardown()` reaches the
+Rust caller as `INITIATOR_CLOSED`. Channel retry exhaustion also has a
+pinned-Python localhost TCP trace: the test drops delivery proofs, observes all
+five default Python attempts, and verifies Rust receives the initiator close
+reason. This does not cover physical carriers or public-network recovery. A
+focused shared-instance regression also proves that an announce for a locally
+hosted destination is neither learned as a remote route nor fanned out to
+sibling clients; the broader #609 matrix remains open. Mixed Python/Rust
+recovery evidence now covers two Rust relays in series: after the upstream
+relay restarts with an empty route table, both Python endpoints rediscover
+paths, exchange fresh LXMF messages in both directions, and complete fresh
+RNS Resources in both directions with receiver-verified size/digest/metadata
+and sender-visible completion.
+
+The previously intermittent B-to-A LXMF delivery was traced to relay A
+rejecting the shared-owner `LinkRequestProof` because it lacked the
+destination's identity. The relay now records this exact owner handoff and
+accepts the identity-less proof only from the recorded shared-owner interface;
+ordinary transit still fails closed. The original two-relay test passed three
+consecutive local runs after the fix. An earlier combined shape with queued
+DIRECT delivery and fresh Resources in both directions passed once in 42.42
+seconds, but later broad reruns intermittently timed out on B-to-A delivery
+before reaching the retry scenario. The current broad test covers queued
+OPPORTUNISTIC delivery and fresh bidirectional Resources. A separate pinned-
+Python test gates a large DIRECT Resource mid-transfer, restarts the upstream
+relay with an empty route table, then verifies exactly-once delivery on a new
+Link and Resource; it passed twice locally (32.87s and 32.91s). Broad reverse-
+delivery stability, deeper relay replacement, and broader packet/proof classes
+remain unverified. A
 production inbound regression now proves the same locally
 hosted announce behavior with transport disabled and a virtual shared child,
 matching pinned RNS 1.5.4 without a production correction. Separate
@@ -631,17 +639,19 @@ without being requeued after restore. A real-socket TCP carrier regression
 also proves redial preserves interface identity and resumes bidirectional
 HDLC packet traffic. A two-peer pinned-Python shared-instance test also
 exchanges LXMF in both directions before Rust daemon replacement, then verifies
-both paths are relearned, a short opportunistic LXMF message queued during relay
-downtime reaches the peer and is acknowledged as delivered, and fresh RNS links
-and raw packets pass in both directions. Direct/resource retry modes, broader
-multi-hop packet/proof/link duplicate cases and deeper relay replacement remain
-open. The two-relay post-restart trace now passes three consecutive local runs
-after the relay records the shared-owner handoff and forwards its
-`LinkRequestProof` on that exact interface when the destination identity is not
-locally available; ordinary transit proofs still require destination-identity
-validation. This resolves the traced reverse-direction delivery failure for
-that scenario, while direct/resource retry modes, broader multi-hop
-packet/proof/link duplicate cases and deeper relay replacement remain open.
+both paths are relearned, one queued opportunistic LXMF message is delivered
+and acknowledged after relay recovery, and fresh RNS links and raw packets
+pass in both directions. The original two-relay post-restart trace passed
+three consecutive local runs after the relay records the shared-owner handoff
+and forwards its `LinkRequestProof` only on that exact interface when the
+destination identity is unavailable; ordinary transit proofs still require
+destination-identity validation. Later broad reruns still intermittently time
+out on B-to-A delivery. The expanded recovery test also verifies fresh
+Resource delivery with exact size/digest/metadata in both directions. A
+separate isolated pinned-Python test now verifies that an in-flight large
+DIRECT LXMF Resource is retried exactly once with a new Link and Resource after
+upstream restart. Deeper relay replacement and broader multi-hop
+packet/proof/link duplicate cases remain open.
 Cached path-table restore now also checks the identity recovered from the
 cached announce against transport blackhole policy before installing the route;
 a production save/blackhole/restore regression reports one skipped row and no

@@ -774,13 +774,23 @@ receiver-side content. Each direction then opens a fresh raw Reticulum Link over
 the recovered path, exchanges application bytes, and asserts both peer-side
 Link states are active.
 
-The same recovery test now sends one 131,101-byte Resource from Python endpoint
-A to endpoint B over that fresh recovered Link. The receiving Python process
-verifies the exact byte count, SHA-256 digest, and Resource metadata; the
-sender waits for its production `RNS.Resource` callback and requires
-`Resource.COMPLETE`. This is a real post-restart Resource transfer over
-separate pinned-Python/Rust processes, not a simulated transfer or an LXMF
-direct/opportunistic retry matrix.
+The same recovery test now sends fresh production Resources in both directions
+over recovered Links: 131,101 bytes from endpoint A to B and 98,317 bytes from
+B to A. Each receiving Python process verifies the exact size, SHA-256 digest,
+and metadata; each sender waits for its production `RNS.Resource` callback and
+requires `Resource.COMPLETE`. These are fresh post-restart Resource transfers,
+not retries of a Resource interrupted while in flight.
+
+The two-peer shared-instance restart scenario verifies one queued OPPORTUNISTIC
+LXMF message after relay recovery. A separate ignored integration test,
+`python_direct_resource_retry_after_upstream_restart_e2e`, covers the stronger
+DIRECT Resource case without coupling it to the broader, intermittently failing
+B-to-A message matrix. Its test-only Python gate records the first outbound
+Resource and Link IDs, status, sent-part count, and total parts after the first
+fragment batch, then blocks later requests for that Resource. The test stops
+and replaces the upstream Rust relay with its route database cleared, releases
+the gate, rediscovers paths, and requires the same LXMF message to be delivered
+exactly once using a different Resource and Link.
 
 ```text
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
@@ -811,10 +821,13 @@ seconds, but those passes did not resolve the earlier actual delivery failure;
 discrepancy tracking remained open at that point.
 
 This establishes the shared-instance/multi-hop discovery, delivery-proof,
-raw-Link traffic, daemon-replacement, and one post-restart Resource
-digest/metadata/completion slice of #609. It does not close the umbrella issue;
-direct/opportunistic LXMF retry modes and other transport/recovery behaviors
-remain open.
+raw-Link traffic, daemon-replacement, one queued OPPORTUNISTIC message,
+bidirectional post-restart Resource digest/metadata/completion, and in-flight
+large DIRECT LXMF Resource retry slices of #609. The DIRECT retry test requires
+a fresh Resource and Link after the interrupted transfer and exactly-once
+receiver delivery. It does not close the umbrella issue; deeper relay
+replacement, other packet/proof duplicate classes, and remaining transport
+matrix behaviors stay open.
 
 The earlier diagnostic treated a missing route-table entry for Python A's
 locally hosted delivery destination as evidence that Rust relay A had failed to
@@ -861,8 +874,11 @@ destination identity, and known identities continue through signature
 validation. Focused regressions also reject a wrong-interface proof and a
 LinkRequestProof with a non-Link destination type.
 
-After the fix, the exact pinned-Python two-relay post-restart regression passed
-three consecutive local runs (26.65 s, 9.42 s, 9.43 s):
+After the fix, the original pinned-Python two-relay post-restart regression
+passed three consecutive local runs (26.65 s, 9.42 s, 9.43 s). An earlier
+combined shape with queued DIRECT delivery and fresh Resources in both
+directions passed once (42.42 s); the final retry acceptance is now a separate
+test so its verdict does not depend on the broader reverse-delivery matrix:
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
@@ -873,12 +889,18 @@ cargo test -p lxmf-cli --test python_lxmd_remote_relay \
 # Reticulum 99de23c040d507e3fefca19e87b182302902725d
 # LXMF 727830cefda83d9c6e3982b48675425f3f988f9c
 # 3 runs passed; 0 failed (26.65 s, 9.42 s, 9.43 s)
+# earlier combined queued-DIRECT plus bidirectional-Resource run: 1 passed (42.42 s)
 ```
 
 Local validation on this candidate also passed: `cargo test -p
 reticulum-rs-transport --lib` (837 passed, 5 ignored), focused proof tests
 (29 passed, 1 ignored), scoped Clippy with warnings denied, formatting,
-module-size, and diff checks. This resolves the reproduced reverse-delivery
-failure for this post-restart scenario. Direct/opportunistic LXMF retry modes,
-deeper relay replacement, other packet/proof duplicate classes, and the wider
+module-size, and diff checks. The production correction addresses the
+reproduced identity-less shared-owner proof rejection. Current evidence adds
+one queued OPPORTUNISTIC case, bidirectional fresh-Resource transfers, and an
+isolated in-flight large DIRECT LXMF Resource retry on a new Link/Resource
+after relay replacement. The standalone retry test passed twice locally (32.87
+s and 32.91 s). The broad reverse-delivery test still has intermittent B-to-A
+timeouts in later reruns, so broad delivery stability is not established.
+Deeper relay replacement, other packet/proof duplicate classes, and the wider
 #609 transport matrix remain open; issue #609 stays partial.
