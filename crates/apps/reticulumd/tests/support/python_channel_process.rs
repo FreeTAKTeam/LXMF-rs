@@ -431,6 +431,9 @@ pub(super) fn write_python_client_config_with_ifac(dir: &Path, port: u16) {
     write_python_client_config_for_kind_with_ifac(dir, port, PythonInteropInterfaceKind::Tcp);
 }
 
+// The standalone TCP IFAC lifecycle harness is the only consumer; the shared
+// helper module is also compiled by the broader Channel integration target.
+#[allow(dead_code)]
 pub(super) fn write_python_client_config_with_ifac_credentials(
     dir: &Path,
     port: u16,
