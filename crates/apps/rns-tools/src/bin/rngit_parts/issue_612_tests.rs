@@ -421,3 +421,5 @@ fn work_documents_and_permission_sidecars_survive_node_reload() {
         Some(content)
     );
 }
+
+include!("issue_612_activation_authorization_differential_tests.rs");
