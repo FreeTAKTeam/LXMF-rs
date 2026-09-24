@@ -7,12 +7,19 @@ impl ReticulumGitNode {
         group: &str,
         repository: &str,
     ) -> Vec<u8> {
-        let requested_scope = map_string(request, &rmpv::Value::String("scope".into()));
-        let scopes: Vec<&str> = match requested_scope.as_deref() {
-            None | Some("active") => vec!["active"],
+        let requested_scope = map_value(request, &rmpv::Value::String("scope".into()));
+        let scopes: Vec<&str> = match requested_scope.and_then(rmpv::Value::as_str) {
+            None => {
+                if map_value(request, &rmpv::Value::String("scope".into())).is_none() {
+                    vec!["active"]
+                } else {
+                    Vec::new()
+                }
+            }
+            Some("active") => vec!["active"],
             Some("all") => vec!["active", "completed", "proposed"],
             Some(scope @ ("completed" | "proposed")) => vec![scope],
-            Some(_) => return response(Self::RES_INVALID_REQ, "Invalid scope", None),
+            Some(_) => Vec::new(),
         };
         let mut result = BTreeMap::from([
             ("active", Vec::new()),

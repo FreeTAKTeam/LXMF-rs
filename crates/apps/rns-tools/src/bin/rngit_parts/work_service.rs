@@ -20,16 +20,6 @@ impl ReticulumGitNode {
         )
     }
 
-    fn valid_work_list_scope(request: &[(rmpv::Value, rmpv::Value)]) -> bool {
-        let Some(scope) = map_value(request, &rmpv::Value::String("scope".into())) else {
-            return true;
-        };
-        matches!(
-            scope.as_str(),
-            Some("active" | "completed" | "proposed" | "all")
-        )
-    }
-
     fn work_permission_path(root: &Path, id: u64) -> PathBuf {
         root.join(format!("{id}.allowed"))
     }
@@ -152,9 +142,6 @@ impl ReticulumGitNode {
 
         match operation.as_str() {
             "list" => {
-                if !Self::valid_work_list_scope(request) {
-                    return response(Self::RES_INVALID_REQ, "Invalid scope", None);
-                }
                 self.work_list(&root, request, remote, &group, &repository)
             }
             "view" => {
