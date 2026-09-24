@@ -126,6 +126,12 @@ jobs:
             tests::repository_admin_author_permissions_get_still_requires_repository_write_and_interact \
             -- --ignored --exact --nocapture
           cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_without_document_admin_cannot_get_or_set_permissions_like_pinned_python \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::document_author_or_document_admin_can_manage_permissions_like_pinned_python \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
             tests::document_write_access_without_read_matches_pinned_python_edit_gate \
             -- --ignored --exact --nocapture
 

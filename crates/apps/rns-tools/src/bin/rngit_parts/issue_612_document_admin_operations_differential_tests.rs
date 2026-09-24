@@ -63,7 +63,11 @@ fn initialize_work_operation_fixture(
         .expect("write document permissions");
 }
 
-fn request_for_work_operation(operation: &str) -> Vec<(rmpv::Value, rmpv::Value)> {
+fn request_for_work_operation(
+    operation: &str,
+    permission_step: &str,
+    permission_content: &str,
+) -> Vec<(rmpv::Value, rmpv::Value)> {
     let mut request = vec![
         (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
         (rmpv::Value::from("operation"), rmpv::Value::from(operation)),
@@ -77,7 +81,15 @@ fn request_for_work_operation(operation: &str) -> Vec<(rmpv::Value, rmpv::Value)
             (rmpv::Value::from("content"), rmpv::Value::from("edited body")),
             (rmpv::Value::from("signature"), rmpv::Value::Binary(vec![0x55; 64])),
         ]),
-        "perms" => request.push((rmpv::Value::from("step"), rmpv::Value::from("get"))),
+        "perms" => {
+            request.push((rmpv::Value::from("step"), rmpv::Value::from(permission_step)));
+            if permission_step == "set" {
+                request.push((
+                    rmpv::Value::from("content"),
+                    rmpv::Value::from(permission_content),
+                ));
+            }
+        }
         "delete" => {}
         _ => panic!("unsupported test operation {operation}"),
     }
@@ -90,6 +102,8 @@ fn python_operation_outcome(
     operation: &str,
     group_permissions: &str,
     document_permissions: &str,
+    permission_step: &str,
+    permission_content: &str,
 ) -> serde_json::Value {
     let script = r#"
 import json, os, sys
@@ -98,7 +112,7 @@ from types import SimpleNamespace
 sys.modules["msgpack"] = None
 from RNS.vendor import umsgpack
 from RNS.Utilities.rngit.server import ReticulumGitNode
-group_path, operation, remote_hex, group_permissions, document_permissions = sys.argv[1:]
+group_path, operation, remote_hex, group_permissions, document_permissions, permission_step, permission_content = sys.argv[1:]
 with open(group_path + ".allowed", "w") as stream:
     stream.write(group_permissions)
 node = ReticulumGitNode.__new__(ReticulumGitNode)
@@ -122,7 +136,9 @@ if operation == "comment":
 elif operation == "edit":
     request.update({"title": "Edited title", "content": "edited body", "signature": bytes([0x55] * 64)})
 elif operation == "perms":
-    request["step"] = "get"
+    request["step"] = permission_step
+    if permission_step == "set":
+        request["content"] = permission_content
 response = node.handle_work("/mgmt/work", request, 1, remote, 0)
 work_item = os.path.join(group_path, "repo.work", "active", "7")
 root_content = None
@@ -149,6 +165,8 @@ print(json.dumps({
     .arg(hex::encode(REMOTE))
     .arg(group_permissions)
     .arg(document_permissions)
+    .arg(permission_step)
+    .arg(permission_content)
         .output()
         .expect("run pinned Python production work handler");
     assert!(output.status.success(), "Python handler failed: {}", String::from_utf8_lossy(&output.stderr));
@@ -160,6 +178,24 @@ fn assert_work_operation_differential(
     group_permissions: &str,
     document_permissions: &str,
     document_author: [u8; 16],
+) -> (WorkOperationOutcome, serde_json::Value) {
+    assert_work_operation_step_differential(
+        operation,
+        group_permissions,
+        document_permissions,
+        document_author,
+        "get",
+        "",
+    )
+}
+
+fn assert_work_operation_step_differential(
+    operation: &str,
+    group_permissions: &str,
+    document_permissions: &str,
+    document_author: [u8; 16],
+    permission_step: &str,
+    permission_content: &str,
 ) -> (WorkOperationOutcome, serde_json::Value) {
     let reference = assert_pinned_python_revision();
     let rust_temp = tempfile::tempdir().expect("Rust fixture root");
@@ -188,7 +224,10 @@ fn assert_work_operation_differential(
         }
         fs::write(&root_path, rngit_work_fixture(&document)).expect("write Rust author fixture");
     }
-    let rust_response = rust_node.handle_work_request(&request_for_work_operation(operation), REMOTE);
+    let rust_response = rust_node.handle_work_request(
+        &request_for_work_operation(operation, permission_step, permission_content),
+        REMOTE,
+    );
     let rust_work_item = rust_group.join("repo.work/active/7");
     let root_content = fs::read(rust_work_item.join("root"))
         .ok()
@@ -239,6 +278,8 @@ fn assert_work_operation_differential(
         operation,
         group_permissions,
         document_permissions,
+        permission_step,
+        permission_content,
     );
     assert_eq!(
         rust_outcome.status,

@@ -173,14 +173,15 @@ the focused differential matches status, body, and persisted content. This is
 one authorization-order case, not completion of #612's broader operation,
 permission, network, and fault matrix.
 
-A #612 permissions-get differential now verifies Python's layered repository
-authorization: repository admin is required at work-operation dispatch, and
-repository write/interact is required by `_work_perms` before document-level
-author/admin checks. Rust previously allowed an author/document-level grant to
-bypass the repository-admin gate; its production handler now applies the same
-repository gates before document lookup. Four focused pinned-Python cases
-pass, but other permission combinations, `perms/set` ordering, and the wider
-#612 operation matrix remain open.
+A #612 permissions differential now verifies Python's layered repository and
+document authorization: repository admin plus repository write/interact are
+required before the document-level author/admin gate. An explicit document
+`admin:none` denies a non-author repository administrator for both `perms/get`
+and `perms/set`; an author with repository manage access and an explicit
+document admin remain allowed. Rust now applies that document gate before
+reading or changing the sidecar, with denied SET preserving the existing
+content. Eight focused pinned-Python handler scenarios pass; the broader
+permission, request-ordering, and #612 operation matrix remain open.
 
 A focused #612 production-handler regression now checks the blocked-identity
 gate with a broad group `read:all` grant. The Rust `list` handler returns the

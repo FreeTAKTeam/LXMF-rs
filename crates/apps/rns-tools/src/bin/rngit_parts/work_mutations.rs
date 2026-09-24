@@ -155,18 +155,35 @@ impl ReticulumGitNode {
         &self,
         root: &Path,
         request: &[(rmpv::Value, rmpv::Value)],
+        remote: [u8; 16],
+        group: &str,
+        repository: &str,
     ) -> Vec<u8> {
         let Some(id) = map_value(request, &rmpv::Value::String("doc_id".into()))
             .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()))
         else {
             return response(Self::RES_INVALID_REQ, "No document ID specified", None);
         };
-        let Some((_, _, _, _)) = self.work_request_document(root, request) else {
-            return response(Self::RES_NOT_FOUND, "Document not found", None);
-        };
         let Some(step) = map_string(request, &rmpv::Value::String("step".into())) else {
             return response(Self::RES_INVALID_REQ, "Invalid step", None);
         };
+        if !matches!(step.as_str(), "get" | "set") {
+            return response(Self::RES_INVALID_REQ, "Invalid step", None);
+        }
+        let Some((_, _, _, document)) = self.work_request_document(root, request) else {
+            return response(Self::RES_NOT_FOUND, "Document not found", None);
+        };
+        if !Self::work_author_matches(&document, &remote)
+            && !self.resolve_doc_permission(
+                &remote,
+                group,
+                repository,
+                id,
+                Self::PERM_ADMIN,
+            )
+        {
+            return response(Self::RES_DISALLOWED, "Not allowed", None);
+        }
         let path = Self::work_permission_path(root, id);
         match step.as_str() {
             "get" => {

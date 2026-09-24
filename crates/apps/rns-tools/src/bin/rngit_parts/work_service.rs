@@ -331,10 +331,7 @@ impl ReticulumGitNode {
                 {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                let Some((_, _, _, _)) = self.work_request_document(&root, request) else {
-                    return response(Self::RES_NOT_FOUND, "Document not found", None);
-                };
-                self.work_permissions(&root, request)
+                self.work_permissions(&root, request, remote, &group, &repository)
             }
             _ => response(Self::RES_INVALID_REQ, "Invalid request", None),
         }
