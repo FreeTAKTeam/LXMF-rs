@@ -81,6 +81,9 @@ impl ReticulumGitNode {
                     return response(Self::RES_NOT_FOUND, "Not found", None);
                 };
                 if !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN) {
+                    if !self.resolve_permission(&remote, &group, &repository, Self::PERM_READ) {
+                        return response(Self::RES_NOT_FOUND, "Not found", None);
+                    }
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
                 let allowed_path = state.path.clone();
