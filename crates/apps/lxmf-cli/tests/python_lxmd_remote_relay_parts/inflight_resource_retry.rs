@@ -145,18 +145,34 @@ fn verify_direct_resource_retry(
     Ok(())
 }
 
-fn exercise_inflight_resource_restart(
-    lxmd_bin: &Path,
-    reticulumd_bin: &Path,
+struct InflightResourceRestart<'a> {
+    lxmd_bin: &'a Path,
+    reticulumd_bin: &'a Path,
     relay_a_rpc_port: u16,
-    relay_a_dir: &Path,
-    relay_a: &mut Option<SpawnedNode>,
+    relay_a_dir: &'a Path,
+    relay_a: &'a mut Option<SpawnedNode>,
     relay_b_rpc_port: u16,
     python_control_a_port: u16,
     python_control_b_port: u16,
-    hash_a: &str,
-    hash_b: &str,
+    hash_a: &'a str,
+    hash_b: &'a str,
+}
+
+fn exercise_inflight_resource_restart(
+    context: InflightResourceRestart<'_>,
 ) -> Result<(), String> {
+    let InflightResourceRestart {
+        lxmd_bin,
+        reticulumd_bin,
+        relay_a_rpc_port,
+        relay_a_dir,
+        relay_a,
+        relay_b_rpc_port,
+        python_control_a_port,
+        python_control_b_port,
+        hash_a,
+        hash_b,
+    } = context;
     python_control_call(
         python_control_b_port,
         "set_router_resource_callback_chaining",
@@ -409,18 +425,18 @@ fn python_direct_resource_retry_after_upstream_restart_e2e() {
         wait_for_known_path_without_announce(relay_a_rpc_port, &hash_b)?;
         wait_for_known_path_without_announce(relay_b_rpc_port, &hash_a)?;
 
-        exercise_inflight_resource_restart(
-            &lxmd_bin,
-            &reticulumd_bin,
+        exercise_inflight_resource_restart(InflightResourceRestart {
+            lxmd_bin: &lxmd_bin,
+            reticulumd_bin: &reticulumd_bin,
             relay_a_rpc_port,
-            &relay_a_dir,
-            &mut relay_a,
+            relay_a_dir: &relay_a_dir,
+            relay_a: &mut relay_a,
             relay_b_rpc_port,
             python_control_a_port,
             python_control_b_port,
-            &hash_a,
-            &hash_b,
-        )
+            hash_a: &hash_a,
+            hash_b: &hash_b,
+        })
     })();
 
     let failure = outcome.as_ref().err().cloned();
