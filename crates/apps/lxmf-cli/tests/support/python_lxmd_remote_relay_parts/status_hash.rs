@@ -181,7 +181,7 @@ pub fn collect_python_endpoint_diagnostics(
     )
 }
 
-fn python_control_snapshot(control_port: u16, method: &str, params: Option<Value>) -> String {
+pub fn python_control_snapshot(control_port: u16, method: &str, params: Option<Value>) -> String {
     match python_control_call(control_port, method, params) {
         Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
         Err(err) => format!("control error: {err}"),
@@ -289,7 +289,7 @@ print(RNS.hexrep(destination.hash, delimit=False).lower())
     Ok(hash)
 }
 
-fn rpc_snapshot(rpc_port: u16, method: &str, params: Option<Value>) -> String {
+pub fn rpc_snapshot(rpc_port: u16, method: &str, params: Option<Value>) -> String {
     match rpc_call(rpc_port, method, params) {
         Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
         Err(err) => format!("rpc error: {err}"),

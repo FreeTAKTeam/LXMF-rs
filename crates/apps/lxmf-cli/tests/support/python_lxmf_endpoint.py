@@ -440,6 +440,24 @@ class EndpointState:
             f"(path_found={path_found}, identity_found={identity_found})"
         )
 
+    def path_snapshot(self, destination_hex: str) -> dict:
+        destination_hash = bytes.fromhex(destination_hex)
+        with RNS.Transport.path_table_lock:
+            entry = RNS.Transport.path_table.get(destination_hash)
+            if entry is None:
+                return {"known": False, "destination": destination_hex}
+
+            receiving_interface = entry[5]
+            return {
+                "known": True,
+                "destination": destination_hex,
+                "timestamp": entry[0],
+                "next_hop": bytes(entry[1]).hex() if entry[1] is not None else None,
+                "hops": int(entry[2]),
+                "interface": getattr(receiving_interface, "name", str(receiving_interface)),
+                "interface_type": type(receiving_interface).__name__,
+            }
+
     def request_path(self, destination_hex: str) -> dict:
         destination_hash = bytes.fromhex(destination_hex)
         RNS.Transport.request_path(destination_hash)
@@ -630,6 +648,8 @@ class ControlHandler(socketserver.StreamRequestHandler):
                     params["destination"],
                     float(params.get("timeout", 60.0)),
                 )
+            elif method == "path_snapshot":
+                result = self.server.state.path_snapshot(params["destination"])
             elif method == "request_path":
                 result = self.server.state.request_path(params["destination"])
             elif method == "open_raw_link":

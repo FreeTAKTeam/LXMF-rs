@@ -790,14 +790,29 @@ cargo test -p lxmf-cli --test python_lxmd_remote_relay \
   -- --ignored --nocapture --test-threads=1
 # pinned Reticulum 99de23c040d507e3fefca19e87b182302902725d
 # pinned LXMF 727830cefda83d9c6e3982b48675425f3f988f9c
-# 2 consecutive passes including the Resource assertion; each 1 passed; 0 failed
+# 2 earlier consecutive passes including the Resource assertion; each 1 passed; 0 failed
 ```
 
 The regression required no production change: the first experiment reused
 pre-restart Python LXMF direct Links, so the acceptance now sends only fresh
-application traffic after restart. This closes the shared-instance/multi-hop
-discovery, delivery-proof, raw-Link traffic, daemon-replacement, and one
-post-restart Resource digest/metadata/completion slice of #609. It does not
-close the umbrella issue or its separate discrepancy-tracking row;
-direct/opportunistic LXMF retry modes and other transport/recovery behaviors
-remain open.
+application traffic after restart. Later follow-up runs exposed intermittent
+behavior that the earlier passes did not: one full invocation failed after
+about 55 seconds waiting for the reverse B-to-A LXMF delivery, with B's
+outbound message still at `outbound`, A's inbox empty, and no accepted inbound
+delivery Link at A. A separate diagnostic attempt waited 300 seconds for Rust
+relay A to learn Python A's exact delivery destination and timed out with that
+route still unknown. The test now snapshots that exact route immediately after
+the existing path-discovery setup and, if it is absent, fails with relay and
+Python route/process diagnostics rather than adding another long wait. Receiver
+timeout failures also capture outbound status, inboxes, relay path/interface
+state, and endpoint diagnostics. Three subsequent full invocations passed in
+about 9.4 seconds each; an additional verification run during this update also
+passed in 9.44 seconds. Those passes do not resolve the conflicting failure
+observations; the root cause remains unconfirmed, and this change improves
+failure visibility without changing production transport behavior.
+
+This establishes the shared-instance/multi-hop discovery, delivery-proof,
+raw-Link traffic, daemon-replacement, and one post-restart Resource
+digest/metadata/completion slice of #609, but it does not close the umbrella
+issue or its separate discrepancy-tracking row. Direct/opportunistic LXMF
+retry modes and other transport/recovery behaviors remain open.
