@@ -146,7 +146,11 @@ carrier-level evidence, not the broader duplicate or queue-recovery cases.
 An additional focused regression verifies that a locally hosted destination's
 valid announce, when received through a shared-instance child, does not become
 a remote route or fan out to a sibling client. This proves one software matrix
-cell only and does not promote the #609 row.
+cell only and does not promote the #609 row. Path-table startup restore also
+rejects a cached announce whose recovered identity is already blackholed,
+matching the pinned `Transport.py` startup predicate; the save/blackhole/restore
+test verifies the route and recovered destination identity are both absent.
+This closes one cached-route validity cell only and leaves #609 partial.
 
 A disjoint transport-disabled regression now covers a different local/shared
 matrix cell: a LinkRequest arriving from one shared-instance virtual child for

@@ -534,6 +534,29 @@ receiving interface is still available. These tests cover the Rust restore
 accept/reject behavior; they do not claim parity for all Python cache or
 announce semantics.
 
+The pinned startup path also recalls the cached announce identity and refuses
+to restore a destination present in `Transport.blackholed_identities`
+(`RNS/Transport.py` at the reference SHA above). The production-path
+`reticulum_path_table_restore_skips_blackholed_cached_announce_identity`
+regression saves a learned route, marks that identity blackholed on the
+replacement transport, then restores through
+`restore_reticulum_path_table_report`. Before the fix it failed with one route
+restored; after the fix it reports `active_blackholed_identity == 1`, restores
+zero active routes, and exposes neither the path nor its destination identity.
+The filter uses the recovered identity in the cached announce and runs before
+installing that cache entry or path.
+
+```text
+env TMPDIR=/dev/shm cargo test -p reticulum-rs-transport --lib \
+  reticulum_path_table_restore_skips_blackholed_cached_announce_identity -- --nocapture
+# 1 passed; 0 failed
+```
+
+This is a deterministic Rust production save/restore regression against the
+pinned Python startup predicate, not a Python↔Rust daemon process trace. It
+closes only this cached-route validity case; the broader #609 acceptance stays
+open.
+
 ```text
 cargo test -p reticulum-rs-transport --lib stale_route_expiry_keeps_exact_deadline_and_removes_after_it
 cargo test -p reticulum-rs-transport --lib reticulum_path_table_restore_skips_

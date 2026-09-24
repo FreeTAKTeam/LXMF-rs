@@ -616,7 +616,10 @@ both paths are relearned, a short opportunistic LXMF message queued during relay
 downtime reaches the peer and is acknowledged as delivered, and fresh RNS links
 and raw packets pass in both directions. Direct/resource retry modes, broader
 multi-hop packet/proof/link duplicate cases and deeper relay replacement remain
-open. A mixed pinned-Python
+open. Cached path-table restore now also checks the identity recovered from the
+cached announce against transport blackhole policy before installing the route;
+a production save/blackhole/restore regression reports one skipped row and no
+restored path, matching the pinned Python startup predicate. A mixed pinned-Python
 link-establishment timeout trace now proves pending cleanup after the path is
 available; the two-carrier split Resource trace covers the multi-hop Resource
 direction.
