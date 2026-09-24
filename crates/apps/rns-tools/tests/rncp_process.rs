@@ -94,6 +94,7 @@ fn run_client_output(
     port: u16,
     cwd: &Path,
     identity_seed: &str,
+    silent: bool,
 ) -> io::Result<std::process::Output> {
     let binary = env!("CARGO_BIN_EXE_rncp");
     let source = source.to_string_lossy();
@@ -101,17 +102,20 @@ fn run_client_output(
     command
         .arg(source.as_ref())
         .arg(destination)
-        .args(["--connect", &format!("127.0.0.1:{port}"), "--no-compress", "--silent"])
+        .args(["--connect", &format!("127.0.0.1:{port}"), "--no-compress"])
         .arg("--identity-seed")
         .arg(identity_seed)
         .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if silent {
+        command.arg("--silent");
+    }
     command.output()
 }
 
 fn run_client(source: &Path, destination: &str, port: u16, cwd: &Path) -> io::Result<()> {
-    let output = run_client_output(source, destination, port, cwd, "rncp-process-client")?;
+    let output = run_client_output(source, destination, port, cwd, "rncp-process-client", true)?;
     if !output.status.success() {
         return Err(io::Error::other(format!(
             "rncp client failed: {}\nstdout:\n{}\nstderr:\n{}",
@@ -257,6 +261,7 @@ fn rncp_denied_sender_reports_nonzero_status() -> io::Result<()> {
             port,
             &client_root,
             "rncp-process-denied-client",
+            true,
         )?;
         assert!(!output.status.success(), "unauthorised sender unexpectedly succeeded");
         assert!(
@@ -611,7 +616,28 @@ fn rncp_listener_reports_received_file_disk_error() -> io::Result<()> {
 
         // Resource delivery can succeed even though the application-level
         // save fails; the listener must surface that distinct outcome.
-        run_client(&source, &destination, port, &client_root)?;
+        let sender = run_client_output(
+            &source,
+            &destination,
+            port,
+            &client_root,
+            "rncp-process-receiver-disk-error-client",
+            false,
+        )?;
+        assert!(
+            sender.status.success(),
+            "Resource transfer failed: {}",
+            String::from_utf8_lossy(&sender.stderr)
+        );
+        let sender_stdout = String::from_utf8_lossy(&sender.stdout);
+        assert!(
+            sender_stdout.contains("sent to"),
+            "sender overstated remote persistence: {sender_stdout}"
+        );
+        assert!(
+            !sender_stdout.contains("copied to"),
+            "sender claimed a remote save it cannot verify: {sender_stdout}"
+        );
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());

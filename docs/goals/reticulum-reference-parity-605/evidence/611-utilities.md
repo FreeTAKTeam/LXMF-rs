@@ -448,6 +448,15 @@ receive-side cancellation/disk faults remain open; `d66b19d1` covers the
 bounded listener restart path. Commit `a5f57dba` covers interrupted Resource
 failure and native phase output.
 
+The Rust sender's success transcript now says `sent to`, not `copied to`,
+because outbound Resource completion does not acknowledge the peer's disk
+save. `rncp_listener_reports_received_file_disk_error` verifies this boundary:
+the sender exits successfully with delivery wording while the receiver emits
+its precise save error. A receiver-persistence acknowledgment is not part of
+the Python-compatible workflow, so end-to-end sender failure on receiver disk
+errors remains an open acceptance gap rather than being inferred from Resource
+completion.
+
 ## Current `rnpath` management increment
 
 Commit `aff10e67` extends the existing daemon-RPC utility path without adding
