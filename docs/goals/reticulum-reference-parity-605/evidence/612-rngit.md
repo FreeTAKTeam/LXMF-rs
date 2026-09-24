@@ -266,6 +266,20 @@ The module-size gate passes. The new permission-failure regressions are split
 into `issue_612_permission_failure_tests.rs`; all changed `rngit_parts` modules
 remain within the active 500-line module limit.
 
+Two bounded #612 follow-ups are now included in this PR. The ignored production
+handler differential `work_list_unknown_scope_matches_pinned_python_empty_result`
+compares the exact response status and MessagePack body against pinned RNS
+1.5.4; an unknown `list` scope returns `RES_OK` with empty `active`,
+`completed`, and `proposed` arrays in both implementations. It passed with
+`RETICULUM_PY_REPO` at `99de23c040d507e3fefca19e87b182302902725d` and
+`TMPDIR=/dev/shm`. The local production-handler regression
+`document_admin_can_complete_work_through_production_handler` creates work
+under repository work rights, applies a document-admin sidecar, and verifies
+the admin can complete it and move the document to `completed/`; this is
+unit/source evidence, not a Python differential. Both tests cover narrow
+request/permission seams only, so the broad #612 operation and permission
+criteria remain open.
+
 ## Deliberate remaining gaps
 
 - The transport-neutral local request seam still carries only the remote

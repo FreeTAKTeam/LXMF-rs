@@ -111,6 +111,14 @@ without `doc_id`: pinned Python and Rust both return `INVALID_REQ` with
 this operation-specific request error; the remaining work-operation matrix
 and hosted evidence are still open.
 
+A new pinned-Python production-handler differential covers `list` with an
+unknown scope: Rust now returns `RES_OK` and the same empty `active`,
+`completed`, and `proposed` arrays as RNS 1.5.4. A separate local regression
+exercises document-admin completion through the Rust production handler after
+normal repository work rights authorize creation. These are two bounded
+request/authorization cases only; full operation and permission matrices
+remain open.
+
 A pinned-Python production-handler differential found and fixes one #612
 permission case: repository administrators can view a document with an
 explicit `read:none` document sidecar when repository-level read access is
