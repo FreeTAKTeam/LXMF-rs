@@ -10,6 +10,7 @@ use crate::rnsh_parts::terminal_size::send_window_size_changes;
 use rns_transport::hash::AddressHash;
 use rns_transport::transport::{SendPacketOutcome, TransportChannel};
 use std::io;
+use std::io::IsTerminal;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -22,7 +23,7 @@ use tokio::time::{timeout, Duration};
 enum IncomingMessage {
     Noop(NoopMessage),
     Version(VersionInfoMessage),
-    Window,
+    Window(WindowSizeMessage),
     Execute(ExecuteCommandMessage),
     Stream(StreamDataMessage),
     Error(ErrorMessage),
@@ -48,14 +49,22 @@ pub(crate) async fn serve_link(
 
     let mut state = ServerState::WaitingForVersion;
     let mut stdin_tx: Option<mpsc::Sender<Vec<u8>>> = None;
+    let mut resize_tx: Option<mpsc::Sender<WindowSizeMessage>> = None;
     let mut command_cancel: Option<oneshot::Sender<()>> = None;
     let mut command_task = None;
+    let (command_done_tx, mut command_done_rx) = watch::channel(false);
 
     let session_result = async {
         loop {
             let message = tokio::select! {
                 changed = link_closed.changed() => {
                     if changed.is_err() || *link_closed.borrow() {
+                        break;
+                    }
+                    continue;
+                }
+                changed = command_done_rx.changed(), if command_task.is_some() => {
+                    if changed.is_err() || *command_done_rx.borrow() {
                         break;
                     }
                     continue;
@@ -95,12 +104,15 @@ pub(crate) async fn serve_link(
                         break;
                     }
                     let (new_stdin_tx, stdin_rx) = mpsc::channel(16);
-                    if message.pipe_stdin {
-                        stdin_tx = Some(new_stdin_tx);
-                    }
+                    stdin_tx = Some(new_stdin_tx);
+                    let terminal_mode =
+                        !message.pipe_stdin || !message.pipe_stdout || !message.pipe_stderr;
+                    let (new_resize_tx, resize_rx) = mpsc::channel(16);
+                    resize_tx = terminal_mode.then_some(new_resize_tx);
                     let (cancel_tx, cancel_rx) = oneshot::channel();
                     command_cancel = Some(cancel_tx);
                     let process_channel = channel.clone();
+                    let command_done = command_done_tx.clone();
                     let root = runtime.root.clone();
                     let remote_identity = runtime
                         .peer_identity(link_id)
@@ -117,9 +129,14 @@ pub(crate) async fn serve_link(
                                 pipe_stderr: message.pipe_stderr,
                                 term: message.term,
                                 remote_identity,
+                                rows: message.rows,
+                                cols: message.cols,
+                                hpix: message.hpix,
+                                vpix: message.vpix,
                             },
                             stdin_rx,
                             cancel_rx,
+                            resize_rx,
                         )
                         .await
                         {
@@ -134,6 +151,7 @@ pub(crate) async fn serve_link(
                                 );
                             }
                         }
+                        let _ = command_done.send(true);
                     }));
                     state = ServerState::Running;
                 }
@@ -156,7 +174,15 @@ pub(crate) async fn serve_link(
                         }
                     }
                 }
-                IncomingMessage::Window => {}
+                IncomingMessage::Window(message) => {
+                    if state != ServerState::Running {
+                        send_protocol_error(&channel, "unexpected window-size message").await?;
+                        break;
+                    }
+                    if let Some(sender) = resize_tx.as_ref() {
+                        let _ = sender.send(message).await;
+                    }
+                }
                 IncomingMessage::Noop(NoopMessage) => {
                     if state == ServerState::Running {
                         channel.send_typed(&NoopMessage).await.map_err(channel_error)?;
@@ -228,9 +254,9 @@ pub(crate) async fn initiate(
     channel
         .send_typed(&ExecuteCommandMessage {
             command: (!command.is_empty()).then_some(command),
-            pipe_stdin: true,
-            pipe_stdout: true,
-            pipe_stderr: true,
+            pipe_stdin: !std::io::stdin().is_terminal(),
+            pipe_stdout: !std::io::stdout().is_terminal(),
+            pipe_stderr: !std::io::stderr().is_terminal(),
             term: std::env::var("TERM").ok(),
             rows: initial_window_size.map(|size| size.rows),
             cols: initial_window_size.map(|size| size.cols),
@@ -306,7 +332,7 @@ async fn wait_for_command(
                 }
                 IncomingMessage::Noop(NoopMessage) => {}
                 IncomingMessage::Version(_)
-                | IncomingMessage::Window
+                | IncomingMessage::Window(_)
                 | IncomingMessage::Execute(_) => {}
             }
         }
@@ -362,8 +388,8 @@ async fn register_handlers(
     let tx = sender.clone();
     let overflow = queue_overflowed.clone();
     channel
-        .register_typed_handler::<WindowSizeMessage, _>(move |_message| {
-            enqueue_message(&tx, &overflow, IncomingMessage::Window);
+        .register_typed_handler::<WindowSizeMessage, _>(move |message| {
+            enqueue_message(&tx, &overflow, IncomingMessage::Window(message));
             true
         })
         .await
