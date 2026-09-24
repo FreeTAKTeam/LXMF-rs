@@ -36,21 +36,37 @@ const BACKENDS: &[Backend] = &[
 fn command_available(program: &str) -> bool {
     let program_path = Path::new(program);
     if program_path.components().count() > 1 {
-        return fs::metadata(program_path).is_ok_and(|metadata| metadata.is_file());
+        return executable_file(program_path);
     }
     let Some(path) = media_env::var_os("PATH") else { return false };
     media_env::split_paths(&path).any(|directory| {
         let candidate = directory.join(program);
         #[cfg(windows)]
         {
-            candidate.is_file()
+            executable_file(&candidate)
                 || [".exe", ".cmd", ".bat"].iter().any(|suffix| {
-                    directory.join(format!("{program}{suffix}")).is_file()
+                    executable_file(&directory.join(format!("{program}{suffix}")))
                 })
         }
         #[cfg(not(windows))]
-        candidate.is_file()
+        executable_file(&candidate)
     })
+}
+
+fn executable_file(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else { return false };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 #[allow(dead_code)]

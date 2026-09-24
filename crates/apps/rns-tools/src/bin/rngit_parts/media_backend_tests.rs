@@ -25,6 +25,24 @@ fn automatic_backend_selection_uses_reference_preference_order() {
     assert!(select_backend(None, None, |_| false).is_none());
 }
 
+#[cfg(unix)]
+#[test]
+fn backend_availability_skips_non_executable_files_like_python_which() {
+    use super::executable_file;
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let backend = directory.path().join("magick");
+    std::fs::write(&backend, b"not executable").expect("write backend placeholder");
+    std::fs::set_permissions(&backend, std::fs::Permissions::from_mode(0o644))
+        .expect("make backend non-executable");
+    assert!(!executable_file(&backend));
+
+    std::fs::set_permissions(&backend, std::fs::Permissions::from_mode(0o755))
+        .expect("make backend executable");
+    assert!(executable_file(&backend));
+}
+
 #[test]
 fn explicit_backend_selection_matches_reference_override_semantics() {
     for backend in BACKENDS {

@@ -102,6 +102,10 @@ configuration still wins, and a missing cached executable falls back to normal
 preference order. Rust unit regressions cover that sequence, with a separate
 ignored test exercising the pinned Python helper directly; the broader #613
 acceptance remains partial.
+Backend discovery now also matches Python's executable-file eligibility on
+Unix, so a non-executable earlier converter cannot mask a later usable one; a
+focused filesystem unit regression covers the permission check. Live encoding
+by the other converter families remains unverified, and #613 remains partial.
 The production-Link page/media differential also covers one nested image path
 containing a space and confirms that rendered Micron markup matches the frozen
 Python `quote_plus(file_path)` encoding. Other template and rendering behavior

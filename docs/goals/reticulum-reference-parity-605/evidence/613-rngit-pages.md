@@ -503,9 +503,16 @@ The local environment reports `/usr/bin/ffmpeg`; `magick`, `convert`, `gm`, and
 GitHub commit because its local reference checkout was absent. The installed
 ffmpeg help lists `-quality`; this check did not run a conversion.
 
+The same pinned backend selector uses `shutil.which`, which ignores regular
+files on `PATH` that lack executable permission. Rust's initial availability
+check accepted any regular file, potentially selecting an unusable earlier
+backend instead of a later executable one. The check now requires executable
+permission on Unix, and a focused filesystem regression covers both modes;
+this does not claim live encoding by each backend family.
+
 ```text
 cargo test -p rns-tools --bin rngit --all-features media_backend_tests -- --nocapture
-  PASS (7 passed)
+  PASS (10 passed; includes executable-permission eligibility)
 TMPDIR="$PWD/target/tmp" cargo test -p rns-tools --bin rngit --all-features -- --test-threads=1
   PASS (55 passed, 2 ignored)
 cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings
