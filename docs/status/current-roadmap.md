@@ -51,6 +51,17 @@ Python-shaped numbered comment before shutdown and verifies its ID/content from
 the pinned Python view response after restart. Broader disk-fault, restart, and
 non-work CLI workflows remain open.
 
+For #612 acceptance row 3, the pinned RNS 1.5.4 server dispatches each Link
+request on its own thread, while rngit's work ID selection is scan-then-use and
+document writes use a fixed `<path>.tmp` followed by `os.rename`, without a
+work-storage lock. This does not define atomic concurrent updates. The Rust
+server serializes requests within one process and reserves create directories;
+its existing concurrent-create tests cover that bounded guarantee. Multiple
+processes sharing a work root remain unsupported/undefined in both
+implementations. See the row-level evidence in
+[`reticulum-parity-matrix.md`](reticulum-parity-matrix.md) and the detailed
+source analysis in `docs/goals/reticulum-reference-parity-605/evidence/612-rngit.md`.
+
 A separate local #612 follow-up now covers Python-shaped work metadata
 defaults/errors (including the missing `edited` timestamp default), malformed
 top-level request responses without filesystem changes, corrupt-root

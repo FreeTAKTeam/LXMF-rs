@@ -45,6 +45,7 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 | Python work CLI | The pinned Python `rngit work` CLI runs create/list/view/edit/update/perms/complete/activate/propose/delete against the Rust service over real Reticulum Links; a deterministic editor and piped confirmation verify signed content, permission sidecars, transitions, and cleanup | local exact-reference trace verified; hosted result pending |
 | Malformed work requests and storage | Pinned Python clients send invalid list scope, malformed document ID, and unknown operation through identified production Links; Rust rejects malformed persisted MessagePack roots and trailing bytes, and the Python `rngit work view` client receives `Remote error: Error loading document` | local unit and exact-reference mixed-peer trace; hosted result pending |
 | Concurrent network work creation | Four independent pinned-Python processes simultaneously establish identified Links to one production Rust `rngit` server, create signed work documents, and verify unique numeric IDs each have persisted root files | local test and PR Verify automation added; hosted result pending |
+| Concurrent work mutation contract | Pinned RNS 1.5.4 `Link.handle_request` dispatches each packet and completed request Resource by starting a daemon thread (`RNS/Link.py`); `ReticulumGitNode.handle_work` has no work-storage lock, `_work_get_next_id` and `_work_get_next_comment_id` scan then choose the next integer, and `_work_save_document` writes the fixed `<path>.tmp` before `os.rename`. This gives per-replacement behavior only when writers do not collide; it does not define linearizable concurrent edits/comments, collision-free IDs, or recovery from two writers sharing the same temporary path. Rust's production `process_request` holds `runtime.node`'s Tokio mutex over the full Git handler call, serializing all requests handled by one Rust server process. Rust's create path additionally reserves each candidate directory with `create_dir` and retries `AlreadyExists`; the unit concurrency test exercises eight independently cloned node instances and verifies eight distinct persisted roots. | Rust single-process request serialization and create reservation are verified locally; reference dispatch and storage guarantee inspected at pinned RNS 1.5.4. Concurrent same-document mutation semantics and concurrent comment-ID allocation are not promised by the Python implementation. Multiple processes sharing one work root are unsupported/undefined: neither implementation provides a cross-process storage-wide lock or a cross-process transaction contract. |
 | Production work authorization | The pinned Python `rngit work` CLI sets an explicit document `write:none` deny over a live Link, attempts a signed edit, receives a failed `Not allowed` response, and verifies both byte-identical persisted MessagePack and unchanged content from a subsequent service view; permissions are restored for remaining lifecycle checks | local production-network regression verified |
 | Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets. The native Rust client now sends Python-compatible `/git/list`, `/git/fetch`, and oversized `/git/push` plus signed `/mgmt/work` and the multi-step release protocol to a pinned Python `git.repositories` server, including raw Git bundle and artifact Resource handling, exact `git bundle verify`, remote-ref verification after push, release creation/upload/finalization/list/view/latest/delete, and the production compatibility-client bridge. | fixture, both bounded request directions, integer timestamps and binary work values verified over Python↔Rust production Links and in storage; broader cross-process/network restart/concurrency/fault matrix unverified |
 
@@ -66,6 +67,40 @@ to the frozen Reticulum checkout's vendored `RNS.vendor.umsgpack` decoder (the
 codec imported as `mp` by rngit's server). Python decodes the field as `None`,
 confirming explicit nil remains distinct from a byte string. The binary identity
 hash is already covered by the bidirectional production-Link regression above.
+
+### Concurrent mutation guarantee (acceptance row 3)
+
+The pinned source is Reticulum revision
+`99de23c040d507e3fefca19e87b182302902725d` (`RNS._version.__version__ ==
+"1.5.4"`). In `RNS/Link.py`, both a packet-sized request and a completed
+request Resource call `threading.Thread(...).start()` for
+`handle_request`. That method invokes the destination's response handler
+directly on the per-request thread. In `RNS/Utilities/rngit/server.py`,
+`handle_work` routes into work operations without taking a work/storage lock;
+the `Lock` instances on `ReticulumGitNode` are scoped to active links, stats,
+sync, and permissions, not work documents. ID selection is scan-then-use and
+document persistence uses the deterministic sibling name `<path>.tmp` followed
+by `os.rename`. Consequently, the reference does not promise serialized or
+transactional concurrent work updates. `os.rename` protects a completed
+replacement from exposing a partially written destination in the non-collision
+case; it does not make the scan/write sequence atomic or prevent collisions on
+the shared temporary path. Concurrent creates/edits/comments can therefore
+race; no collision-safe multi-writer contract is defined. This describes the
+reference write path without asserting atomic-rename behavior on every
+filesystem or platform.
+
+Rust's network adapter takes `runtime.node.lock()` before
+`handle_request_with_peer_identity` and retains it through the handler call,
+so Git/work requests to one Rust server process are serialized. Creation also
+uses exclusive directory creation and retries a colliding numeric ID; the
+focused local test runs eight concurrent cloned nodes against one root and
+checks eight persisted document roots. The pinned-Python process test covers
+four concurrent clients creating against this single Rust process, not
+concurrent writes to one existing document. This stronger Rust single-process
+ordering is safe and does not assert a Python guarantee. A shared work root
+written by multiple server processes has no cross-process lock or transaction
+contract in either implementation and is unsupported/undefined. No behavior or
+test was added for speculative cross-process coordination.
 
 ## Commands and results
 
