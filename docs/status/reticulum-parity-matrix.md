@@ -405,7 +405,9 @@ placeholders:
   and transport adapter, waits for runtime task/socket teardown and channel
   removal, then restarts on the same test-owned discovery/data ports. Native
   plan discovery and device filtering are unchanged. This is one software
-  lifecycle slice; full daemon process shutdown, native carrier loss, platform
+  lifecycle slice. A failed activation after discovery bind also removes the
+  host channel and releases that socket, as covered by a daemon-binary rollback
+  regression. Full daemon process shutdown, native carrier loss, platform
   coverage, and the broader #614 interface-family matrix remain open.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,

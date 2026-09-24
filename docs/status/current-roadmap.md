@@ -103,12 +103,15 @@ The #614 Windows BLE software increment adds a dedicated `windows-latest` CI
 lane for the WinRT-backed resolver and deterministic BLE pairing/runtime tests;
 the pairing filter regression also proves that a listed stale address cannot
 authorize a different currently scanned device. The lane passed on PR #634 head
-`8d5d3586`; a rerun for the follow-up daemon activation increment is pending.
+`2ded2636`; the hosted HIL and standard checks passed on that head (publish and
+peer-lifecycle checks skipped).
 A new daemon-binary loopback regression also exercises the production
 AutoInterface activation helper, manager channel registration/removal, runtime
 task/socket teardown, and restart on the same test-owned ports. It does not
 replace the remaining native-interface, broader #614 lifecycle, platform, or
-paired-device/hardware evidence and does not promote #614/#605 to complete.
+paired-device/hardware evidence and does not promote #614/#605 to complete. A
+second regression now covers failed activation after the discovery socket is
+bound, asserting daemon-channel rollback and immediate discovery-port reuse.
 Pinned Python AutoInterface peer timeout also detaches and tears down each
 expired peer interface; Rust's corresponding peer job now removes the peer's
 virtual interface and outbound route. A focused regression confirms that

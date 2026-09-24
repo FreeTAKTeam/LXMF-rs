@@ -283,3 +283,28 @@ interfaces = [
     std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, data_port))
         .expect("daemon shutdown should release its configured data port");
 }
+
+#[tokio::test]
+async fn failed_daemon_auto_activation_unregisters_channel_and_releases_bound_sockets() {
+    let mut plan = auto_loopback_plan();
+    let discovery_port = plan.startup_plan.discovery_listeners[0].unicast_bind_port;
+    plan.startup_plan.data_listeners[0].bind_address = "not-an-ip-address".to_string();
+    let iface = InterfaceConfig { kind: "AutoInterface".to_string(), ..InterfaceConfig::default() };
+    let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+
+    let error = match activate_auto_plan(&plan, &iface, &iface_manager).await {
+        Ok(activation) => {
+            activation.stop(&iface_manager).await;
+            panic!("invalid data listener unexpectedly activated");
+        }
+        Err(error) => error,
+    };
+
+    assert!(error.contains("invalid"), "unexpected activation error: {error}");
+    assert!(
+        iface_manager.lock().await.interface_hashes().is_empty(),
+        "failed activation unregisters the daemon host interface"
+    );
+    std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, discovery_port))
+        .expect("failed activation releases its already-bound discovery socket");
+}
