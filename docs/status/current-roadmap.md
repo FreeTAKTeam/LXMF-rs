@@ -55,7 +55,10 @@ rotation, rejects stale credentials, and uses the rotated key for egress. The
 transport ingress suite also verifies an already-attached accepted child
 channel rejects the previous parent credential and admits frames under the
 rotated credential after live configuration change. This is software-only
-coverage of the child decoder state; no production-code fix was required. The
+coverage of the child decoder state; no production-code fix was required. TCP
+accepted clients now inherit their parent's IFAC policy before the child worker
+is scheduled, with a deterministic first-poll regression proving plaintext is
+rejected; this addresses accepted-stream startup ordering only. The
 broader software support matrix, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`

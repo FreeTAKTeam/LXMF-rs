@@ -207,6 +207,53 @@ mod tests {
         assert!(virtual_state.is_some());
     }
 
+    #[tokio::test]
+    async fn inherited_interface_worker_starts_with_parent_ifac_policy() {
+        struct TestInterface;
+
+        impl Interface for TestInterface {
+            fn mtu() -> usize {
+                64
+            }
+        }
+
+        let mut manager = InterfaceManager::new(16);
+        let parent = manager.new_channel(16);
+        let parent_address = *parent.address();
+        assert!(manager.set_shared_config(
+            parent_address,
+            InterfaceSharedConfig {
+                network_name: Some("tcp-child-network".to_string()),
+                passphrase: Some("tcp-child-secret".to_string()),
+                ..Default::default()
+            }
+        ));
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let child = manager.spawn_inheriting(
+            parent_address,
+            TestInterface,
+            move |context: InterfaceContext<TestInterface>| async move {
+                let state = context.channel.ifac_state.clone();
+                let result = state
+                    .read()
+                    .expect("IFAC state lock")
+                    .as_ref()
+                    .map(|_| decode_packet_ifac(&state, &[0, 1]).is_err())
+                    .unwrap_or(false);
+                let _ = tx.send(result);
+            },
+        ).expect("parent policy inherited before worker spawn");
+
+        assert!(rx.await.expect("child worker result"));
+        assert_eq!(
+            manager.shared_config(&child).and_then(|config| config.passphrase.as_deref()),
+            Some("tcp-child-secret")
+        );
+        manager.stop_interface(parent_address);
+        manager.stop_interface(child);
+    }
+
     #[test]
     fn invalid_ifac_reconfiguration_preserves_the_previous_live_context() {
         let mut mgr = InterfaceManager::new(16);

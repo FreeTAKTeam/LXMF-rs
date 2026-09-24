@@ -568,9 +568,19 @@ impl TcpServer {
                                     },
                                 );
                                 let child_status = accepted_client.runtime_status_handle();
-                                let child_iface =
-                                    iface_manager.spawn(accepted_client, TcpClient::spawn);
-                                iface_manager.inherit_runtime_config(parent_iface, child_iface);
+                                let Some(child_iface) = iface_manager.spawn_inheriting(
+                                    parent_iface,
+                                    accepted_client,
+                                    TcpClient::spawn,
+                                ) else {
+                                    runtime_status
+                                        .lock()
+                                        .expect("tcp server runtime status mutex poisoned")
+                                        .mark_accept_error(
+                                            "accepted client runtime policy inheritance failed".to_string(),
+                                        );
+                                    continue;
+                                };
                                 runtime_status
                                     .lock()
                                     .expect("tcp server runtime status mutex poisoned")

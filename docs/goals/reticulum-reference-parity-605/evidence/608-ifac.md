@@ -644,6 +644,33 @@ This adds one accepted-child software reconfiguration case only. It does not
 complete the broader startup/error-reporting or carrier-family matrix, and it
 is not physical-carrier evidence; #608 remains open and partial.
 
+## TCP accepted-client policy is installed before worker startup
+
+The TCP listener previously spawned each accepted `TcpClient` worker and only
+then copied the listener's shared runtime policy into its child channel. Since
+the worker can begin reading concurrently, its initial IFAC state could be the
+default unauthenticated state. `InterfaceManager::spawn_inheriting` now copies
+the parent's configuration and IFAC context before scheduling the child worker;
+TCP acceptance uses this path and declines the client with a fixed runtime
+error if inheritance cannot be completed.
+
+`inherited_interface_worker_starts_with_parent_ifac_policy` checks policy at
+the child's first worker poll and verifies that a plaintext frame is rejected.
+This deterministic regression covers the TCP accepted-stream startup ordering,
+not TCP credential rotation, listener restart, or every carrier family.
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulum-rs-transport --lib \
+  inherited_interface_worker_starts_with_parent_ifac_policy -- --nocapture
+# 1 passed; IFAC policy present on first poll; plaintext rejected
+TMPDIR=/dev/shm cargo test -p reticulum-rs-transport --lib \
+  tcp_server_runtime_status_tracks_accepted_client -- --nocapture
+# 1 passed; accepted-client listener runtime regression
+```
+
+This closes one accepted-TCP child startup-ordering gap only; broad #608
+startup/configuration/error-reporting and carrier-family acceptance remain open.
+
 ## Backbone daemon IFAC ingress and egress
 
 The ignored pinned-Python daemon regression
