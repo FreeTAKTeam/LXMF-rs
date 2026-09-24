@@ -125,6 +125,13 @@ correlated `resource-failed` receipt, tracking cleanup, and persisted failure
 status. This adds one consumer path; the broader #610 callback/status matrix
 remains open.
 
+The daemon consumer now also has an end-to-end outbound-completion regression:
+the peer returns a real Resource proof and the daemon persists the correlated
+completion receipt/status and removes tracking. Together with rejection,
+cancellation, timeout, and partial inbound teardown regressions, this covers
+positive and selected negative consumer paths without treating an error as
+success; the broader #610 consumer/failure matrix remains open.
+
 A separate pinned-Python Resource fault regression now times out a dropped Link
 establishment, reuses the carrier with a fresh production Link ID, and
 verifies a successful one-part Resource exchange by digest. Split-transfer

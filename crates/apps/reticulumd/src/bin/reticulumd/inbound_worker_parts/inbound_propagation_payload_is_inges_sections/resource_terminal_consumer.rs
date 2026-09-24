@@ -17,6 +17,7 @@ use tokio::time::timeout;
 enum ResourcePeerMode {
     HoldResourceRequests,
     DropResourceAdvertisements,
+    CompleteResourceTransfers,
 }
 
 struct DaemonResourcePeer {
@@ -179,6 +180,45 @@ fn track_message_resource(
             bytes: 128,
             sent_status: "sent: link resource".to_string(),
         },
+    );
+}
+
+#[tokio::test]
+async fn production_daemon_consumer_persists_resource_completion_and_cleans_tracking() {
+    let message_id = "daemon-resource-completion-consumer";
+    let mut peer =
+        start_daemon_resource_peer(message_id, ResourcePeerMode::CompleteResourceTransfers).await;
+    tokio::task::yield_now().await;
+    let payload = vec![0x3C; 128];
+    let resource_hash = peer
+        .transport
+        .send_resource(&peer.link_id, payload, None)
+        .await
+        .expect("send Resource over active daemon Link");
+    let resource_hash_hex = hex::encode(resource_hash.as_slice());
+    track_message_resource(&peer, message_id, resource_hash);
+
+    let receipt = timeout(Duration::from_secs(5), peer.receipt_rx.recv())
+        .await
+        .expect("daemon emits completion receipt")
+        .expect("receipt channel remains open");
+    assert_eq!(receipt.message_id, message_id);
+    assert_eq!(receipt.status, "sent: link resource");
+    assert_eq!(receipt.delivery_kind.as_deref(), Some("resource-complete"));
+    assert_eq!(receipt.resource_hash.as_deref(), Some(resource_hash_hex.as_str()));
+    assert_eq!(receipt.bytes, Some(128));
+    assert!(peer.resource_map.lock().expect("resource map").is_empty());
+
+    persist_receipt_update(
+        peer.daemon.as_ref(),
+        receipt,
+        &Arc::new(Mutex::new(HashMap::new())),
+        &peer.resource_map,
+    )
+    .expect("persist Resource completion status");
+    assert_eq!(
+        peer.daemon.message_receipt_status(message_id).expect("receipt status"),
+        Some("sent: link resource".to_string())
     );
 }
 

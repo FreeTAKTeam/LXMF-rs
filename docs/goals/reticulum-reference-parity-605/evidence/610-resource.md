@@ -970,6 +970,31 @@ cargo test -p reticulumd --bin reticulumd \
 # 1 passed
 ```
 
+## Outbound completion through the production daemon consumer
+
+`production_daemon_consumer_persists_resource_completion_and_cleans_tracking`
+uses the production daemon worker and paired in-memory Transports. The peer
+accepts the Resource request and returns the real proof. The daemon consumer
+then emits one `resource-complete` receipt with the matching message ID,
+Resource hash, byte count, and `sent: link resource` status; the receipt
+persister records that status and the outbound tracking entry is removed.
+This exercises the successful callback/status/cleanup path at the same
+consumer boundary as the rejection, cancellation, and timeout regressions.
+Those terminal-error regressions assert rejected/cancelled/failed statuses,
+tracking cleanup, and absence of a fabricated success receipt; the inbound
+teardown regressions assert no `Complete` event or delivered content on
+partial-transfer errors. This focused matrix still does not cover every
+consumer and Resource failure mode, so the issue criterion remains open.
+
+Focused validation:
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  production_daemon_consumer_persists_resource_completion_and_cleans_tracking \
+  -- --nocapture
+# 1 passed; production Link proof, completion receipt/status, and cleanup verified
+```
+
 ## Deterministic partial inbound failure through the daemon consumer
 
 `daemon_reports_partial_inbound_resource_failure_after_gated_link_teardown`

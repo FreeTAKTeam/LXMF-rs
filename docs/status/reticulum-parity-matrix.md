@@ -78,9 +78,12 @@ inventory. The Rust resource sender enforces the Python
 collision-free map hashes, and has pinned Python release-profile transfer
 evidence from empty payloads through 50 MiB in both directions. The forward
 #610 row remains partial because broader timeout/reconnect and callback/status
-coverage are not yet proven; a daemon completion-consumer regression verifies
+coverage are not yet proven; daemon completion-consumer regressions verify
 receipt metadata, peer byte accounting, duplicate-notification suppression,
-exactly-once emission, and tracking cleanup. Pinned-Python traces now prove
+exactly-once emission, persisted success status, and tracking cleanup. Selected
+daemon rejection, cancellation, timeout, and inbound teardown paths also assert
+terminal error statuses and no fabricated success or delivered content.
+Pinned-Python traces now prove
 timeout failure and fresh-Link Resource recovery in both Rust- and
 Python-initiated roles; pinned-Python tests prove cancellation terminal events
 in both directions, exact
