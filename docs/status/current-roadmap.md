@@ -998,7 +998,10 @@ direction.
   software fake-PTY smoke now proves Python-style `KISSInterface` and
   `AX25KISSInterface` alias parsing, strict daemon startup, KISS startup command
   emission, fake READY handling, refreshed `_runtime.kiss.status`, and
-  `rnstatus-rs` JSON/human output without attached modem hardware.
+  `rnstatus-rs` JSON/human output without attached modem hardware. It now also
+  sends Ctrl-C after capturing running status and requires both fake serial PTY
+  slaves to close, with report scope `software_fake_pty_serial_kiss`; this is
+  software teardown evidence for these two serial KISS configs only.
   A software fake-TCP smoke now proves Python-style `TCPClientInterface`
   `kiss_framing = true` alias parsing, strict daemon startup, KISS startup
   command emission, fake READY handling, refreshed `_runtime.kiss_tcp.status`,

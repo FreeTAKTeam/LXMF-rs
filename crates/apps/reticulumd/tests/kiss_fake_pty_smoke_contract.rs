@@ -44,6 +44,11 @@ fn kiss_fake_pty_smoke_preserves_software_evidence_contract() {
         "init_frames_tx",
         "ax25",
         "pty_raw_mode",
+        "software_fake_pty_serial_kiss",
+        "shutdown-requested",
+        "slave_closed",
+        "kill -INT \"$RET_PID\"",
+        "serial KISS PTY slaves remained open after daemon shutdown",
         "report.json",
     ] {
         assert!(
@@ -77,7 +82,10 @@ fn kiss_runbook_documents_fake_pty_smoke_artifacts() {
         "_runtime.kiss.status.ready_frames_rx >= 1",
         "_runtime.kiss.status.init_frames_tx >= 5",
         "fake peer recording all KISS startup command frames",
-        "not a substitute for real TNC or modem hardware evidence",
+        "graceful daemon shutdown",
+        "requires both PTY",
+        "software_fake_pty_serial_kiss",
+        "substitute for real TNC or modem hardware evidence",
     ] {
         assert!(
             runbook.contains(required),

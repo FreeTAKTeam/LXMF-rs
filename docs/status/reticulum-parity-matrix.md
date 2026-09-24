@@ -375,7 +375,11 @@ placeholders:
   fake-PTY smoke now proves Python-style serial `KISSInterface` and
   `AX25KISSInterface` configs, strict startup, KISS startup command emission,
   fake READY handling, and refreshed daemon/operator status without attached
-  modem hardware. Python
+  modem hardware. The same smoke now sends Ctrl-C after capturing running
+  status and requires both fake serial PTY slaves to close; its report is
+  tagged `software_fake_pty_serial_kiss`. This proves software teardown of
+  these two configured serial KISS runtimes only, not device-family coverage or
+  physical serial behavior. Python
   `TCPClientInterface` configs with `kiss_framing = true` now have focused
   daemon parse-to-bootstrap/status coverage as `kiss_tcp_client` with
   `_runtime.kiss_tcp.status`, plus a software fake-TCP smoke proving strict
