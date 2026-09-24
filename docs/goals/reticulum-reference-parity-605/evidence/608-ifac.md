@@ -758,11 +758,13 @@ configured, the latter spelling in each pair wins. Rust's configuration
 resolver had the `passphrase` precedence reversed. The daemon-bootstrap
 regression `bootstrap_prefers_pinned_python_ifac_credential_alias_on_conflict`
 starts a real IFAC-enabled UDP interface with both spellings set to distinct
-values, then checks the selected network name and passphrase in the interface
-configuration that production startup reports, and confirms the interface
-reached `spawned` status. The resolver now follows the pinned Python ordering.
-This is an automated configuration/startup regression; it does not complete
-the broader lifecycle or carrier-family acceptance.
+values and UDP port zero for a genuinely available ephemeral bind. It checks
+that the selected network name and passphrase match the pinned precedence and
+polls the production UDP runtime with a two-second bound until it reports
+`bound` (a merely `spawned` interface does not pass). The resolver now follows
+the pinned Python ordering. This is an automated configuration/startup
+regression; it does not complete the broader lifecycle or carrier-family
+acceptance.
 
 ```text
 TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
