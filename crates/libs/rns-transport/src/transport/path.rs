@@ -447,7 +447,7 @@ async fn clamp_forwarded_link_request_mtu<'a>(
 pub(super) async fn handle_link_request<'a>(
     packet: &Packet,
     iface: AddressHash,
-    handler: MutexGuard<'a, TransportHandler>,
+    mut handler: MutexGuard<'a, TransportHandler>,
 ) {
     log::trace!(
         "[tp] link_request dst={} ctx={:02x} hops={}",
@@ -475,7 +475,7 @@ pub(super) async fn handle_link_request<'a>(
 
         let (next_hop, next_iface) = entry;
         handle_link_request_as_intermediate(iface, next_hop, next_iface, packet, handler).await;
-    } else {
+    } else if !handle_unknown_owner_local_link_request(packet, iface, &mut handler).await {
         log::trace!(
             "tp({}): dropping link request to unknown destination {}",
             handler.config.name,
@@ -484,4 +484,5 @@ pub(super) async fn handle_link_request<'a>(
     }
 }
 
+include!("path_parts/unknown_owner_local_link_request.rs");
 include!("path_tests.rs");

@@ -800,19 +800,45 @@ behavior that the earlier passes did not: one full invocation failed after
 about 55 seconds waiting for the reverse B-to-A LXMF delivery, with B's
 outbound message still at `outbound`, A's inbox empty, and no accepted inbound
 delivery Link at A. A separate diagnostic attempt waited 300 seconds for Rust
-relay A to learn Python A's exact delivery destination and timed out with that
-route still unknown. The test now snapshots that exact route immediately after
-the existing path-discovery setup and, if it is absent, fails with relay and
-Python route/process diagnostics rather than adding another long wait. Receiver
-timeout failures also capture outbound status, inboxes, relay path/interface
-state, and endpoint diagnostics. Three subsequent full invocations passed in
-about 9.4 seconds each; an additional verification run during this update also
-passed in 9.44 seconds. Those passes do not resolve the conflicting failure
-observations; the root cause remains unconfirmed, and this change improves
-failure visibility without changing production transport behavior.
+relay A to learn Python A's delivery destination and timed out with that route
+still unknown. Because Python A hosts that destination locally and the pinned
+reference does not require it to appear in the owner's learned path table, the
+route-table observation is not a valid standalone discrepancy signal. Receiver
+timeout failures capture outbound status, inboxes, relay path/interface state,
+and endpoint diagnostics. Three subsequent full invocations passed in about
+9.4 seconds each; an additional verification run during this update also
+passed in 9.44 seconds. Those passes do not resolve the earlier actual delivery
+failure, so discrepancy tracking remains open.
 
 This establishes the shared-instance/multi-hop discovery, delivery-proof,
 raw-Link traffic, daemon-replacement, and one post-restart Resource
 digest/metadata/completion slice of #609, but it does not close the umbrella
 issue or its separate discrepancy-tracking row. Direct/opportunistic LXMF
 retry modes and other transport/recovery behaviors remain open.
+
+The earlier diagnostic treated a missing route-table entry for Python A's
+locally hosted delivery destination as evidence that Rust relay A had failed to
+learn a remote route. That inference is invalid for the Python shared-instance
+owner: pinned Reticulum 1.5.4 `Transport.has_path()` consults only
+`path_table`, while `next_hop()` and `next_hop_interface()` separately resolve
+destinations in `destinations_map` to the local shared-instance interface.
+Consequently a locally hosted destination need not appear as a learned path.
+The acceptance now relies on actual post-restart B-to-A delivery and delivered
+outbound state (plus the existing relay-B route checks), rather than the
+redundant relay-A path-table assertion. The earlier missing-route observation
+alone therefore does not establish a transport discrepancy.
+
+A focused Rust regression now covers the narrower relay boundary: with
+transport enabled, `connected_to_shared_instance`, an empty path table, and a
+distinct outgoing interface marked as the shared-instance client, an unknown
+LinkRequest is emitted only on that interface as Type 1. The test also checks
+that the upstream MTU is clamped and that the pending link-table entry records
+the ingress interface so its matching LinkRequest proof routes back there. A
+receive-only shared-instance interface, ordinary interface, and ingress do not
+receive the request; an ordinary transport with no shared-instance connection
+still drops an unknown request. This is handler/link-table evidence, not a
+separate Python-owner or end-to-end delivery result. The transport library
+suite passed (835 passed, 5 ignored), scoped Clippy, formatting, module-size,
+and diff checks passed. The full post-restart B-to-A LXMF assertion remains in
+the integration test and was not rerun in this change, as requested; owner-side
+delivery after the handoff remains to be verified by that run.

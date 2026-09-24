@@ -933,42 +933,6 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
         }
         wait_for_known_path_without_announce(relay_a_rpc_port, &hash_b)?;
         wait_for_known_path_without_announce(relay_b_rpc_port, &hash_a)?;
-        let relay_a_path = rpc_call(
-            relay_a_rpc_port,
-            "path_status",
-            Some(json!({ "destination": hash_a })),
-        )?;
-        if relay_a_path.get("known").and_then(Value::as_bool) != Some(true)
-            && relay_a_path.get("path_found").and_then(Value::as_bool) != Some(true)
-        {
-            let python_a_path = python_control_snapshot(
-                python_control_a_port,
-                "path_snapshot",
-                Some(json!({ "destination": hash_a })),
-            );
-            let relay_a_diagnostics = collect_node_diagnostics(
-                "Rust relay A",
-                relay_a_rpc_port,
-                relay_a.as_mut(),
-            );
-            let relay_b_diagnostics = collect_node_diagnostics(
-                "Rust relay B",
-                relay_b_rpc_port,
-                relay_b.as_mut(),
-            );
-            let python_a_diagnostics = collect_python_endpoint_diagnostics(
-                "Python peer A",
-                python_control_a_port,
-                python_peer_a.as_mut(),
-            );
-            return Err(format!(
-                "Rust relay A did not learn the attached Python A delivery route after restart; \
-                 relay A path status for {hash_a}: {relay_a_path}; \
-                 Python A cached path: {python_a_path}\n{relay_a_diagnostics}\n\
-                 {relay_b_diagnostics}\n{python_a_diagnostics}"
-            ));
-        }
-
         let mut outbound_message_hashes = Vec::new();
         for (sender, receiver, destination, content) in [
             (python_control_a_port, python_control_b_port, &hash_b, "multi-hop-after-restart-a-to-b"),
