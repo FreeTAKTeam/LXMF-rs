@@ -437,6 +437,7 @@
             .send_due_peer_job_with_runtime_socket(
                 Arc::clone(&state),
                 Arc::clone(&announce_socket),
+                None,
                 Some(&status),
                 core::time::Duration::ZERO,
             )
@@ -471,6 +472,7 @@
             .send_due_peer_job_with_runtime_socket(
                 Arc::clone(&state),
                 Arc::clone(&announce_socket),
+                None,
                 Some(&status),
                 echo_at,
             )
@@ -484,6 +486,7 @@
             .send_due_peer_job_with_runtime_socket(
                 Arc::clone(&state),
                 Arc::clone(&announce_socket),
+                None,
                 Some(&status),
                 lost_at,
             )
@@ -523,6 +526,7 @@
             .send_due_peer_job_with_runtime_socket(
                 Arc::clone(&state),
                 Arc::clone(&announce_socket),
+                None,
                 Some(&status),
                 recovered_at,
             )

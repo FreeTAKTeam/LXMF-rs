@@ -109,6 +109,10 @@ AutoInterface activation helper, manager channel registration/removal, runtime
 task/socket teardown, and restart on the same test-owned ports. It does not
 replace the remaining native-interface, broader #614 lifecycle, platform, or
 paired-device/hardware evidence and does not promote #614/#605 to complete.
+Pinned Python AutoInterface peer timeout also detaches and tears down each
+expired peer interface; Rust's corresponding peer job now removes the peer's
+virtual interface and outbound route. A focused regression confirms that
+cleanup leaves an unexpired peer intact.
 The worker-level BLE EOF recovery slice is also covered in software: the
 worker closes the EOF session before reconnecting through a fresh backend and
 closes that session on cancellation. Native GATT EOF and physical recovery

@@ -396,6 +396,9 @@ placeholders:
   added at runtime, stale outbound route pruning after restart/removal, dynamic
   multicast/reverse announce source refresh after replacement, and Python-style
   fallback from unknown `multicast_address_type` values to `temporary`.
+  Timed-out peer jobs now also stop the matching virtual interface and prune
+  its outbound route, matching Python `peer_jobs()` teardown while retaining
+  active peer routes.
 - A daemon-binary loopback regression calls the same activation helper used by
   native startup, registers the daemon's multicast `InterfaceManager` channel
   and transport adapter, waits for runtime task/socket teardown and channel

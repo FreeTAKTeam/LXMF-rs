@@ -197,6 +197,27 @@ tools/scripts/check-module-size.sh PASS
 git diff --check PASS
 ```
 
+The pinned Python `AutoInterface.peer_jobs()` removes each timed-out peer from
+`self.peers` and calls `detach()`/`teardown()` on its spawned interface
+(`.tmp/python-refs/Reticulum-99de23c/RNS/Interfaces/AutoInterface.py`, lines
+371–390). Rust already expired the peer-table record, but its transport bridge
+retained the corresponding virtual interface and outbound socket route. The
+peer-job path now prunes only expired peer routes and stops those virtual
+interfaces. A deterministic regression expires one peer while asserting a
+second peer's interface and route remain available:
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulum-rs-transport auto --lib PASS (115 tests)
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd configured_daemon_auto_shutdown_releases_sockets_and_allows_restart -- --nocapture PASS (1 test)
+cargo clippy -p reticulum-rs-transport -p reticulumd --all-targets --no-deps -- -D warnings PASS
+cargo fmt --all -- --check PASS
+tools/scripts/check-module-size.sh PASS
+git diff --check PASS
+```
+
+This closes a software peer-expiry lifecycle gap only. It does not add native
+carrier or physical-device evidence.
+
 The hosted [Windows RNode BLE job](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35803940756/job/107000373907)
 passed on commit `ca6b6bbab13007ca6d9adb55b525ce978f763043` and ran 18 tests,
 including `native_windows_paired_device_query_matches_reference_id_suffixes`
