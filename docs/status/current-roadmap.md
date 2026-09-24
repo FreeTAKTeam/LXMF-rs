@@ -88,6 +88,11 @@ returns a timed-out probe, zero replies, 100% packet-loss JSON, and exit status
 2. The CLI's loss exit mapping already has unit coverage; this exact-target
 regression verifies transport timeout through the live daemon to the process
 result. It matches pinned Python behavior, so no production fix was needed.
+An additional exact-target process regression runs two separate native
+`rnprobe` clients sequentially through one live Rust daemon after the first
+client discovers the pinned-Python responder. Both calls deliver both probes,
+showing shared-daemon utility reuse over production transport; this is not a
+daemon-restart or concurrency claim. No production discrepancy was exposed.
 These increments do not complete the broader #611 utility matrix, which
 remains partial.
 

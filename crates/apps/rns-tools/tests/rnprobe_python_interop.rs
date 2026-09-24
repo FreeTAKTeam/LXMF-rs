@@ -504,6 +504,129 @@ fn native_rnprobe_discovers_late_pinned_python_announce() -> io::Result<()> {
 
 #[test]
 #[ignore = "requires local Python Reticulum checkout and a built reticulumd and rnprobe binary"]
+fn native_rnprobe_reuses_one_live_daemon_across_client_processes() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let python_interface_port = free_port()?;
+    let rpc_port = free_port()?;
+    let repo = python_repo();
+    let python_config = temp.path().join("python-config");
+    fs::create_dir_all(&python_config)?;
+    write_python_server_config(&python_config, python_interface_port)?;
+    let hash_path = temp.path().join("destination.hash");
+    let announce_trigger = temp.path().join("announce.trigger");
+    let mut python = spawn_python_probe_responder(
+        &repo,
+        &python_config,
+        &python_config.join("identity"),
+        &hash_path,
+        &announce_trigger,
+        true,
+    )?;
+    let result = (|| {
+        let pin = Command::new("git").arg("-C").arg(&repo).args(["rev-parse", "HEAD"]).output()?;
+        if !pin.status.success()
+            || String::from_utf8_lossy(&pin.stdout).trim()
+                != "99de23c040d507e3fefca19e87b182302902725d"
+        {
+            return Err(io::Error::other(format!(
+                "rnprobe shared-daemon regression requires pinned Reticulum 99de23c040d507e3fefca19e87b182302902725d; got {}",
+                String::from_utf8_lossy(&pin.stdout).trim()
+            )));
+        }
+        wait_for_port(python_interface_port, &mut python)?;
+        let destination_hash =
+            wait_for_file_value(&hash_path, &mut python, "Python probe responder")?;
+        let rust_config = temp.path().join("reticulumd.toml");
+        fs::write(
+            &rust_config,
+            format!(
+                "[reticulum]\n\
+                 enable_transport = true\n\
+                 share_instance = false\n\
+                 respond_to_probes = false\n\
+                 \n\
+                 [[interfaces]]\n\
+                 type = \"tcp_client\"\n\
+                 enabled = true\n\
+                 name = \"python-rnprobe-shared-daemon\"\n\
+                 host = \"127.0.0.1\"\n\
+                 port = {python_interface_port}\n"
+            ),
+        )?;
+        let log = temp.path().join("reticulumd.log");
+        let rpc_unix = temp.path().join("rpc.sock");
+        let rpc = format!("127.0.0.1:{rpc_port}");
+        let mut daemon = spawn_rust_daemon(
+            &rust_config,
+            &temp.path().join("reticulum.db"),
+            &rpc,
+            &rpc_unix,
+            &log,
+        )?;
+        let daemon_result = (|| {
+            wait_for_port(rpc_port, &mut daemon)?;
+            let rnprobe =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/rnprobe");
+            for invocation in 0..2 {
+                let child = Command::new(&rnprobe)
+                    .args([
+                        "--rpc",
+                        &rpc,
+                        "--size",
+                        "24",
+                        "--probes",
+                        "2",
+                        "--timeout",
+                        "8",
+                        "--wait",
+                        "0.1",
+                        "--json",
+                        "rnstransport.probe",
+                        &destination_hash,
+                    ])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()?;
+                if invocation == 0 {
+                    // Release discovery only after the first production CLI call reaches the live daemon.
+                    thread::sleep(Duration::from_millis(300));
+                    fs::write(&announce_trigger, "announce")?;
+                }
+                let output = wait_for_output(
+                    child,
+                    Duration::from_secs(30),
+                    &format!("native rnprobe shared-daemon invocation {invocation}"),
+                )?;
+                if !output.status.success() {
+                    return Err(io::Error::other(format!(
+                        "native rnprobe invocation {invocation} failed: {}\nstdout:\n{}\nstderr:\n{}",
+                        output.status,
+                        String::from_utf8_lossy(&output.stdout),
+                        String::from_utf8_lossy(&output.stderr)
+                    )));
+                }
+                let response: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+                assert_eq!(response["destination"], destination_hash);
+                assert_eq!(response["probes"], 2);
+                assert_eq!(response["sent"], 2);
+                assert_eq!(response["replies"], 2);
+                assert_eq!(response["results"][0]["status"], "delivered");
+                assert_eq!(response["results"][1]["status"], "delivered");
+            }
+            Ok(())
+        })();
+        let _ = daemon.kill();
+        let _ = daemon.wait();
+        daemon_result
+    })();
+    let _ = python.kill();
+    let _ = python.wait();
+    result
+}
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout and a built reticulumd and rnprobe binary"]
 fn native_rnprobe_reports_packet_loss_like_pinned_python() -> io::Result<()> {
     let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
