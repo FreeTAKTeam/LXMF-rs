@@ -109,11 +109,13 @@ operational parity rows remain partial.
 The current #633 software increment also caps converted WebP output reads at
 the 32 MiB media-response limit and falls back to the bounded raw response when
 converted output is oversized or unreadable. Its exact-limit/over-limit unit
-regression and full `rngit` unit suite pass; live oversized encoder output,
-ImageMagick 7 `magick`, and `avconv` remain unverified. Real production-Link
-encoding with ImageMagick 6 `convert` and GraphicsMagick `gm` now passes hosted
-Verify, alongside the existing `ffmpeg` fixture; broader #613 page/media and
-rendering parity remains partial.
+regression and full `rngit` unit suite pass. A live fake `ffmpeg` process now
+emits 32 MiB plus one byte and verifies bounded capture, prompt child
+termination/reaping, and partial-output removal; over-limit output from a real
+production backend, ImageMagick 7 `magick`, and `avconv` remain unverified.
+Real production-Link encoding with ImageMagick 6 `convert` and GraphicsMagick
+`gm` passes hosted Verify, alongside the existing `ffmpeg` fixture; broader
+#613 page/media and rendering parity remains partial.
 Automatic WebP backend selection now also retains Python's `_winner` behavior:
 the previously selected available backend stays preferred, explicit backend
 configuration still wins, and a missing cached executable falls back to normal
