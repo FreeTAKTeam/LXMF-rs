@@ -644,6 +644,36 @@ repository_permissions = request(
 if repository_permissions[0] != 0:
     raise RuntimeError("repository permissions response was not successful")
 
+# The same established Link must observe permission changes on its next request.
+revoked_permissions = request(
+    "/mgmt/perms",
+    {
+        0: "group/repo",
+        "operation": "rperms",
+        "step": "set",
+        "content": "read:none\nadmin:all\n",
+    },
+)
+if revoked_permissions[0] != 0:
+    raise RuntimeError("repository read revocation failed")
+revoked_listing = request("/git/list", {0: "group/repo", "for_push": False})
+if revoked_listing[0] != 3 or b"Not found" not in revoked_listing:
+    raise RuntimeError("same-Link repository read was not denied immediately after revocation")
+restored_permissions = request(
+    "/mgmt/perms",
+    {
+        0: "group/repo",
+        "operation": "rperms",
+        "step": "set",
+        "content": "read:all\nwrite:all\ncreate:all\nstats:all\nrelease:all\ninteract:all\nadmin:all\n",
+    },
+)
+if restored_permissions[0] != 0:
+    raise RuntimeError("repository permissions restore failed")
+restored_listing = request("/git/list", {0: "group/repo", "for_push": False})
+if restored_listing[0] != 0:
+    raise RuntimeError("same-Link repository read did not recover after permissions restore")
+
 work_content = "Python work document body"
 invalid_work = request(
     "/mgmt/work",

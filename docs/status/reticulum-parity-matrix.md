@@ -186,6 +186,14 @@ reference-compatible remote failure for a corrupt persisted view. Fault-
 injection, broader restart/non-work CLI, and full utility-matrix evidence
 remain open until the hosted result and remaining scenarios pass.
 
+A focused #612 same-Link permission regression now changes repository read
+permission through `/mgmt/perms`, verifies the next `/git/list` request is
+denied without reconnecting, then restores access and verifies the next request
+succeeds. The production Link regression passed locally; pinned Reticulum
+1.5.4's per-request permission resolution and handler dispatch were inspected
+and show the same refresh model. No runtime mismatch was found; broader
+group/repository/document permission combinations remain open.
+
 Commits `3dcd5259`, `869b8c84`, `02b75605`, and `f9c5b81e` add the reciprocal native
 Rust-client request path through `NativeRngitClient` and
 `ReticulumGitClient::attach_native_tcp`. Against a pinned Python
