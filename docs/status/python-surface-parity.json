@@ -243,7 +243,7 @@
         "id": "reticulum-605-613-rngit-pages-media",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "NomadNet destination/network mode, page and file paths, var_* request fields, access/no-identity behavior, image markup, media validation/filename metadata, bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and explicit no-compression Resource responses are implemented and locally verified. A pinned Python/NomadNet client transcript, live page/media checksums, encoder-success fixture, complete reference rendering, and end-to-end rngit network workflows remain unverified.",
+        "notes": "NomadNet destination/network mode, page and file paths, var_* request fields, access/no-identity behavior, image markup, media validation/filename metadata, bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and explicit no-compression Resource responses have pinned-Python production-Link evidence. Real WebP conversion passes with ffmpeg, ImageMagick 6 convert, and GraphicsMagick gm; pinned-helper selection/argv differential covers all five backend families. ImageMagick 7 magick, avconv, complete reference rendering, remaining filesystem/media fault cases, and end-to-end rngit network workflows remain unverified.",
         "owner_issue": 613,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",

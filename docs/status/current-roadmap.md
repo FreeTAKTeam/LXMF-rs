@@ -109,8 +109,11 @@ operational parity rows remain partial.
 The current #633 software increment also caps converted WebP output reads at
 the 32 MiB media-response limit and falls back to the bounded raw response when
 converted output is oversized or unreadable. Its exact-limit/over-limit unit
-regression and full `rngit` unit suite pass; live oversized encoder output and
-the other conversion backends remain unverified, so #613 stays partial.
+regression and full `rngit` unit suite pass; live oversized encoder output,
+ImageMagick 7 `magick`, and `avconv` remain unverified. Real production-Link
+encoding with ImageMagick 6 `convert` and GraphicsMagick `gm` now passes hosted
+Verify, alongside the existing `ffmpeg` fixture; broader #613 page/media and
+rendering parity remains partial.
 Automatic WebP backend selection now also retains Python's `_winner` behavior:
 the previously selected available backend stays preferred, explicit backend
 configuration still wins, and a missing cached executable falls back to normal
@@ -119,8 +122,10 @@ ignored test exercising the pinned Python helper directly; the broader #613
 acceptance remains partial.
 Backend discovery now also matches Python's executable-file eligibility on
 Unix, so a non-executable earlier converter cannot mask a later usable one; a
-focused filesystem unit regression covers the permission check. Live encoding
-by the other converter families remains unverified, and #613 remains partial.
+focused filesystem unit regression covers the permission check. Hosted
+production-Link fixtures now also prove real `convert` and `gm` encoding;
+`magick`, `avconv`, and visual parity remain unverified, and broader #613
+acceptance remains partial.
 The #633 follow-up also verifies runtime WebP configuration forwarding: a
 production `rngit` process selects a deterministic stub `ffmpeg`, passes its
 configured quality and maximum-dimension options, and returns WebP metadata to
@@ -132,9 +137,9 @@ directory is removed. No production mismatch was found. The new Verify lane
 provisions ImageMagick and GraphicsMagick and runs the production-Link test
 against real `convert` and `gm` executables, checking forwarded quality and
 resize arguments, 8x4-to-1x1 WebP output, filename metadata, raw fallback, and
-Link-scoped cleanup. This CI evidence is pending hosted execution; the
-ImageMagick 7 `magick` CLI, `avconv`, and broader rendering parity remain
-unverified.
+Link-scoped cleanup. Hosted Verify run `36024299709` passed at PR #633 head
+`317cc142dde34ebcdf30a3c007f7d5a5568557aa`; the ImageMagick 7 `magick` CLI,
+`avconv`, and broader rendering parity remain unverified.
 The production-Link page/media differential also covers one nested image path
 containing a space and confirms that rendered Micron markup matches the frozen
 Python `quote_plus(file_path)` encoding. A focused parity test additionally

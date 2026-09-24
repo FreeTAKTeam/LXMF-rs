@@ -17,11 +17,16 @@ struct Cli {
     print_identity: bool,
     #[arg(long, help = "Suppress routine status output; cleanup failures remain visible")]
     silent: bool,
-    #[arg(long)]
+    #[arg(long, help = "Skip optional WebP conversion and serve the original media bytes")]
     no_media_conversion: bool,
-    #[arg(long, default_value_t = 85, value_parser = clap::value_parser!(u8).range(1..=100))]
+    #[arg(
+        long,
+        default_value_t = 85,
+        value_parser = clap::value_parser!(u8).range(1..=100),
+        help = "WebP quality from 1 to 100 (requires an available converter; default: 85)"
+    )]
     media_quality: u8,
-    #[arg(long)]
+    #[arg(long, help = "Maximum WebP width or height in pixels (requires an available converter)")]
     media_max_dimension: Option<u32>,
     #[command(subcommand)]
     command: Option<GitCommand>,

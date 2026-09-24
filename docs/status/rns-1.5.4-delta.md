@@ -312,15 +312,16 @@ receiver state is cleared.
 The same PR adds a fail-closed Verify lane that installs ImageMagick and
 GraphicsMagick and runs the production-Link WebP test with their `convert` and
 `gm` commands. It checks real conversion, configured quality/resize arguments,
-decoded dimensions, response metadata, raw fallback, and Link-scoped cleanup;
-the hosted result is pending. ImageMagick 7's `magick` command, `avconv`, and
-full rendering parity remain unverified.
+decoded dimensions, response metadata, raw fallback, and Link-scoped cleanup.
+Hosted Verify run `36024299709` passed at PR #633 head
+`317cc142dde34ebcdf30a3c007f7d5a5568557aa`. ImageMagick 7's `magick` command,
+`avconv`, and full rendering parity remain unverified.
 An abrupt Python process exit still left the Rust link
 `Active` after 104 seconds without inbound traffic, so the live stale-transition
 path and other filesystem failures remain unverified. The separate
 `git.repositories` list/fetch/push/delete/create/sync/fork/mirror trace does
-not complete the page issue's broader Git/work acceptance. The row remains
-partial and unverified because other conversion backends, complete reference
+not complete the page issue's broader Git/work acceptance. The utility row
+remains partial because ImageMagick 7 `magick`, `avconv`, complete reference
 rendering, remaining page/file cases, other restart/fault cleanup paths, and end-to-end
 rngit Git/work network workflows remain open. Commit `e41189c8` initially added
 live malformed-media requests with missing keys, missing paths, and

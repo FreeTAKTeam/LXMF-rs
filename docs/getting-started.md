@@ -74,6 +74,29 @@ cargo run -p rns-tools --bin rnstatus-rs -- --help
 cargo run -p rns-tools --bin rnx -- --help
 ```
 
+### Optional `rngit` WebP conversion
+
+`rngit` can convert image media to WebP while serving pages, but the Rust
+package does not bundle or require a native image converter. Install one of
+these executables and make it available on `PATH` to enable conversion:
+
+- ImageMagick 7: `magick`
+- ImageMagick 6: `convert`
+- GraphicsMagick: `gm`
+- FFmpeg: `ffmpeg`
+- Libav: `avconv`
+
+Without a converter, with `RNGIT_MEDIA_BACKEND` set to an unavailable backend,
+or when conversion fails, `rngit` serves the original media bytes. Select a
+specific backend by setting `RNGIT_MEDIA_BACKEND` to one of the executable
+names above; automatic selection follows the built-in preference order. Use
+`--no-media-conversion` to disable conversion. `--media-quality` (default 85)
+and `--media-max-dimension` configure the WebP output. Conversion is bounded to
+8 seconds and converted output is capped at 32 MiB.
+
+For the complete command options, run `cargo run -p rns-tools --bin rngit --
+--help`.
+
 For a working daemon-and-client flow, continue with the
 [checked examples](examples.md). For production operation, use the
 [`reticulumd` deployment runbook](runbooks/reticulumd-operational-deployment.md)
