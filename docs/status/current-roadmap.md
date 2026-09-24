@@ -84,10 +84,12 @@ page Link `ACTIVE`; Rust now closes that page Link on the detected response
 failure, with a deterministic regression. Silent peer exits without a failed
 response and other filesystem failures remain unverified. A failure-injection
 regression proves a failed directory deletion stays tracked and succeeds on a
-later link-cleanup retry; cleanup
-handlers log the path and Link ID, including under `--silent`. A focused
-timeout regression also proves both WebP pipeline subprocesses are terminated
-and reaped. A same-Link pinned-Python media differential now verifies the
+later link-cleanup retry; cleanup handlers log the path and Link ID, including
+under `--silent`. Focused timeout and injected child-status-error regressions
+prove both WebP pipeline subprocesses are terminated and reaped on those paths,
+allowing conversion fallback and temporary-directory cleanup to complete. This
+does not cover silent peer exits without a failed response or other filesystem
+failures. A same-Link pinned-Python media differential now verifies the
 successful `main` Resource control and scalar-`False` denials for missing or
 malformed request fields, denied private access, absent blobs, and invalid
 refs, with no Resource metadata or media bytes on denial. Object-info failure

@@ -245,20 +245,58 @@ fn wait_pipeline(
     encoder_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
     timeout: Duration,
 ) -> bool {
+    wait_pipeline_with_status(
+        backend_name,
+        input,
+        encoder,
+        input_stderr,
+        encoder_stderr,
+        timeout,
+        MediaChild::try_wait,
+    )
+}
+
+fn wait_pipeline_with_status(
+    backend_name: &str,
+    input: &mut MediaChild,
+    encoder: &mut MediaChild,
+    input_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
+    encoder_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
+    timeout: Duration,
+    mut try_wait: impl FnMut(&mut MediaChild) -> io::Result<Option<ExitStatus>>,
+) -> bool {
     let deadline = Instant::now() + timeout;
     let mut input_status: Option<ExitStatus> = None;
     let mut encoder_status: Option<ExitStatus> = None;
     while input_status.is_none() || encoder_status.is_none() {
         if input_status.is_none() {
-            match input.try_wait() {
+            match try_wait(input) {
                 Ok(status) => input_status = status,
-                Err(_) => break,
+                Err(error) => {
+                    terminate(input);
+                    terminate(encoder);
+                    let input_detail = join_stderr(input_stderr);
+                    let encoder_detail = join_stderr(encoder_stderr);
+                    eprintln!(
+                        "rngit: could not inspect {backend_name} media pipeline status: {error} (input: {input_detail}; encoder: {encoder_detail})"
+                    );
+                    return false;
+                }
             }
         }
         if encoder_status.is_none() {
-            match encoder.try_wait() {
+            match try_wait(encoder) {
                 Ok(status) => encoder_status = status,
-                Err(_) => break,
+                Err(error) => {
+                    terminate(input);
+                    terminate(encoder);
+                    let input_detail = join_stderr(input_stderr);
+                    let encoder_detail = join_stderr(encoder_stderr);
+                    eprintln!(
+                        "rngit: could not inspect {backend_name} media pipeline status: {error} (input: {input_detail}; encoder: {encoder_detail})"
+                    );
+                    return false;
+                }
             }
         }
         if input_status.is_some() && encoder_status.is_some() {

@@ -1,6 +1,6 @@
 use super::{
-    configured_argv, read_bounded_file, read_stderr_tail, select_backend, wait_pipeline, webp_info,
-    BACKENDS,
+    configured_argv, read_bounded_file, read_stderr_tail, select_backend, wait_pipeline,
+    wait_pipeline_with_status, webp_info, BACKENDS,
 };
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -242,4 +242,56 @@ fn webp_pipeline_timeout_terminates_and_reaps_both_processes() {
     assert!(!completed, "a timed-out conversion pipeline must fail");
     assert!(input.try_wait().expect("wait for blob reader").is_some());
     assert!(encoder.try_wait().expect("wait for encoder").is_some());
+}
+
+#[cfg(unix)]
+#[test]
+fn webp_pipeline_status_error_terminates_and_reaps_both_processes() {
+    for error_on_poll in [1, 2] {
+        let mut input = Command::new("/bin/sh")
+            .args(["-c", "exec sleep 3"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start test blob reader");
+        let input_stdout = input.stdout.take().expect("blob reader stdout");
+        let input_stderr = input.stderr.take().expect("blob reader stderr");
+
+        let mut encoder = Command::new("/bin/sh")
+            .args(["-c", "exec sleep 3"])
+            .stdin(input_stdout)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start test encoder");
+        let encoder_stderr = encoder.stderr.take().expect("encoder stderr");
+
+        let mut polls = 0;
+        let started = std::time::Instant::now();
+        let completed = wait_pipeline_with_status(
+            "test-backend",
+            &mut input,
+            &mut encoder,
+            read_stderr_tail(input_stderr),
+            read_stderr_tail(encoder_stderr),
+            Duration::from_secs(5),
+            |child| {
+                polls += 1;
+                if polls == error_on_poll {
+                    Err(std::io::Error::other("injected child status error"))
+                } else {
+                    child.try_wait()
+                }
+            },
+        );
+
+        assert!(!completed, "a child status error must fail conversion");
+        assert_eq!(polls, error_on_poll);
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "status error waited for live children"
+        );
+        assert!(input.try_wait().expect("reap blob reader").is_some());
+        assert!(encoder.try_wait().expect("reap encoder").is_some());
+    }
 }
