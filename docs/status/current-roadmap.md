@@ -54,6 +54,11 @@ Python-shaped numbered comment before shutdown and verifies its ID/content from
 the pinned Python view response after restart. Broader disk-fault, restart, and
 non-work CLI workflows remain open.
 
+A focused pinned-Python permission regression now compares configured group
+`read` access merged with a group `.allowed` administrator grant against the
+Rust group loader. Both configured and sidecar grants remain effective, so this
+slice required no code change; remaining permission combinations stay open.
+
 For #612 acceptance row 3, the pinned RNS 1.5.4 server dispatches each Link
 request on its own thread, while rngit's work ID selection is scan-then-use and
 document writes use a fixed `<path>.tmp` followed by `os.rename`, without a

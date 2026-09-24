@@ -215,3 +215,96 @@ print(json.dumps({"before": before, "status": status, "after": after, "blocked":
     assert_eq!(rust_blocked, python["blocked"].as_bool().expect("blocked decision"));
     assert!(rust_before && !rust_after && !rust_blocked, "revocation and block must deny immediately");
 }
+
+#[test]
+#[ignore = "requires the pinned Python Reticulum reference"]
+fn configured_group_access_merges_with_sidecar_like_pinned_python() {
+    use std::path::PathBuf;
+
+    const PYTHON_REFERENCE_REVISION: &str = "99de23c040d507e3fefca19e87b182302902725d";
+    const CONFIGURED: &str = "11111111111111111111111111111111";
+    const SIDECAR_ADMIN: &str = "33333333333333333333333333333333";
+    let reference = std::env::var_os("RETICULUM_PY_REPO")
+        .map(PathBuf::from)
+        .expect("RETICULUM_PY_REPO must point to the pinned Python checkout");
+    let revision = Command::new("git")
+        .arg("-C")
+        .arg(&reference)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .expect("read Python reference revision");
+    assert!(revision.status.success(), "could not resolve Python reference HEAD");
+    assert_eq!(String::from_utf8_lossy(&revision.stdout).trim(), PYTHON_REFERENCE_REVISION);
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let group_path = temp.path().join("group");
+    let repository_path = group_path.join("repo");
+    fs::create_dir_all(&group_path).expect("group directory");
+    assert!(Command::new("git")
+        .args(["init", "--bare", repository_path.to_string_lossy().as_ref()])
+        .status()
+        .expect("git init")
+        .success());
+    fs::write(
+        group_path.with_extension("allowed"),
+        format!("admin:{SIDECAR_ADMIN}\n"),
+    )
+    .expect("group sidecar policy");
+
+    let mut rust_node = ReticulumGitNode::default();
+    rust_node
+        .set_configured_group_permissions("group", &format!("read:{CONFIGURED}\n"))
+        .expect("configured Rust access policy");
+    rust_node.load_repository_group("group", &group_path).expect("load Rust group");
+    let rust_decisions = [CONFIGURED, SIDECAR_ADMIN].map(|identity| {
+        let identity: [u8; 16] = hex::decode(identity)
+            .expect("identity hex")
+            .try_into()
+            .expect("identity length");
+        (
+            rust_node.resolve_group_permission(&identity, "group", ReticulumGitNode::PERM_READ),
+            rust_node.resolve_group_permission(&identity, "group", ReticulumGitNode::PERM_ADMIN),
+        )
+    });
+
+    let script = r#"
+import json, sys
+from types import SimpleNamespace
+from RNS.Utilities.rngit.server import ReticulumGitNode
+group_path, configured, sidecar_admin = sys.argv[1:]
+class AccessSection:
+    def __iter__(self): return iter(["group"])
+    def as_list(self, _name): return ["read:" + configured]
+node = ReticulumGitNode.__new__(ReticulumGitNode)
+node.groups = {}
+node.blocked_identities = {}
+node.identity_aliases = {}
+node.config = {"access": AccessSection()}
+node.load_repository_group("group", group_path)
+decisions = []
+for identity in (configured, sidecar_admin):
+    remote = SimpleNamespace(hash=bytes.fromhex(identity))
+    decisions.append([
+        node.resolve_group_permission(remote, "group", node.PERM_READ),
+        node.resolve_group_permission(remote, "group", node.PERM_ADMIN),
+    ])
+print(json.dumps(decisions))
+"#;
+    let output = Command::new(std::env::var_os("LXMF_PYTHON_BIN").unwrap_or_else(|| "python3".into()))
+        .env("PYTHONPATH", &reference)
+        .arg("-c")
+        .arg(script)
+        .arg(&group_path)
+        .arg(CONFIGURED)
+        .arg(SIDECAR_ADMIN)
+        .output()
+        .expect("run pinned Python group loader");
+    assert!(output.status.success(), "Python loader failed: {}", String::from_utf8_lossy(&output.stderr));
+    let python: serde_json::Value = serde_json::from_slice(&output.stdout).expect("Python JSON decisions");
+    assert_eq!(rust_decisions, [(true, false), (true, true)]);
+    assert_eq!(
+        python,
+        serde_json::json!([[true, false], [true, true]]),
+        "pinned Python configured access and sidecar policies should merge additively"
+    );
+}
