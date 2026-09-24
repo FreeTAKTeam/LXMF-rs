@@ -17,7 +17,7 @@
 
     use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
 
-    use rns_rpc::{RpcDaemon, RpcRequest};
+    use rns_rpc::{MessageRecord, MessagesStore, RpcDaemon, RpcRequest};
 
     use rns_transport::destination::{DestinationName, SingleInputDestination};
 
@@ -35,7 +35,7 @@
 
     use sha2::{Digest, Sha256};
 
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use std::sync::{Arc, Mutex};
 

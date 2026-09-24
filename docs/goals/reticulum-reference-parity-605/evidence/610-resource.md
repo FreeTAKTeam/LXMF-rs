@@ -919,6 +919,35 @@ git diff --check
 # passed
 ```
 
+## Outbound rejection and cancellation through the daemon consumer
+
+The focused daemon regressions `production_daemon_consumer_persists_peer_resource_rejection`
+and `production_daemon_consumer_cleans_cancelled_resource_without_success_receipt`
+exercise `spawn_inbound_worker` with events emitted by a production `Transport`
+over paired in-memory interfaces and an active Link; they do not call the
+private terminal-event handlers directly.
+
+- For rejection, the peer accepts the Resource advertisement and holds its
+  first request. It sends a Link-encrypted `ResourceReceiverCancel` packet
+  through its public `Transport::send_packet` path. The daemon consumer emits
+  one `rejected` receipt, clears Resource tracking, and the existing receipt
+  persistence consumer stores `rejected` as the message status.
+- For local cancellation, the public `sdk_cancel_message_v2` RPC first records
+  `cancelled`; public `Transport::cancel_resource` then emits the real
+  `OutboundCancelled` event. The daemon consumer clears tracking, leaves the
+  status `cancelled`, and emits no success receipt.
+
+Validation on the candidate worktree: `reticulumd` binary tests 472/472,
+`reticulum-rs-transport` library tests 834/834, strict Clippy for both packages,
+formatting, module-size, and diff checks passed. The boundary script could not
+evaluate its allowlists: the unchanged `load_allowlisted_edges` jq call refers
+to `$key` without passing `--arg key`, so the configured allowlists appear empty.
+No dependency manifests changed in this slice.
+
+This adds production-daemon consumer evidence for outbound rejection and local
+cancellation only. It does not establish the full callback/status/cleanup
+matrix or complete issue #610.
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
@@ -928,8 +957,8 @@ represented as complete:
   two pinned-Python matrices cover loss, duplication, reordering, and complete
   missing-fragment terminal failure in both directions;
 - callbacks/status transitions observed through every library and daemon
-  consumer after each injected failure; outbound completion and timeout-failure
-  receipt paths now have focused daemon-consumer regressions;
+  consumer after each injected failure; outbound completion, timeout-failure,
+  rejection, and cancellation now have focused daemon-consumer regressions;
 - hosted, physical-interface, public-network, and long-running soak evidence.
 
 The current conclusion is therefore: collision regeneration, shutdown cleanup,
