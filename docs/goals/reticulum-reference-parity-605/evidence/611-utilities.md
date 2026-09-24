@@ -775,3 +775,11 @@ classified as complete:
 
 These are evidence or implementation gaps, not claims that the local Rust
 process test represents Python interoperability or complete utility parity.
+
+The `rncp_missing_save_directory_uses_reference_failure_status` production
+process test covers a separate startup failure. Frozen Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` has `rncp.listen` call
+`RNS.exit(3)` with `Output directory not found` when the configured save path
+is not a directory. Rust now returns status 3 with the same diagnostic for
+that validation case. This does not establish permission-denied parity or
+close the broader #611 matrix.

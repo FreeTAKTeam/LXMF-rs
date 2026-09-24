@@ -366,13 +366,28 @@ fn rncp_rejects_invalid_identity_and_unusable_save_path() -> io::Result<()> {
         .args(["--listen", "127.0.0.1:0", "--identity-seed", "rncp-process-save-file", "--save"])
         .arg(&save_file)
         .output()?;
-    assert!(!unusable_save.status.success());
+    assert_eq!(unusable_save.status.code(), Some(3));
     assert!(
-        String::from_utf8_lossy(&unusable_save.stderr)
-            .contains("save directory is not a directory"),
+        String::from_utf8_lossy(&unusable_save.stderr).contains("Output directory not found"),
         "unusable save stderr: {}",
         String::from_utf8_lossy(&unusable_save.stderr)
     );
+    Ok(())
+}
+
+#[test]
+fn rncp_missing_save_directory_uses_reference_failure_status() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let missing_save = temp.path().join("missing-save-directory");
+    let output = Command::new(env!("CARGO_BIN_EXE_rncp"))
+        .args(["--listen", "127.0.0.1:0", "--save"])
+        .arg(&missing_save)
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "rncp: Output directory not found\n");
+    assert!(!missing_save.exists());
     Ok(())
 }
 

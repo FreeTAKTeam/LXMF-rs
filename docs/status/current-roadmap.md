@@ -71,6 +71,10 @@ advertisement sizes/flags for all six Python/Rust compression roles, with a
 focused exact-target Verify step; the utility row remains partial because its
 other workflows and failure/restart gaps are still open.
 
+The #631 `rncp` startup check now preserves frozen Python's status 3 and
+`Output directory not found` diagnostic for a missing `--save` directory.
+This is one bounded process failure case; the utility row remains partial.
+
 The #631 `rnprobe` follow-up compares `--probes not-an-integer` across the Rust
 and frozen Python processes. Both return exit status 2 with their corresponding
 invalid-integer diagnostics, and Verify runs the focused ignored test against
