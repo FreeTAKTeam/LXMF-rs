@@ -121,6 +121,11 @@ admin is also the operation-specific permission, so it cannot be independently
 separated from the shared fallback. This four-case slice does not complete the
 broader permission or work-operation acceptance.
 
+A focused #612 production-handler regression now checks the blocked-identity
+gate with a broad group `read:all` grant. The Rust `list` handler returns the
+same exact `Not found` response as pinned Python; this closes only that handler
+coverage gap and does not complete the blocked-identity or operation matrix.
+
 The new bidirectional MessagePack work-record regression verifies exact binary
 author/identity/signature values and integer document IDs/timestamps across
 Python↔Rust storage and production Link response boundaries. It also corrected
