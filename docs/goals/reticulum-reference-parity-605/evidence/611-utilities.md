@@ -616,14 +616,21 @@ continues to require a root and an explicit allow-list entry for the executable.
 cargo test -p rns-tools --bin rnsh -- --nocapture
 # 8 passed; 0 failed
 
-cargo test -p rns-tools --test rnsh_process -- --nocapture
-# 2 passed; 0 failed
+TMPDIR=/home/pgiuseppe/.cache/lxmf-rnsh-tmp cargo test -p rns-tools \
+  --test rnsh_process -- --nocapture --test-threads=1
+# 3 passed; 0 failed
 # includes a 128 KiB output stream through the negotiated Channel window
+# timeout regression observes the remote child alive before client timeout, then confirms PID reaping
 
-RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+cargo test -p rns-tools --test rnsh_python_interop
+# 2 ignored; requires local Python Reticulum checkout
+
+TMPDIR=/home/pgiuseppe/.cache/lxmf-rnsh-tmp \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rnsh_python_interop -- \
   --ignored --nocapture --test-threads=1
-# 2 passed; 0 failed (1.81s)
+# 2 passed; 0 failed (2.29s)
 
 cargo test -p rns-tools --tests
 # passed; ignored Python fixtures remain ignored by default
@@ -634,6 +641,18 @@ loopback TCP, resolves the listener destination from its persisted identity,
 executes `/bin/echo`, and verifies the forwarded output plus mirrored status.
 Its authenticated case allows one client identity, verifies a successful
 command, then verifies a different identity receives a nonzero failure. The
+timeout regression runs a long-lived remote child, lets the production Rust
+initiator hit its configured command timeout, and verifies the child PID is
+gone after the listener processes Link closure. The listener owns each session
+task and cancellation signal; Link closure or session exit cancels and awaits
+the command task, which kills/reaps the child and aborts/awaits its stdin
+writer and stdout/stderr readers. The regression now verifies the remote child
+is live while its client is still connected before waiting for timeout teardown.
+The earlier failing run only reported that `kill -0` succeeded after teardown;
+it did not capture process state or prove the PID was live before Link closure.
+With the synchronization tightened, the full process suite passed and twelve
+additional isolated runs of the earlier check also passed, so no lifecycle
+implementation defect was reproduced. The
 pinned-Python fixture starts the frozen Python initiator with an isolated TCP
 configuration and identity, and verifies its command output and exit status on
 the Rust listener. The reciprocal fixture starts the pinned Python listener
@@ -641,9 +660,22 @@ with a server-side TCP interface and an isolated identity, sends the execute
 envelope before stdin, and verifies Rust command output plus the Python
 `CommandExited(0)` response with an immediately closed non-TTY stdin. The Rust
 initiator's bounded EOF grace accommodates the pinned listener's short-command
-stdin-close cleanup path. This is a bounded software/TCP slice: PTY allocation
-and resize, native outbound compression, full restart/fault/cancellation
-coverage, and public or multi-hop transport remain unverified.
+stdin-close cleanup path. The earlier client-timeout failure was an
+under-synchronized test observation: it first read the remote PID after the
+client had exited and did not establish that this child was live before
+teardown. The corrected process regression establishes that precondition and
+the focused process suite now passes 3/3. PTY parity is blocked at the
+process boundary: pinned Python sends initial `(rows, cols, hpix, vpix)` in
+`ExecuteCommandMesssage`, sends `WindowSizeMessage` after SIGWINCH, and applies
+both through `TIOCSWINSZ` to its child PTY. Rust currently sends four `nil`
+dimensions, launches child stdio only as pipes/null devices, and consumes
+`WindowSizeMessage` without applying it. Adding dimensions alone cannot produce
+the reference behavior because there is no child PTY to resize; a correct
+change requires coordinated TTY detection/raw-mode and PTY-backed stdio, initial
+size application, resize signal forwarding, and restoration/lifecycle handling.
+That cross-platform process redesign is outside this bounded parity increment.
+Native outbound compression, the remaining restart/fault matrix, and public or
+multi-hop transport also remain unverified. The #611 `rnsh` row stays partial.
 
 ## Fetch-client save-failure process result
 
@@ -686,8 +718,11 @@ classified as complete:
   `rnpath` management subset, a bounded native `rnprobe` packet workflow with
   both pinned-Python initiator/responder roles, and a bounded native `rnsh`
   channel workflow with both pinned-Python initiator/listener roles, including
-  the bounded immediate-EOF trace, but does not prove full `rnsh` PTY/resize/
-  fault/restart behavior, public/multi-hop behavior, or network workflows to `rnsd` and the
+  the bounded immediate-EOF trace and a software loopback client-timeout Link
+  teardown with a synchronized live-child-before-timeout and post-close reaping
+  check, but does not prove PTY allocation,
+  initial dimensions, SIGWINCH resize, the remaining `rnsh` fault/restart matrix,
+  public/multi-hop behavior, or network workflows to `rnsd` and the
   radio/interactive utilities.
 - Prove real `rngit` fetch/push/bundle workflows and configured initial-branch
   behavior under #601; bounded pinned-Python `/git/list`, `/git/fetch`,

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, Duration, Instant};
 
 const STREAM_STDIN: u16 = 0;
@@ -32,6 +32,7 @@ pub(crate) async fn run_command(
     channel: TransportChannel,
     spec: CommandSpec,
     mut stdin_rx: mpsc::Receiver<Vec<u8>>,
+    mut cancel: oneshot::Receiver<()>,
 ) -> io::Result<()> {
     let executable = spec
         .command
@@ -48,7 +49,8 @@ pub(crate) async fn run_command(
     process
         .stdin(if spec.pipe_stdin { Stdio::piped() } else { Stdio::null() })
         .stdout(if spec.pipe_stdout { Stdio::piped() } else { Stdio::null() })
-        .stderr(if spec.pipe_stderr { Stdio::piped() } else { Stdio::null() });
+        .stderr(if spec.pipe_stderr { Stdio::piped() } else { Stdio::null() })
+        .kill_on_drop(true);
 
     let mut child = process
         .spawn()
@@ -74,19 +76,42 @@ pub(crate) async fn run_command(
         .filter(|_| spec.pipe_stderr)
         .map(|stderr| tokio::spawn(stream_output(channel.clone(), STREAM_STDERR, stderr)));
 
-    let status = child.wait().await?;
-    if let Some(task) = stdin_task {
-        task.abort();
-    }
-    if let Some(task) = stdout_task {
-        task.await.map_err(join_error)??;
-    }
-    if let Some(task) = stderr_task {
-        task.await.map_err(join_error)??;
+    let (status, cancelled) = tokio::select! {
+        status = child.wait() => (status?, false),
+        _ = &mut cancel => {
+            // The session owns the cancellation sender and signals it when the
+            // Link closes or its receive loop exits. Kill and reap before
+            // returning so neither the command nor its pipes outlive the Link.
+            if let Err(error) = child.start_kill() {
+                if child.try_wait()?.is_none() {
+                    return Err(error);
+                }
+            }
+            (child.wait().await?, true)
+        }
+    };
+    stop_task(stdin_task).await;
+    if cancelled {
+        stop_task(stdout_task).await;
+        stop_task(stderr_task).await;
+    } else {
+        if let Some(task) = stdout_task {
+            task.await.map_err(join_error)??;
+        }
+        if let Some(task) = stderr_task {
+            task.await.map_err(join_error)??;
+        }
     }
 
     let return_code = status.code().map(i64::from).unwrap_or(-1);
     send_typed_with_retry(&channel, &CommandExitedMessage { return_code }).await
+}
+
+async fn stop_task(task: Option<tokio::task::JoinHandle<io::Result<()>>>) {
+    if let Some(task) = task {
+        task.abort();
+        let _ = task.await;
+    }
 }
 
 pub(crate) async fn send_stdin(

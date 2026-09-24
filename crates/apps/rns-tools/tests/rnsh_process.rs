@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use std::io;
+use std::io::{self, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::thread;
@@ -25,6 +25,15 @@ fn wait_for_port(port: u16, child: &mut Child) -> io::Result<()> {
         thread::sleep(Duration::from_millis(25));
     }
     Err(io::Error::new(io::ErrorKind::TimedOut, "rnsh listener did not open its port"))
+}
+
+fn process_is_running(pid: &str) -> io::Result<bool> {
+    Ok(Command::new("kill")
+        .args(["-0", pid])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?
+        .success())
 }
 
 #[test]
@@ -241,6 +250,128 @@ fn rnsh_authenticated_listener_accepts_allowlisted_identity_and_rejects_another(
             .output()?;
         assert!(!denied.status.success(), "non-allowlisted rnsh client succeeded");
         Ok(())
+    })();
+
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
+
+#[test]
+fn rnsh_client_timeout_closes_session_and_reaps_remote_command() -> io::Result<()> {
+    let _test_guard = RNSH_PROCESS_TEST_LOCK.lock().expect("rnsh process test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let server_root = temp.path().join("server-root");
+    let server_identity = temp.path().join("server-identity");
+    let client_identity = temp.path().join("client-identity");
+    let child_pid_path = temp.path().join("remote-child.pid");
+    std::fs::create_dir_all(&server_root)?;
+
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rnsh");
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--announce", "0", "--no-auth", "--root"])
+        .arg(&server_root)
+        .args(["--identity", server_identity.to_str().expect("identity path")])
+        .current_dir(temp.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let result = (|| {
+        if let Err(error) = wait_for_port(port, &mut listener) {
+            let mut stderr = String::new();
+            if let Some(mut pipe) = listener.stderr.take() {
+                pipe.read_to_string(&mut stderr)?;
+            }
+            return Err(io::Error::other(format!("{error}; listener stderr: {}", stderr)));
+        }
+        let destination_output = Command::new(binary)
+            .args([
+                "--print-identity",
+                "--identity",
+                server_identity.to_str().expect("identity path"),
+            ])
+            .output()?;
+        if !destination_output.status.success() {
+            return Err(io::Error::other("rnsh server identity query failed"));
+        }
+        let destination = String::from_utf8_lossy(&destination_output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .ok_or_else(|| io::Error::other("rnsh identity query omitted destination"))?
+            .to_owned();
+
+        let command = format!("echo $$ > '{}'; exec sleep 30", child_pid_path.display());
+        let mut client = Command::new(binary)
+            .args([
+                "--connect",
+                &format!("127.0.0.1:{port}"),
+                "--identity",
+                client_identity.to_str().expect("identity path"),
+                "--mirror",
+                "--timeout",
+                "4",
+                &destination,
+                "--",
+                "sh",
+                "-c",
+                &command,
+            ])
+            .current_dir(temp.path())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        // Observe the remote command while its client is still connected so
+        // the later PID check proves this exact child was alive before timeout.
+        let start_deadline = Instant::now() + Duration::from_secs(3);
+        let started_pid = loop {
+            if let Ok(contents) = std::fs::read_to_string(&child_pid_path) {
+                let pid = contents.trim();
+                if !pid.is_empty() && process_is_running(pid)? {
+                    break Ok(pid.to_owned());
+                }
+            }
+            if client.try_wait()?.is_some() {
+                break Err(io::Error::other(
+                    "rnsh client exited before remote command became live",
+                ));
+            }
+            if Instant::now() >= start_deadline {
+                break Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "remote command did not become live before the client timeout",
+                ));
+            }
+            thread::sleep(Duration::from_millis(20));
+        };
+        let pid = match started_pid {
+            Ok(pid) => pid,
+            Err(error) => {
+                let _ = client.kill();
+                let output = client.wait_with_output()?;
+                return Err(io::Error::other(format!(
+                    "{error}; timeout client status: {}",
+                    output.status
+                )));
+            }
+        };
+
+        let client_output = client.wait_with_output()?;
+        assert!(!client_output.status.success(), "timeout client unexpectedly succeeded");
+
+        let reap_deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < reap_deadline {
+            if !process_is_running(&pid)? {
+                return Ok(());
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!("remote command child {pid} remained alive after Link teardown"),
+        ))
     })();
 
     let _ = listener.kill();

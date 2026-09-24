@@ -1053,9 +1053,20 @@ direction.
   envelopes, stream forwarding, timeout, and mirrored exit status are covered
   by Rust process/auth tests plus reciprocal pinned-Python initiator→Rust
   listener and Rust initiator→pinned-Python listener exchanges (`e57afb99`,
-  `662dcdbe`), including the immediate non-TTY EOF case. PTY/resize, full
-  fault/restart coverage, and public/multi-hop evidence remain open; this does
-  not promote the broader `RNS/Utilities/*` row.
+  `662dcdbe`), including the immediate non-TTY EOF case. Client-timeout teardown
+  now signals and joins the owned session, kills/reaps its remote child, and
+  awaits the command/pipe tasks. The timeout regression now observes the child
+  alive before client timeout; the earlier failure only observed a PID after
+  teardown. The corrected focused process suite passes 3/3, with twelve
+  additional isolated passes of the earlier check and no reproduced lifecycle
+  defect. Python sends initial dimensions in `ExecuteCommand`, sends
+  `WindowSize` after SIGWINCH, and applies both to a child PTY; Rust currently
+  sends nil dimensions, launches only pipe/null stdio, and ignores resize
+  messages. Correct parity requires PTY-backed stdio and coordinated terminal
+  mode, initial-size, resize, and restoration handling, so PTY/resize remains a
+  bounded-process-design blocker. The remaining fault/restart matrix and
+  public/multi-hop evidence also remain open; this does not promote the broader
+  `RNS/Utilities/*` row.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through

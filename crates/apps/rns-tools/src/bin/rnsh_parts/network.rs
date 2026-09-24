@@ -7,12 +7,13 @@ use rns_transport::iface::tcp_client::{TcpClient, TcpRuntimeStatusHandle};
 use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::iface::{IfaceRole, InterfaceMode};
 use rns_transport::transport::{Transport, TransportConfig};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, watch, Mutex};
+use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout};
 
 #[derive(Clone)]
@@ -28,6 +29,11 @@ pub(crate) struct Runtime {
     pub(crate) default_command: Vec<String>,
     pub(crate) no_remote_command: bool,
     pub(crate) remote_command_as_args: bool,
+}
+
+struct SessionTask {
+    cancel: watch::Sender<bool>,
+    task: JoinHandle<()>,
 }
 
 impl Runtime {
@@ -179,11 +185,12 @@ pub(crate) async fn close_link(
 
 async fn serve(runtime: Runtime) -> io::Result<()> {
     let mut events = runtime.transport.in_link_events();
-    let mut sessions = HashSet::new();
+    let mut sessions: HashMap<AddressHash, SessionTask> = HashMap::new();
     loop {
         tokio::select! {
             signal = tokio::signal::ctrl_c() => {
                 signal.map_err(|error| io::Error::other(format!("could not install interrupt handler: {error}")))?;
+                stop_sessions(&mut sessions).await;
                 return Ok(());
             }
             event = events.recv() => match event {
@@ -204,28 +211,52 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
                             }
                         }
                         rns_transport::destination::link::LinkEvent::Closed => {
-                            sessions.remove(&event.id);
+                            if let Some(session) = sessions.remove(&event.id) {
+                                stop_session(session).await;
+                            }
                         }
                         _ => {}
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => {}
-                Err(broadcast::error::RecvError::Closed) => return Err(io::Error::other("rnsh link event channel closed")),
+                Err(broadcast::error::RecvError::Closed) => {
+                    stop_sessions(&mut sessions).await;
+                    return Err(io::Error::other("rnsh link event channel closed"));
+                }
             }
         }
     }
 }
 
-fn spawn_session(runtime: &Runtime, link_id: AddressHash, sessions: &mut HashSet<AddressHash>) {
-    if !sessions.insert(link_id) {
+fn spawn_session(
+    runtime: &Runtime,
+    link_id: AddressHash,
+    sessions: &mut HashMap<AddressHash, SessionTask>,
+) {
+    if sessions.contains_key(&link_id) {
         return;
     }
+    let (cancel, link_closed) = watch::channel(false);
     let runtime = runtime.clone();
-    tokio::spawn(async move {
-        if let Err(error) = session::serve_link(runtime, link_id).await {
+    let task = tokio::spawn(async move {
+        if let Err(error) = session::serve_link(runtime, link_id, link_closed).await {
             log::debug!("rnsh session {} ended: {}", link_id.to_hex_string(), error);
         }
     });
+    sessions.insert(link_id, SessionTask { cancel, task });
+}
+
+async fn stop_session(session: SessionTask) {
+    let _ = session.cancel.send(true);
+    if let Err(error) = session.task.await {
+        log::debug!("rnsh session task ended before join: {}", error);
+    }
+}
+
+async fn stop_sessions(sessions: &mut HashMap<AddressHash, SessionTask>) {
+    for (_, session) in sessions.drain() {
+        stop_session(session).await;
+    }
 }
 
 async fn close_inbound_link(transport: &Transport, link_id: AddressHash) {

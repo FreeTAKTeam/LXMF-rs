@@ -12,7 +12,7 @@ use std::sync::{
     Arc,
 };
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::{timeout, Duration};
 
 #[derive(Debug)]
@@ -33,7 +33,11 @@ enum ServerState {
     Running,
 }
 
-pub(crate) async fn serve_link(runtime: Runtime, link_id: AddressHash) -> io::Result<()> {
+pub(crate) async fn serve_link(
+    runtime: Runtime,
+    link_id: AddressHash,
+    mut link_closed: watch::Receiver<bool>,
+) -> io::Result<()> {
     let channel = runtime.transport.channel(link_id);
     let (message_tx, mut message_rx) = mpsc::channel(64);
     let queue_overflowed = Arc::new(AtomicBool::new(false));
@@ -41,109 +45,145 @@ pub(crate) async fn serve_link(runtime: Runtime, link_id: AddressHash) -> io::Re
 
     let mut state = ServerState::WaitingForVersion;
     let mut stdin_tx: Option<mpsc::Sender<Vec<u8>>> = None;
+    let mut command_cancel: Option<oneshot::Sender<()>> = None;
+    let mut command_task = None;
 
-    while let Some(message) = message_rx.recv().await {
-        if queue_overflowed.load(Ordering::Acquire) {
-            return Err(io::Error::other("rnsh incoming message queue overflowed"));
-        }
-        match message {
-            IncomingMessage::Version(version) => {
-                if state != ServerState::WaitingForVersion {
-                    send_protocol_error(&channel, "unexpected version message").await?;
-                    break;
-                }
-                if version.protocol_version != PROTOCOL_VERSION {
-                    send_protocol_error(&channel, "incompatible rnsh protocol").await?;
-                    break;
-                }
-                channel.send_typed(&VersionInfoMessage::current()).await.map_err(channel_error)?;
-                state = ServerState::WaitingForCommand;
-            }
-            IncomingMessage::Execute(message) => {
-                if state != ServerState::WaitingForCommand {
-                    send_protocol_error(&channel, "unexpected execute message").await?;
-                    break;
-                }
-                let command = resolve_server_command(&runtime, message.command.as_deref());
-                if command.is_empty() {
-                    send_protocol_error(&channel, "no remote shell command configured").await?;
-                    break;
-                }
-                let (new_stdin_tx, stdin_rx) = mpsc::channel(16);
-                if message.pipe_stdin {
-                    stdin_tx = Some(new_stdin_tx);
-                }
-                let process_channel = channel.clone();
-                let root = runtime.root.clone();
-                let remote_identity = runtime
-                    .peer_identity(link_id)
-                    .await
-                    .map(|identity| identity.address_hash.to_hex_string());
-                tokio::spawn(async move {
-                    if let Err(error) = run_command(
-                        process_channel.clone(),
-                        CommandSpec {
-                            command,
-                            root,
-                            pipe_stdin: message.pipe_stdin,
-                            pipe_stdout: message.pipe_stdout,
-                            pipe_stderr: message.pipe_stderr,
-                            term: message.term,
-                            remote_identity,
-                        },
-                        stdin_rx,
-                    )
-                    .await
-                    {
-                        if let Err(send_error) = process_channel
-                            .send_typed(&ErrorMessage::fatal(error.to_string()))
-                            .await
-                        {
-                            log::debug!(
-                                "rnsh session {} could not send command error: {:?}",
-                                process_channel.link_id().to_hex_string(),
-                                send_error
-                            );
-                        }
+    let session_result = async {
+        loop {
+            let message = tokio::select! {
+                changed = link_closed.changed() => {
+                    if changed.is_err() || *link_closed.borrow() {
+                        break;
                     }
-                });
-                state = ServerState::Running;
-            }
-            IncomingMessage::Stream(message) => {
-                if state != ServerState::Running || message.stream_id != 0 {
-                    send_protocol_error(&channel, "invalid stdin stream").await?;
-                    break;
+                    continue;
                 }
-                if let Some(sender) = stdin_tx.as_ref() {
-                    if !message.data.is_empty() {
-                        sender.send(message.data).await.map_err(|_| {
-                            io::Error::new(io::ErrorKind::BrokenPipe, "remote command stdin closed")
-                        })?;
-                    }
-                    if message.eof {
-                        stdin_tx = None;
-                    }
+                message = message_rx.recv() => match message {
+                    Some(message) => message,
+                    None => break,
                 }
-            }
-            IncomingMessage::Window => {}
-            IncomingMessage::Noop(NoopMessage) => {
-                if state == ServerState::Running {
-                    channel.send_typed(&NoopMessage).await.map_err(channel_error)?;
-                }
-            }
-            IncomingMessage::Error(error) => {
-                if error.fatal {
-                    break;
-                }
-            }
-            IncomingMessage::Exited(_) => {
-                send_protocol_error(&channel, "unexpected command exit message").await?;
+            };
+            if queue_overflowed.load(Ordering::Acquire) {
                 break;
             }
+            match message {
+                IncomingMessage::Version(version) => {
+                    if state != ServerState::WaitingForVersion {
+                        send_protocol_error(&channel, "unexpected version message").await?;
+                        break;
+                    }
+                    if version.protocol_version != PROTOCOL_VERSION {
+                        send_protocol_error(&channel, "incompatible rnsh protocol").await?;
+                        break;
+                    }
+                    channel
+                        .send_typed(&VersionInfoMessage::current())
+                        .await
+                        .map_err(channel_error)?;
+                    state = ServerState::WaitingForCommand;
+                }
+                IncomingMessage::Execute(message) => {
+                    if state != ServerState::WaitingForCommand {
+                        send_protocol_error(&channel, "unexpected execute message").await?;
+                        break;
+                    }
+                    let command = resolve_server_command(&runtime, message.command.as_deref());
+                    if command.is_empty() {
+                        send_protocol_error(&channel, "no remote shell command configured").await?;
+                        break;
+                    }
+                    let (new_stdin_tx, stdin_rx) = mpsc::channel(16);
+                    if message.pipe_stdin {
+                        stdin_tx = Some(new_stdin_tx);
+                    }
+                    let (cancel_tx, cancel_rx) = oneshot::channel();
+                    command_cancel = Some(cancel_tx);
+                    let process_channel = channel.clone();
+                    let root = runtime.root.clone();
+                    let remote_identity = runtime
+                        .peer_identity(link_id)
+                        .await
+                        .map(|identity| identity.address_hash.to_hex_string());
+                    command_task = Some(tokio::spawn(async move {
+                        if let Err(error) = run_command(
+                            process_channel.clone(),
+                            CommandSpec {
+                                command,
+                                root,
+                                pipe_stdin: message.pipe_stdin,
+                                pipe_stdout: message.pipe_stdout,
+                                pipe_stderr: message.pipe_stderr,
+                                term: message.term,
+                                remote_identity,
+                            },
+                            stdin_rx,
+                            cancel_rx,
+                        )
+                        .await
+                        {
+                            if let Err(send_error) = process_channel
+                                .send_typed(&ErrorMessage::fatal(error.to_string()))
+                                .await
+                            {
+                                log::debug!(
+                                    "rnsh session {} could not send command error: {:?}",
+                                    process_channel.link_id().to_hex_string(),
+                                    send_error
+                                );
+                            }
+                        }
+                    }));
+                    state = ServerState::Running;
+                }
+                IncomingMessage::Stream(message) => {
+                    if state != ServerState::Running || message.stream_id != 0 {
+                        send_protocol_error(&channel, "invalid stdin stream").await?;
+                        break;
+                    }
+                    if let Some(sender) = stdin_tx.as_ref() {
+                        if !message.data.is_empty() {
+                            sender.send(message.data).await.map_err(|_| {
+                                io::Error::new(
+                                    io::ErrorKind::BrokenPipe,
+                                    "remote command stdin closed",
+                                )
+                            })?;
+                        }
+                        if message.eof {
+                            stdin_tx = None;
+                        }
+                    }
+                }
+                IncomingMessage::Window => {}
+                IncomingMessage::Noop(NoopMessage) => {
+                    if state == ServerState::Running {
+                        channel.send_typed(&NoopMessage).await.map_err(channel_error)?;
+                    }
+                }
+                IncomingMessage::Error(error) => {
+                    if error.fatal {
+                        break;
+                    }
+                }
+                IncomingMessage::Exited(_) => {
+                    send_protocol_error(&channel, "unexpected command exit message").await?;
+                    break;
+                }
+            }
+        }
+        Ok::<(), io::Error>(())
+    }
+    .await;
+
+    if let Some(cancel) = command_cancel {
+        let _ = cancel.send(());
+    }
+    if let Some(task) = command_task {
+        if let Err(error) = task.await {
+            log::debug!("rnsh session {} command task ended: {}", link_id.to_hex_string(), error);
         }
     }
 
-    Ok(())
+    session_result
 }
 
 pub(crate) async fn initiate(
