@@ -16,6 +16,22 @@ acceptance gate.
 
 ## Implemented behavior
 
+### LocalClientInterface Linux abstract Unix teardown and restart
+
+The pinned-Python shared-instance process smoke exercises the
+`LocalClientInterface` configuration path for Linux abstract AF_UNIX from
+daemon startup through live announce traffic, status, graceful teardown, and
+restart. It requires the Python server's Rust-client count to fall back to the
+surviving Python traffic client after `reticulumd` receives SIGINT, then checks
+that a restarted daemon is again reported as `attached` and visible to the
+Python server. The frozen Reticulum 1.5.4-dev reference at
+`99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Interfaces/LocalInterface.py`, implements this family with AF_UNIX stream
+connect, HDLC-framed packet send/receive, Rx/Tx frame counters, reconnect after
+shared-server EOF, and explicit detach/teardown. This assertion does not claim
+packet-content delivery parity, application-level shared-instance parity,
+TCP teardown, other operating systems, or hardware coverage.
+
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
 | Windows paired-device lookup | The Windows BLE backend asks WinRT for the paired-device selector, enumerates `DeviceInformation`, extracts only strict Bluetooth address suffixes from each device ID, and filters scan candidates by the paired address before configured ID, alias, or service matching. Deterministic coverage verifies a stale paired address cannot authorize a different scanned device, while a matching address remains eligible. A Windows-only hosted test queries the native paired-device list and compares Rust suffix extraction against the pinned reference rule without logging device addresses. | Linux parser/filter tests verified; hosted native query/test passed on `ca6b6bba`; actual stale Windows pairing removal and physical paired-device behavior unverified |
@@ -39,6 +55,25 @@ acceptance gate.
 | Strict I2P daemon startup after SAM handshake rejection | The production `startup_i2p` path is run with strict startup enabled against a deterministic local SAM peer. The peer accepts the production HELLO command but replies with `RESULT=I2P_ERROR`; startup returns no runtime handle, registers no interface with the production `InterfaceManager`, and records one startup failure containing the SAM preflight context and rejection text. | focused fake-SAM daemon-startup regression; does not cover destination creation failure, established-session packet flow, real router behavior, or public I2P connectivity |
 
 ## Commands and results
+
+On the exact existing PR #634 head `6c6cecd8551fb471a58fb4fa9c123535b12cdccc`,
+the pinned-Python process regression passed with reference revision
+`99de23c040d507e3fefca19e87b182302902725d`. Its JSON report recorded both
+TCP/Unix interfaces as `attached`, Python announce counts of three, positive
+shared-instance Rx/Tx byte counters, and
+`unix_teardown_restart_verified = true` after observing one remaining Python
+client during daemon shutdown and two clients after restart.
+
+```text
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum TIMEOUT_SECS=60 \
+  ./tools/scripts/local-interface-python-shared-smoke.sh           PASS
+cargo test -p reticulumd --test local_interface_smoke_contract     PASS (6 tests)
+cargo fmt --all -- --check                                        PASS
+cargo clippy -p reticulumd --all-targets --no-deps -- -D warnings  PASS
+tools/scripts/check-boundaries.sh                                  PASS
+tools/scripts/check-module-size.sh                                 PASS
+git diff --check                                                    PASS
+```
 
 The initial implementation checks below ran in the isolated
 `codex/issue-605-parity` worktree at `f753c4d7`:

@@ -251,14 +251,20 @@ Passing evidence requires:
 - Each Python traffic client to report `announced_count >= 3`.
 - Each Python shared instance to report `local_client_rxb_total > 0`.
 - Each Python shared instance to report `local_client_txb_total > 0`.
+- After the daemon receives traffic, SIGINT shutdown must reduce the Unix
+  shared instance's Rust-side client count to the surviving Python traffic
+  client; restarting the daemon must restore the Unix attach status and client
+  count.
 - `rnstatus-rs` JSON/human output containing both Rust local client rows.
 - The report to include `python_rns_revision` for the pinned reference checkout.
+- The report to set `unix_teardown_restart_verified = true`.
 
 The report records
 `evidence_scope = "python_shared_instance_tcp_unix_attach_and_announce_forward"` plus a
 `product_boundary` note: this proves attach interop with real pinned Python
 Reticulum shared instances and Python-origin announce fanout through those
-shared instances, but does not prove broad application-level shared-instance traffic parity.
+shared instances. The abstract Unix case additionally proves graceful daemon
+client teardown and reattachment after daemon restart. It does not prove broad application-level shared-instance traffic parity.
 
 ## Reticulum Interface Parity Audit
 

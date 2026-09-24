@@ -321,8 +321,11 @@ placeholders:
   Linux abstract Unix sockets, then observes Python-origin announce fanout
   through those shared instances with traffic-client `announced_count` and
   shared-server `local_client_rxb_total`/`local_client_txb_total` counters; that
-  report remains scoped to attach plus announce fanout and not broad
-  application-level shared-instance traffic parity. Independent rns-rs evidence
+  process smoke now also SIGINT-stops `reticulumd`, observes its AF_UNIX client
+  disappear from the Python shared instance, restarts the daemon, and checks
+  the configured interface returns to `attached`. This remains selected Linux
+  software evidence, not broad application-level shared-instance traffic or
+  cross-platform parity. Independent rns-rs evidence
   separately attaches a real local client to an LXMF-rs `reticulumd`, discovers
   an LXMF-rs endpoint across the daemon, exchanges encrypted packets and proofs
   in both directions, replaces the daemon, verifies client identity continuity
