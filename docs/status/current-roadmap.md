@@ -615,6 +615,12 @@ open. A mixed pinned-Python
 link-establishment timeout trace now proves pending cleanup after the path is
 available; the two-carrier split Resource trace covers the multi-hop Resource
 direction.
+- The ordinary single-destination `Proof` duplicate class is now covered via
+  production ingress: first copy admitted, exact replay rejected, matching the
+  pinned Python generic hash-list filter. The ignored differential passed at
+  exact Reticulum `99de23c040d507e3fefca19e87b182302902725d`; this is one
+  narrow class only and the broader #609 matrix remains open. See
+  `evidence/609-transport-local-shared.md`.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.

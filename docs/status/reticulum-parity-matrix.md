@@ -546,6 +546,12 @@ standalone transport suppresses an exact repeated `LinkRequest`. Both have
 focused Rust regressions, and the latter also has a fault-injected Python→Rust→
 Python forwarding trace in Verify CI. Other packet/proof duplicate classes and
 post-restart LXMF queue delivery remain unverified.
+An ordinary single-destination `Proof` replay now has a production-ingress
+regression: the first packet is admitted and its exact duplicate filtered,
+matching the pinned Python generic hash-list rule; its ignored differential
+passed against exact Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
+Other duplicate classes and post-restart LXMF queue delivery remain
+unverified.
 Incoming announces now carry their Python-format random blob through validation
 into the path table. The table preserves bounded random-blob history for
 Python-format persistence, ignores duplicate/stale blobs, refreshes known paths

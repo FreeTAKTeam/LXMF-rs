@@ -684,3 +684,28 @@ cargo test -p reticulum-rs-transport --lib \
   enabled_shared_daemon_does_not_transit_announce_for_local_destination -- --nocapture
 # 1 passed; 0 failed
 ```
+
+## Ordinary proof duplicate filtering
+
+`rns_1_5_ingress_suppresses_duplicate_ordinary_proof` submits an ordinary
+single-destination `Proof` (`context=None`) twice through production inbound
+preprocessing: the first copy is admitted, and the exact replay is rejected by
+the packet-hash cache. This is distinct from LinkRequestProof routing,
+Channel-sequence deduplication, and Resource-fragment tracking.
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d` uses the generic
+packet-hash-list check for this proof class and remembers the hash after
+admission. The ignored Rust/Python differential passed against the exact pinned
+checkout: the Python filter and Rust production-ingress path both observed
+`[true, false]` for first-copy admission and exact-replay rejection.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib \
+  pinned_python_ordinary_proof_filter_matches_production_ingress \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; reference HEAD 99de23c040d507e3fefca19e87b182302902725d
+```
+
+No production mismatch was found; other duplicate classes and the broad #609
+acceptance matrix remain open.
