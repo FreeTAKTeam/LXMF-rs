@@ -115,6 +115,19 @@ isolated Python config root; neither process creates or changes the source
 payload, and the Rust home/config roots remain empty. Verify runs this exact
 pinned-target case. This is an unknown-destination CLI failure slice, not
 evidence for every timeout, cancellation, interface, or network failure mode.
+The non-ignored `rncp_missing_destination_reports_cli_failure` regression
+invokes the production Rust CLI with a real source file, an active local TCP
+interface, and no destination argument. The local acceptor is only an interface
+startup fixture; no Reticulum peer or path discovery is involved. The command
+exits 1, leaves stdout empty, reports exactly `rncp: missing destination hash`
+on stderr, and preserves the source file. This is a distinct argument-omission
+failure slice and does not complete the broader `rncp` failure/network matrix.
+At pinned RNS 1.5.4, `rncp.main` instead prints help to stdout and returns
+success when a source is supplied without its destination. Rust intentionally
+uses a nonzero status and concise stderr for this malformed invocation so it
+cannot appear successful; this is a documented CLI-safety difference, not an
+exact-output parity claim. The local TCP acceptor is bounded to five seconds
+so a startup regression fails rather than hanging the process test.
 The pinned Python fetch client receiving from the Rust listener and
 interrupted after partial Resource bytes arrive is covered by the ignored
 exact-target `rncp_python_fetch_cancel` transcript: Python exits 0, emits

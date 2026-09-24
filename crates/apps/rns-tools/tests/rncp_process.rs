@@ -434,6 +434,61 @@ fn rncp_reports_path_discovery_timeout() -> io::Result<()> {
 }
 
 #[test]
+fn rncp_missing_destination_reports_cli_failure() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("payload.bin");
+    fs::write(&source, b"missing destination fixture")?;
+    let acceptor = TcpListener::bind("127.0.0.1:0")?;
+    acceptor.set_nonblocking(true)?;
+    let address = acceptor.local_addr()?;
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rncp"))
+        .arg(&source)
+        .args(["--connect", &address.to_string(), "--identity-seed", "rncp-missing-destination"])
+        .current_dir(temp.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let accept_deadline = Instant::now() + Duration::from_secs(5);
+    let stream = loop {
+        match acceptor.accept() {
+            Ok((stream, _)) => break Some(stream),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if child.try_wait()?.is_some() {
+                    break None;
+                }
+                if Instant::now() >= accept_deadline {
+                    if let Err(error) = child.kill() {
+                        if error.kind() != io::ErrorKind::InvalidInput {
+                            return Err(error);
+                        }
+                    }
+                    child.wait()?;
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "rncp did not connect to its local TCP interface",
+                    ));
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    let output = child.wait_with_output()?;
+    drop(stream);
+
+    assert_eq!(output.status.code(), Some(1), "missing destination exit status");
+    assert!(
+        output.stdout.is_empty(),
+        "unexpected stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "rncp: missing destination hash\n");
+    assert_eq!(fs::read(&source)?, b"missing destination fixture");
+    Ok(())
+}
+
+#[test]
 fn rncp_listener_restart_preserves_identity_and_transfer() -> io::Result<()> {
     let temp = tempfile::tempdir()?;
     let listener_root = temp.path().join("listener");
