@@ -119,7 +119,11 @@ The #633 follow-up also verifies runtime WebP configuration forwarding: a
 production `rngit` process selects a deterministic stub `ffmpeg`, passes its
 configured quality and maximum-dimension options, and returns WebP metadata to
 a pinned Python Link. This adds CLI-to-backend wiring evidence only; #613
-remains partial.
+remains partial. A second pinned-Python Link regression injects a nonzero
+encoder exit, verifies the exact raw PNG fallback and filename metadata, checks
+that the encoder's stderr detail is logged, and confirms the failed conversion
+directory is removed. No production mismatch was found; execution across the
+other native backend families remains unverified.
 The production-Link page/media differential also covers one nested image path
 containing a space and confirms that rendered Micron markup matches the frozen
 Python `quote_plus(file_path)` encoding. Other template and rendering behavior
