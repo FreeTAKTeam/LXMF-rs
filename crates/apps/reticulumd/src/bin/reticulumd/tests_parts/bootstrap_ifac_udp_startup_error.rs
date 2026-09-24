@@ -210,3 +210,52 @@ interfaces = [
     assert!(error.contains("8..=512"));
     assert!(!error.contains("credential-must-not-appear"));
 }
+
+#[test]
+fn bootstrap_prefers_pinned_python_ifac_credential_alias_on_conflict() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    let occupied = std::net::UdpSocket::bind("127.0.0.1:0").expect("reserve UDP port");
+    let port = occupied.local_addr().expect("reserved UDP address").port();
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "udp", enabled = true, name = "ifac-alias-precedence", host = "127.0.0.1", port = {port}, target_host = "127.0.0.1", target_port = 4242, ifac_size = 128, networkname = "legacy-network", network_name = "current-network", passphrase = "legacy-passphrase", pass_phrase = "current-passphrase" }}
+]
+"#
+        ),
+    )
+    .expect("write conflicting IFAC aliases");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path, Some(config_path), None, false)).await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response.result.expect("result")["interfaces"]
+        .as_array()
+        .expect("interfaces array")
+        .clone();
+    let interface = interfaces
+        .iter()
+        .find(|entry| entry.get("name").and_then(|value| value.as_str()) == Some("ifac-alias-precedence"))
+        .expect("started IFAC UDP interface");
+    let settings = interface.get("settings").expect("interface settings");
+    assert_eq!(settings["network_name"].as_str(), Some("current-network"));
+    assert_eq!(settings["passphrase"].as_str(), Some("current-passphrase"));
+    assert_eq!(
+        settings["_runtime"]["startup_status"].as_str(),
+        Some("spawned"),
+        "the selected alias credentials must pass through production daemon startup"
+    );
+
+    drop(context);
+    drop(occupied);
+}

@@ -690,10 +690,10 @@ impl InterfaceConfig {
     }
 
     pub fn ifac_passphrase(&self) -> Option<&String> {
-        self.passphrase
+        self.pass_phrase
             .as_ref()
             .filter(|value| !value.trim().is_empty())
-            .or_else(|| self.pass_phrase.as_ref().filter(|value| !value.trim().is_empty()))
+            .or_else(|| self.passphrase.as_ref().filter(|value| !value.trim().is_empty()))
     }
 
     fn normalize_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {

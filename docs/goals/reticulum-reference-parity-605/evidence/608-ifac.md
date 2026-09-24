@@ -749,6 +749,27 @@ This verifies reporting for the missing-credential IFAC configuration case. It
 does not complete other parse/startup reporting, carrier-family,
 physical-device, or broader #608 acceptance.
 
+## Conflicting IFAC credential aliases follow pinned startup precedence
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Reticulum.py::_add_interface`, assigns `networkname` before
+`network_name`, and `passphrase` before `pass_phrase`; when both forms are
+configured, the latter spelling in each pair wins. Rust's configuration
+resolver had the `passphrase` precedence reversed. The daemon-bootstrap
+regression `bootstrap_prefers_pinned_python_ifac_credential_alias_on_conflict`
+starts a real IFAC-enabled UDP interface with both spellings set to distinct
+values, then checks the selected network name and passphrase in the interface
+configuration that production startup reports, and confirms the interface
+reached `spawned` status. The resolver now follows the pinned Python ordering.
+This is an automated configuration/startup regression; it does not complete
+the broader lifecycle or carrier-family acceptance.
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  bootstrap_prefers_pinned_python_ifac_credential_alias_on_conflict -- --nocapture
+# 1 passed; both conflicting aliases selected according to pinned Reticulum
+```
+
 ## Rejected live IFAC update remains fail-closed on the restarted UDP daemon
 
 The Python/Rust UDP reconfiguration E2E now attempts an invalid live
