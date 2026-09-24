@@ -177,7 +177,7 @@ fn rnprobe_reports_interrupted_rpc_response_without_probe_result() {
         let (mut stream, _) = listener.accept().expect("accept rpc request");
         let mut request = Vec::new();
         stream.read_to_end(&mut request).expect("read rpc request");
-        assert!(http_body(&request).len() > 0, "rnprobe sent an empty RPC body");
+        assert!(!http_body(&request).is_empty(), "rnprobe sent an empty RPC body");
         stream
             .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\nContent-Length: 16\r\n\r\nshort")
             .expect("write truncated rpc response");
