@@ -16,36 +16,62 @@ fn automatic_backend_selection_uses_reference_preference_order() {
                 .any(|candidate| candidate.argv[0] == program)
         };
         assert_eq!(
-            select_backend(None, available).map(|value| value.name),
+            select_backend(None, None, available).map(|value| value.name),
             Some(backend.name),
             "wrong automatic selection when {} is the first available backend",
             backend.name
         );
     }
-    assert!(select_backend(None, |_| false).is_none());
+    assert!(select_backend(None, None, |_| false).is_none());
 }
 
 #[test]
 fn explicit_backend_selection_matches_reference_override_semantics() {
     for backend in BACKENDS {
         assert_eq!(
-            select_backend(Some(backend.name), |program| program == backend.argv[0])
+            select_backend(Some(backend.name), None, |program| program == backend.argv[0])
                 .map(|value| value.name),
             Some(backend.name),
             "explicit selection failed for {}",
             backend.name
         );
         assert!(
-            select_backend(Some(backend.name), |_| false).is_none(),
+            select_backend(Some(backend.name), None, |_| false).is_none(),
             "unavailable explicitly selected backend must not select another family"
         );
     }
     assert_eq!(
-        select_backend(Some(""), |program| program == "ffmpeg").map(|value| value.name),
+        select_backend(Some(""), None, |program| program == "ffmpeg").map(|value| value.name),
         Some("ffmpeg"),
         "empty environment value follows Python's falsey override behavior"
     );
-    assert!(select_backend(Some("unknown"), |_| true).is_none());
+    assert!(select_backend(Some("unknown"), None, |_| true).is_none());
+}
+
+#[test]
+fn automatic_backend_selection_prefers_previous_available_winner() {
+    let first_available = |program: &str| matches!(program, "ffmpeg" | "magick");
+    assert_eq!(
+        select_backend(None, None, first_available).map(|backend| backend.name),
+        Some("magick")
+    );
+    assert_eq!(
+        select_backend(None, Some("ffmpeg"), first_available).map(|backend| backend.name),
+        Some("ffmpeg"),
+        "pinned Python moves its previous winner ahead of newly available backends"
+    );
+    assert_eq!(
+        select_backend(None, Some("ffmpeg"), |program| program == "magick")
+            .map(|backend| backend.name),
+        Some("magick"),
+        "an unavailable cached winner falls back to normal preference order"
+    );
+    assert_eq!(
+        select_backend(Some("magick"), Some("ffmpeg"), first_available)
+            .map(|backend| backend.name),
+        Some("magick"),
+        "explicit backend selection takes precedence over the automatic winner"
+    );
 }
 
 #[test]

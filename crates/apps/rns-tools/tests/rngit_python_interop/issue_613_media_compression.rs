@@ -7,6 +7,50 @@ use std::io;
 use std::process::{Command, Stdio};
 
 #[test]
+#[ignore = "requires local pinned Python Reticulum checkout"]
+fn pinned_python_media_backend_selection_reuses_available_automatic_winner() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let helper = python_repo().join("RNS/Utilities/rngit/media.py");
+    if !helper.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python rngit media helper not found: {}", helper.display()),
+        ));
+    }
+    let script = r#"
+import importlib.util
+import sys
+import types
+
+sys.modules["RNS"] = types.SimpleNamespace(log=lambda *_args: None, LOG_WARNING=2)
+spec = importlib.util.spec_from_file_location("rngit_media_reference", sys.argv[1])
+media = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(media)
+available = {"ffmpeg"}
+media.shutil.which = lambda program: program if program in available else None
+assert media._selected_backend()[0] == "ffmpeg"
+available.add("magick")
+assert media._selected_backend()[0] == "ffmpeg"
+available.remove("ffmpeg")
+assert media._selected_backend()[0] == "magick"
+"#;
+    let output = Command::new(python_bin())
+        .arg("-c")
+        .arg(script)
+        .arg(helper)
+        .env_remove("RNGIT_MEDIA_BACKEND")
+        .output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "pinned Python backend-selection regression failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )))
+    }
+}
+
+#[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rngit_media_resource_preserves_precompressed_png_without_resource_compression() -> io::Result<()>
 {

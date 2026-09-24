@@ -96,6 +96,12 @@ the 32 MiB media-response limit and falls back to the bounded raw response when
 converted output is oversized or unreadable. Its exact-limit/over-limit unit
 regression and full `rngit` unit suite pass; live oversized encoder output and
 the other conversion backends remain unverified, so #613 stays partial.
+Automatic WebP backend selection now also retains Python's `_winner` behavior:
+the previously selected available backend stays preferred, explicit backend
+configuration still wins, and a missing cached executable falls back to normal
+preference order. Rust unit regressions cover that sequence, with a separate
+ignored test exercising the pinned Python helper directly; the broader #613
+acceptance remains partial.
 The frozen handler's key check is presence-only: a `None` value with a valid
 media path still returns the Resource and filename metadata. A production-Link
 regression now proves that response alongside absent-key denial; Rust already

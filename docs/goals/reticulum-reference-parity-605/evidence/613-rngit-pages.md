@@ -32,6 +32,33 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown and in-flight `/media` Resource cancellation are exercised against pinned Python | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` and `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown` | active, stale, closed, missing-link, graceful-disconnect, and synchronized partial-Resource cancellation paths verified; abrupt-process stale transition and other filesystem failures remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault paths remain open |
 
+### Automatic WebP backend winner
+
+The pinned `media.py::_selected_backend` caches the last automatically selected
+backend in `_winner`, moves it to the front on later automatic selections,
+continues using it while it remains available, and falls back to normal
+preference order after it disappears. Rust previously restarted preference
+order for every conversion. The issue-specific increment now retains the
+automatic winner for the process lifetime; an explicit `RNGIT_MEDIA_BACKEND`
+override still takes precedence without changing that cached automatic
+winner. Rust unit coverage checks first selection, reuse after an earlier
+preference becomes available, and fallback when the cached executable becomes
+unavailable. An ignored integration regression imports the actual pinned
+helper and injects executable availability to assert the same sequence.
+
+```text
+cargo test -p rns-tools --bin rngit --all-features automatic_backend_selection
+  PASS (2 tests)
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  pinned_python_media_backend_selection_reuses_available_automatic_winner \
+  -- --ignored --nocapture
+  Requires the pinned local Python checkout; not run in this worktree.
+```
+
+This is one backend-selection state-parity increment; encoding by the other
+backend families, visual parity, and the broader #613 acceptance remain open.
+
 ## Commands and results
 
 The original bounded implementation commands below ran in the isolated

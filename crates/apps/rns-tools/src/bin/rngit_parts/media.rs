@@ -5,6 +5,7 @@ use std::thread::JoinHandle as MediaJoinHandle;
 
 const MEDIA_CONVERSION_TIMEOUT: Duration = Duration::from_secs(8);
 const STDERR_LIMIT: usize = 1024;
+static SELECTED_BACKEND: std::sync::Mutex<Option<&'static str>> = std::sync::Mutex::new(None);
 
 fn read_bounded_file(path: &Path, limit: usize) -> Option<Vec<u8>> {
     let file = MediaFile::open(path).ok()?;
@@ -62,11 +63,17 @@ pub(crate) fn available_backends() -> Vec<(String, bool)> {
 
 fn selected_backend() -> Option<&'static Backend> {
     let requested = media_env::var("RNGIT_MEDIA_BACKEND").ok();
-    select_backend(requested.as_deref(), command_available)
+    let mut previous = SELECTED_BACKEND.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let selected = select_backend(requested.as_deref(), *previous, command_available);
+    if requested.as_deref().is_none_or(str::is_empty) {
+        *previous = selected.map(|backend| backend.name);
+    }
+    selected
 }
 
 fn select_backend(
     requested: Option<&str>,
+    previous: Option<&str>,
     mut is_available: impl FnMut(&str) -> bool,
 ) -> Option<&'static Backend> {
     if let Some(requested) = requested.filter(|requested| !requested.is_empty()) {
@@ -74,7 +81,10 @@ fn select_backend(
             .iter()
             .find(|backend| backend.name == requested && is_available(backend.argv[0]));
     }
-    BACKENDS.iter().find(|backend| is_available(backend.argv[0]))
+    previous
+        .and_then(|name| BACKENDS.iter().find(|backend| backend.name == name))
+        .filter(|backend| is_available(backend.argv[0]))
+        .or_else(|| BACKENDS.iter().find(|backend| is_available(backend.argv[0])))
 }
 
 fn configured_argv(
