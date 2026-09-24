@@ -317,6 +317,10 @@ still open. A dedicated `windows-rnode-ble` PR check now builds the target-gated
 WinRT resolver and runs the BLE library tests on a hosted Windows runner; its
 result is pending until this PR's check completes and does not replace physical
 paired-device evidence.
+The current PR worktree also adds a worker-level software regression for
+native-style notification EOF: cleanup precedes reconnect through a fresh
+backend, and cancellation closes the recovered session. This does not verify
+native GATT EOF or physical recovery, so #614 remains partial.
 
 The scoped #615 software gate is complete at PR #626 head
 `b863e1d115395232a41445dbdfe1ccb08ee6abeb` (merged as

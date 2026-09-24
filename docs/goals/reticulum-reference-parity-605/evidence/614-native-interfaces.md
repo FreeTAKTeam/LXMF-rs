@@ -21,6 +21,7 @@ acceptance gate.
 | Windows paired-device lookup | The Windows BLE backend asks WinRT for the paired-device selector, enumerates `DeviceInformation`, extracts only strict Bluetooth address suffixes from each device ID, and filters scan candidates by the paired address before configured ID, alias, or service matching. Deterministic coverage verifies a stale paired address cannot authorize a different scanned device, while a matching address remains eligible. A Windows-only hosted test queries the native paired-device list and compares Rust suffix extraction against the pinned reference rule without logging device addresses. | Linux parser/filter tests verified; hosted native query/test passed on `ca6b6bba`; actual stale Windows pairing removal and physical paired-device behavior unverified |
 | Windows backend boundary | The resolver is target-gated and uses the existing `btleplug` scan/connect/service-discovery path; Android's configured-peripheral path is unchanged. The implementation does not use `btleplug`'s unsupported Windows `add_peripheral` address shortcut. | local code verified |
 | Runtime cleanup and read states | BLE notification timeout is an idle read: it returns no event while preserving the live session, allowing a later notification to be delivered. Native notification-stream EOF is tracked separately, resets the session, and is returned to the caller as a `next_notification` backend error. A deterministic scripted-backend regression exercises idle → data → EOF without hardware. This aligns with the pinned Python loop, which treats an empty BLE receive queue as no bytes and continues polling; connection/read exceptions remain terminal. | focused fake-backend regression; native carrier unverified |
+| BLE worker recovery after notification EOF | A deterministic backend ends the first worker session with native-style notification-stream EOF. The production worker closes that session before its bounded reconnect, obtains a fresh backend, and closes the recovered session on cancellation. | focused fake-backend worker regression; native stream and carrier unverified |
 | BLE partial setup and retry | Deterministic backends fail once during notification setup and during connection acquisition, recording cleanup before a second startup. Each runtime reconnects successfully, becomes connected, and releases the recovered session on close. This verifies reusable-runtime cleanup/retry after a backend-reported partial setup/connect failure; it does not execute native GATT service discovery or prove Windows/macOS/Android cancellation behavior. | focused fake-backend regressions; native carrier unverified |
 | BLE service-discovery cancellation recovery | The production interface worker receives a deterministic backend cancellation error during its service-discovery/connect phase, closes that partial session before retrying, creates exactly one fresh backend after the configured 1 ms backoff, completes notification subscription/startup writes, and closes the recovered session when stopped. The test is radio-free and bounds both recovery and shutdown. It models a backend-reported cancellation result; it does not cancel/drop the Rust startup future or exercise native GATT cancellation/cleanup. | focused fake-backend worker regression; native carrier unverified |
 | BLE worker detection fallback | A private backend factory, used only by this worker and defaulting to the unchanged native backend constructor, lets a deterministic fake run through the actual worker loop. With CMD_DETECT withheld, the configured bounded deadline emits deferred radio configuration; a scripted disconnect verifies cleanup before the worker creates a fresh backend, and cancellation closes that second session. This is software fault injection only, not physical BLE support or device evidence. Behavior was compared with pinned Python's five-second `ble_detect_timeout` wait at `99de23c040d507e3fefca19e87b182302902725d`; Rust's configured fallback remains separately bounded and tested without waiting five seconds. | focused fake-backend worker regression; no physical device |
@@ -78,6 +79,16 @@ The software-only BLE idle/EOF regression ran on the current PR #634 head:
 ```text
 cargo test -p reticulum-rs-transport --features rnode-ble --lib \
   native_stream_eof_is_distinct_from_idle_and_idle_read_recovers -- --nocapture PASS
+```
+
+The worker-level EOF recovery regression also ran on the current PR #634
+worktree. It injects native-style EOF through the private fake backend factory,
+asserts the first backend closes before the worker reconnects, and verifies
+cancellation closes the recovered session; it does not exercise native GATT:
+
+```text
+cargo test -p reticulum-rs-transport --features rnode-ble --lib \
+  worker_closes_eof_session_before_reconnecting_with_fresh_backend -- --nocapture PASS
 ```
 
 The BLE partial-setup cleanup and reconnect regression ran on the current
@@ -198,6 +209,9 @@ establish physical Windows pairing or carrier behavior.
   backend-reported service-discovery cancellation, not native GATT cancellation
   or cleanup. The EOF/idle semantic distinction
   is covered by the software regression above, not a native trace.
+- Worker recovery after native-style notification EOF now has deterministic
+  backend-factory coverage. Native stream termination, platform cleanup, and
+  paired-device recovery remain unverified.
 - AutoInterface still needs native link-local enumeration and carrier echo
   observation/recovery, plus stop/restart evidence on each supported host. The
   new deterministic software regression exercises the production peer-job and

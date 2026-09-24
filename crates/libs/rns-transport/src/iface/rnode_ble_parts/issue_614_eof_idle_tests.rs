@@ -76,6 +76,135 @@ async fn native_stream_eof_is_distinct_from_idle_and_idle_read_recovers() {
     assert!(!runtime.status().connected, "EOF resets the active session");
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum EofRecoveryEvent {
+    Connected(usize),
+    Closed(usize),
+}
+
+struct WorkerEofBackend {
+    attempt: usize,
+    stream_ended: bool,
+    events: Arc<Mutex<Vec<EofRecoveryEvent>>>,
+}
+
+impl RnodeBleBackend for WorkerEofBackend {
+    async fn connect(&mut self) -> Result<(), String> {
+        self.events
+            .lock()
+            .expect("events lock")
+            .push(EofRecoveryEvent::Connected(self.attempt));
+        Ok(())
+    }
+
+    async fn subscribe_notifications(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn write(&mut self, _write: RnodeBleWrite) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String> {
+        if self.attempt == 1 {
+            self.stream_ended = true;
+            return Ok(None);
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+        Ok(None)
+    }
+
+    fn notification_stream_ends_on_none(&self) -> bool {
+        self.stream_ended
+    }
+
+    async fn close(&mut self) -> Result<(), String> {
+        self.events
+            .lock()
+            .expect("events lock")
+            .push(EofRecoveryEvent::Closed(self.attempt));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn worker_closes_eof_session_before_reconnecting_with_fresh_backend() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let interface = NativeRnodeBleKissInterface::new(
+        "test-rnode-eof-recovery",
+        NativeRnodeBleSettings::for_peripheral("test"),
+        RnodeBleKissConfig::default(),
+    )
+    .with_reconnect_backoff(Duration::from_millis(1))
+    .with_max_reconnect_backoff(Duration::from_millis(4));
+    let mut manager = crate::iface::InterfaceManager::new(1);
+    let context = manager.new_context(interface);
+    let cancel = context.cancel.clone();
+    let worker_events = events.clone();
+    let worker = tokio::spawn(NativeRnodeBleKissInterface::spawn_with_backend_factory(
+        context,
+        move |_| {
+            let attempt = worker_events
+                .lock()
+                .expect("events lock")
+                .iter()
+                .filter(|event| matches!(event, EofRecoveryEvent::Connected(_)))
+                .count()
+                + 1;
+            WorkerEofBackend {
+                attempt,
+                stream_ended: false,
+                events: worker_events.clone(),
+            }
+        },
+    ));
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let recovered = {
+                let events = events.lock().expect("events lock");
+                events.contains(&EofRecoveryEvent::Closed(1))
+                    && events.contains(&EofRecoveryEvent::Connected(2))
+            };
+            if recovered {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await
+    .expect("worker closes the EOF session and establishes a fresh backend");
+
+    cancel.cancel();
+    tokio::time::timeout(Duration::from_secs(1), worker)
+        .await
+        .expect("worker exits after cancellation")
+        .expect("worker task completes");
+
+    let events = events.lock().expect("events lock");
+    let first_cleanup = events
+        .iter()
+        .position(|event| *event == EofRecoveryEvent::Closed(1))
+        .expect("EOF session is closed");
+    let retry = events
+        .iter()
+        .position(|event| *event == EofRecoveryEvent::Connected(2))
+        .expect("worker establishes a fresh backend");
+    assert!(first_cleanup < retry, "EOF cleanup completes before reconnect");
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, EofRecoveryEvent::Connected(_)))
+            .count(),
+        2,
+        "worker recovers once before the test cancels it"
+    );
+    assert!(
+        events[retry + 1..].contains(&EofRecoveryEvent::Closed(2)),
+        "cancellation closes the recovered session"
+    );
+}
+
 struct PartialSetupBackend {
     fail_subscription_once: bool,
     events: Vec<&'static str>,

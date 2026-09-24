@@ -544,6 +544,12 @@ transport, request tag, and egress interface; recursive request caps and queue
 limits are scoped per source interface; and expired recursive requests release
 that interface capacity. This does not claim full transport parity; live mesh
 and public-network behavior remain deferred.
+For #614 BLE runtime evidence, the deterministic worker regression now covers
+recovery after native-style notification EOF: it verifies session cleanup
+before fresh-backend reconnect and cleanup of the recovered session on stop.
+This is simulated software evidence only; native GATT, platform-specific
+cleanup, and physical recovery remain open, so the broader native-interface row
+remains partial and hardware-unverified.
 Unknown recursive path discovery now also respects Python's
 `DISCOVER_PATHS_FOR` interface-mode gate, forwarding only from access-point,
 gateway, and roaming interfaces and suppressing waiting discovery requester

@@ -109,6 +109,10 @@ AutoInterface activation helper, manager channel registration/removal, runtime
 task/socket teardown, and restart on the same test-owned ports. It does not
 replace the remaining native-interface, broader #614 lifecycle, platform, or
 paired-device/hardware evidence and does not promote #614/#605 to complete.
+The worker-level BLE EOF recovery slice is also covered in software: the
+worker closes the EOF session before reconnecting through a fresh backend and
+closes that session on cancellation. Native GATT EOF and physical recovery
+remain unverified.
 A private, worker-scoped backend factory now enables software-only fault
 injection through the actual BLE worker loop: withholding `CMD_DETECT` triggers
 the configured bounded fallback, a scripted disconnect exercises cleanup and
