@@ -335,6 +335,27 @@ fn document_author_permissions_get_requires_repository_admin_like_pinned_python(
 #[test]
 #[ignore = "requires the pinned Python Reticulum reference"]
 fn document_author_permissions_get_requires_repository_write_and_interact_like_pinned_python() {
+    let permissions = "read:all\nwrite:none\ninteract:none\nadmin:none\n";
+    let document_permissions = format!(
+        "read:{}\nwrite:{}\ninteract:{}\n",
+        hex::encode(REMOTE),
+        hex::encode(REMOTE),
+        hex::encode(REMOTE)
+    );
+    let (rust, python) = assert_work_operation_differential(
+        "perms",
+        permissions,
+        &document_permissions,
+        REMOTE,
+    );
+    assert_eq!(python["status"], ReticulumGitNode::RES_DISALLOWED);
+    assert_eq!(rust.status, ReticulumGitNode::RES_DISALLOWED);
+    assert_eq!(rust.permission_content.as_deref(), Some(document_permissions.as_str()));
+}
+
+#[test]
+#[ignore = "requires the pinned Python Reticulum reference"]
+fn repository_admin_author_permissions_get_still_requires_repository_write_and_interact() {
     let permissions = format!(
         "read:all\nwrite:none\ninteract:none\nadmin:{}\n",
         hex::encode(REMOTE)
@@ -353,7 +374,6 @@ fn document_author_permissions_get_requires_repository_write_and_interact_like_p
     );
     assert_eq!(python["status"], ReticulumGitNode::RES_DISALLOWED);
     assert_eq!(rust.status, ReticulumGitNode::RES_DISALLOWED);
-    assert_eq!(rust.permission_content.as_deref(), Some(document_permissions.as_str()));
 }
 
 #[test]
