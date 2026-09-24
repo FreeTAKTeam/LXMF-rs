@@ -83,7 +83,11 @@ exact payload digests. It also verifies compressible and deterministic
 incompressible two-segment payloads above `MAX_EFFICIENT_SIZE`, including
 assembled digests, logical size, and the final segment's compression flag.
 Pinned Python and Rust agree on segment-first accounting and per-segment
-compression. A pinned-reference boundary probe found that 64 MiB is the
+compression. A mixed-peer case now composes split transfer, first-segment
+metadata, and compression: Python verifies exact assembled content and
+metadata, while a focused Rust assertion confirms that first segment's
+compressed advertisement; metadata makes the final 15-byte segment correctly
+remain uncompressed. A pinned-reference boundary probe found that 64 MiB is the
 automatic-compression threshold, not an outbound admission ceiling; the
 reader-backed sender now accepts a 64 MiB + 1 source, leaves it uncompressed,
 and prepares only its first segment. The exact local Resource regression and

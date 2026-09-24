@@ -175,40 +175,52 @@ async fn rust_resource_compression_defaults_match_pinned_python() {
         .expect("register channel handler");
 
     let mut resource_events = transport.resource_events();
+    let split_metadata = rmp_serde::to_vec(&"python-meta").expect("encode split Resource metadata");
     let mut cases = vec![
-        ("compressible-default", b"resource compression default ".repeat(4096), true, true),
-        ("incompressible-default", rust_resource_fixture(64 * 1024), true, false),
+        ("compressible-default", b"resource compression default ".repeat(4096), true, true, None),
+        ("incompressible-default", rust_resource_fixture(64 * 1024), true, false, None),
         (
             "compressible-split-segments",
             vec![b'R'; MAX_EFFICIENT_SIZE * 2],
             true,
             true,
+            Some(split_metadata),
         ),
         (
             "incompressible-split-segments",
             rust_resource_fixture(MAX_EFFICIENT_SIZE * 2),
             true,
             false,
+            None,
         ),
-        ("compressible-disabled", b"resource compression disabled ".repeat(4096), false, false),
+        ("compressible-disabled", b"resource compression disabled ".repeat(4096), false, false, None),
     ];
-    for (label, payload, auto_compress, expected_compressed) in cases.drain(..) {
+    for (label, payload, auto_compress, expected_compressed, metadata) in cases.drain(..) {
         let digest = digest_hex(&payload);
-        let resource_hash = if auto_compress {
-            transport.send_resource(&link_id, payload.clone(), None).await
-        } else {
-            transport
-                .send_resource_with_compression(&link_id, payload.clone(), None, false)
-                .await
-        }
+        let metadata_wire_size = metadata.as_ref().map(|value| value.len() + 3).unwrap_or(0);
+        let total_size = payload.len() + metadata_wire_size;
+        // Metadata reduces the first segment's source-data slice. Here that
+        // creates a tiny third tail segment; the Python endpoint reports the
+        // final segment's compression flag, which is false when compression
+        // would grow its 15-byte payload. The Rust unit regression separately
+        // checks that the first, metadata-bearing segment is compressed.
+        let reported_compressed = if metadata_wire_size > 0 { false } else { expected_compressed };
+        let resource_hash = transport
+            .send_resource_with_compression(&link_id, payload.clone(), metadata, auto_compress)
+            .await
         .expect("send Resource");
         wait_for_outbound_resource_complete(&mut resource_events, resource_hash, Duration::from_secs(30)).await;
-        let expected = format!(
-            "resource-sha256:{}:{digest}:total_size={}:compressed={}",
-            payload.len(),
-            payload.len(),
-            expected_compressed
-        );
+        let expected = if metadata_wire_size > 0 {
+            format!(
+                "resource-sha256-metadata:{}:{digest}:{total_size}:python-meta:total_size={total_size}:compressed={reported_compressed}",
+                payload.len(),
+            )
+        } else {
+            format!(
+                "resource-sha256:{}:{digest}:total_size={total_size}:compressed={reported_compressed}",
+                payload.len(),
+            )
+        };
         tokio::time::timeout(Duration::from_secs(30), async {
             loop {
                 if seen.lock().expect("seen lock").iter().any(|(id, data)| {
@@ -220,7 +232,12 @@ async fn rust_resource_compression_defaults_match_pinned_python() {
             }
         })
         .await
-        .unwrap_or_else(|_| panic!("Python did not confirm {label} compression: {expected}"));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Python did not confirm {label} compression: expected={expected}; seen={:?}",
+                seen.lock().expect("seen lock")
+            )
+        });
     }
 
     // The metadata wire prefix is part of the compressed Resource payload,

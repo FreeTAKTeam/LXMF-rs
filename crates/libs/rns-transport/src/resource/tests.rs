@@ -203,6 +203,48 @@ mod tests {
     }
 
     #[test]
+    fn split_resource_compresses_first_segment_with_metadata() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound = Link::new_from_request(
+            &request,
+            signer.sign_key().clone(),
+            destination,
+            tx,
+        )
+        .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let data = vec![b'R'; MAX_EFFICIENT_SIZE * 2];
+        let metadata = rmp_serde::to_vec(&"python-meta").expect("encode metadata");
+        let prepared = ResourceManager::prepare_send_with_compression(
+            &outbound,
+            data,
+            Some(metadata),
+            None,
+            false,
+            DEFAULT_RESOURCE_INTERFACE_MTU,
+            true,
+        )
+        .expect("prepare split metadata Resource");
+        let advertisement = decrypt_advertisement(&outbound, &prepared.first.advertisement_packet());
+        assert!(advertisement.compressed());
+        assert_eq!(advertisement.total_segments, 3);
+    }
+
+    #[test]
     fn resource_sender_can_disable_opportunistic_compression_for_binary_responses() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();

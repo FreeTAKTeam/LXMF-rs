@@ -598,6 +598,34 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed; Python-to-Rust split cases matched sender flags, logical size, and digest
 ```
 
+### Split compression with first-segment metadata
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Resource.py::Resource.__init__` prepends encoded metadata to segment 1
+before compression. The mixed-peer compression matrix now includes a
+compressible 2 MiB source with MessagePack metadata and verifies the assembled
+Python receiver's exact data digest, metadata, and total-size accounting. The
+metadata prefix changes this transfer to three segments; Python's reported
+compression flag belongs to the final 15-byte tail and is correctly false
+because bzip2 framing would expand it. A focused Rust preparation test decrypts
+the first-segment advertisement and confirms that metadata-bearing segment is
+compressed. This closes only the combined split/metadata/compression case; the
+broad #610 acceptance remains partial.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  split_resource_compresses_first_segment_with_metadata -- --nocapture
+# 1 passed; first-segment advertisement is compressed and transfer has 3 segments
+
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_resource_compression_defaults_match_pinned_python \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; Python assembled exact data/metadata/total size; final tail segment
+# correctly reported uncompressed
+```
+
 ## Pinned-Python cancellation after the first split segment
 
 The Rust sender now has a later-segment cancellation regression against frozen
