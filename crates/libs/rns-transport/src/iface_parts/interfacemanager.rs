@@ -88,6 +88,7 @@ impl InterfaceManager {
             ifac_state: ifac_state.clone(),
             ifac_violations: ifac_violations.clone(),
             ifac_default_size_bytes,
+            inherit_ifac: true,
             is_shared_instance: false,
             outgoing_pr_history: VecDeque::new(),
             traffic: InterfaceTraffic::default(),
@@ -270,10 +271,15 @@ impl InterfaceManager {
         }
     }
 
-    pub fn inherit_runtime_config(
+    pub fn inherit_runtime_config(&mut self, source: AddressHash, target: AddressHash) -> bool {
+        self.inherit_runtime_config_with_ifac(source, target, true)
+    }
+
+    pub(crate) fn inherit_runtime_config_with_ifac(
         &mut self,
         source: AddressHash,
         target: AddressHash,
+        inherit_ifac: bool,
     ) -> bool {
         let Some(source_iface) = self.ifaces.iter().find(|i| i.address == source) else {
             return false;
@@ -283,14 +289,17 @@ impl InterfaceManager {
         let outgoing = source_iface.outgoing;
         let announce_bitrate_bps = source_iface.announce_bitrate_bps;
         let announce_cap_percent = source_iface.announce_cap_percent;
-        let shared_config = source_iface.shared_config.clone();
+        let mut shared_config = source_iface.shared_config.clone();
         let ifac_default_size_bytes = source_iface.ifac_default_size_bytes;
         let is_shared_instance = source_iface.is_shared_instance;
-        let ifac_context = source_iface
-            .ifac_state
-            .read()
-            .ok()
-            .and_then(|context| context.clone());
+        let ifac_context = if inherit_ifac {
+            source_iface.ifac_state.read().ok().and_then(|context| context.clone())
+        } else {
+            shared_config.ifac_size = None;
+            shared_config.network_name = None;
+            shared_config.passphrase = None;
+            None
+        };
 
         let Some(target_iface) = self.ifaces.iter_mut().find(|i| i.address == target) else {
             return false;
@@ -303,6 +312,7 @@ impl InterfaceManager {
         target_iface.announce_cap_percent = announce_cap_percent;
         target_iface.shared_config = shared_config;
         target_iface.ifac_default_size_bytes = ifac_default_size_bytes;
+        target_iface.inherit_ifac = inherit_ifac;
         if let Ok(mut target_context) = target_iface.ifac_state.write() {
             *target_context = ifac_context;
         }
@@ -374,6 +384,7 @@ impl InterfaceManager {
             ifac_state: host_ifac_state,
             ifac_violations: host_ifac_violations,
             ifac_default_size_bytes,
+            inherit_ifac: true,
             is_shared_instance: host_iface.is_shared_instance,
             outgoing_pr_history: VecDeque::new(),
             traffic: InterfaceTraffic::default(),

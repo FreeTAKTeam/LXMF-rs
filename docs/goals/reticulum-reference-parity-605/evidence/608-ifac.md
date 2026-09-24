@@ -774,6 +774,31 @@ object required by the existing runtime refresher. Bootstrap now seeds the
 configured listener status so the worker's bind failure reaches `list_interfaces`.
 This is software-only local evidence; no physical/HIL test was run.
 
+## Unix shared-instance clients keep the reference plaintext exception
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d` creates attached
+`LocalClientInterface` objects in `RNS/Interfaces/LocalInterface.py` without
+copying the `LocalServerInterface` IFAC identity or key (`incoming_connection`,
+lines 419-462). In contrast, `TCPServerInterface.incoming_connection` explicitly
+copies and derives IFAC state for accepted TCP clients (lines 616-634). The Rust
+Unix shared-instance accept path previously inherited the parent IFAC state,
+which made attached local clients reject plaintext frames and authenticate their
+egress—different from the pinned shared-instance behavior.
+
+`LocalUnixServer` now spawns accepted clients after inheriting routing/runtime
+settings but deliberately omits IFAC credentials. Later parent configuration
+updates continue to propagate non-IFAC settings without turning local IPC into
+an authenticated carrier. The regression uses a real Unix socket, rotates the
+parent credentials after client attachment, then verifies plaintext ingress is
+admitted and direct egress remains untagged. This is software-only shared-instance
+compatibility evidence; it does not promote the broad #608 acceptance checkbox.
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulum-rs-transport --lib \
+  local_unix_shared_clients_keep_plaintext_wire_policy_with_parent_ifac -- --nocapture
+# 1 passed; real Unix socket ingress/egress remains plaintext across parent IFAC rotation
+```
+
 ## PR #628 hosted PR-HIL fixture follow-up
 
 Run `35907636125` failed one virtual `python-channel-interop` case,

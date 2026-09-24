@@ -140,9 +140,14 @@ impl InterfaceManager {
         let mut updated = false;
         for iface in &mut self.ifaces {
             if iface.address == address || iface.parent == Some(address) {
-                iface.shared_config = shared_config.clone();
+                let inherit_ifac = iface.address == address || iface.inherit_ifac;
+                iface.shared_config = if inherit_ifac {
+                    shared_config.clone()
+                } else {
+                    shared_config_without_ifac(&shared_config)
+                };
                 if let Ok(mut state) = iface.ifac_state.write() {
-                    *state = ifac_context.clone();
+                    *state = if inherit_ifac { ifac_context.clone() } else { None };
                 }
                 updated |= iface.address == address;
             }
@@ -167,9 +172,14 @@ impl InterfaceManager {
         let mut updated = false;
         for iface in &mut self.ifaces {
             if iface.address == address || iface.parent == Some(address) {
-                iface.shared_config = shared_config.clone();
+                let inherit_ifac = iface.address == address || iface.inherit_ifac;
+                iface.shared_config = if inherit_ifac {
+                    shared_config.clone()
+                } else {
+                    shared_config_without_ifac(&shared_config)
+                };
                 if let Ok(mut state) = iface.ifac_state.write() {
-                    *state = ifac_context.clone();
+                    *state = if inherit_ifac { ifac_context.clone() } else { None };
                 }
                 updated |= iface.address == address;
             }
@@ -191,4 +201,14 @@ impl InterfaceManager {
             right.announce_bitrate_bps.cmp(&left.announce_bitrate_bps)
         });
     }
+}
+
+fn shared_config_without_ifac(
+    shared_config: &InterfaceSharedConfig,
+) -> InterfaceSharedConfig {
+    let mut child_config = shared_config.clone();
+    child_config.ifac_size = None;
+    child_config.network_name = None;
+    child_config.passphrase = None;
+    child_config
 }

@@ -308,6 +308,7 @@ struct LocalInterface {
     ifac_state: IfacState,
     ifac_violations: Arc<AtomicU64>,
     ifac_default_size_bytes: usize,
+    inherit_ifac: bool,
     is_shared_instance: bool,
     outgoing_pr_history: VecDeque<Instant>,
     traffic: InterfaceTraffic,
