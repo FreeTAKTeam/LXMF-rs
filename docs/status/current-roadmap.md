@@ -96,6 +96,11 @@ cancels during the second; the Rust sender observes terminal
 `OutboundRejected`. This extends cancellation evidence beyond the first part,
 but the broader #610 segment/callback matrix remains open.
 
+A separate pinned-Python Resource fault regression now times out a dropped Link
+establishment, reuses the carrier with a fresh production Link ID, and
+verifies a successful one-part Resource exchange by digest. Split-transfer
+timeout recovery and the broader #610 failure matrix remain open.
+
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
 packet/LXMF bytes, Rust→Python LXMF bytes, identity/announce/link vectors, and

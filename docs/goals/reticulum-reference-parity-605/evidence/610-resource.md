@@ -801,6 +801,26 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed; three sessions at negotiated MDU-1, MDU, MDU+1
 ```
 
+### Link-establishment timeout recovery after a dropped request
+
+The pinned-Python regression
+`pinned_python_link_establishment_timeout_after_dropped_request` drops the
+initial Link request, verifies the Rust Link reaches its establishment timeout,
+restores the same carrier, and requires a fresh Link ID before sending a
+256-byte one-part Resource from Rust to Python. The Python acknowledgement
+matches the expected digest. This verifies one production recovery path; it
+does not establish split-Resource timeout recovery or the broader #610 failure
+matrix.
+
+```text
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c \
+LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_link_establishment_timeout_after_dropped_request \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; fresh production Link and matching 256-byte Resource digest
+```
+
 ## 64 MiB outbound admission versus compression boundary
 
 Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`
