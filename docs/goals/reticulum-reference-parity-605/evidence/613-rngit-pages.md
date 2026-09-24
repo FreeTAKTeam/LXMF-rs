@@ -392,6 +392,8 @@ conversion enabled. A client using pinned Reticulum
 8,192-byte size, and byte-for-byte match against the committed fixture. This
 supports only disabled-backend raw fallback; other encoder families and the
 broader image corpus remain unverified.
+Verify runs this exact ignored regression against its pinned
+`Reticulum-parity` checkout.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \

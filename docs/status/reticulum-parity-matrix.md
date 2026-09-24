@@ -192,6 +192,7 @@ proves graceful disconnect cleanup. A second pinned-Python production-Link case
 forces `RNGIT_MEDIA_BACKEND` to an unavailable executable and verifies that the
 successful `/media` Resource retains the original filename and all 8,192 raw
 fixture bytes, matching the pinned handler's conversion-failure fallback.
+Verify runs the exact ignored regression against its pinned reference.
 
 The precompressed-media differential separately captures the actual Resource
 response advertisement on a real pinned-Python Link for the deterministic

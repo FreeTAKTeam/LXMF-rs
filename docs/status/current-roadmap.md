@@ -75,8 +75,9 @@ and is now fault-injected over the production TCP Link: the Rust process allows
 Python client observes neither a response nor a failed callback before
 timeout. This matches the frozen Python handler and Link semantics, so no
 production change was needed. Verify runs this exact ignored regression
-against its pinned Reticulum checkout. The utility and full operational parity
-rows remain partial.
+against its pinned Reticulum checkout. Verify also runs the exact pinned-Python
+raw-media fallback test with an unavailable WebP backend. The utility and full
+operational parity rows remain partial.
 The frozen handler's key check is presence-only: a `None` value with a valid
 media path still returns the Resource and filename metadata. A production-Link
 regression now proves that response alongside absent-key denial; Rust already
