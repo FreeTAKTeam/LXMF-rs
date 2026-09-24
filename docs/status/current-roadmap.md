@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-23
+Last reassessed: 2026-09-24
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -172,6 +172,15 @@ shared document-read-or-repository-admin gate before those operation handlers;
 the focused differential matches status, body, and persisted content. This is
 one authorization-order case, not completion of #612's broader operation,
 permission, network, and fault matrix.
+
+A #612 permissions-get differential now verifies Python's layered repository
+authorization: repository admin is required at work-operation dispatch, and
+repository write/interact is required by `_work_perms` before document-level
+author/admin checks. Rust previously allowed an author/document-level grant to
+bypass the repository-admin gate; its production handler now applies the same
+repository gates before document lookup. Four focused pinned-Python cases
+pass, but other permission combinations, `perms/set` ordering, and the wider
+#612 operation matrix remain open.
 
 A focused #612 production-handler regression now checks the blocked-identity
 gate with a broad group `read:all` grant. The Rust `list` handler returns the
