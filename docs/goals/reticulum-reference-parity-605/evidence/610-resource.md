@@ -948,6 +948,43 @@ This adds production-daemon consumer evidence for outbound rejection and local
 cancellation only. It does not establish the full callback/status/cleanup
 matrix or complete issue #610.
 
+## Deterministic partial inbound failure through the daemon consumer
+
+`daemon_reports_partial_inbound_resource_failure_after_gated_link_teardown`
+uses the production `Transport`, active Link, and `spawn_inbound_worker` with a
+test-only gate on the paired in-memory interface channels. The gate forwards
+the Resource advertisement and first Resource data packet, then withholds later
+Resource packets while continuing to forward control packets. The test waits
+for the receiver's actual nonzero/incomplete `Progress` event and for a later
+Resource packet to reach the gate before the peer sends LinkClose. No sleep or
+packet-arrival race determines the injection point.
+
+The daemon transport emits exactly one `InboundFailed` for the transfer with
+nonzero but incomplete part counts; it emits no `Complete`. The daemon worker
+produces no receipt. An existing `sending: link resource` record keeps that
+status and its empty content, with no delivered message added to the store.
+This is focused proof for one partial-transfer
+Link teardown path; it does not establish every Resource failure reason,
+callback/status consumer, or the broader #610 acceptance matrix.
+
+Focused validation on the #638 candidate worktree:
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  daemon_reports_partial_inbound_resource_failure_after_gated_link_teardown \
+  -- --nocapture
+# 1 passed
+
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd
+# 473 passed
+
+cargo clippy -p reticulumd --bin reticulumd --tests --no-deps -- -D warnings
+cargo fmt --all -- --check
+TMPDIR=/dev/shm tools/scripts/check-module-size.sh
+git diff --check
+# all passed
+```
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
