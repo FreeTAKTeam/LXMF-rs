@@ -89,6 +89,11 @@ production change was needed. Verify runs this exact ignored regression
 against its pinned Reticulum checkout. Verify also runs the exact pinned-Python
 raw-media fallback test with an unavailable WebP backend. The utility and full
 operational parity rows remain partial.
+The current #633 software increment also caps converted WebP output reads at
+the 32 MiB media-response limit and falls back to the bounded raw response when
+converted output is oversized or unreadable. Its exact-limit/over-limit unit
+regression and full `rngit` unit suite pass; live oversized encoder output and
+the other conversion backends remain unverified, so #613 stays partial.
 The frozen handler's key check is presence-only: a `None` value with a valid
 media path still returns the Resource and filename metadata. A production-Link
 regression now proves that response alongside absent-key denial; Rust already

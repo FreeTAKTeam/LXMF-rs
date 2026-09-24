@@ -6,6 +6,13 @@ use std::thread::JoinHandle as MediaJoinHandle;
 const MEDIA_CONVERSION_TIMEOUT: Duration = Duration::from_secs(8);
 const STDERR_LIMIT: usize = 1024;
 
+fn read_bounded_file(path: &Path, limit: usize) -> Option<Vec<u8>> {
+    let file = MediaFile::open(path).ok()?;
+    let mut bytes = Vec::with_capacity(limit.min(64 * 1024));
+    file.take((limit as u64).saturating_add(1)).read_to_end(&mut bytes).ok()?;
+    (bytes.len() <= limit).then_some(bytes)
+}
+
 struct Backend {
     name: &'static str,
     argv: &'static [&'static str],

@@ -1,5 +1,6 @@
 use super::{
-    configured_argv, read_stderr_tail, select_backend, wait_pipeline, webp_info, BACKENDS,
+    configured_argv, read_bounded_file, read_stderr_tail, select_backend, wait_pipeline, webp_info,
+    BACKENDS,
 };
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -152,6 +153,16 @@ fn webp_header_dimensions_match_reference_chunk_layouts() {
 fn malformed_webp_headers_are_rejected() {
     assert_eq!(webp_info(&[0_u8; 30]), None);
     assert_eq!(webp_info(b"RIFF"), None);
+}
+
+#[test]
+fn converted_media_read_obeys_response_limit_without_overreading() {
+    let temporary = tempfile::tempdir().expect("temporary directory");
+    let path = temporary.path().join("converted.webp");
+    std::fs::write(&path, b"12345").expect("write conversion output");
+
+    assert_eq!(read_bounded_file(&path, 5).as_deref(), Some(b"12345".as_slice()));
+    assert_eq!(read_bounded_file(&path, 4), None);
 }
 
 #[cfg(unix)]

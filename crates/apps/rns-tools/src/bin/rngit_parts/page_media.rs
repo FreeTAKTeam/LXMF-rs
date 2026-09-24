@@ -198,7 +198,7 @@ impl ReticulumGitNode {
                     self.media_max_dimension,
                 );
                 if converted {
-                    if let Ok(converted_data) = fs::read(&output_path) {
+                    if let Some(converted_data) = read_bounded_file(&output_path, MEDIA_BLOB_LIMIT) {
                         let response_name = format!("{stem}.webp");
                         self.download_succeeded(&group, &repository, false);
                         return Self::file_response(converted_data, &response_name);
