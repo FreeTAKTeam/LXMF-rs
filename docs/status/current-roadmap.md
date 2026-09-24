@@ -74,6 +74,12 @@ result. It matches pinned Python behavior, so no production fix was needed.
 These increments do not complete the broader #611 utility matrix, which
 remains partial.
 
+A focused `rnprobe` process check now injects a daemon RPC authorization
+rejection and verifies exit status 1, contextual stderr, and empty stdout. It
+pins the existing CLI error propagation at the mocked daemon boundary only;
+it is not live authorization or transport parity and required no production
+change. The broader #611 utility matrix remains partial.
+
 The exact-target Python fetch-client disk-error trace now verifies the full
 payload digest at the pinned save callback, the callback's local save error,
 the pinned client's subsequent `Transfer complete` progress and unresolved

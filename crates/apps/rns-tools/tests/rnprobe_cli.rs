@@ -138,6 +138,38 @@ fn rnprobe_returns_packet_loss_exit_status_and_json_result() {
 }
 
 #[test]
+fn rnprobe_rpc_rejection_reports_failure_without_probe_result() {
+    let rpc = spawn_mock_rpc(|request| RpcResponse {
+        id: request.id,
+        result: None,
+        error: Some(rns_rpc::RpcError::new("probe_rejected", "destination is not authorized")),
+    });
+
+    let output = Command::new(rnprobe_bin())
+        .args([
+            "rnstransport.probe",
+            "00112233445566778899aabbccddeeff",
+            "--rpc",
+            &rpc.addr,
+            "--json",
+        ])
+        .output()
+        .expect("run rnprobe");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "rnprobe emitted apparent result: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "rnprobe: probe failed: destination is not authorized (probe_rejected)\n"
+    );
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
 fn rnprobe_rejects_malformed_destination_before_backend_work() {
     let output = Command::new(rnprobe_bin())
         .args(["rnstransport.probe", "not-a-destination"])

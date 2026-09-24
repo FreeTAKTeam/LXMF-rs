@@ -64,6 +64,12 @@ prints its destination-hash validation diagnostic to stderr and exits 2. The
 differing exit statuses are captured as reference behavior, not normalized.
 Verify runs this exact-target differential against the pinned checkout. This
 is narrow validation evidence, not broad `rnprobe` failure-path parity.
+The `rnprobe_rpc_rejection_reports_failure_without_probe_result` process
+regression injects an authorization rejection through a mock daemon RPC. The
+production CLI exits 1, emits `rnprobe: probe failed: destination is not
+authorized (probe_rejected)` on stderr, and leaves stdout empty. This pins the
+CLI-to-daemon error boundary only; it does not claim a live transport or
+pinned-Python authorization comparison, and no production change was needed.
 The `rnpath_daemon_unavailable` process regression runs the production Rust
 CLI against a reserved-then-closed local RPC endpoint. It asserts a failing
 exit status, empty stdout, and a connection-refused diagnostic, so an
