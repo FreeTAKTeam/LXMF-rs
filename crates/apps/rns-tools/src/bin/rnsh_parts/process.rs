@@ -14,6 +14,9 @@ use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::{sleep, Duration, Instant};
 
+#[cfg(unix)]
+mod mixed;
+
 const STREAM_STDIN: u16 = 0;
 const STREAM_STDOUT: u16 = 1;
 const STREAM_STDERR: u16 = 2;
@@ -44,6 +47,12 @@ pub(crate) async fn run_command(
     cancel: oneshot::Receiver<()>,
     resize_rx: mpsc::Receiver<WindowSizeMessage>,
 ) -> io::Result<()> {
+    #[cfg(unix)]
+    if (spec.pipe_stdin || spec.pipe_stdout || spec.pipe_stderr)
+        && (!spec.pipe_stdin || !spec.pipe_stdout || !spec.pipe_stderr)
+    {
+        return mixed::run_mixed_command(channel, spec, stdin_rx, cancel, resize_rx).await;
+    }
     if !spec.pipe_stdin || !spec.pipe_stdout || !spec.pipe_stderr {
         return run_pty_command(channel, spec, stdin_rx, cancel, resize_rx).await;
     }

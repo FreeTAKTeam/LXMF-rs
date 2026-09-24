@@ -789,6 +789,22 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
 PASS: 1 passed
 ```
 
+## Mixed rnsh stdin-PTY/stdout-stderr-pipe process behavior
+
+The pinned Python initiator at Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` derives stdin, stdout, and stderr
+pipe flags independently from `isatty(0/1/2)`, and its child launcher assigns
+each stream independently. The Rust production-process regression now covers
+the supported combination of PTY stdin with piped stdout and stderr. Its
+remote command verifies `isatty(0/1/2)`, emits distinct stdout/stderr markers,
+and exits 7; the test confirms both local stream routing and the reported exit
+code. The local PTY harness sends canonical Ctrl-D after launch so Tokio's
+blocking stdin reader can terminate, matching the explicit EOF cleanup used by
+the all-PTY process test. This proves descriptor selection, stream routing, and
+exit status for one mixed software combination only. It does not prove Python's
+`setsid`/controlling-terminal, foreground process-group, or terminal-mode setup;
+other mixed combinations and those terminal-control behaviors remain open.
+
 ## Unresolved requirements
 
 The following #611 acceptance items remain open and are deliberately not
@@ -802,8 +818,8 @@ classified as complete:
   the bounded immediate-EOF trace and a software loopback client-timeout Link
   teardown with a synchronized live-child-before-timeout and post-close reaping
   check. A software PTY case now proves controlling-terminal setup, initial
-  dimensions, and SIGWINCH resize in the all-terminal mode; mixed per-stream
-  pipe/PTY combinations, the remaining `rnsh` fault/restart matrix,
+  dimensions, and SIGWINCH resize in the all-terminal mode; other mixed
+  per-stream combinations and the remaining `rnsh` fault/restart matrix,
   public/multi-hop behavior, or network workflows to `rnsd` and the
   radio/interactive utilities remain open.
 - Prove the full `rngit` fetch/push/bundle workflows and configured initial-branch

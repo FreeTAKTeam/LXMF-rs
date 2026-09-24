@@ -204,6 +204,105 @@ fn rnsh_listener_pty_observes_initial_and_sigwinch_window_sizes() -> io::Result<
 }
 
 #[test]
+#[cfg(unix)]
+fn rnsh_mixed_stdin_pty_and_stdout_stderr_pipes_preserve_streams_and_exit() -> io::Result<()> {
+    let _test_guard = RNSH_PROCESS_TEST_LOCK.lock().expect("rnsh process test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let server_root = temp.path().join("server-root");
+    let server_identity = temp.path().join("server-identity");
+    let client_identity = temp.path().join("client-identity");
+    std::fs::create_dir_all(&server_root)?;
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rnsh");
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--announce", "0", "--no-auth", "--root"])
+        .arg(&server_root)
+        .args(["--identity", server_identity.to_str().expect("identity path")])
+        .current_dir(temp.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let destination_output = Command::new(binary)
+            .args([
+                "--print-identity",
+                "--identity",
+                server_identity.to_str().expect("identity path"),
+            ])
+            .output()?;
+        if !destination_output.status.success() {
+            return Err(io::Error::other("rnsh server identity query failed"));
+        }
+        let destination = String::from_utf8_lossy(&destination_output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .ok_or_else(|| io::Error::other("rnsh identity query omitted destination"))?
+            .to_owned();
+
+        // The pinned Python initiator derives the three pipe flags separately
+        // from isatty(0/1/2); stdin PTY with captured stdout/stderr is supported.
+        let script = r#"
+import json, os, pty, subprocess, sys
+master, slave = pty.openpty()
+command = [sys.argv[1], '--connect', '127.0.0.1:' + sys.argv[2], '--identity', sys.argv[3], '--mirror', '--timeout', '5', sys.argv[4], '--', '/bin/sh', '-c', sys.argv[5]]
+child = subprocess.Popen(command, stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=sys.argv[6])
+os.close(slave)
+os.write(master, b'\x04')
+try:
+    stdout, stderr = child.communicate(timeout=10)
+except subprocess.TimeoutExpired:
+    child.kill()
+    stdout, stderr = child.communicate()
+os.close(master)
+print(json.dumps({'status': child.returncode, 'stdout': stdout.decode(errors='replace'), 'stderr': stderr.decode(errors='replace')}))
+"#;
+        let remote_command = "test -t 0 && echo stdin-pty; test -t 1 || echo stdout-pipe; test -t 2 || echo stderr-pipe; printf 'stdout-data\\n'; printf 'stderr-data\\n' >&2; exit 7";
+        let wrapper = Command::new("python3")
+            .arg("-c")
+            .arg(script)
+            .arg(binary)
+            .arg(port.to_string())
+            .arg(&client_identity)
+            .arg(&destination)
+            .arg(remote_command)
+            .arg(temp.path())
+            .output()?;
+        let _ = listener.kill();
+        let _ = listener.wait();
+        if !wrapper.status.success() {
+            return Err(io::Error::other(format!(
+                "mixed-stream harness failed: {}",
+                String::from_utf8_lossy(&wrapper.stderr)
+            )));
+        }
+        let result: serde_json::Value = serde_json::from_slice(&wrapper.stdout)
+            .map_err(|error| io::Error::other(format!("decode mixed-stream result: {error}")))?;
+        assert_eq!(result["status"], 7, "remote command status: {result}");
+        let stdout = result["stdout"].as_str().unwrap_or_default();
+        let stderr = result["stderr"].as_str().unwrap_or_default();
+        assert!(stdout.contains("stdin-pty"), "stdin was not a PTY: {result}");
+        assert!(stdout.contains("stdout-pipe"), "stdout was not a pipe: {result}");
+        assert!(stdout.contains("stdout-data"), "stdout data was not routed to stdout: {result}");
+        assert!(stdout.contains("stderr-pipe"), "stderr was not a pipe: {result}");
+        assert!(stderr.contains("stderr-data"), "stderr data was not routed to stderr: {result}");
+        Ok(())
+    })();
+
+    let _ = listener.kill();
+    let _ = listener.wait();
+    if result.is_err() {
+        let mut stderr = String::new();
+        if let Some(mut pipe) = listener.stderr.take() {
+            let _ = pipe.read_to_string(&mut stderr);
+        }
+        eprintln!("rnsh mixed-stream listener stderr: {stderr}");
+    }
+    result
+}
+
+#[test]
 fn rnsh_pty_link_timeout_kills_and_reaps_remote_child() -> io::Result<()> {
     use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 
