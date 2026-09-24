@@ -140,6 +140,18 @@ impl ReticulumGitNode {
         }
         let root = Self::work_root(record);
 
+        if matches!(operation.as_str(), "view" | "comment" | "edit" | "delete" | "perms") {
+            let document_id = map_value(request, &rmpv::Value::String("doc_id".into()))
+                .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()));
+            if let Some(id) = document_id {
+                if !self.resolve_doc_permission(&remote, &group, &repository, id, Self::PERM_READ)
+                    && !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN)
+                {
+                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                }
+            }
+        }
+
         match operation.as_str() {
             "list" => {
                 self.work_list(&root, request, remote, &group, &repository)

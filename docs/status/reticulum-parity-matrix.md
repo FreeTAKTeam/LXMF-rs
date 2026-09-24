@@ -890,6 +890,13 @@ display/status payload, and operator-workflow combinations remains pending.
 
 ## Evidence
 
+- The forward `rngit` (#612) evidence includes a pinned-RNS 1.5.4 production
+  `handle_work` differential for edit authorization ordering: document
+  `read:none` returns `NOT_FOUND / Document not found` and preserves content
+  despite author-level document write/interact grants, matching Python's
+  shared read-or-admin gate. This narrow case does not complete the work
+  operation or permission matrix; see
+  `docs/goals/reticulum-reference-parity-605/evidence/612-rngit.md`.
 - Workspace unit and integration tests cover core, transport, daemon, serial,
   BLE, LoRa, AutoInterface, link, channel, buffer, and resource behavior.
 - `.github/workflows/verify.yml` runs pinned live Python channel/link/request/resource and

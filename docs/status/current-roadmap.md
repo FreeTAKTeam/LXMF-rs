@@ -136,6 +136,16 @@ admin is also the operation-specific permission, so it cannot be independently
 separated from the shared fallback. This four-case slice does not complete the
 broader permission or work-operation acceptance.
 
+A separate pinned-RNS 1.5.4 `handle_work` differential found that an item's
+explicit document `read:none` gate must precede its `edit` write/interact
+rights: Python returns `NOT_FOUND / Document not found` and leaves the item
+unchanged, even when its author has document write and interact grants. Rust
+previously edited it. The Rust production work dispatcher now applies the
+shared document-read-or-repository-admin gate before those operation handlers;
+the focused differential matches status, body, and persisted content. This is
+one authorization-order case, not completion of #612's broader operation,
+permission, network, and fault matrix.
+
 A focused #612 production-handler regression now checks the blocked-identity
 gate with a broad group `read:all` grant. The Rust `list` handler returns the
 same exact `Not found` response as pinned Python; this closes only that handler

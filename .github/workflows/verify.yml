@@ -116,6 +116,9 @@ jobs:
           cargo test -p rns-tools --bin rngit \
             tests::repository_admin_permissions_get_uses_pinned_python_document_read_gate \
             -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::document_write_access_without_read_matches_pinned_python_edit_gate \
+            -- --ignored --exact --nocapture
 
       - name: Run pinned Python rngit concurrency, CLI, and malformed-request interoperability
         env:

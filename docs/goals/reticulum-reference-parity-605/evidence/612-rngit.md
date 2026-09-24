@@ -58,6 +58,7 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 | Same-Link permission revocation | The pinned Python client and Rust production service share one established Reticulum Link. The client reads the repository, sets `read:none` while retaining admin access through `/mgmt/perms`, and immediately issues `/git/list` on that same Link; Rust denies it as `NOT_FOUND`. Restoring `read:all` makes the next same-Link request succeed. Pinned Reticulum 1.5.4 `resolve_permission` reads current in-memory permission lists for each handler call, while `handle_perms` delegates each request to its permission handler; Rust's `process_request` likewise calls `handle_request_with_peer_identity` for each packet and the successful sidecar replacement updates loaded repository permissions before returning. | focused local Python-client/Rust-service production-Link regression verified; reference dispatch/resolution path inspected at `99de23c040d507e3fefca19e87b182302902725d`; no mismatch found |
 | Administrator view of document-denied work | With group `read:all`, repository `admin:<identity>`, and document `read:none`, pinned Python `handle_work` allows that administrator to view the document by combining document-read resolution with repository-admin access. Rust now applies the same admin fallback only to `view`; an ignored pinned-Python production-handler differential compares status and response bytes. The regression is included in Verify's pinned-reference test list. | focused local pinned-Python differential verified; other document permissions and work operations remain open |
 | Administrator document-read gate for comment/edit/delete/perms | Four production-handler differentials use group `read:all`, repository administrator access, and a document `read:none` sidecar. They grant `interact` for comment (with group `write:none`) and write/interact for edit and delete. For `perms`, repository admin is the operation-specific right and necessarily also satisfies the shared admin fallback, so those two gates cannot be varied independently. Pinned Python and Rust match response bytes and side effects for edit/delete/perms. Comment exposed a mismatch: Python's pre-operation `document-read OR repository-admin` gate allows the comment with interact access, while Rust incorrectly required document read or write. Rust now includes repository-admin fallback in comment's read predicate while retaining the interact requirement. | four focused local pinned-Python production-handler differentials verified against Reticulum `99de23c040d507e3fefca19e87b182302902725d`; remaining permission/operation combinations and broad #612 acceptance stay open |
+| Document read gate precedes work mutations | The focused pinned-Python production `handle_work` differential grants the document author write and interact on item 7 while its `.allowed` sidecar explicitly denies read. Python returns `NOT_FOUND / Document not found` before edit dispatch and leaves content unchanged; Rust previously permitted the signed edit. The Rust dispatcher now applies the shared document-read-or-repository-admin gate before view/comment/edit/delete/perms dispatch. | focused local production-handler differential verified against Reticulum `99de23c040d507e3fefca19e87b182302902725d`; only edit with valid ID and this permission combination is covered; other gate combinations and live-Link version remain unverified |
 | Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets. The native Rust client now sends Python-compatible `/git/list`, `/git/fetch`, and oversized `/git/push` plus signed `/mgmt/work` and the multi-step release protocol to a pinned Python `git.repositories` server, including raw Git bundle and artifact Resource handling, exact `git bundle verify`, remote-ref verification after push, release creation/upload/finalization/list/view/latest/delete, and the production compatibility-client bridge. | fixture, both bounded request directions, integer timestamps and binary work values verified over Python↔Rust production Links and in storage; broader cross-process/network restart/concurrency/fault matrix unverified |
 
 The focused `rngit_work_storage_preserves_msgpack_binary_and_integer_types_both_directions`
@@ -318,6 +319,35 @@ criteria remain open.
   restart behavior, disk-fault injection beyond the permission refresh and
   replacement cases, non-work Python CLI commands, and the complete utility
   workflow remain unverified.
+### Document read gate before edit
+
+At PR #639 base `0ce2f13d3e8d09dc300e25830d08637543f7546f`, the focused
+differential seeded item 7 with `read:none` plus author-specific `write` and
+`interact` grants. Pinned RNS 1.5.4 `ReticulumGitNode.handle_work` returned
+status 3 and `Document not found`, without changing the body; Rust's production
+work dispatcher returned success and edited the body. Python's shared
+document-read-or-repository-admin check therefore precedes operation-specific
+edit rights. Rust now performs that shared check before dispatching view,
+comment, edit, delete, or permission operations when a valid document ID is
+present. The regression compares exact status/body, existence, and persisted
+content. This is an internal production-handler differential; it does not
+claim a live Link test or exhaustive authorization parity.
+
+```text
+RETICULUM_PY_REPO=/tmp/reticulum-rngit-99de23c LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --bin rngit --all-features \
+  document_write_access_without_read_matches_pinned_python_edit_gate \
+  -- --ignored --nocapture --test-threads=1 PASS (after fix)
+RETICULUM_PY_REPO=/tmp/reticulum-rngit-99de23c LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --bin rngit --all-features repository_admin_ \
+  -- --ignored --nocapture --test-threads=1 PASS (6 differentials)
+cargo fmt --all -- --check PASS
+cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings PASS
+tools/scripts/check-boundaries.sh PASS
+tools/scripts/check-module-size.sh PASS
+git diff --check PASS
+```
+
 - Static malformed permission sidecars fail closed in Rust rather than being
   silently ignored like the pinned Python loader; this is an intentional safety
   difference and is not being called exact parity.

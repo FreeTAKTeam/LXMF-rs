@@ -29,7 +29,11 @@ fn assert_pinned_python_revision() -> std::path::PathBuf {
     reference
 }
 
-fn initialize_work_operation_fixture(group_path: &std::path::Path, group_permissions: &str) {
+fn initialize_work_operation_fixture(
+    group_path: &std::path::Path,
+    group_permissions: &str,
+    document_permissions: &str,
+) {
     fs::create_dir_all(group_path).expect("create group directory");
     let repository_path = group_path.join("repo");
     assert!(std::process::Command::new("git")
@@ -54,9 +58,9 @@ fn initialize_work_operation_fixture(group_path: &std::path::Path, group_permiss
             ),
         ])),
     )
-    .expect("write work root");
-    fs::write(group_path.join("repo.work/7.allowed"), "read:none\n")
-        .expect("deny document-level read");
+        .expect("write work root");
+    fs::write(group_path.join("repo.work/7.allowed"), document_permissions)
+        .expect("write document permissions");
 }
 
 fn request_for_work_operation(operation: &str) -> Vec<(rmpv::Value, rmpv::Value)> {
@@ -85,6 +89,7 @@ fn python_operation_outcome(
     group_path: &std::path::Path,
     operation: &str,
     group_permissions: &str,
+    document_permissions: &str,
 ) -> serde_json::Value {
     let script = r#"
 import json, os, sys
@@ -93,7 +98,7 @@ from types import SimpleNamespace
 sys.modules["msgpack"] = None
 from RNS.vendor import umsgpack
 from RNS.Utilities.rngit.server import ReticulumGitNode
-group_path, operation, remote_hex, group_permissions = sys.argv[1:]
+group_path, operation, remote_hex, group_permissions, document_permissions = sys.argv[1:]
 with open(group_path + ".allowed", "w") as stream:
     stream.write(group_permissions)
 node = ReticulumGitNode.__new__(ReticulumGitNode)
@@ -104,6 +109,8 @@ node.config = {}
 node.perms_lock = Lock()
 node.log_request = lambda *args: None
 node.load_repository_group("group", group_path)
+with open(os.path.join(group_path, "repo.work", "7.allowed"), "w") as stream:
+    stream.write(document_permissions)
 remote = SimpleNamespace(
     hash=bytes.fromhex(remote_hex),
     validate=lambda *_args: True,
@@ -139,8 +146,9 @@ print(json.dumps({
         .arg(script)
         .arg(group_path)
         .arg(operation)
-        .arg(hex::encode(REMOTE))
-        .arg(group_permissions)
+    .arg(hex::encode(REMOTE))
+    .arg(group_permissions)
+    .arg(document_permissions)
         .output()
         .expect("run pinned Python production work handler");
     assert!(output.status.success(), "Python handler failed: {}", String::from_utf8_lossy(&output.stderr));
@@ -150,12 +158,13 @@ print(json.dumps({
 fn assert_work_operation_differential(
     operation: &str,
     group_permissions: &str,
+    document_permissions: &str,
     document_author: [u8; 16],
 ) -> (WorkOperationOutcome, serde_json::Value) {
     let reference = assert_pinned_python_revision();
     let rust_temp = tempfile::tempdir().expect("Rust fixture root");
     let rust_group = rust_temp.path().join("group");
-    initialize_work_operation_fixture(&rust_group, group_permissions);
+    initialize_work_operation_fixture(&rust_group, group_permissions, document_permissions);
     let mut rust_node = ReticulumGitNode::default();
     rust_node.load_repository_group("group", &rust_group).expect("load Rust group");
     if document_author != REMOTE {
@@ -202,7 +211,7 @@ fn assert_work_operation_differential(
 
     let python_temp = tempfile::tempdir().expect("Python fixture root");
     let python_group = python_temp.path().join("group");
-    initialize_work_operation_fixture(&python_group, group_permissions);
+    initialize_work_operation_fixture(&python_group, group_permissions, document_permissions);
     if document_author != REMOTE {
         let root_path = python_group.join("repo.work/active/7/root");
         let mut document = rmpv::decode::read_value(&mut std::io::Cursor::new(
@@ -224,7 +233,13 @@ fn assert_work_operation_differential(
         }
         fs::write(&root_path, rngit_work_fixture(&document)).expect("write Python author fixture");
     }
-    let python = python_operation_outcome(&reference, &python_group, operation, group_permissions);
+    let python = python_operation_outcome(
+        &reference,
+        &python_group,
+        operation,
+        group_permissions,
+        document_permissions,
+    );
     assert_eq!(
         rust_outcome.status,
         python["status"].as_u64().expect("Python status") as u8,
@@ -250,7 +265,7 @@ fn repository_admin_comment_uses_pinned_python_document_read_gate() {
         hex::encode(REMOTE),
         hex::encode(REMOTE)
     );
-    let (rust, python) = assert_work_operation_differential("comment", &permissions, REMOTE);
+    let (rust, python) = assert_work_operation_differential("comment", &permissions, "read:none\n", REMOTE);
     assert_eq!(python["status"], ReticulumGitNode::RES_OK);
     assert_eq!(rust.status, ReticulumGitNode::RES_OK);
     assert!(rust.comment_exists);
@@ -265,7 +280,7 @@ fn repository_admin_edit_uses_pinned_python_document_read_gate() {
         hex::encode(REMOTE),
         hex::encode(REMOTE)
     );
-    let (rust, python) = assert_work_operation_differential("edit", &permissions, REMOTE);
+    let (rust, python) = assert_work_operation_differential("edit", &permissions, "read:none\n", REMOTE);
     assert_eq!(python["status"], ReticulumGitNode::RES_OK);
     assert_eq!(rust.status, ReticulumGitNode::RES_OK);
     assert_eq!(rust.root_content.as_deref(), Some("edited body"));
@@ -280,7 +295,7 @@ fn repository_admin_delete_uses_pinned_python_document_read_gate() {
         hex::encode(REMOTE),
         hex::encode(REMOTE)
     );
-    let (rust, python) = assert_work_operation_differential("delete", &permissions, OTHER_AUTHOR);
+    let (rust, python) = assert_work_operation_differential("delete", &permissions, "read:none\n", OTHER_AUTHOR);
     assert_eq!(python["status"], ReticulumGitNode::RES_OK);
     assert_eq!(rust.status, ReticulumGitNode::RES_OK);
     assert!(!rust.document_exists);
@@ -290,8 +305,29 @@ fn repository_admin_delete_uses_pinned_python_document_read_gate() {
 #[ignore = "requires the pinned Python Reticulum reference"]
 fn repository_admin_permissions_get_uses_pinned_python_document_read_gate() {
     let permissions = format!("read:all\nadmin:{}\n", hex::encode(REMOTE));
-    let (rust, python) = assert_work_operation_differential("perms", &permissions, REMOTE);
+    let (rust, python) = assert_work_operation_differential("perms", &permissions, "read:none\n", REMOTE);
     assert_eq!(python["status"], ReticulumGitNode::RES_OK);
     assert_eq!(rust.status, ReticulumGitNode::RES_OK);
     assert_eq!(rust.permission_content.as_deref(), Some("read:none\n"));
+}
+
+#[test]
+#[ignore = "requires the pinned Python Reticulum reference"]
+fn document_write_access_without_read_matches_pinned_python_edit_gate() {
+    let permissions = "read:all\nwrite:all\ninteract:all\n";
+    let document_permissions = format!(
+        "read:none\nwrite:{}\ninteract:{}\n",
+        hex::encode(REMOTE),
+        hex::encode(REMOTE)
+    );
+    let (rust, python) = assert_work_operation_differential(
+        "edit",
+        permissions,
+        &document_permissions,
+        REMOTE,
+    );
+    assert_eq!(python["status"], ReticulumGitNode::RES_NOT_FOUND);
+    assert_eq!(python["body"], hex::encode("Document not found"));
+    assert_eq!(rust.status, ReticulumGitNode::RES_NOT_FOUND);
+    assert_eq!(rust.root_content.as_deref(), Some("original body"));
 }
