@@ -1,11 +1,18 @@
 use std::env as media_env;
 use std::fs::File as MediaFile;
 use std::process::Child as MediaChild;
+use std::sync::atomic::{AtomicBool, Ordering as MediaOrdering};
 use std::thread::JoinHandle as MediaJoinHandle;
 
 const MEDIA_CONVERSION_TIMEOUT: Duration = Duration::from_secs(8);
 const STDERR_LIMIT: usize = 1024;
 static SELECTED_BACKEND: std::sync::Mutex<Option<&'static str>> = std::sync::Mutex::new(None);
+#[cfg(test)]
+static MEDIA_TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[path = "media_capture.rs"]
+mod media_capture;
+use media_capture::capture_bounded_output;
 
 fn read_bounded_file(path: &Path, limit: usize) -> Option<Vec<u8>> {
     let file = MediaFile::open(path).ok()?;
@@ -209,10 +216,17 @@ fn wait_encoder(
     backend_name: &str,
     encoder: &mut MediaChild,
     stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
+    capture_failed: &AtomicBool,
     timeout: Duration,
 ) -> bool {
     let deadline = Instant::now() + timeout;
     let status = loop {
+        if capture_failed.load(MediaOrdering::Acquire) {
+            terminate(encoder);
+            let detail = join_stderr(stderr);
+            eprintln!("rngit: media conversion via {backend_name} exceeded its 32 MiB output limit: {detail}");
+            return false;
+        }
         match encoder.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
@@ -353,7 +367,7 @@ pub(crate) fn convert_to_webp_with_cancel(
     timeout: Option<Duration>,
     quality: Option<u8>,
     max_dimension: Option<u32>,
-    cancelled: impl FnMut() -> bool,
+    mut cancelled: impl FnMut() -> bool,
 ) -> bool {
     let Some(backend) = selected_backend() else { return false };
     let encoder_argv = configured_argv(backend, quality, max_dimension);
@@ -384,7 +398,7 @@ pub(crate) fn convert_to_webp_with_cancel(
     encoder_command
         .args(&encoder_argv[1..])
         .stdin(input_stdout)
-        .stdout(output)
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut encoder = match encoder_command.spawn() {
         Ok(child) => child,
@@ -393,6 +407,7 @@ pub(crate) fn convert_to_webp_with_cancel(
             if let Some(stderr) = input_stderr {
                 let _ = join_stderr(stderr);
             }
+            let _ = fs::remove_file(output_path);
             eprintln!("rngit: could not start {} media backend: {error}", backend.name);
             return false;
         }
@@ -400,14 +415,25 @@ pub(crate) fn convert_to_webp_with_cancel(
     let Some(input_stderr) = input_stderr else {
         terminate(&mut input);
         terminate(&mut encoder);
+        let _ = fs::remove_file(output_path);
         return false;
     };
     let Some(encoder_stderr) = encoder.stderr.take().map(read_stderr_tail) else {
         terminate(&mut input);
         terminate(&mut encoder);
         let _ = join_stderr(input_stderr);
+        let _ = fs::remove_file(output_path);
         return false;
     };
+    let Some(encoder_stdout) = encoder.stdout.take() else {
+        terminate(&mut input);
+        terminate(&mut encoder);
+        let _ = join_stderr(input_stderr);
+        let _ = join_stderr(encoder_stderr);
+        let _ = fs::remove_file(output_path);
+        return false;
+    };
+    let (capture, capture_failed) = capture_bounded_output(encoder_stdout, output);
     let ok = wait_pipeline_with_cancel(
         backend.name,
         &mut input,
@@ -415,55 +441,17 @@ pub(crate) fn convert_to_webp_with_cancel(
         input_stderr,
         encoder_stderr,
         timeout.unwrap_or(MEDIA_CONVERSION_TIMEOUT),
-        cancelled,
+        || cancelled() || capture_failed.load(MediaOrdering::Acquire),
     );
-    if !ok || !valid_webp(output_path) {
+    let capture_ok = capture.join().is_ok_and(|result| result.is_ok());
+    if !ok || !capture_ok || capture_failed.load(MediaOrdering::Acquire) || !valid_webp(output_path) {
+        if capture_failed.load(MediaOrdering::Acquire) {
+            eprintln!("rngit: media conversion via {} exceeded its 32 MiB output limit", backend.name);
+        }
         let _ = fs::remove_file(output_path);
         return false;
     }
     true
-}
-
-#[allow(dead_code)]
-pub(crate) fn convert_file_to_webp(
-    source_path: &Path,
-    quality: Option<u8>,
-    max_dimension: Option<u32>,
-    timeout: Option<Duration>,
-) -> Option<PathBuf> {
-    let backend = selected_backend()?;
-    let encoder_argv = configured_argv(backend, quality, max_dimension);
-    let input = MediaFile::open(source_path).ok()?;
-    let temporary = tempfile::Builder::new()
-        .prefix("rngit-media-")
-        .suffix(".webp")
-        .tempfile()
-        .ok()?
-        .into_temp_path();
-    let output_path = temporary.to_path_buf();
-    let output = MediaFile::create(&output_path).ok()?;
-    let mut encoder_command = Command::new(&encoder_argv[0]);
-    encoder_command
-        .args(&encoder_argv[1..])
-        .stdin(input)
-        .stdout(output)
-        .stderr(Stdio::piped());
-    let mut encoder = encoder_command.spawn().ok()?;
-    let Some(stderr) = encoder.stderr.take().map(read_stderr_tail) else {
-        terminate(&mut encoder);
-        return None;
-    };
-    if !wait_encoder(
-        backend.name,
-        &mut encoder,
-        stderr,
-        timeout.unwrap_or(MEDIA_CONVERSION_TIMEOUT),
-    ) || !valid_webp(&output_path)
-    {
-        let _ = fs::remove_file(&output_path);
-        return None;
-    }
-    temporary.keep().ok()
 }
 
 #[cfg(test)]
@@ -473,3 +461,7 @@ mod media_backend_tests;
 #[cfg(all(test, unix))]
 #[path = "issue_613_converter_process_tests.rs"]
 mod issue_613_converter_process_tests;
+
+#[cfg(all(test, unix))]
+#[path = "issue_613_output_limit_tests.rs"]
+mod issue_613_output_limit_tests;

@@ -1,4 +1,5 @@
 use super::convert_to_webp_with_cancel;
+use super::MEDIA_TEST_ENV_LOCK;
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -33,6 +34,7 @@ impl Drop for EnvironmentGuard {
 
 #[test]
 fn converter_process_boundary_honors_configuration_output_and_failures() {
+    let _environment_lock = MEDIA_TEST_ENV_LOCK.lock().expect("media test environment lock");
     let temporary = tempfile::tempdir().expect("temporary directory");
     let backend_dir = temporary.path().join("backend");
     fs::create_dir(&backend_dir).expect("create fake backend directory");

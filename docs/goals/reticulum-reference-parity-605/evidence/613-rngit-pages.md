@@ -31,7 +31,7 @@ Rust kept the page Link active after a failed Resource response.
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression checks nested file-path encoding; unit regression confirms that only `file_path` receives `quote_plus`, while group/repository/ref remain literal as in frozen `pages.py`; missing repository, invalid ref, missing blob are covered; visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
-| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and converted-output reads (32 MiB media-response cap), output validation, temporary-directory cleanup, raw fallback | Pinned-helper differential covers backend selection and configured argv for all five families; production-Link real encoding passes with `ffmpeg`, ImageMagick 6 `convert`, and GraphicsMagick `gm`; invalid image data and real-backend failures return exact raw bytes; exact-limit/over-limit output, timeout, nonzero/status errors, and child reaping are covered. Hosted Verify run `36024299709` passed at PR #633 head `317cc142dde34ebcdf30a3c007f7d5a5568557aa`. ImageMagick 7 `magick`, `avconv`, and visual parity remain unverified. |
+| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and streaming encoder-output capture (32 MiB disk cap), output validation, temporary-directory cleanup, raw fallback | Existing production-Link encoding and exact raw-fallback regressions remain; the new deterministic oversized fake-backend case checks prompt termination, reaping of both pipeline children, and removal of the partial output. Candidate-head validation is recorded below. Hosted Verify run `36024299709` passed at PR #633 head `317cc142dde34ebcdf30a3c007f7d5a5568557aa`. ImageMagick 7 `magick`, `avconv`, and visual parity remain unverified. |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; pinned Python inspects the production Resource advertisement and confirms no compression for a precompressed PNG |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown, response-send-detected abrupt client exit, periodic cleanup after silent Link disappearance, in-flight `/media` Resource cancellation, and pipeline child-status errors are exercised | deterministic `periodic_sweep_removes_media_for_silently_disappeared_link` test plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client`, `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown`, `rngit_python_interop::rngit_cleans_media_after_response_fails_on_abrupt_client_exit`, and `rngit_python_interop::issue_613_cleanup_isolation::rngit_disconnect_cleanup_preserves_an_independent_active_media_response` | active, stale, closed, missing-link, graceful-disconnect, synchronized partial-Resource cancellation, abrupt client exit detected by a failed response, periodic sweep after silent Link disappearance, cross-Link cleanup/active-response isolation, and child-status-error termination/reaping verified; other filesystem/media lifecycle fault paths remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault paths remain open |
@@ -47,6 +47,32 @@ deterministic Unix test
 with the sibling status-error and timeout process tests (3 tests total). This
 is process-supervisor evidence; by itself it does not establish active-response
 isolation or the complete Link/temp-directory lifecycle.
+
+### Oversized encoder output is bounded during capture
+
+Encoder stdout is now piped through a capture worker that writes no more than
+32 MiB to the temporary WebP file and probes at most one additional byte to
+distinguish exact-limit output from overflow. Overflow signals the existing
+pipeline supervisor, which terminates and reaps both children; the partial
+output is removed and the caller receives conversion failure for its existing
+raw-fallback path. The deterministic capture test feeds 32 MiB plus one byte
+and verifies the file remains exactly 32 MiB. A fake `ffmpeg` process regression
+emits the same oversized stream while the input process remains live; it checks
+prompt return, both child processes reaped, and partial-output removal.
+The separate production page-handler regression continues to verify byte-exact
+raw fallback and Link-scoped temporary-directory cleanup after conversion
+failure. Both new regressions, the existing process timeout/configuration test,
+and the production raw-fallback test passed locally with:
+
+```text
+cargo test -p rns-tools --bin rngit --all-features bounded_capture_never_writes_the_overflow_byte -- --nocapture --test-threads=1
+cargo test -p rns-tools --bin rngit --all-features oversized_fake_backend_is_bounded_terminated_and_cleaned_up -- --nocapture --test-threads=1
+cargo test -p rns-tools --bin rngit --all-features converter_process_boundary_honors_configuration_output_and_failures -- --nocapture --test-threads=1
+cargo test -p rns-tools --bin rngit --all-features media_conversion_failure_falls_back_to_raw_and_link_cleanup_removes_temp_files -- --nocapture --test-threads=1
+```
+
+Formatting, scoped Clippy, module-size, and diff checks also passed. These local
+checks do not change the #613 acceptance checklist or issue status.
 
 ### Automatic WebP backend winner
 

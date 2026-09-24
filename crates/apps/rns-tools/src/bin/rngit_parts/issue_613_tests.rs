@@ -1,4 +1,5 @@
 use super::{decode_page_request, image_markup_media_path, page_paths};
+use super::MEDIA_TEST_ENV_LOCK;
 use rns_transport::destination::link::Link;
 use std::io;
 use std::path::Path;
@@ -270,6 +271,7 @@ fn media_and_file_endpoints_enforce_keys_refs_permissions_and_metadata() {
 
 #[test]
 fn media_conversion_failure_falls_back_to_raw_and_link_cleanup_removes_temp_files() {
+    let _environment_lock = MEDIA_TEST_ENV_LOCK.lock().expect("media test environment lock");
     let (_temporary, mut node) = page_fixture();
     let remote = [7_u8; 16];
     let link = [8_u8; 16];
