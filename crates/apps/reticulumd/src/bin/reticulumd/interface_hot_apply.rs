@@ -20,12 +20,13 @@ use interface_hot_apply_parts::pipe_runtime_refresh::{
     attach_hot_apply_pipe_runtime_status, spawn_hot_apply_pipe_runtime_status_refresher,
     HotApplyPipeRefresh,
 };
+pub(crate) use interface_hot_apply_parts::record_hot_apply::mark_tcp_server_record_runtime_status;
 use interface_hot_apply_parts::record_hot_apply::{
     apply_record_runtime_config, hot_apply_interface_key, hot_apply_interface_record_changed,
     hot_apply_interface_seed_key as record_hot_apply_interface_seed_key, interface_record_mode,
-    mark_pipe_record_runtime_status, mark_tcp_server_record_runtime_status,
-    mark_udp_record_runtime_status, pipe_adapter, tcp_endpoint, tcp_server_bind_addr,
-    tcp_server_client_mtu, udp_bind_and_forward_addr, validate_hot_apply_uniqueness,
+    mark_pipe_record_runtime_status, mark_udp_record_runtime_status, pipe_adapter, tcp_endpoint,
+    tcp_server_bind_addr, tcp_server_client_mtu, udp_bind_and_forward_addr,
+    validate_hot_apply_uniqueness,
 };
 #[cfg(test)]
 use interface_hot_apply_parts::record_hot_apply::{

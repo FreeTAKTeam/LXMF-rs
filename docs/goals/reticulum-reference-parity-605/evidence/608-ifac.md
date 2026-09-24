@@ -722,6 +722,31 @@ This verifies reporting for the missing-credential IFAC configuration case. It
 does not complete other parse/startup reporting, carrier-family,
 physical-device, or broader #608 acceptance.
 
+## IFAC-configured TCP listener bind failure reporting
+
+At pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`TCPServerInterface.__init__` resolves and binds its listener before starting
+`serve_forever`; `incoming_connection` is reached only for connections accepted
+by that listener. The Rust production-daemon regression occupies the configured
+TCP port, starts an IFAC-configured `tcp_server`, and polls `list_interfaces`
+until the worker reports `listener_state = "bind_error"`. It verifies the
+runtime error contains neither the configured network name nor passphrase and
+that the failed listener reports zero accepted connections and no admitted
+client interface. This supplements the existing UDP bind-failure coverage; it
+does not exercise TCP accepted-stream authentication or prove the broader
+startup/configuration matrix.
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  bootstrap_reports_sanitized_bind_failure_for_ifac_enabled_tcp_listener -- --nocapture
+# 1 passed; failed IFAC TCP listener reported sanitized bind_error and admitted no clients
+```
+
+The regression exposed that startup records lacked the `tcp.listener_status`
+object required by the existing runtime refresher. Bootstrap now seeds the
+configured listener status so the worker's bind failure reaches `list_interfaces`.
+This is software-only local evidence; no physical/HIL test was run.
+
 ## PR #628 hosted PR-HIL fixture follow-up
 
 Run `35907636125` failed one virtual `python-channel-interop` case,
