@@ -28,7 +28,8 @@ open; the focused #611 `rncp` compression/send/fetch matrix, bounded
 `rnprobe` packet/RPC workflow plus one exact-target invalid-option comparison,
 and bounded native `rnsh` channel workflow,
 negative
-failure-category checks, path-discovery-timeout check, listener restart check,
+failure-category checks, exact `rncp` path-discovery output/status assertion,
+listener restart check,
 local and Rust/Python receiver-side disk-failure callback checks,
 client-cancellation checks during discovery and active Resource transfer,
 concurrent-client check, interrupted-link/status-output check,

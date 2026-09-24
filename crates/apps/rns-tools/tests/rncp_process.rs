@@ -391,7 +391,6 @@ fn rncp_reports_path_discovery_timeout() -> io::Result<()> {
             "--connect",
             &format!("127.0.0.1:{port}"),
             "--no-compress",
-            "--silent",
             "--timeout",
             "1",
             "--identity-seed",
@@ -400,11 +399,16 @@ fn rncp_reports_path_discovery_timeout() -> io::Result<()> {
         .current_dir(temp.path())
         .output()?;
 
-    assert!(!output.status.success(), "path discovery unexpectedly succeeded");
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("path discovery timed out"),
-        "timeout stderr did not preserve the path-discovery category: {}",
-        String::from_utf8_lossy(&output.stderr)
+    assert_eq!(output.status.code(), Some(1), "path discovery status");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!("Path to {destination} requested\n"),
+        "unexpected path-discovery progress output"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "rncp: path discovery timed out\n",
+        "unexpected path-discovery failure output"
     );
     Ok(())
 }

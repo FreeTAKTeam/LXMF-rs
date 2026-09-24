@@ -7,7 +7,13 @@ implemented by `3c6757ba`, and process-level missing-file/denied-identity
 failure assertions are implemented by `2b281b87`; these increments do not
 close #611 or #605. Malformed identity and unusable-save-path failures are
 covered by `053ef246`, and path-discovery timeout status is covered by
-`9dc9bd62`. Listener identity persistence and a post-restart transfer are
+`9dc9bd62`. The non-ignored `rncp_reports_path_discovery_timeout` process
+regression additionally pins the requested-destination progress line on
+stdout, `rncp: path discovery timed out` on stderr, and exit status 1; this is
+Rust CLI evidence distinct from the pinned-Python transcript comparison below.
+The `rncp_process` suite passed all 14 tests serially with
+`TMPDIR=/dev/shm cargo test -p rns-tools --test rncp_process -- --test-threads=1`.
+Listener identity persistence and a post-restart transfer are
 covered by `d66b19d1`; local destination disk-error status is covered by
 `9b8e4ed6`, and client Ctrl-C cancellation status is covered by
 `397a9525`. Concurrent clients are covered by `e668ae60`.
