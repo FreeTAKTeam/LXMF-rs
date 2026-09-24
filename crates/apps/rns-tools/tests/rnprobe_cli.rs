@@ -170,6 +170,35 @@ fn rnprobe_rpc_rejection_reports_failure_without_probe_result() {
 }
 
 #[test]
+fn rnprobe_reports_interrupted_rpc_response_without_probe_result() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock rpc");
+    let addr = listener.local_addr().expect("mock rpc addr").to_string();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept rpc request");
+        let mut request = Vec::new();
+        stream.read_to_end(&mut request).expect("read rpc request");
+        assert!(http_body(&request).len() > 0, "rnprobe sent an empty RPC body");
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\nContent-Length: 16\r\n\r\nshort")
+            .expect("write truncated rpc response");
+    });
+
+    let output = Command::new(rnprobe_bin())
+        .args(["rnstransport.probe", "00112233445566778899aabbccddeeff", "--rpc", &addr, "--json"])
+        .output()
+        .expect("run rnprobe");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "rnprobe emitted apparent result: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "rnprobe: response body incomplete\n");
+    server.join().expect("mock rpc server");
+}
+
+#[test]
 fn rnprobe_rejects_malformed_destination_before_backend_work() {
     let output = Command::new(rnprobe_bin())
         .args(["rnstransport.probe", "not-a-destination"])

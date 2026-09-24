@@ -70,6 +70,12 @@ production CLI exits 1, emits `rnprobe: probe failed: destination is not
 authorized (probe_rejected)` on stderr, and leaves stdout empty. This pins the
 CLI-to-daemon error boundary only; it does not claim a live transport or
 pinned-Python authorization comparison, and no production change was needed.
+The `rnprobe_reports_interrupted_rpc_response_without_probe_result` process
+regression closes the daemon-RPC response after a short body despite a larger
+declared content length. The production CLI exits 1, reports `response body
+incomplete` on stderr, and leaves stdout empty rather than emitting a probe
+result. This covers an interrupted CLI-to-daemon response boundary, not a
+mid-probe transport-Link interruption.
 The `rnpath_daemon_unavailable` process regression runs the production Rust
 CLI against a reserved-then-closed local RPC endpoint. It asserts a failing
 exit status, empty stdout, and a connection-refused diagnostic, so an
