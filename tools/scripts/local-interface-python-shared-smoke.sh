@@ -210,14 +210,16 @@ except Exception:
 
 report = {
     "status": status,
-    "evidence_scope": "python_shared_instance_tcp_unix_attach_and_announce_forward",
+    "evidence_scope": "python_shared_instance_tcp_unix_attach_announce_payload_and_lifecycle",
     "product_boundary": (
         "This proves reticulumd LocalClientInterface attaches to real pinned "
         "Python Reticulum shared instances over TCP and Linux abstract Unix "
         "sockets, and that Python-origin announces move across the shared "
-        "instance fanout toward attached local clients. Both transports observe "
-        "graceful reticulumd client teardown and reattachment after daemon "
-        "restart; this does not prove broad application-level shared-instance "
+        "instance fanout toward attached local clients with exact payloads "
+        "observed between Python peers. Both transports observe graceful "
+        "reticulumd client teardown and reattachment after daemon restart; "
+        "this does not prove daemon application-level packet consumption or broad "
+        "shared-instance "
         "traffic parity."
     ),
     "reason": reason or None,
@@ -313,6 +315,27 @@ def write_state(payload):
 try:
     import RNS
     reticulum = RNS.Reticulum(configdir=config_dir, loglevel=7)
+    class TrafficHandler:
+        aspect_filter = "codex.local.shared.traffic"
+
+        def received_announce(self, destination_hash, announced_identity, app_data):
+            if app_data is not None and app_data.startswith(b"codex-local-python-shared-payload:"):
+                received_payloads.append(app_data.decode("utf-8"))
+
+    received_payloads = []
+    RNS.Transport.register_announce_handler(TrafficHandler())
+    identity = RNS.Identity()
+    destination = RNS.Destination(
+        identity,
+        RNS.Destination.IN,
+        RNS.Destination.SINGLE,
+        "codex",
+        "local",
+        "shared",
+        "traffic",
+    )
+    reverse_payload = b"codex-local-python-shared-payload:shared-to-python"
+    last_announce = 0.0
     while True:
         local_clients = getattr(RNS.Transport, "local_client_interfaces", [])
         local_client_stats = []
@@ -327,6 +350,9 @@ try:
                 }
             )
         shared = reticulum.shared_instance_interface
+        if time.monotonic() - last_announce >= 1.0:
+            destination.announce(app_data=reverse_payload)
+            last_announce = time.monotonic()
         write_state(
             {
                 "ready": True,
@@ -342,6 +368,8 @@ try:
                 "local_client_stats": local_client_stats,
                 "local_client_rxb_total": sum((getattr(item, "rxb", 0) or 0) for item in local_clients),
                 "local_client_txb_total": sum((getattr(item, "txb", 0) or 0) for item in local_clients),
+                "received_payloads": received_payloads,
+                "reverse_payload": reverse_payload.decode("utf-8"),
             }
         )
         time.sleep(0.25)
@@ -374,6 +402,15 @@ def write_state(payload):
 try:
     import RNS
     reticulum = RNS.Reticulum(configdir=config_dir, loglevel=7, require_shared_instance=True)
+    received_payloads = []
+    class TrafficHandler:
+        aspect_filter = "codex.local.shared.traffic"
+
+        def received_announce(self, destination_hash, announced_identity, app_data):
+            if app_data is not None and app_data.startswith(b"codex-local-python-shared-payload:"):
+                received_payloads.append(app_data.decode("utf-8"))
+
+    RNS.Transport.register_announce_handler(TrafficHandler())
     identity = RNS.Identity()
     destination = RNS.Destination(
         identity,
@@ -384,17 +421,23 @@ try:
         "shared",
         "traffic",
     )
-    app_data = f"codex-local-python-shared-traffic:{label}".encode("utf-8")
+    app_data = f"codex-local-python-shared-payload:python-to-shared:{label}".encode("utf-8")
+    reverse_app_data = f"codex-local-python-shared-payload:shared-to-python:{label}".encode("utf-8")
     announced = 0
+    reverse_announced = 0
     for _ in range(3):
         destination.announce(app_data=app_data)
         announced += 1
+        destination.announce(app_data=reverse_app_data)
+        reverse_announced += 1
         write_state(
             {
                 "ready": True,
                 "label": label,
                 "is_connected_to_shared_instance": reticulum.is_connected_to_shared_instance,
                 "announced_count": announced,
+                "reverse_announced_count": reverse_announced,
+                "received_payloads": received_payloads,
                 "destination_hash": RNS.hexrep(destination.hash, delimit=False),
             }
         )
@@ -406,6 +449,8 @@ try:
                 "label": label,
                 "is_connected_to_shared_instance": reticulum.is_connected_to_shared_instance,
                 "announced_count": announced,
+                "reverse_announced_count": reverse_announced,
+                "received_payloads": received_payloads,
                 "destination_hash": RNS.hexrep(destination.hash, delimit=False),
             }
         )
@@ -715,12 +760,21 @@ for state in [tcp_state, unix_state]:
         raise SystemExit(1)
     if (state.get("local_client_txb_total") or 0) <= 0:
         raise SystemExit(1)
-for state in [tcp_traffic_state, unix_traffic_state]:
+for label, state, shared_state in [
+    ("tcp", tcp_traffic_state, tcp_state),
+    ("unix", unix_traffic_state, unix_state),
+]:
     if state.get("ready") is not True:
         raise SystemExit(1)
     if state.get("is_connected_to_shared_instance") is not True:
         raise SystemExit(1)
     if (state.get("announced_count") or 0) < 3:
+        raise SystemExit(1)
+    if (state.get("reverse_announced_count") or 0) < 3:
+        raise SystemExit(1)
+    if f"codex-local-python-shared-payload:python-to-shared:{label}" not in shared_state.get("received_payloads", []):
+        raise SystemExit(1)
+    if "codex-local-python-shared-payload:shared-to-python" not in state.get("received_payloads", []):
         raise SystemExit(1)
 for token in [
     "local-python-tcp-attach",

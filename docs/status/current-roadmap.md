@@ -695,11 +695,11 @@ direction.
   strict startup, TCP listener/attach status, filesystem Unix listener startup,
   Linux abstract Unix listener/client attach, Python local MTU, bitrate alias
   reporting, and `rnstatus-rs` JSON/human output, plus pinned Python Reticulum
-  shared-instance attach and Python-origin announce-fanout evidence over TCP
-  and Linux abstract Unix sockets; the process smoke now observes TCP and Unix
+  shared-instance attach and exact bidirectional Python announce-payload
+  evidence over TCP and Linux abstract Unix sockets; the process smoke observes TCP and Unix
   client teardown on daemon SIGINT and successful status/client-count recovery
   after restart for both transports. This is one Linux software lifecycle
-  increment, not broad application-traffic or platform evidence. The Reticulum interface parity
+  increment, not daemon application-level packet consumption, broad application-traffic, physical-interface, or platform evidence. The Reticulum interface parity
   audit records
   LocalInterface #384 evidence under
   `target/reticulum-interface-parity-audit/report.json` with

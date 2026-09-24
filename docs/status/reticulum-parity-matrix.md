@@ -316,16 +316,16 @@ placeholders:
   `evidence_scope = "software_unix_shared_instance_local"` so it is not
   mistaken for multi-process Python shared-instance interop evidence. A pinned
   Python shared-instance smoke now records
-  `evidence_scope = "python_shared_instance_tcp_unix_attach_and_announce_forward"` after
+  `evidence_scope = "python_shared_instance_tcp_unix_attach_announce_payload_and_lifecycle"` after
   `reticulumd` attaches to real Python Reticulum shared instances over TCP and
-  Linux abstract Unix sockets, then observes Python-origin announce fanout
-  through those shared instances with traffic-client `announced_count` and
-  shared-server `local_client_rxb_total`/`local_client_txb_total` counters; that
+  Linux abstract Unix sockets. Pinned Python peers assert exact UTF-8 announce
+  `app_data` in both directions on both transports, alongside traffic-client
+  `announced_count` and shared-server `local_client_rxb_total`/`local_client_txb_total` counters; that
   process smoke now also SIGINT-stops `reticulumd`, observes its AF_UNIX client
   disappear from the Python shared instance, restarts the daemon, and checks
   the configured interface returns to `attached`. This remains selected Linux
-  software evidence, not broad application-level shared-instance traffic or
-  cross-platform parity. Independent rns-rs evidence
+  software evidence, not daemon application-level packet consumption, broad
+  application-level shared-instance traffic, physical-interface, or cross-platform parity. Independent rns-rs evidence
   separately attaches a real local client to an LXMF-rs `reticulumd`, discovers
   an LXMF-rs endpoint across the daemon, exchanges encrypted packets and proofs
   in both directions, replaces the daemon, verifies client identity continuity

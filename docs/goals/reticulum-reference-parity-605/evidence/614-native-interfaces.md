@@ -33,8 +33,21 @@ head `8b61daf9`, the smoke passed with pinned Reticulum from
 `/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum`. The
 fresh report at `/tmp/lxmf614-verify.6QIxp8/report.json` set both
 `unix_teardown_restart_verified` and `tcp_teardown_restart_verified` to true.
-This does not claim packet-content delivery parity, broad application-level
-shared-instance parity, other operating systems, or hardware coverage.
+On PR #634 worktree head `4daa234402d1085234e91eecdc7ee89b27850eed`, the
+smoke was extended to assert exact UTF-8 announce `app_data` in both directions
+between pinned Python peers on both TCP and Linux abstract Unix shared
+instances, while the production daemon remained attached. The Python shared
+instance observed `codex-local-python-shared-payload:python-to-shared:tcp` and
+`:unix`; each Python traffic client observed the exact
+`codex-local-python-shared-payload:shared-to-python` value. The generated
+report at `target/local-interface-python-shared-smoke/report.json` recorded
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`, both attached client
+rows, positive Rx/Tx counters, both TCP/Unix detach-and-restart flags, and the
+payload observations. This demonstrates payload-bearing announce fanout
+between Python peers on the shared-instance transports with the daemon
+attached; it does not establish daemon application-level packet consumption,
+broad application-level shared-instance parity, other operating systems,
+physical interfaces, or hardware coverage.
 
 The Verify workflow now wires this existing smoke into its Linux `hil-pr` job,
 using the workflow's pinned `PYTHON_RETICULUM_REF` checkout and uploading the
@@ -48,7 +61,7 @@ Focused validation:
 ```text
 bash -n tools/scripts/local-interface-python-shared-smoke.sh PASS
 cargo test -p reticulumd --test local_interface_smoke_contract local_interface_python_shared_smoke_preserves_interop_evidence_contract -- --exact --nocapture PASS (1 test)
-LOG_DIR="$(mktemp -d /tmp/lxmf614-verify.XXXXXX)" RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum TIMEOUT_SECS=120 ./tools/scripts/local-interface-python-shared-smoke.sh PASS
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum TIMEOUT_SECS=120 ./tools/scripts/local-interface-python-shared-smoke.sh PASS (report: target/local-interface-python-shared-smoke/report.json)
 git diff --check PASS
 ```
 
