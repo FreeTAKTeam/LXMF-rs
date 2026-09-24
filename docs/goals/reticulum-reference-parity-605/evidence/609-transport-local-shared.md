@@ -635,3 +635,7 @@ cargo test -p reticulum-rs-transport --lib \
   enabled_shared_daemon_delivers_local_link_request_only_to_requesting_child -- --nocapture
 # 1 passed; 0 failed
 ```
+
+Both transport-mode regressions were rerun at PR #629 head
+`8bff93caa992cf3694e4b3a8f1dd4597651d5754`; each passed (1 test, 0 failed).
+The broader #609 acceptance row remains open.
