@@ -711,6 +711,32 @@ cargo fmt --all -- --check; tools/scripts/check-module-size.sh; git diff --check
   PASS
 ```
 
+### Controlled converter process boundary
+
+`issue_613_converter_process_tests::converter_process_boundary_honors_configuration_output_and_failures`
+launches an executable fake `ffmpeg` through the real converter process path.
+It verifies the configured quality and dimension options arrive in argv, source
+bytes reach the helper's stdin, and a valid WebP header is accepted. It then
+has the helper emit the same valid-looking bytes but exit nonzero and verifies
+conversion fails and the output is removed; a final invocation sleeps beyond a
+100 ms deadline and verifies bounded failure and output removal. The fake
+helper does not encode an image, so this is process/configuration/status/header
+plumbing evidence only—not successful codec operation, dimensions, visual
+parity, or behavior of ImageMagick/GraphicsMagick/avconv.
+
+The relevant pinned Python semantics were inspected at Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`: `media.py::convert_to_webp`
+uses `_await`'s shared timeout and rejects unsuccessful child status, then
+checks `_valid_webp` before success. The existing pinned helper differential
+continues to cover backend selection/configured argv; this process test does
+not duplicate that differential or execute Python as a second oracle.
+
+```text
+cargo test -p rns-tools --bin rngit --all-features \
+  converter_process_boundary_honors_configuration_output_and_failures -- --nocapture
+  PASS (1 test)
+```
+
 ### Exact invalid-reference page rendering over the pinned Link
 
 The production `rngit` page/media integration now retains the complete page

@@ -469,3 +469,7 @@ pub(crate) fn convert_file_to_webp(
 #[cfg(test)]
 #[path = "media_backend_tests.rs"]
 mod media_backend_tests;
+
+#[cfg(all(test, unix))]
+#[path = "issue_613_converter_process_tests.rs"]
+mod issue_613_converter_process_tests;
