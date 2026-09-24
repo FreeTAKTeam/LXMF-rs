@@ -316,11 +316,13 @@ incoming datagrams reach owner.inbound and outgoing bytes use sendto at the
 configured forward address. This does not establish multicast, multi-host,
 cross-platform, mobile, or physical behavior.
 
-Observed report: status pass; 167-byte packet SHA-256
-e29082366eb70bebc3f51526dee624173f3ec9e9e6f4839098344ead2b40ef84; before
-restart, packets_rx=1, packets_tx=2, bytes_rx=167, bytes_tx=334; after clean
-shutdown the same ports restarted with startup_status=spawned and
-link_state=bound.
+The trace was rerun against PR #634 base head
+`7e4c2984c49564d2142a200ba1003a81de42ba5a`: status pass; 167-byte packet
+SHA-256 `aa5455d845b9f9d3a416567ce7959af7656228337ae20c9bba52d931384aa670`;
+before restart, packets_rx=1, packets_tx=2, bytes_rx=167, bytes_tx=334; after
+clean shutdown the same ports restarted with startup_status=spawned and
+link_state=bound. The bounded Linux CI job now runs this trace on every PR and
+uploads `target/udp-configured-packet-smoke/report.json`.
 
 Validation:
 
@@ -332,3 +334,7 @@ Validation:
   -D warnings: PASS
 - tools/scripts/check-module-size.sh: PASS
 - git diff --check: PASS
+
+The same production smoke is a dedicated Linux CI regression via
+`linux-udp-runtime`; this adds a repeatable hosted software check without
+claiming multicast, multi-host, cross-platform, mobile, or physical behavior.

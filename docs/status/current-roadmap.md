@@ -142,11 +142,14 @@ counters; SIGINT shutdown exits and reaps the peer. This remains Linux software
 evidence only; Windows/macOS behavior, independent remote-peer interoperability,
 and physical acceptance remain unverified.
 
-The Linux UDP production worker also has a loopback cancellation regression:
-it reaches `bound`, exits on interface cancellation, reports `closed`, and
-releases the same port for immediate reuse. This verifies one status/teardown
-slice only; UDP packet exchange, daemon startup, cross-platform behavior, and
-the broader #614/#605 interface matrix remain open.
+The Linux UDP runtime now also has a configured daemon loopback trace: a local
+peer receives a valid outbound datagram and returns the exact bytes, live daemon
+status reports RX/TX counters, and clean shutdown permits a same-port restart.
+A focused Linux CI job runs the trace and uploads its report. Along with the
+worker cancellation/rebind regression, this covers software packet flow and
+restart for the configured UDP unicast path; multicast, multi-host,
+cross-platform, mobile, physical, and wider #614/#605 interface evidence remain
+open.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at

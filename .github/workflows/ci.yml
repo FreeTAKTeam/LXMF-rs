@@ -106,6 +106,28 @@ jobs:
         run: cargo test -p reticulum-rs-transport --features rnode-ble --lib -- --nocapture
 
 
+  linux-udp-runtime:
+    name: Linux configured UDP runtime software smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Verify configured UDP packet loopback, status, teardown, and restart
+        run: ./tools/scripts/udp-configured-packet-smoke.sh
+      - name: Upload UDP runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: udp-configured-packet-smoke-${{ github.run_id }}
+          path: target/udp-configured-packet-smoke/report.json
+          if-no-files-found: error
+
+
   test-nextest-unit:
     runs-on: ubuntu-latest
     steps:

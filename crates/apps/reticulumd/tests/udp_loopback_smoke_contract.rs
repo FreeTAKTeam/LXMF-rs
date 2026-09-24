@@ -106,3 +106,23 @@ fn configured_udp_packet_trace_preserves_reference_and_restart_contract() {
         assert!(runbook.contains(required), "UDP runbook should include {required:?}");
     }
 }
+
+#[test]
+fn configured_udp_packet_trace_runs_in_linux_ci_and_uploads_report() {
+    let root = repo_root();
+    let workflow =
+        fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("read CI workflow");
+
+    for required in [
+        "linux-udp-runtime:",
+        "Linux configured UDP runtime software smoke",
+        "./tools/scripts/udp-configured-packet-smoke.sh",
+        "target/udp-configured-packet-smoke/report.json",
+        "udp-configured-packet-smoke-${{ github.run_id }}",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "CI workflow should include configured UDP runtime evidence token {required:?}"
+        );
+    }
+}
