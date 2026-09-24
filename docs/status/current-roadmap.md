@@ -47,7 +47,11 @@ coverage. The broader startup/error and carrier matrices remain open. The spawne
 8-byte IFAC default and authenticated HDLC packet admission. Other carrier
 families now include duplex-stream serial and KISS IFAC regressions for wrong-key
 rejection and authenticated ingress/egress, with the KISS test also checking
-runtime counters. The outbound I2P peer loop now also has a fake-SAM stream
+runtime counters. A pinned-Python regression now also exchanges a Channel
+request/reply between the Python and Rust serial KISS interfaces over a raw
+two-PTY software relay, with bidirectional interface traffic and zero IFAC
+violations; it does not establish modem or physical-serial behavior. The
+outbound I2P peer loop now also has a fake-SAM stream
 regression for wrong-key rejection and authenticated ingress/egress; none of
 these tests is physical-carrier or public-I2P evidence. A second fake-SAM test
 verifies an established virtual I2P peer observes parent IFAC credential

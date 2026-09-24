@@ -251,8 +251,12 @@ through the spawned Rust `PipeInterface` worker, checking the reference
 8-byte default tag, authenticated HDLC packet admission, and child shutdown.
 The production serial and KISS stream workers also have deterministic duplex
 regressions for wrong-key rejection and authenticated ingress/egress; KISS
-asserts its default tag size and runtime counters. These supplement (but do not
-replace) the pinned Python/Rust TCP and UDP traces. The outbound I2P peer loop
+asserts its default tag size and runtime counters. A pinned-Python serial-KISS
+Channel request/reply and delivery-proof trace also runs the Python and Rust
+workers over a raw two-PTY software relay, recording bidirectional interface
+traffic and zero IFAC violations; it does not exercise a modem or radio. These
+supplement (but do not replace) the broader pinned Python/Rust TCP and UDP
+traces. The outbound I2P peer loop
 also has fake-SAM regressions for wrong-key rejection, authenticated
 ingress/egress, and shared parent IFAC rotation on an established virtual peer;
 these are not public-I2P or prepared-router evidence. Additional deterministic

@@ -853,3 +853,25 @@ metadata-free `resource-sha256` format. PR #638's metadata-aware expectation
 confirms the same fixture mismatch. This #628 follow-up updates only that
 Python test-client expectation; it does not change Resource or IFAC production
 behavior. No physical device was used, and local HIL was not run.
+
+## Pinned Python/Rust KISS serial IFAC interoperability over software PTYs
+
+Against pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`, the
+Python `KISSInterface` and Rust production `KissInterface` run as separate
+nodes on opposite sides of a raw two-PTY software relay. Both use the same
+128-bit configured IFAC credentials. The Python node announces a Channel
+destination; Rust establishes a Link, sends a Channel message, receives the
+Python reply, and observes the delivery proof. The Rust interface traffic
+snapshot records receive and transmit bytes with zero IFAC violations. This
+adds one pinned-Python serial/KISS software path; it does not exercise a modem,
+radio, physical serial adapter, or broader platform/carrier matrix, so #608
+remains open.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+cargo test -p reticulumd --test python_channel_interop \
+  python_rust_ifac_kiss_serial_channel_roundtrip_over_pty \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; Python/Rust KISS Channel request/reply and proof over PTYs, 0 IFAC violations
+```
