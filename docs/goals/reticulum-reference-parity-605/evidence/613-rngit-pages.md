@@ -31,7 +31,7 @@ Rust kept the page Link active after a failed Resource response.
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression checks nested file-path encoding; unit regression confirms that only `file_path` receives `quote_plus`, while group/repository/ref remain literal as in frozen `pages.py`; missing repository, invalid ref, missing blob are covered; visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
-| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and streaming encoder-output capture (32 MiB disk cap), output validation, temporary-directory cleanup, raw fallback | Existing production-Link encoding and exact raw-fallback regressions remain; the deterministic oversized fake-backend case checks prompt termination, reaping of both pipeline children, and removal of partial output. A pinned-Python Link regression forces recognized-but-unavailable `magick` while an `ffmpeg` sentinel is available, proving raw fallback without encoder fallthrough; local validation passed at PR commit `e7563fca`, and Verify runs the regression. ImageMagick 7 `magick`, `avconv`, and visual parity remain unverified. |
+| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and streaming encoder-output capture (32 MiB disk cap), output validation, temporary-directory cleanup, raw fallback | Existing production-Link encoding and exact raw-fallback regressions remain; the deterministic oversized fake-backend case checks prompt termination, reaping of both pipeline children, and removal of partial output. A pinned-Python Link regression forces recognized-but-unavailable `magick` while an `ffmpeg` sentinel is available, proving raw fallback without encoder fallthrough; local validation passed at PR commit `e7563fca`, and Verify runs the regression. ImageMagick 7 `magick` now also passes locally through the checksum-pinned AppImage and pinned-Python production-Link fixture; `avconv` and visual parity remain unverified. |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; pinned Python inspects the production Resource advertisement and confirms no compression for a precompressed PNG |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown, response-send-detected abrupt client exit, periodic cleanup after silent Link disappearance, in-flight `/media` Resource cancellation, pipeline child-status errors, and stale-sweep removal retry are exercised | deterministic `periodic_sweep_removes_media_for_silently_disappeared_link` test plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client`, `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown`, `rngit_python_interop::rngit_cleans_media_after_response_fails_on_abrupt_client_exit`, and `rngit_python_interop::issue_613_cleanup_isolation::rngit_disconnect_cleanup_preserves_an_independent_active_media_response` | active, stale, closed, missing-link, graceful-disconnect, synchronized partial-Resource cancellation, abrupt client exit detected by a failed response, periodic sweep after silent Link disappearance, cross-Link cleanup/active-response isolation, child-status-error termination/reaping, and one stale-sweep filesystem removal failure/retry verified; other filesystem/media lifecycle fault paths remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | `page_link_cleanup_retries_failed_removal` injects a failure then verifies retry on close; `stale_page_link_sweep_retries_filesystem_removal_failure` induces a real filesystem error in the stale-sweep helper, confirms tracking is retained, then verifies a later retry removes the restored directory | explicit close-path retry and one stale-sweep helper retry verified; other filesystem fault paths remain open |
@@ -159,8 +159,9 @@ child-status handling, including terminating and reaping pipeline children;
 the injected encoder-failure regression checks raw fallback, conversion
 directory cleanup, and diagnostic detail. Hosted Verify also exercised real
 ImageMagick `convert` and GraphicsMagick `gm` over pinned-Python production
-Links. ImageMagick 7 `magick`, `avconv`, visual/reference parity, and other
-filesystem/media lifecycle fault paths remain unverified.
+Links at that hosted revision. ImageMagick 7 `magick`, `avconv`,
+visual/reference parity, and other filesystem/media lifecycle fault paths were
+not covered by that run.
 
 ### Hosted real ImageMagick and GraphicsMagick backends
 
@@ -170,8 +171,35 @@ At PR #633 head `317cc142dde34ebcdf30a3c007f7d5a5568557aa`, Verify run
 quality and resize arguments; the pinned Python client decoded the returned
 8x4-to-1x1 WebP and checked response metadata, raw fallback for invalid image
 data, and Link-scoped cleanup. The same run passed the complete hosted check
-suite. This covers those two installed command families; ImageMagick 7's
-`magick` command, `avconv`, and visual-rendering parity remain unverified.
+suite. This section records those two installed command families at that
+historical head; later ImageMagick 7 evidence follows.
+
+### Pinned ImageMagick 7 AppImage production-Link validation
+
+The official ImageMagick 7.1.2-31 GCC x86_64 AppImage was downloaded from the
+[official release](https://github.com/ImageMagick/ImageMagick/releases/tag/7.1.2-31)
+and matched published SHA-256
+`b22dee096a68e7eb6771a6f98c16490ea78d399ffa27f34ca2ec4f02e707fd9c`. The
+SquashFS payload was extracted at the AppImage-reported offset and invoked
+through its bundled `AppRun`. The runtime smoke encoded an 8x4 PNG to WebP,
+decoded it back to PNG, and `ffprobe` reported `codec_name=webp`, width 8,
+height 4; ImageMagick then reported the decoded dimensions as 8x4.
+
+The existing configured-backend integration fixture passed against the pinned
+Reticulum Python client with `RNGIT_TEST_WEBP_BACKEND=magick`. It verifies the
+production Link response, configured argv, decoded/resized WebP metadata,
+raw-media fallback, and cleanup. The current Verify workflow now pins and
+checks the same AppImage, repeats the codec smoke, and runs this Link fixture;
+that hosted run is pending and is not claimed as passed here. Real `avconv`
+encoding and visual/reference rendering parity remain unverified.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 RNGIT_TEST_WEBP_BACKEND=magick \
+  cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_configured_backend::configured_backend_serves_decodable_webp_and_falls_back_to_raw_media \
+  -- --ignored --exact --nocapture --test-threads=1                    PASS (1 test)
+```
 
 ```text
 RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
@@ -642,9 +670,10 @@ cargo test -p rns-tools --test rngit_python_interop \
 - The Rust page rendering is intentionally a compact service implementation;
   full Markdown highlighting, pagination, diff rendering, signed work-document
   presentation, and every reference template detail remain open.
-- Live encoder-success fixtures now cover `ffmpeg`, ImageMagick `convert`, and
-  GraphicsMagick `gm`; ImageMagick 7 `magick`, `avconv`, visual-rendering
-  parity, and the full image corpus remain unverified. Invalid conversion
+- Live encoder-success fixtures cover `ffmpeg`, ImageMagick `convert`,
+  GraphicsMagick `gm`, and ImageMagick 7 `magick` via its checksum-pinned
+  AppImage; `avconv`, visual-rendering parity, and the full image corpus remain
+  unverified. Invalid conversion
   fallback, unknown-backend raw fallback over a pinned-Python production Link, WebP header
   validation, timeout/cleanup code paths, and argument construction are also
   covered.
@@ -802,8 +831,8 @@ conversion fails and the output is removed; a final invocation sleeps beyond a
 helper does not encode an image, so this is process/configuration/status/header
 plumbing evidence only—not successful codec operation, dimensions, or visual
 parity. Separate production-Link fixtures cover successful `ffmpeg`,
-ImageMagick `convert`, and GraphicsMagick `gm` operation; `magick` and `avconv`
-remain unverified.
+ImageMagick `convert`, GraphicsMagick `gm`, and ImageMagick 7 `magick` operation;
+`avconv` remains unverified.
 
 The relevant pinned Python semantics were inspected at Reticulum
 `99de23c040d507e3fefca19e87b182302902725d`: `media.py::convert_to_webp`

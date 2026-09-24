@@ -80,7 +80,59 @@ jobs:
       - name: Install Linux BLE build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libdbus-1-dev ffmpeg imagemagick graphicsmagick
+          sudo apt-get install -y pkg-config libdbus-1-dev ffmpeg imagemagick graphicsmagick squashfs-tools
+
+      - name: Install pinned ImageMagick 7 AppImage with WebP support
+        run: |
+          asset=ImageMagick-7.1.2-31-gcc-x86_64.AppImage
+          image="$RUNNER_TEMP/$asset"
+          appdir="$RUNNER_TEMP/imagemagick-appdir"
+          curl --fail --location --retry 3 \
+            "https://github.com/ImageMagick/ImageMagick/releases/download/7.1.2-31/$asset" \
+            --output "$image"
+          printf '%s  %s\n' \
+            'b22dee096a68e7eb6771a6f98c16490ea78d399ffa27f34ca2ec4f02e707fd9c' \
+            "$image" | sha256sum --check
+          chmod +x "$image"
+          offset=$("$image" --appimage-offset)
+          test "$offset" -gt 0
+          unsquashfs -no-progress -o "$offset" -d "$appdir" "$image"
+          test -x "$appdir/AppRun"
+          test -x "$appdir/usr/bin/magick"
+          mkdir -p "$RUNNER_TEMP/magick-bin"
+          printf '#!/bin/sh\nunset APPIMAGE ARGV0\nexec "%s/AppRun" "$@"\n' \
+            "$appdir" > "$RUNNER_TEMP/magick-bin/magick"
+          chmod +x "$RUNNER_TEMP/magick-bin/magick"
+          printf '%s\n' "$RUNNER_TEMP/magick-bin" >> "$GITHUB_PATH"
+
+      - name: Smoke-test pinned ImageMagick WebP encode and decode
+        run: |
+          magick -version
+          input="$RUNNER_TEMP/magick-webp-smoke.png"
+          output="$RUNNER_TEMP/magick-webp-smoke.webp"
+          decoded="$RUNNER_TEMP/magick-webp-smoke-decoded.png"
+          magick -size 8x4 xc:red "$input"
+          magick "$input" "$output"
+          magick "$output" "$decoded"
+          python3 - "$output" "$decoded" <<'PY'
+          import json
+          import subprocess
+          import sys
+
+          webp, decoded = sys.argv[1:]
+          probe = subprocess.run(
+              ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+               "stream=codec_name,width,height", "-of", "json", webp],
+              check=True, capture_output=True, text=True,
+          )
+          stream = json.loads(probe.stdout)["streams"][0]
+          assert stream == {"codec_name": "webp", "width": 8, "height": 4}, stream
+          identify = subprocess.run(
+              ["magick", "identify", "-format", "%w %h", decoded],
+              check=True, capture_output=True, text=True,
+          )
+          assert identify.stdout == "8 4", identify.stdout
+          PY
 
       - name: Checkout pinned Python Reticulum parity target
         uses: actions/checkout@v4
@@ -171,13 +223,13 @@ jobs:
             rngit_does_not_fall_through_from_unavailable_forced_backend \
             -- --ignored --exact --nocapture --test-threads=1
 
-      - name: Verify real ImageMagick and GraphicsMagick WebP backends over pinned Python Links
+      - name: Verify real ImageMagick, ImageMagick 7, and GraphicsMagick WebP backends over pinned Python Links
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
           PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
         run: |
-          for backend in convert gm; do
+          for backend in convert magick gm; do
             RNGIT_TEST_WEBP_BACKEND="$backend" cargo test -p rns-tools --test rngit_python_interop \
               issue_613_configured_backend::configured_backend_serves_decodable_webp_and_falls_back_to_raw_media \
               -- --ignored --exact --nocapture --test-threads=1
