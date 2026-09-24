@@ -298,8 +298,18 @@ valid-ID completion denied by missing repository write permission, missing
 `doc_id`, and malformed `doc_id`. It compares exact response status/body and
 active/completed directory state. All three cases passed against Reticulum
 `99de23c040d507e3fefca19e87b182302902725d`. This covers failure behavior for
-`complete` only; successful completion, other operation gates and the broad
+`complete` only; other operation gates and the broad
 #612 request/authorization/scope/metadata/side-effect matrix remain open.
+
+The ignored pinned-Python differential
+`work_complete_success_matches_pinned_python_response_and_directory_transition`
+drives successful `complete` through both production handlers. Each fixture
+grants repository read, write, and interact access and seeds active document 7
+with the requesting identity as author. The handlers return byte-identical
+status/body, remove `active/7`, and create `completed/7`; the Python reference
+is pinned to Reticulum `99de23c040d507e3fefca19e87b182302902725d`. This is one
+successful completion case only; the broad #612 operation and permission
+matrix remains open.
 
 ## Deliberate remaining gaps
 

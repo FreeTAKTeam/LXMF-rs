@@ -117,6 +117,12 @@ malformed document ID. Exact status/body and active/completed directory state
 match in all three cases. This adds bounded denial and request-shape evidence;
 it does not complete the broader operation or permission matrix.
 
+A separate pinned-Python `complete` differential now covers the authorized
+success path: both production handlers return the exact same status/body and
+move the author-owned work item from `active/7` to `completed/7`. This adds one
+successful state transition; the complete #612 operation and permission
+matrix remains open.
+
 A new pinned-Python production-handler differential covers `list` with an
 unknown scope: Rust now returns `RES_OK` and the same empty `active`,
 `completed`, and `proposed` arrays as RNS 1.5.4. A separate local regression
