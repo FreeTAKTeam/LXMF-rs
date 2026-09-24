@@ -107,11 +107,10 @@ helper and injects executable availability to assert the same sequence.
 ```text
 cargo test -p rns-tools --bin rngit --all-features automatic_backend_selection
   PASS (2 tests)
-RETICULUM_PY_REPO=<temporary RNS extraction from 99de23c040d507e3fefca19e87b182302902725d> \
+TMPDIR=/dev/shm RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
   LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
-  pinned_python_media_backend_selection_reuses_available_automatic_winner \
-  -- --ignored --nocapture
-  Requires the pinned local Python checkout; not run in this worktree.
+  issue_613_media_compression -- --ignored --nocapture --test-threads=1 \
+  PASS (2 tests, including the pinned-helper backend-selection regression)
 ```
 
 This is one backend-selection state-parity increment; encoding by the other
