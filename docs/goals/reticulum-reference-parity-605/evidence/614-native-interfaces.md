@@ -36,6 +36,13 @@ fresh report at `/tmp/lxmf614-verify.6QIxp8/report.json` set both
 This does not claim packet-content delivery parity, broad application-level
 shared-instance parity, other operating systems, or hardware coverage.
 
+The Verify workflow now wires this existing smoke into its Linux `hil-pr` job,
+using the workflow's pinned `PYTHON_RETICULUM_REF` checkout and uploading the
+JSON report plus run logs on completion or failure. This is a newly configured
+hosted gate at the current candidate head; no hosted result is claimed until
+that workflow run completes. It adds repeatable TCP/abstract-Unix restart
+coverage only and leaves the broad #614 interface-family/platform matrix open.
+
 Focused validation:
 
 ```text
