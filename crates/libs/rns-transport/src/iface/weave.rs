@@ -1889,6 +1889,129 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn weave_configured_stream_exchanges_endpoint_packet_and_cleans_up() {
+        let mut iface_manager = InterfaceManager::new(8);
+        let parent_channel = iface_manager.new_channel_with_role(8, IfaceRole::Multicast);
+        let parent_iface = parent_channel.address;
+        let iface_manager = Arc::new(tokio::sync::Mutex::new(iface_manager));
+        let iface = WeaveInterface::new("weave-loopback", iface_manager.clone())
+            .with_baud_rate(115_200)
+            .with_mtu(512);
+        let local_switch = iface.switch_id();
+        let remote = PrivateIdentity::new_from_name("weave-loopback-peer");
+        let remote_switch = switch_id_for_identity(&remote);
+        let runtime_status = iface.runtime_status.clone();
+        let options = WeaveStreamOptions {
+            parent_iface,
+            device: iface.device.clone(),
+            mtu: iface.mtu,
+            iface_manager: iface_manager.clone(),
+            switch_identity: iface.switch_identity.clone(),
+            runtime_status: runtime_status.clone(),
+        };
+        let (stream, mut peer) = duplex(8192);
+        let (rx_tx, mut rx_rx) = tokio::sync::mpsc::channel(4);
+        let (tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(run_weave_stream(
+            stream,
+            options,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
+        ));
+
+        let mut wire = vec![0_u8; 512];
+        let discover_len = peer.read(&mut wire).await.expect("read discovery frame");
+        let discovery = decode_one_wire_frame(&wire[..discover_len]);
+        assert_eq!(discovery[SWITCH_ID_LEN], WDCL_T_DISCOVER);
+        assert_eq!(&discovery[..SWITCH_ID_LEN], &[0xFF; SWITCH_ID_LEN]);
+
+        let mut discovery_payload = Vec::new();
+        discovery_payload.extend_from_slice(remote.as_identity().verifying_key_bytes());
+        discovery_payload.extend_from_slice(&remote.sign(&local_switch).to_bytes());
+        peer.write_all(&weave_wire_frame(&weave_wdcl_frame(
+            local_switch,
+            WDCL_T_DISCOVER,
+            &discovery_payload,
+        )))
+        .await
+        .expect("respond to discovery");
+        let handshake_len = peer.read(&mut wire).await.expect("read handshake");
+        let handshake = decode_one_wire_frame(&wire[..handshake_len]);
+        assert_eq!(handshake[SWITCH_ID_LEN], WDCL_T_CONNECT);
+
+        let endpoint = [0x42_u8; ENDPOINT_ID_LEN];
+        peer.write_all(&log_frame(local_switch, ET_PROTO_WEAVE_EP_ALIVE, &endpoint))
+            .await
+            .expect("announce loopback endpoint");
+        let mut inbound_payload = packet_payload(&valid_test_packet());
+        inbound_payload.extend_from_slice(&endpoint);
+        peer.write_all(&weave_wire_frame(&weave_wdcl_frame(
+            local_switch,
+            WDCL_T_ENDPOINT_PKT,
+            &inbound_payload,
+        )))
+        .await
+        .expect("send inbound endpoint packet");
+        let inbound = tokio::time::timeout(Duration::from_secs(1), rx_rx.recv())
+            .await
+            .expect("inbound packet timeout")
+            .expect("inbound packet");
+        assert_eq!(
+            iface_manager.lock().await.role(&inbound.address),
+            Some(IfaceRole::VirtualUnicast)
+        );
+
+        tx_tx
+            .send(TxMessage {
+                tx_type: TxMessageType::Direct(inbound.address),
+                packet: valid_test_packet(),
+            })
+            .await
+            .expect("queue outbound endpoint packet");
+        let outbound_len = tokio::time::timeout(Duration::from_secs(1), peer.read(&mut wire))
+            .await
+            .expect("outbound packet timeout")
+            .expect("read outbound endpoint packet");
+        let outbound = decode_one_wire_frame(&wire[..outbound_len]);
+        assert_eq!(&outbound[..SWITCH_ID_LEN], &remote_switch);
+        assert_eq!(outbound[SWITCH_ID_LEN], WDCL_T_CMD);
+        assert_eq!(
+            &outbound[SWITCH_ID_LEN + 1..SWITCH_ID_LEN + 3],
+            &WDCL_CMD_ENDPOINT_PKT.to_be_bytes()
+        );
+        assert_eq!(
+            &outbound[SWITCH_ID_LEN + 1 + 2..SWITCH_ID_LEN + 1 + 2 + ENDPOINT_ID_LEN],
+            &endpoint
+        );
+        assert_eq!(
+            &outbound[SWITCH_ID_LEN + 1 + 2 + ENDPOINT_ID_LEN..],
+            packet_payload(&valid_test_packet())
+        );
+
+        let status = runtime_status.lock().expect("Weave status").clone();
+        let endpoint_status = status.endpoints.get(&endpoint).expect("endpoint status");
+        assert_eq!(status.remote_switch_id, Some(remote_switch));
+        assert_eq!(endpoint_status.packets_rx, 1);
+        assert_eq!(status.frames_tx, 3);
+        assert!(status.bytes_rx > 0);
+        assert!(status.bytes_tx > 0);
+
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("Weave stream shutdown timeout")
+            .expect("Weave stream task");
+        let status = runtime_status.lock().expect("Weave closed status").clone();
+        assert_eq!(status.link_state, WeaveLinkState::Closed);
+        assert!(status.endpoints.is_empty());
+        assert_eq!(iface_manager.lock().await.role(&inbound.address), None);
+    }
+
+    #[tokio::test]
     async fn weave_stream_routes_inbound_endpoint_packet_to_virtual_iface() {
         let (options, _manager, parent) = test_options().await;
         let local_switch = switch_id_for_identity(&options.switch_identity);

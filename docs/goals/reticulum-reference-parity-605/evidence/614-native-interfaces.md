@@ -56,6 +56,23 @@ TCP teardown, other operating systems, or hardware coverage.
 
 ## Commands and results
 
+### Bounded Weave software trace
+
+`weave_configured_stream_exchanges_endpoint_packet_and_cleans_up` constructs a
+Weave interface with explicit device, baud-rate, and MTU settings, then runs its
+production stream against deterministic duplex I/O. The peer verifies discovery,
+returns a signed response, observes the connect handshake, announces an
+endpoint, and exchanges packets in both directions. The test checks runtime
+frame/byte and endpoint receive counters, then cancels the stream and verifies
+that the endpoint status and virtual interface are removed. This is compared
+only with the frozen Reticulum 1.5.4-dev
+`RNS/Interfaces/WeaveInterface.py` flow for discovery/connect,
+`ET_PROTO_WEAVE_EP_ALIVE`, `WDCL_CMD_ENDPOINT_PKT`, and packet delivery.
+
+This trace does not open an OS serial device or interact with a Weave switch; it
+is not hardware, mobile, or cross-platform acceptance. The broader #614 family
+and platform matrix remains partial, and #616 remains excluded.
+
 On the exact existing PR #634 head `6c6cecd8551fb471a58fb4fa9c123535b12cdccc`,
 the pinned-Python process regression passed with reference revision
 `99de23c040d507e3fefca19e87b182302902725d`. Its JSON report recorded both
