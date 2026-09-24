@@ -40,9 +40,16 @@ a remote route nor fanned out to sibling clients; the broader #609 matrix
 remains open. Mixed Python/Rust recovery evidence now covers two Rust relays in
 series: after the upstream relay restarts with an empty route table, both
 Python endpoints rediscover paths and exchange fresh LXMF messages in both
-directions; one real Resource then completes over the recovered path with
-receiver-verified digest/metadata and sender-visible completion. Direct and
-opportunistic LXMF retry modes and #609's broader matrix remain open. A
+directions in passing runs; one real Resource then completes over the recovered
+path with receiver-verified digest/metadata and sender-visible completion.
+Direct and opportunistic LXMF retry modes and #609's broader matrix remain
+open. Replays of the exact post-restart test are not stable: a recent
+55.11-second run timed out on B-to-A delivery, while the immediate rerun passed
+in 9.47 seconds. The failure showed an attempted outbound message and a
+two-hop cached path at B, but no A inbox delivery; the missing route-table
+entry at relay A is not itself a failure because the destination is local to
+its Python shared-instance owner. Keep post-restart reverse delivery unresolved
+until the intermittent behavior is explained. A
 production inbound regression now proves the same locally
 hosted announce behavior with transport disabled and a virtual shared child,
 matching pinned RNS 1.5.4 without a production correction. Separate
@@ -54,7 +61,13 @@ destination scenario, not full shared-routing acceptance. The focused
 local-client announce differential now executes Python's announce-job branch
 at deadline equality and just after it; Rust matches Python's strict
 `now > deadline` comparison and emits only one immediate retransmit. This
-closes one timing-boundary gap, not the broader #609 matrix. The focused
+closes one timing-boundary gap, not the broader #609 matrix. For unknown
+destinations, a focused handler regression now forwards an inbound LinkRequest
+from a connected shared-instance client to exactly one outgoing shared-owner
+interface, clamps its advertised MTU, and records the LinkRequestProof return
+route; ordinary unknown requests remain dropped and the request is not
+reflected to a shared ingress. This is handler-level evidence only, not proof
+of stable delivery through a live Python owner. The focused
 #611 `rncp` compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
 bounded native `rnsh` channel workflow, negative failure-category checks,
 path-discovery-timeout check, listener restart check, local disk-failure check,

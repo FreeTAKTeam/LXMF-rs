@@ -837,8 +837,17 @@ the ingress interface so its matching LinkRequest proof routes back there. A
 receive-only shared-instance interface, ordinary interface, and ingress do not
 receive the request; an ordinary transport with no shared-instance connection
 still drops an unknown request. This is handler/link-table evidence, not a
-separate Python-owner or end-to-end delivery result. The transport library
-suite passed (835 passed, 5 ignored), scoped Clippy, formatting, module-size,
-and diff checks passed. The full post-restart B-to-A LXMF assertion remains in
-the integration test and was not rerun in this change, as requested; owner-side
-delivery after the handoff remains to be verified by that run.
+separate Python-owner delivery result. The transport library suite passed
+(835 passed, 5 ignored), scoped Clippy, formatting, module-size, and diff
+checks passed.
+
+The exact ignored mixed Python/Rust post-restart regression has produced
+inconsistent outcomes at this PR head: an earlier replay passed in 18.30 s, a
+fresh replay failed after 55.11 s waiting for B-to-A LXMF delivery, and the
+immediate retry passed in 9.47 s. On the failure, B had attempted the message
+at progress 0.03 and had a two-hop cached path to A; relay B knew A at one hop,
+relay A's path table did not contain A, and A's inbox remained empty. The
+missing relay-A path-table row is expected for a locally hosted destination in
+the Python shared-instance owner's `destinations_map`; the absent delivery is
+not. This nondeterminism leaves post-restart reverse-delivery evidence
+unresolved, and issue #609 remains open.
