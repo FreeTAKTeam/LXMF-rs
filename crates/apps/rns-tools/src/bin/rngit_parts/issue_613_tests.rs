@@ -35,7 +35,10 @@ fn page_fixture() -> (tempfile::TempDir, ReticulumGitNode) {
     run_git(&source, &["checkout", "-qb", "main"]);
     std::fs::write(source.join("README.md"), "# page fixture\n").expect("README");
     std::fs::write(source.join("image.png"), b"\x89PNG\r\n\x1a\n\x00\x01").expect("image");
-    run_git(&source, &["add", "README.md", "image.png"]);
+    std::fs::create_dir_all(source.join("assets")).expect("assets directory");
+    std::fs::write(source.join("assets/nested image.png"), b"\x89PNG\r\n\x1a\n\x00\x02")
+        .expect("nested image");
+    run_git(&source, &["add", "README.md", "image.png", "assets/nested image.png"]);
     run_git(&source, &["commit", "-qm", "initial"]);
 
     run_git(&group, &["init", "--bare", "-q", "repo"]);
@@ -131,6 +134,25 @@ fn pages_accept_nomadnet_var_fields_and_render_not_found_errors() {
         )
         .expect("image blob page response");
     assert!(String::from_utf8_lossy(&response.data).contains("/media/group/repo/HEAD/image.png"));
+
+    let response = node
+        .handle_page_request(
+            "/page/blob.mu",
+            &request_map(&[
+                ("var_g", rmpv::Value::String("group".into())),
+                ("var_r", rmpv::Value::String("repo".into())),
+                ("var_ref", rmpv::Value::String("HEAD".into())),
+                ("var_path", rmpv::Value::String("assets/nested image.png".into())),
+            ]),
+            remote,
+            link,
+        )
+        .expect("nested image blob page response");
+    assert!(
+        String::from_utf8_lossy(&response.data)
+            .contains("`(Image file`w=n`a=c`:/media/group/repo/HEAD/assets%2Fnested+image.png)"),
+        "binary image markup must quote_plus the complete repository path"
+    );
 
     let response = node
         .handle_page_request(

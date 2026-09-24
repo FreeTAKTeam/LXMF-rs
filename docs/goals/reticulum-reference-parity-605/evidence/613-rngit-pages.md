@@ -109,6 +109,14 @@ Python standard-library result (`assets%2Fnested+image.png`). This confirms
 nested-path and space encoding for this case only; it does not establish full
 page-rendering parity.
 
+The in-process `pages_accept_nomadnet_var_fields_and_render_not_found_errors`
+regression now independently asserts the exact image markup for
+`assets/nested image.png`, including `%2F` path encoding and `+` space encoding.
+That test passed locally; the pinned production-Link page/media and automatic
+backend-winner regressions also passed against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`. No conversion or markup behavior
+mismatch was confirmed, so this increment adds coverage only.
+
 ```text
 TMPDIR="$PWD/target/tmp" \
 RETICULUM_PY_REPO="$PWD/target/tmp/pinned-reticulum" \
