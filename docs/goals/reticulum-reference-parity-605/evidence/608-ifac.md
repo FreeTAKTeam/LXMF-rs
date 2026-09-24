@@ -930,3 +930,25 @@ cargo test -p reticulumd --test python_channel_interop \
 | Carrier | Software regression | Evidence boundary |
 | --- | --- | --- |
 | Meshtastic | `meshtastic_ifac_worker_rotates_credentials_without_plaintext_fallback` rotates IFAC through `InterfaceManager::set_shared_config` while the production worker runs; old-key and plaintext ingress are rejected and counted, replacement-key ingress is admitted, and egress authenticates with an independently derived replacement key. | In-memory tunnel/worker only; no physical Meshtastic device or full #608 acceptance. |
+
+## Pinned-Python TCP accepted-child IFAC rotation and restart
+
+The ignored process-level test starts the Rust TCP listener with the pinned
+IFAC credentials and launches separate pinned-Python channel clients. A
+matching peer establishes a Link on its first accepted stream; a wrong-key
+peer sends bytes but creates no Link. While the listener remains active, the
+parent rotates credentials: the prior key is rejected and a new-key peer is
+admitted. The listener is then stopped and restarted with the rotated
+configuration; the stale key remains rejected and the replacement key
+establishes a fresh Link. The final production traffic snapshot has received
+bytes and zero IFAC violations. This is software-only TCP lifecycle evidence;
+it does not close the broader startup/error or carrier-family matrix and does
+not exercise physical hardware.
+
+```text
+TMPDIR=/dev/shm RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+cargo test -p reticulumd --test python_tcp_ifac_lifecycle -- \
+  --ignored --exact python_tcp_ifac_accepted_child_rotation_and_restart_fail_closed \
+  --nocapture --test-threads=1
+# 1 passed; pinned-Python TCP first-frame admission, wrong-key rejection, live credential rotation, and restart
+```

@@ -64,7 +64,10 @@ rotated credential after live configuration change. This is software-only
 coverage of the child decoder state; no production-code fix was required. TCP
 accepted clients now inherit their parent's IFAC policy before the child worker
 is scheduled, with a deterministic first-poll regression proving plaintext is
-rejected; this addresses accepted-stream startup ordering only. The
+rejected; a separate pinned-Python TCP process test now verifies first-frame
+admission, wrong-key rejection, live parent credential rotation, and stop/
+restart with the rotated credentials. This is focused TCP lifecycle evidence,
+not physical-carrier or full startup/error coverage. The
 broader software support matrix, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`
