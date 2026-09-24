@@ -41,6 +41,11 @@ not promoted or rewritten by this change.
 The issue-specific #613 software trace additionally confirms that converted
 media temporary data exists only for the serving Reticulum Link and is removed
 by the production disconnect path against the frozen Python reference. A new
+cross-Link production trace pauses a pinned-Python raw-media Resource at partial
+progress, disconnects a different Link that owns a converted-media directory,
+verifies that directory is gone before resuming, then checks the response's
+exact size and SHA-256. This proves one deterministic cleanup/active-response
+isolation case only; #613 remains partial. A new
 media-path differential also verifies that group, repository, and ref
 components remain literal while only the file-path tail is URL-decoded, as in
 the pinned Python `serve_media`; encoded `%67roup` is denied rather than

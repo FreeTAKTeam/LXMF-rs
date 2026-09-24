@@ -155,6 +155,7 @@ soak axis remains explicitly excluded under #616.
 | `#613 rngit /media decoded path edge slashes` | `crates/apps/rns-tools/tests/rngit_python_interop/issue_613_media_url.rs`; `crates/apps/rns-tools/src/bin/rngit_parts/page_media.rs` | verified | pinned-python | Matches pinned `serve_media` by stripping leading/trailing slashes from the decoded file path before Git lookup; production-Link regression checks matching binary Resource filename, size, and SHA-256. | Interior empty components remain rejected; this focused case does not complete #613. |
 | `#613 rngit nested image markup encoding` | `crates/apps/rns-tools/src/bin/rngit_parts/issue_613_tests.rs`; `crates/apps/rns-tools/tests/rngit_python_interop/issue_613_page_media.rs` | verified | unit, pinned-python | Unit coverage checks the exact Rust-rendered Micron URL for `assets/nested image.png`; the pinned Python production-Link trace derives the expected encoding from frozen `pages.py` `quote_plus(file_path)`. | One nested path case only; other template/rendering behavior and the broader #613 acceptance remain open. |
 | `#613 rngit abrupt-exit response-send cleanup` | `crates/apps/rns-tools/src/bin/rngit_parts/network.rs`; `crates/apps/rns-tools/tests/rngit_python_interop/issue_613_cleanup.rs` | verified | pinned-python | Matched abrupt-client-exit trace: pinned Python removes the media directory on disconnect; Rust now maps a failed Resource response's `ConnectionError` to `NotConnected` and closes the page Link, triggering existing `LinkEvent::Closed` cleanup. A marker-gated converter makes the regression deterministic. | Silent peer exits without a failed response and other filesystem-failure paths remain open; this does not complete #613. |
+| `#613 Link-scoped cleanup preserves another active response` | `crates/apps/rns-tools/tests/rngit_python_interop/issue_613_cleanup_isolation.rs` | verified | pinned-python, simulated | While a pinned-Python Link is paused at partial progress on a 32 KiB raw-media Resource, disconnects a separate Link with one converted-media directory, verifies the directory is removed before releasing progress, then checks the active response's exact size and SHA-256. | One deterministic two-Link case only; silent stale peers, remaining process/filesystem faults, and the compound #613 cleanup acceptance remain open. |
 | `CRNS/*` | none | not-applicable | pinned-python | No `CRNS` package exists in either pinned reference tree. | Provenance is resolved; no Rust implementation is required. |
 
 The #613 frozen `pages.py::serve_front_page` gate renders `no_ident` only for
@@ -237,7 +238,11 @@ separate-process pinned-Python test synchronizes on observed partial `/media`
 Resource progress before tearing down the Link, then verifies no response
 completion, receiver-side Resource state/files, server child processes on
 Linux, or serving media temp directory remain; the Resource-manager link-close
-unit test also verifies its tracked state is empty. Abrupt-process stale
+unit test also verifies its tracked state is empty. A separate pinned-Python
+production-Link case now proves a disconnected Link's conversion directory is
+removed while another Link is paused mid-Resource, and that the second response
+then completes with its exact digest. This covers one cross-Link isolation
+case only. Abrupt-process stale
 transition and other filesystem failures remain unverified; the broader #613
 row stays partial.
 
