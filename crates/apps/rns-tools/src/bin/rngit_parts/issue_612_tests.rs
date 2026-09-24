@@ -424,3 +424,4 @@ fn work_documents_and_permission_sidecars_survive_node_reload() {
 
 include!("issue_612_activation_authorization_differential_tests.rs");
 include!("issue_612_view_missing_id_differential_tests.rs");
+include!("issue_612_propose_success_differential_tests.rs");
