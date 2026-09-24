@@ -90,6 +90,8 @@ fn python_operation_outcome(
 import json, os, sys
 from threading import Lock
 from types import SimpleNamespace
+sys.modules["msgpack"] = None
+from RNS.vendor import umsgpack
 from RNS.Utilities.rngit.server import ReticulumGitNode
 group_path, operation, remote_hex, group_permissions = sys.argv[1:]
 with open(group_path + ".allowed", "w") as stream:
@@ -119,9 +121,8 @@ work_item = os.path.join(group_path, "repo.work", "active", "7")
 root_content = None
 root_path = os.path.join(work_item, "root")
 if os.path.isfile(root_path):
-    import msgpack
     with open(root_path, "rb") as stream:
-        root_content = msgpack.unpackb(stream.read(), raw=False).get("content")
+        root_content = umsgpack.unpackb(stream.read()).get("content")
 permission_path = os.path.join(group_path, "repo.work", "7.allowed")
 print(json.dumps({
     "status": response[0],
