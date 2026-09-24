@@ -48,6 +48,11 @@ announces the target over a TCP interface. This closes only the mocked-boundary
 gap for that discovery path; #611's broader utility and management matrix stays
 partial.
 
+A separate `rnpath` process regression verifies the daemon-unavailable boundary:
+the production CLI returns failure with no apparent success output and a
+connection-refused diagnostic. This does not exercise transport or a Python peer and
+does not close the broader #611 utility matrix.
+
 The current #631 `rncp` increment observes packed and received Resource
 advertisement sizes/flags for all six Python/Rust compression roles, with a
 focused exact-target Verify step; the utility row remains partial because its
@@ -60,8 +65,14 @@ the exact reference checkout. Its successful-path counterpart now withholds a
 pinned Python probe destination announce until native `rnprobe` starts through
 the Rust daemon, then asserts two discovered-path deliveries and structured
 probe results against the exact `99de23c...` peer in Verify. These bounded
-increments do not complete the broader #611 utility matrix, which remains
-partial.
+increments now also exercise the known-path/no-proof production failure path:
+the pinned Python destination announces without proving, and native `rnprobe`
+returns a timed-out probe, zero replies, 100% packet-loss JSON, and exit status
+2. The CLI's loss exit mapping already has unit coverage; this exact-target
+regression verifies transport timeout through the live daemon to the process
+result. It matches pinned Python behavior, so no production fix was needed.
+These increments do not complete the broader #611 utility matrix, which
+remains partial.
 
 The exact-target Python fetch-client disk-error trace now verifies the full
 payload digest at the pinned save callback, the callback's local save error,

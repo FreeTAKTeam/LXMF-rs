@@ -247,6 +247,7 @@ fn spawn_python_probe_responder(
     identity: &Path,
     hash_path: &Path,
     announce_trigger: &Path,
+    prove_probes: bool,
 ) -> io::Result<Child> {
     let script = r#"
 import pathlib
@@ -254,7 +255,7 @@ import sys
 import time
 import RNS
 
-config_dir, identity_path, hash_path, announce_trigger = sys.argv[1:5]
+config_dir, identity_path, hash_path, announce_trigger, prove_probes = sys.argv[1:6]
 identity_file = pathlib.Path(identity_path)
 identity = RNS.Identity.from_file(identity_path) if identity_file.is_file() else RNS.Identity()
 identity.to_file(identity_path)
@@ -266,7 +267,7 @@ destination = RNS.Destination(
     "rnstransport",
     "probe",
 )
-destination.set_proof_strategy(RNS.Destination.PROVE_ALL)
+destination.set_proof_strategy(RNS.Destination.PROVE_ALL if prove_probes == "true" else RNS.Destination.PROVE_NONE)
 pathlib.Path(hash_path).write_text(destination.hash.hex(), encoding="ascii")
 while not pathlib.Path(announce_trigger).exists():
     time.sleep(0.025)
@@ -281,6 +282,7 @@ while True:
         .arg(identity)
         .arg(hash_path)
         .arg(announce_trigger)
+        .arg(if prove_probes { "true" } else { "false" })
         .env("PYTHONPATH", repo)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -388,6 +390,7 @@ fn native_rnprobe_discovers_late_pinned_python_announce() -> io::Result<()> {
         &python_config.join("identity"),
         &hash_path,
         &announce_trigger,
+        true,
     )?;
     let result = (|| {
         let pin =
@@ -488,6 +491,109 @@ fn native_rnprobe_discovers_late_pinned_python_announce() -> io::Result<()> {
                 stdout.contains("\"packet_loss_percent\": 0.0"),
                 "native rnprobe output: {stdout}"
             );
+            Ok(())
+        })();
+        let _ = daemon.kill();
+        let _ = daemon.wait();
+        daemon_result
+    })();
+    let _ = python.kill();
+    let _ = python.wait();
+    result
+}
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout and a built reticulumd and rnprobe binary"]
+fn native_rnprobe_reports_packet_loss_like_pinned_python() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let python_interface_port = free_port()?;
+    let rpc_port = free_port()?;
+    let repo = python_repo();
+    let python_config = temp.path().join("python-config");
+    fs::create_dir_all(&python_config)?;
+    write_python_server_config(&python_config, python_interface_port)?;
+    let hash_path = temp.path().join("destination.hash");
+    let announce_trigger = temp.path().join("announce.trigger");
+    let mut python = spawn_python_probe_responder(
+        &repo,
+        &python_config,
+        &python_config.join("identity"),
+        &hash_path,
+        &announce_trigger,
+        false,
+    )?;
+    let result = (|| {
+        let pin = Command::new("git").arg("-C").arg(&repo).args(["rev-parse", "HEAD"]).output()?;
+        if !pin.status.success()
+            || String::from_utf8_lossy(&pin.stdout).trim()
+                != "99de23c040d507e3fefca19e87b182302902725d"
+        {
+            return Err(io::Error::other(format!(
+                "rnprobe packet-loss regression requires pinned Reticulum 99de23c040d507e3fefca19e87b182302902725d; got {}",
+                String::from_utf8_lossy(&pin.stdout).trim()
+            )));
+        }
+        wait_for_port(python_interface_port, &mut python)?;
+        let destination_hash =
+            wait_for_file_value(&hash_path, &mut python, "Python probe responder")?;
+        let rust_config = temp.path().join("reticulumd.toml");
+        fs::write(
+            &rust_config,
+            format!(
+                "[reticulum]\n\
+                 enable_transport = true\n\
+                 share_instance = false\n\
+                 respond_to_probes = false\n\
+                 \n\
+                 [[interfaces]]\n\
+                 type = \"tcp_client\"\n\
+                 enabled = true\n\
+                 name = \"python-rnprobe-loss\"\n\
+                 host = \"127.0.0.1\"\n\
+                 port = {python_interface_port}\n"
+            ),
+        )?;
+        let log = temp.path().join("reticulumd.log");
+        let rpc_unix = temp.path().join("rpc.sock");
+        let rpc = format!("127.0.0.1:{rpc_port}");
+        let mut daemon = spawn_rust_daemon(
+            &rust_config,
+            &temp.path().join("reticulum.db"),
+            &rpc,
+            &rpc_unix,
+            &log,
+        )?;
+        let daemon_result = (|| {
+            wait_for_port(rpc_port, &mut daemon)?;
+            let rnprobe =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/rnprobe");
+            let child = Command::new(rnprobe)
+                .args([
+                    "--rpc",
+                    &rpc,
+                    "--probes",
+                    "1",
+                    "--timeout",
+                    "0.5",
+                    "--json",
+                    "rnstransport.probe",
+                    &destination_hash,
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?;
+            thread::sleep(Duration::from_millis(300));
+            fs::write(&announce_trigger, "announce")?;
+            let output =
+                wait_for_output(child, Duration::from_secs(20), "native rnprobe packet loss")?;
+            assert_eq!(output.status.code(), Some(2));
+            assert!(output.stderr.is_empty(), "unexpected rnprobe stderr: {:?}", output.stderr);
+            let result: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+            assert_eq!(result["sent"], 1);
+            assert_eq!(result["replies"], 0);
+            assert_eq!(result["packet_loss_percent"], 100.0);
+            assert_eq!(result["results"][0]["status"], "timeout");
             Ok(())
         })();
         let _ = daemon.kill();
