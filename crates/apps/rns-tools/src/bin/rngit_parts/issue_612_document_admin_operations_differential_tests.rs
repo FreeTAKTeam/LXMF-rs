@@ -313,6 +313,27 @@ fn repository_admin_permissions_get_uses_pinned_python_document_read_gate() {
 
 #[test]
 #[ignore = "requires the pinned Python Reticulum reference"]
+fn document_author_permissions_get_requires_repository_admin_like_pinned_python() {
+    let permissions = "read:all\nwrite:all\ninteract:all\nadmin:none\n";
+    let document_permissions = format!(
+        "read:{}\nwrite:{}\ninteract:{}\n",
+        hex::encode(REMOTE),
+        hex::encode(REMOTE),
+        hex::encode(REMOTE)
+    );
+    let (rust, python) = assert_work_operation_differential(
+        "perms",
+        permissions,
+        &document_permissions,
+        REMOTE,
+    );
+    assert_eq!(python["status"], ReticulumGitNode::RES_DISALLOWED);
+    assert_eq!(rust.status, ReticulumGitNode::RES_DISALLOWED);
+    assert_eq!(rust.permission_content.as_deref(), Some(document_permissions.as_str()));
+}
+
+#[test]
+#[ignore = "requires the pinned Python Reticulum reference"]
 fn document_write_access_without_read_matches_pinned_python_edit_gate() {
     let permissions = "read:all\nwrite:all\ninteract:all\n";
     let document_permissions = format!(

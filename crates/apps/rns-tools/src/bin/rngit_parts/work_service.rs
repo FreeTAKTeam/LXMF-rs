@@ -315,20 +315,25 @@ impl ReticulumGitNode {
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
-                let Some((_, id, _, document)) = self.work_request_document(&root, request) else {
-                    return response(Self::RES_NOT_FOUND, "Document not found", None);
-                };
-                let manage = self.work_manage_allowed(&remote, &group, &repository, id);
-                let admin = self.resolve_doc_permission(
-                    &remote,
-                    &group,
-                    &repository,
-                    id,
-                    Self::PERM_ADMIN,
-                );
-                if !(admin || (manage && Self::work_author_matches(&document, &remote))) {
+                if !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN)
+                    || !self.resolve_permission(
+                        &remote,
+                        &group,
+                        &repository,
+                        Self::PERM_WRITE,
+                    )
+                    || !self.resolve_permission(
+                        &remote,
+                        &group,
+                        &repository,
+                        Self::PERM_INTERACT,
+                    )
+                {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
+                let Some((_, _, _, _)) = self.work_request_document(&root, request) else {
+                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                };
                 self.work_permissions(&root, request)
             }
             _ => response(Self::RES_INVALID_REQ, "Invalid request", None),
