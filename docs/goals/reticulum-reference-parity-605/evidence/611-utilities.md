@@ -197,6 +197,10 @@ physical/public-network evidence remain outside the software-only pass.
 | Remote shell | Native authenticated listener/initiator, frozen channel message numbers, root-scoped process launch, stdin/stdout/stderr stream framing, command policy, timeout, mirrored exit status, and allow-list rejection | `rnsh` unit tests; `rnsh_process`; ignored `rnsh_python_interop` (`e57afb99`, `662dcdbe`) | verified for the bounded software/TCP slice in both pinned-Python roles, including the immediate EOF case; PTY/resize and the full option/fault/restart matrix remain open |
 | Other shipped utilities | `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory; `rnprobe` is recorded in the row above | not promoted by this slice; network/reference gaps remain |
 
+### Focused `rnpath --table --max` parity (PR #631)
+
+The ignored production-path regression `rnpath_python_table::rnpath_max_hops_matches_frozen_python_over_a_live_two_hop_route` was run four times against the detached Reticulum fixture at exactly `99de23c040d507e3fefca19e87b182302902725d`. Each run created one Python destination behind a Python transport relay and connected both the Rust daemon and the pinned Python CLI observer before announcing it. In all four fresh topologies, both unbounded tables contained that same destination at exactly two hops; both `--max 1` tables excluded it, and both `--max 2` tables included it. No production code changed. This verifies only the exercised table hop-limit behavior; interface string formatting and the broader #611 utility/options matrix remain open.
+
 ## Commands and results
 
 All commands ran in the isolated `codex/issue-605-parity` worktree.
