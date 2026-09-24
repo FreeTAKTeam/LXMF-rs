@@ -1,7 +1,8 @@
 # Issue #609: transport, local-client, and shared-instance behavior
 
-Status: implemented but unproven. This is a forward-candidate software slice,
-not a claim of mixed-peer or hardware acceptance.
+Status: partial. The shared-owner post-restart reverse-delivery slice now has
+local pinned-Python evidence; this is not a claim of full #609 or hardware
+acceptance.
 
 ## Reference and scope
 
@@ -10,8 +11,8 @@ not a claim of mixed-peer or hardware acceptance.
   `RNS/Interfaces/LocalInterface.py`.
 - Rust owners: `rns-transport` interface-manager, announce table, and
   announce processing; `reticulumd` local TCP/Unix startup.
-- Current mixed-peer evidence candidate: `789774bd` on
-  `codex/issue-605-parity`.
+- Tested source candidate: `ce8245ba` on `corvo/issue-609-transport-parity`
+  (PR #629).
 
 The implementation now classifies a local client from its parent relationship
 and the parent's shared-instance marker. Active local TCP and Unix listeners
@@ -793,28 +794,27 @@ cargo test -p lxmf-cli --test python_lxmd_remote_relay \
 # 2 earlier consecutive passes including the Resource assertion; each 1 passed; 0 failed
 ```
 
-The regression required no production change: the first experiment reused
-pre-restart Python LXMF direct Links, so the acceptance now sends only fresh
-application traffic after restart. Later follow-up runs exposed intermittent
-behavior that the earlier passes did not: one full invocation failed after
-about 55 seconds waiting for the reverse B-to-A LXMF delivery, with B's
-outbound message still at `outbound`, A's inbox empty, and no accepted inbound
+The initial regression revision required no production change: the first
+experiment reused pre-restart Python LXMF direct Links, so the acceptance now
+sends only fresh application traffic after restart. Later follow-up runs
+exposed intermittent behavior that the earlier passes did not: one full
+invocation failed after about 55 seconds waiting for the reverse B-to-A LXMF
+delivery, with B's outbound message still at `outbound`, A's inbox empty, and no accepted inbound
 delivery Link at A. A separate diagnostic attempt waited 300 seconds for Rust
 relay A to learn Python A's delivery destination and timed out with that route
 still unknown. Because Python A hosts that destination locally and the pinned
 reference does not require it to appear in the owner's learned path table, the
 route-table observation is not a valid standalone discrepancy signal. Receiver
 timeout failures capture outbound status, inboxes, relay path/interface state,
-and endpoint diagnostics. Three subsequent full invocations passed in about
-9.4 seconds each; an additional verification run during this update also
-passed in 9.44 seconds. Those passes do not resolve the earlier actual delivery
-failure, so discrepancy tracking remains open.
+and endpoint diagnostics. Several pre-fix invocations passed in about 9.4
+seconds, but those passes did not resolve the earlier actual delivery failure;
+discrepancy tracking remained open at that point.
 
 This establishes the shared-instance/multi-hop discovery, delivery-proof,
 raw-Link traffic, daemon-replacement, and one post-restart Resource
-digest/metadata/completion slice of #609, but it does not close the umbrella
-issue or its separate discrepancy-tracking row. Direct/opportunistic LXMF
-retry modes and other transport/recovery behaviors remain open.
+digest/metadata/completion slice of #609. It does not close the umbrella issue;
+direct/opportunistic LXMF retry modes and other transport/recovery behaviors
+remain open.
 
 The earlier diagnostic treated a missing route-table entry for Python A's
 locally hosted delivery destination as evidence that Rust relay A had failed to
@@ -841,13 +841,44 @@ separate Python-owner delivery result. The transport library suite passed
 (835 passed, 5 ignored), scoped Clippy, formatting, module-size, and diff
 checks passed.
 
-The exact ignored mixed Python/Rust post-restart regression has produced
-inconsistent outcomes at this PR head: an earlier replay passed in 18.30 s, a
-fresh replay failed after 55.11 s waiting for B-to-A LXMF delivery, and the
-immediate retry passed in 9.47 s. On the failure, B had attempted the message
-at progress 0.03 and had a two-hop cached path to A; relay B knew A at one hop,
-relay A's path table did not contain A, and A's inbox remained empty. The
-missing relay-A path-table row is expected for a locally hosted destination in
-the Python shared-instance owner's `destinations_map`; the absent delivery is
-not. This nondeterminism leaves post-restart reverse-delivery evidence
-unresolved, and issue #609 remains open.
+The pre-fix exact ignored mixed Python/Rust post-restart regression produced
+inconsistent outcomes: an earlier replay passed in 18.30 s, a fresh replay
+failed after 55.11 s waiting for B-to-A LXMF delivery, and the immediate retry
+passed in 9.47 s. On the failure, B had attempted the message at progress 0.03
+and had a two-hop cached path to A; relay B knew A at one hop, relay A's path
+table did not contain A, and A's inbox remained empty. The missing relay-A
+path-table row is expected for a locally hosted destination in the Python
+shared-instance owner's `destinations_map`; the absent delivery was not.
+
+The diagnostic trace localized the failure: Python owner A accepted the
+fallback LinkRequest and returned a `LinkRequestProof`, but relay A rejected it
+with `missing_destination_identity`. Commit
+`ce8245bac39fd4c2aad27c837e7a36a69a775b36` records this specific fallback as a
+shared-owner handoff. If the relay cannot recall the destination identity, it
+forwards the proof only when it arrives on the exact shared-owner interface
+recorded for that request; ordinary transit still fails closed without the
+destination identity, and known identities continue through signature
+validation. Focused regressions also reject a wrong-interface proof and a
+LinkRequestProof with a non-Link destination type.
+
+After the fix, the exact pinned-Python two-relay post-restart regression passed
+three consecutive local runs (26.65 s, 9.42 s, 9.43 s):
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/LXMF \
+cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e \
+  -- --ignored --exact --nocapture
+# Reticulum 99de23c040d507e3fefca19e87b182302902725d
+# LXMF 727830cefda83d9c6e3982b48675425f3f988f9c
+# 3 runs passed; 0 failed (26.65 s, 9.42 s, 9.43 s)
+```
+
+Local validation on this candidate also passed: `cargo test -p
+reticulum-rs-transport --lib` (837 passed, 5 ignored), focused proof tests
+(29 passed, 1 ignored), scoped Clippy with warnings denied, formatting,
+module-size, and diff checks. This resolves the reproduced reverse-delivery
+failure for this post-restart scenario. Direct/opportunistic LXMF retry modes,
+deeper relay replacement, other packet/proof duplicate classes, and the wider
+#609 transport matrix remain open; issue #609 stays partial.
