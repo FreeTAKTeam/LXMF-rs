@@ -113,6 +113,13 @@ jobs:
           TIMEOUT_SECS: "120"
         run: ./tools/scripts/local-interface-python-shared-smoke.sh
 
+      - name: Verify Linux PipeInterface subprocess lifecycle
+        env:
+          LOG_DIR: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}
+          REPORT_PATH: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}/report.json
+          TIMEOUT_SECS: "60"
+        run: ./tools/scripts/pipe-fake-subprocess-smoke.sh
+
       - name: Validate exact-target behavioral inventory
         run: |
           python3 tools/scripts/python_surface_inventory.py --self-test
@@ -206,4 +213,10 @@ jobs:
         with:
           name: local-interface-python-shared-${{ github.run_id }}
           path: target/interop/local-interface-python-shared/verify-${{ github.run_id }}/**
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pipe-fake-subprocess-${{ github.run_id }}
+          path: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}/**
           if-no-files-found: warn

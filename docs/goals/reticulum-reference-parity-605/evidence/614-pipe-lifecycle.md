@@ -39,9 +39,13 @@ The smoke then sends SIGINT, waits for daemon exit, and verifies the peer PID
 is no longer live. No public network, hardware, or external service is used.
 
 ```text
-TIMEOUT_SECS=30 tools/scripts/pipe-fake-subprocess-smoke.sh  PASS
+TIMEOUT_SECS=60 tools/scripts/pipe-fake-subprocess-smoke.sh  PASS
 cargo test -p reticulumd --test pipe_fake_subprocess_smoke_contract -- --nocapture  PASS
 ```
+
+The PR-level Verify workflow now runs this software smoke and uploads its
+report/logs as `pipe-fake-subprocess-<run-id>`; the hosted result for the
+workflow change is pending.
 
 The daemon/peer loopback and clean teardown are Linux software evidence only.
 Windows/macOS Pipe subprocess behavior, independent remote-peer interoperability,

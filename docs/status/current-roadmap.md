@@ -140,7 +140,8 @@ configured-daemon process evidence: child EOF causes one respawn; a local peer
 process echoes a scheduled, HDLC-framed announce with nonzero daemon RX/TX
 counters; SIGINT shutdown exits and reaps the peer. This remains Linux software
 evidence only; Windows/macOS behavior, independent remote-peer interoperability,
-and physical acceptance remain unverified.
+and physical acceptance remain unverified. The PR-level Verify workflow now
+runs the smoke and uploads its report/logs; hosted validation is pending.
 
 The Linux UDP runtime now also has a configured daemon loopback trace: a local
 peer receives a valid outbound datagram and returns the exact bytes, live daemon
