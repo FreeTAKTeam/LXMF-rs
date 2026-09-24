@@ -921,3 +921,7 @@ cargo test -p reticulumd --test python_channel_interop \
   -- --ignored --exact --nocapture --test-threads=1
 # 1 passed; Python/Rust KISS Channel request/reply and proof over PTYs, 0 IFAC violations
 ```
+
+| Carrier | Software regression | Evidence boundary |
+| --- | --- | --- |
+| Meshtastic | `meshtastic_ifac_worker_rotates_credentials_without_plaintext_fallback` rotates IFAC through `InterfaceManager::set_shared_config` while the production worker runs; old-key and plaintext ingress are rejected and counted, replacement-key ingress is admitted, and egress authenticates with an independently derived replacement key. | In-memory tunnel/worker only; no physical Meshtastic device or full #608 acceptance. |
