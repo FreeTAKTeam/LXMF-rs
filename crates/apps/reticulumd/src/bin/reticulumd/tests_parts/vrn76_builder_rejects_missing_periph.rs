@@ -505,15 +505,17 @@ fn best_effort_startup_policy_allows_partial_failures() {
 }
 
 #[test]
-fn strict_startup_policy_rejects_interface_failures() {
+fn strict_startup_policy_rejects_unsupported_interface_kind_explicitly() {
     let failures = vec![InterfaceStartupFailure {
-        label: "lora-main".to_string(),
-        kind: "lora".to_string(),
-        error: "state marked uncertain".to_string(),
+        label: "future".to_string(),
+        kind: "FutureReticulumInterface".to_string(),
+        error: "unsupported interface kind 'FutureReticulumInterface'".to_string(),
     }];
     let err = enforce_startup_policy(true, &failures).expect_err("strict policy should fail");
-    assert!(err.contains("strict interface startup policy rejected"));
-    assert!(err.contains("lora-main"));
+    assert_eq!(
+        err,
+        "strict interface startup policy rejected 1 interface(s): future (FutureReticulumInterface): unsupported interface kind 'FutureReticulumInterface'"
+    );
 }
 
 #[test]
