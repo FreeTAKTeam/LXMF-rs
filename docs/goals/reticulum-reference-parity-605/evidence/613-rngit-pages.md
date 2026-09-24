@@ -698,3 +698,22 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   rngit_media_denies_percent_decoded_dot_segment_over_python_link \
   -- --ignored --nocapture                                      PASS (1 test)
 ```
+
+### Periodic stale-Link media cleanup after a silent exit
+
+The production page service retains its 5-second announce and 60-second
+cleanup cadence; a private interval seam lets a paused-time async regression
+advance only test intervals. The test consumes the immediate first sweep, then
+creates tracked temporary media for a Link whose
+transport entry is absent, modeling a silent client exit with no close event
+and no failed response write. The next timed sweep removes the directory and
+its stale Link bookkeeping. The existing
+`stale_page_links_are_cleaned_while_active_links_keep_media` unit test also
+confirms active-Link media is preserved. This proves the periodic stale-Link
+path only; it does not establish broader filesystem-failure coverage or
+complete #613.
+
+```text
+cargo test -p rns-tools --bin rngit periodic_sweep_removes_media_for_silently_disappeared_link -- --nocapture
+  PASS (1 test)
+```

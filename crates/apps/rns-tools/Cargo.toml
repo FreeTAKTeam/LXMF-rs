@@ -28,6 +28,9 @@ rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-tra
 rand_core = { workspace = true, features = ["getrandom"] }
 bzip2.workspace = true
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 btleplug = "0.12"
 futures = "0.3.31"

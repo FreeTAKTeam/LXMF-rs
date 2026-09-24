@@ -162,11 +162,19 @@ async fn spawn_interfaces(transport: &Arc<Transport>, cli: &Cli) {
 }
 
 async fn serve(runtime: Runtime) -> io::Result<()> {
+    serve_with_intervals(runtime, Duration::from_secs(5), Duration::from_secs(60)).await
+}
+
+async fn serve_with_intervals(
+    runtime: Runtime,
+    announce_period: Duration,
+    cleanup_period: Duration,
+) -> io::Result<()> {
     let mut link_events = runtime.transport.in_link_events();
     let mut data_events = runtime.transport.received_data_events();
     let mut resource_events = runtime.transport.resource_events();
-    let mut announce_timer = interval(Duration::from_secs(5));
-    let mut cleanup_timer = interval(Duration::from_secs(60));
+    let mut announce_timer = interval(announce_period);
+    let mut cleanup_timer = interval(cleanup_period);
     loop {
         tokio::select! {
             _ = announce_timer.tick() => {
@@ -254,31 +262,12 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
     }
 }
 
-pub(super) fn clean_stale_page_links(
-    node: &mut ReticulumGitNode,
-    links: impl IntoIterator<Item = ([u8; 16], Option<LinkStatus>)>,
-) -> PageLinkCleanup {
-    let stale = links
-        .into_iter()
-        .filter_map(|(link_id, status)| {
-            status
-                .is_none_or(|status| matches!(status, LinkStatus::Closed | LinkStatus::Stale))
-                .then_some(link_id)
-        })
-        .collect::<Vec<_>>();
-    node.clean_page_links(&stale)
+#[cfg(test)]
+mod periodic_cleanup_tests {
+    include!("periodic_cleanup_tests.rs");
 }
 
-fn log_page_link_cleanup_failures(cleanup: &PageLinkCleanup) {
-    for failure in &cleanup.failures {
-        log_page_media_cleanup_failure(
-            "link cleanup",
-            failure.link_id,
-            &failure.directory,
-            &failure.error,
-        );
-    }
-}
+include!("page_link_cleanup.rs");
 
 async fn process_request(
     runtime: &Runtime,
