@@ -110,6 +110,12 @@ receipt, status transition, or fabricated delivered content. The broader #610
 failure/consumer matrix remains open; the identical payload then completes
 with exact bytes on a fresh Link after the failed Link is removed.
 
+A production-daemon Resource-timeout consumer regression now holds an outbound
+request on an active Link through its terminal timeout and verifies the
+correlated `resource-failed` receipt, tracking cleanup, and persisted failure
+status. This adds one consumer path; the broader #610 callback/status matrix
+remains open.
+
 A separate pinned-Python Resource fault regression now times out a dropped Link
 establishment, reuses the carrier with a fresh production Link ID, and
 verifies a successful one-part Resource exchange by digest. Split-transfer
