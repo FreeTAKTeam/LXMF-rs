@@ -49,6 +49,9 @@ fn run(cli: &Cli) -> io::Result<ExitStatus> {
         GitCommand::Fetch { .. } => {
             Err(io::Error::new(io::ErrorKind::InvalidInput, "network Git fetch requires --connect"))
         }
+        GitCommand::Push { .. } => {
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "network Git push requires --connect"))
+        }
         GitCommand::Unbundle { path, bundle } => {
             let bundle = scoped(&root, bundle)?;
             git(&root, path, &["bundle", "unbundle", bundle.to_string_lossy().as_ref()])
@@ -64,6 +67,7 @@ impl Cli {
             || self.identity_seed.is_some()
             || self.identity.is_some()
             || matches!(self.command.as_ref(), Some(GitCommand::Fetch { .. }))
+            || matches!(self.command.as_ref(), Some(GitCommand::Push { .. }))
     }
 }
 

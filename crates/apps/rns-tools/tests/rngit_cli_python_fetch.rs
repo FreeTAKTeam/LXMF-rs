@@ -73,7 +73,7 @@ fn write_rns_config(directory: &Path, port: u16) -> io::Result<()> {
 
 #[test]
 #[ignore = "requires the pinned Python Reticulum checkout"]
-fn rngit_cli_fetches_python_bundle_into_local_git_ref() -> io::Result<()> {
+fn rngit_cli_fetches_and_pushes_with_python_service() -> io::Result<()> {
     let temp = tempfile::tempdir()?;
     let python_repo = python_repo();
     let actual_revision = run_git(&python_repo, &["rev-parse", "HEAD"])?;
@@ -122,8 +122,8 @@ fn rngit_cli_fetches_python_bundle_into_local_git_ref() -> io::Result<()> {
             remote_repo.to_string_lossy().as_ref(),
         ],
     )?;
-    fs::write(service_root.join("group.allowed"), "read:all\n")?;
-    fs::write(remote_repo.with_extension("allowed"), "read:all\n")?;
+    fs::write(service_root.join("group.allowed"), "read:all\nwrite:all\n")?;
+    fs::write(remote_repo.with_extension("allowed"), "read:all\nwrite:all\n")?;
     fs::write(
         rngit_config.join("config"),
         format!("[repositories]\ngroup = {}\n", group_root.display()),
@@ -224,6 +224,49 @@ while node._should_run:
             )));
         }
         assert_eq!(fetched_blob.stdout, payload);
+
+        let pushed_payload = (0..19_337)
+            .map(|index| (index as u8).wrapping_mul(29).wrapping_add((index >> 7) as u8))
+            .collect::<Vec<_>>();
+        fs::write(source_repo.join("pushed-fixture.dat"), &pushed_payload)?;
+        run_git(&source_repo, &["add", "pushed-fixture.dat"])?;
+        run_git(&source_repo, &["commit", "-q", "-m", "pinned rngit push fixture"])?;
+        let pushed_head = run_git(&source_repo, &["rev-parse", "HEAD"])?;
+        let client = Command::new(env!("CARGO_BIN_EXE_rngit"))
+            .args([
+                "--root",
+                source_repo.to_string_lossy().as_ref(),
+                "--connect",
+                &format!("127.0.0.1:{port}"),
+                "--identity-seed",
+                "rngit-cli-python-push-client",
+                "push",
+                &format!("rns://{destination}/group/repo"),
+                "refs/heads/main",
+                "refs/heads/rust-pushed",
+            ])
+            .output()?;
+        if !client.status.success() {
+            return Err(io::Error::other(format!(
+                "production rngit push CLI failed: {}\nstdout:\n{}\nstderr:\n{}",
+                client.status,
+                String::from_utf8_lossy(&client.stdout),
+                String::from_utf8_lossy(&client.stderr)
+            )));
+        }
+        assert_eq!(run_git(&remote_repo, &["rev-parse", "refs/heads/rust-pushed"])?, pushed_head);
+        let pushed_blob = Command::new("git")
+            .arg("--git-dir")
+            .arg(&remote_repo)
+            .args(["cat-file", "blob", "refs/heads/rust-pushed:pushed-fixture.dat"])
+            .output()?;
+        if !pushed_blob.status.success() {
+            return Err(io::Error::other(format!(
+                "could not read pushed binary blob: {}",
+                String::from_utf8_lossy(&pushed_blob.stderr)
+            )));
+        }
+        assert_eq!(pushed_blob.stdout, pushed_payload);
         Ok(())
     })();
 

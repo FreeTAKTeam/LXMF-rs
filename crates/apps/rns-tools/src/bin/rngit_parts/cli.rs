@@ -44,6 +44,13 @@ enum GitCommand {
         reference: String,
         destination_ref: String,
     },
+    Push {
+        remote: String,
+        local_ref: String,
+        remote_ref: String,
+        #[arg(long)]
+        force: bool,
+    },
     Unbundle {
         path: PathBuf,
         bundle: PathBuf,

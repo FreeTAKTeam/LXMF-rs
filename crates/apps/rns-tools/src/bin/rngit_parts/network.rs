@@ -35,6 +35,9 @@ pub(crate) fn run(cli: &Cli) -> io::Result<()> {
     if let Some(GitCommand::Fetch { remote, reference, destination_ref }) = &cli.command {
         return run_git_fetch(cli, remote, reference, destination_ref);
     }
+    if let Some(GitCommand::Push { remote, local_ref, remote_ref, force }) = &cli.command {
+        return run_git_push(cli, remote, local_ref, remote_ref, *force);
+    }
     tokio::runtime::Runtime::new()?.block_on(run_async(cli))
 }
 

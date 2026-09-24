@@ -773,9 +773,9 @@ callback returns. These observations separate Resource transport completion
 from local save success and leave the reference's unresolved client state
 visible.
 
-## Rust `rngit fetch` CLI against the pinned Python service
+## Rust `rngit fetch` and `push` CLI against the pinned Python service
 
-The ignored `rngit_cli_python_fetch::rngit_cli_fetches_python_bundle_into_local_git_ref`
+The ignored `rngit_cli_python_fetch::rngit_cli_fetches_and_pushes_with_python_service`
 process regression starts the frozen Python `ReticulumGitNode` service and the
 production Rust `rngit` CLI as separate processes, with independent Reticulum
 configuration, service storage, source Git repository, and destination Git
@@ -784,12 +784,14 @@ service's `refs/heads/main` bundle, verifies it with `git bundle verify`, and
 imports it using `git fetch` into `refs/remotes/rns/main`. The test compares
 the fetched ref's commit ID with the source and reads a binary blob from the
 fetched commit with `git cat-file`, asserting exact bytes including NUL and
-non-UTF-8 values. It was run against Reticulum
-`99de23c040d507e3fefca19e87b182302902725d` and passed; Verify runs this focused
-test against its pinned checkout. This closes one
-production Rust CLI fetch path only; Rust CLI push, the complete Git remote
-helper workflow, initial-branch variation, and the broader #611 utility matrix
-remain open.
+non-UTF-8 values. The same test then pushes a local branch to a new service
+ref and verifies its exact commit ID and binary blob bytes. Push uses the
+existing `/git/push` bundle request (`local_ref`, `remote_ref`, `force`, and
+`bundle`); deletion, batching, and remote-helper behavior are not added. It
+was run against Reticulum `99de23c040d507e3fefca19e87b182302902725d` and
+passed; Verify runs this focused test against its pinned checkout. The full
+Git remote-helper workflow, initial-branch variation, and broader #611
+utility matrix remain open.
 
 Validation against a checkout at the pinned revision:
 
@@ -797,7 +799,7 @@ Validation against a checkout at the pinned revision:
 TMPDIR=/dev/shm RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
   --test rngit_cli_python_fetch \
-  rngit_cli_fetches_python_bundle_into_local_git_ref \
+  rngit_cli_fetches_and_pushes_with_python_service \
   -- --ignored --exact --nocapture --test-threads=1
 PASS: 1 passed
 ```
