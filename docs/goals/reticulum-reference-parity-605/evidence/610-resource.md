@@ -432,13 +432,16 @@ This is a transport-completion receipt, not a remote LXMF delivery
 acknowledgement, and does not stand in for the remaining consumer callback
 matrix.
 
-The companion `outbound_resource_failure_event_marks_tracking_failed`
+The companion
+`outbound_resource_failure_event_marks_tracking_failed_without_inventing_timeout`
 regression verifies one `resource-failed` receipt with the original message ID,
-Resource hash, peer, byte count, and `failed: resource transfer timed out`
-status. A repeated failure notification emits no duplicate receipt; tracking
-is removed, transmitted-byte accounting is retained, and the peer is marked
-inactive with the expected backoff. Other failure and consumer paths remain
-outside this focused regression.
+Resource hash, peer, byte count, and generic `failed: resource transfer failed`
+status. `OutboundFailed` does not carry a cause and can mean retry exhaustion,
+dispatch failure, Link teardown, or split-segment construction failure, so the
+daemon must not label every such event a timeout. A repeated failure
+notification emits no duplicate receipt; tracking is removed, transmitted-byte
+accounting is retained, and the peer is marked inactive with the expected
+backoff.
 
 The daemon's inbound Resource event consumer previously discarded every
 `Progress` event even though `ResourceManager` emitted received/total byte and
@@ -454,8 +457,8 @@ cargo test -p reticulumd --bin reticulumd \
   outbound_resource_completion_event_records_receipt_and_peer_bytes
 # 1 passed; 466 filtered out
 cargo test -p reticulumd --bin reticulumd \
-  outbound_resource_failure_event_marks_tracking_failed
-# 1 passed; 466 filtered out
+  outbound_resource_failure_event_marks_tracking_failed_without_inventing_timeout
+# 1 passed; generic failure status and tracking cleanup verified
 cargo test -p reticulumd --bin reticulumd \
   inbound_resource_progress_status_preserves_bytes_and_parts
 # 1 passed; progress counters and event correlation fields preserved
@@ -948,27 +951,62 @@ This adds production-daemon consumer evidence for outbound rejection and local
 cancellation only. It does not establish the full callback/status/cleanup
 matrix or complete issue #610.
 
-## Outbound timeout through the production daemon consumer
+## Outbound retry exhaustion through the production daemon consumer
 
-`production_daemon_consumer_reports_resource_timeout_and_cleans_tracking` uses
+`production_daemon_consumer_reports_resource_retry_failure_and_cleans_tracking` uses
 the same production daemon worker and active in-memory Link, with a one-second
 Resource retry interval and one-retry budget. The peer receives and holds the
 Resource request without returning fragments, deterministically driving the
-sender to its timeout event. The consumer emits a `resource-failed` receipt
+sender to retry exhaustion. The Resource API publishes `OutboundFailed`
+without a timeout reason, so the consumer emits a `resource-failed` receipt
 with the exact message ID and resource hash, clears the tracking entry, and
-persists `failed: resource transfer timed out`; no completion is reported.
-This closes the prior test-layer gap between the direct timeout-handler unit
-test and the live daemon event consumer. No production mismatch was observed;
-broader terminal-event and reconnect coverage remains open.
+persists the generic `failed: resource transfer failed`; no completion is
+reported. The SDK's separate caller deadline maps to the explicit
+`resource transfer timed out` error and attempts Resource cancellation. These
+paths keep the cause distinction without inventing a timeout for Link-close or
+dispatch failures.
 
 Focused validation:
 
 ```text
 cargo test -p reticulumd --bin reticulumd \
-  production_daemon_consumer_reports_resource_timeout_and_cleans_tracking \
+  production_daemon_consumer_reports_resource_retry_failure_and_cleans_tracking \
   -- --nocapture
-# 1 passed
+# 1 passed; retry exhaustion is terminal failure without a false timeout label
 ```
+
+## Full Resource terminal-event callback/status/cleanup audit
+
+The audit follows Resource events from `ResourceManager` through `Transport`,
+the in-process LXMF SDK runtime, and the production daemon consumer. The event
+API exposes inbound `Complete`/`InboundFailed` and outbound
+`OutboundComplete`/`OutboundRejected`/`OutboundFailed`/`OutboundCancelled`.
+`OutboundFailed` intentionally has no reason payload; SDK caller-deadline
+timeouts are distinct `SdkError`s, while receiver retry exhaustion carries
+`InboundFailed(reason=retry_limit_exhausted)`.
+
+| Terminal path | Library event and cleanup | SDK/runtime result | Daemon consumer status/observation | Evidence |
+| --- | --- | --- | --- | --- |
+| Inbound complete | `Complete` carries assembled bytes; receiver and completed split assembly are removed before publication. | Runtime send path does not consume inbound events. | The worker sends only `Complete` bytes to delivery/control/propagation handlers; malformed LXMF is dropped with a diagnostic, not converted into empty content. Bridge response waiters return only a matching decoded response. | Transport Resource assembly tests; existing daemon direct-resource delivery/drop regressions; bridge response correlation tests. |
+| Outbound complete | `OutboundComplete` is published only after the matching proof; active sender and split tail are removed. | Matching hash returns success; unrelated hashes are ignored; completed transfer is not cancelled. | Emits/persists `resource-complete` with message ID, hash, peer, and bytes; removes tracking and accounts transmitted bytes. | `resource_send_only_succeeds_after_matching_outbound_completion`; `production_daemon_consumer_persists_resource_completion_and_cleans_tracking`; prior exactly-once handler test. |
+| Remote receiver rejection (RCL) | `OutboundRejected`; pending/active sender and split tail are removed. | Returns `resource transfer rejected` and attempts cleanup. | Emits/persists `rejected` / `resource-rejected`; clears tracking. Bridge request waiters return `BrokenPipe` under the terminal-aware policy. | `resource_manager_receiver_cancel_emits_outbound_rejected_event`; `rejected_resource_is_reported_and_cleanup_is_attempted`; `production_daemon_consumer_persists_peer_resource_rejection`; bridge terminal rejection test. |
+| Generic outbound failure | `OutboundFailed`; dispatch, retry, construction, and Link-close producers remove the corresponding sender state. | Returns `resource transfer failed`; attempts cancellation and preserves cleanup errors. | Emits/persists generic `failed: resource transfer failed`, not a fabricated timeout; clears tracking. Bridge request waiters return `BrokenPipe` under the terminal-aware policy. | `resource_manager_emits_outbound_failed_when_advertisement_dispatch_fails`; `resource_manager_removes_link_state_on_link_close`; `failed_resource_is_reported_and_cleanup_is_attempted`; daemon Link-close consumer and bridge failure regressions. |
+| Local cancellation | `OutboundCancelled`; local cancel removes active/pending sender and split tail before sending ICL. | Returns `resource transfer cancelled` when observed; timeout cleanup also invokes `Transport::cancel_resource`. | SDK cancellation records `cancelled` first; Resource consumer removes tracking and emits no success receipt. Bridge request waiters return `BrokenPipe` under the terminal-aware policy. | `cancel_resource_sends_initiator_cancel_and_removes_outbound_state`; `cancelled_resource_is_reported_and_cleanup_is_attempted`; `production_daemon_consumer_cleans_cancelled_resource_without_success_receipt`; bridge cancel regression. |
+| Remote sender cancellation (ICL) | `InboundFailed(reason=remote_cancelled)`; removes current receiver and any retained split assembly, never `Complete`. | Not an outbound SDK completion; remains observable on public Transport event stream. | Logs reason/progress, emits no delivery receipt/status/content, and accepts another Resource on the same Link. Terminal-aware bridge waiters return `BrokenPipe` with the failure reason instead of timing out. | `remote_cancel_clears_the_partial_split_assembly_and_reports_failure`; production daemon peer-cancel regression and same-Link recovery; bridge inbound-failure regression. |
+| SDK deadline / inbound retry exhaustion | SDK deadline returns `resource transfer timed out` and attempts cancellation; inbound retry exhaustion emits `InboundFailed(reason=retry_limit_exhausted)` and removes receiver plus partial split assembly. Outbound retry exhaustion is generic `OutboundFailed` because that event carries no cause. | Deadline error remains distinct from generic Resource failure; cancellation failure is appended to the returned error. | Outbound generic failure is stored as generic failure; inbound failure logs reason/progress, never `Complete`, receipt, or content. Propagation-download waiters surface a terminal `BrokenPipe` instead of replacing a received failure with their request timeout. | `resource_wait_failure_runs_cancellation_before_returning`; `resource_wait_surfaces_cancellation_failure_with_transfer_error`; split decode/retry cleanup regressions; daemon inbound retry-timeout/same-Link recovery and bridge waiter regressions. |
+
+Two cleanup leaks uncovered during this audit are fixed: a failed later split
+segment and retry exhaustion previously removed only the active receiver while
+leaving earlier assembled segment bytes retained. Both now route through the
+shared split-failure path, emit one failure keyed by the original Resource
+hash, and drop the retained assembly. The focused tests assert no `Complete`,
+no residual incoming receiver/assembly, and same-Link recovery after retry
+exhaustion. The additional consumer audit found that propagation-download
+waiters ignored inbound Resource failures and eventually reported request
+timeout; the terminal-aware wait path now returns the failure as `BrokenPipe`.
+The acceptance criterion is proven by this local event/consumer matrix and its
+focused regressions; leave the GitHub checkbox unchanged until the updated PR
+checks finish successfully.
 
 ## Outbound completion through the production daemon consumer
 
@@ -984,7 +1022,10 @@ Those terminal-error regressions assert rejected/cancelled/failed statuses,
 tracking cleanup, and absence of a fabricated success receipt; the inbound
 teardown regressions assert no `Complete` event or delivered content on
 partial-transfer errors. This focused matrix still does not cover every
-consumer and Resource failure mode, so the issue criterion remains open.
+consumer and Resource failure mode. That earlier scoped note is superseded by
+the complete terminal-event/consumer audit below; it records the evidence
+available before the Link-close, split-cleanup, retry-timeout, and bridge-waiter
+regressions were added.
 
 Focused validation:
 
@@ -1068,33 +1109,20 @@ TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
 
 ## Remaining acceptance boundary
 
-The following #610 requirements remain unverified and are intentionally not
-represented as complete:
+The live #610 issue currently has one unchecked acceptance item: the
+callback/status/cleanup contract. The full terminal-event matrix above now
+audits the public Resource event stream, `lxmf-runtime`, the production daemon
+worker, and terminal-aware daemon request waiters. Focused regressions cover
+completion, generic failure, rejection, local and remote cancellation, SDK and
+receiver timeouts, cleanup, and the no-fabricated-content/completion boundary.
+The criterion is proven locally; the issue checkbox and closure remain gated on
+the updated PR #638 checks passing.
 
-- broader timeout/reconnect coverage beyond the reciprocal traces, while the
-  two pinned-Python matrices cover loss, duplication, reordering, and complete
-  missing-fragment terminal failure in both directions;
-- callbacks/status transitions observed through every library and daemon
-  consumer after each injected failure; outbound completion, timeout-failure,
-  rejection, local cancellation, partial inbound teardown, and peer
-  cancellation of a partial inbound Resource now have focused daemon-consumer
-  regressions;
-- hosted, physical-interface, public-network, and long-running soak evidence.
-
-The current conclusion is therefore: collision regeneration, shutdown cleanup,
-window-bounded fragment admission, deterministic local loss/duplication/
-reordering recovery, split cancellation cleanup, bidirectional pinned-Python
-cancellation terminal events, bidirectional pinned-Python loss/duplication/
-reordering and missing-fragment terminal evidence, reader-backed bounded source
-retention plus a pinned-Python split reader transfer, a two-carrier pinned-
-Python split Resource forwarding trace with an exact remote callback digest,
-bidirectional release-profile mixed-peer transfers, the pinned-Python
-receiver-shutdown terminal-failure trace, and the independent `rns-rs`
-loss/timeout/latency slice, and exact 50 MiB bidirectional peak-RSS evidence
-under a fixed process budget, and the pinned-Python file-like-reader fault
-trace are implemented with local evidence; the broader Resource failure
-contract remains partial pending broader timeout/reconnect, every consumer
-callback/status assertion, and hosted/physical/soak coverage. The Python reference reader
-exception is observed as a background preparation failure followed by the
-sender's bounded timeout, rather than an explicit Resource `FAILED` callback;
-that reference behavior is retained in the evidence rather than normalized.
+This conclusion is scoped to that acceptance item, not a claim that every
+possible Resource fault combination has been rerun in this turn. The broader
+porting record still distinguishes wider timeout/reconnect matrices,
+public-network/soak evidence, and physical-interface evidence. The user has
+excluded physical testing from this goal. The Python reference reader
+exception remains recorded as a background preparation failure followed by
+the sender's bounded timeout, rather than an explicit Resource `FAILED`
+callback; that reference behavior is retained rather than normalized.

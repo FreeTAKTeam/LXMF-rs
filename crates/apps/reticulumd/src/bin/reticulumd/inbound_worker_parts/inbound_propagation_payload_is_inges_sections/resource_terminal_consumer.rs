@@ -9,6 +9,7 @@ use rns_transport::hash::AddressHash;
 use rns_transport::iface::{IfaceSource, RxMessage};
 use rns_transport::packet::{PacketContext, PacketType};
 use rns_transport::resource::build_link_packet;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
@@ -18,6 +19,7 @@ enum ResourcePeerMode {
     HoldResourceRequests,
     DropResourceAdvertisements,
     CompleteResourceTransfers,
+    DropInboundResourceParts,
 }
 
 struct DaemonResourcePeer {
@@ -26,6 +28,7 @@ struct DaemonResourcePeer {
     peer_transport: Arc<Transport>,
     link_id: AddressHash,
     resource_map: OutboundResourceMap,
+    drop_inbound_resource_parts: Arc<AtomicBool>,
     receipt_rx: mpsc::Receiver<reticulum_daemon::receipt_bridge::ReceiptEvent>,
     resource_request_rx: mpsc::Receiver<()>,
 }
@@ -74,6 +77,10 @@ async fn start_daemon_resource_peer(
     let (mut peer_tx, peer_rx, peer_addr) =
         (peer_iface.tx_channel, peer_iface.rx_channel, peer_iface.address);
     let (request_tx, request_rx) = mpsc::channel(1);
+    let drop_inbound_resource_parts = Arc::new(AtomicBool::new(
+        mode == ResourcePeerMode::DropInboundResourceParts,
+    ));
+    let inbound_part_gate = drop_inbound_resource_parts.clone();
 
     tokio::spawn(async move {
         while let Some(message) = daemon_tx.recv().await {
@@ -97,6 +104,11 @@ async fn start_daemon_resource_peer(
     });
     tokio::spawn(async move {
         while let Some(message) = peer_tx.recv().await {
+            if inbound_part_gate.load(std::sync::atomic::Ordering::SeqCst)
+                && message.packet.context == PacketContext::Resource
+            {
+                continue;
+            }
             if mode == ResourcePeerMode::HoldResourceRequests
                 && message.packet.context == PacketContext::ResourceRequest
             {
@@ -161,6 +173,7 @@ async fn start_daemon_resource_peer(
         peer_transport,
         link_id,
         resource_map,
+        drop_inbound_resource_parts,
         receipt_rx,
         resource_request_rx: request_rx,
     }
@@ -335,8 +348,8 @@ async fn production_daemon_consumer_cleans_cancelled_resource_without_success_re
 }
 
 #[tokio::test]
-async fn production_daemon_consumer_reports_resource_timeout_and_cleans_tracking() {
-    let message_id = "daemon-resource-timeout-consumer";
+async fn production_daemon_consumer_reports_resource_retry_failure_and_cleans_tracking() {
+    let message_id = "daemon-resource-retry-failure-consumer";
     let mut peer = start_daemon_resource_peer(message_id, ResourcePeerMode::HoldResourceRequests)
         .await;
     tokio::task::yield_now().await;
@@ -361,10 +374,10 @@ async fn production_daemon_consumer_reports_resource_timeout_and_cleans_tracking
 
     let receipt = timeout(Duration::from_secs(8), peer.receipt_rx.recv())
         .await
-        .expect("daemon emits terminal timeout receipt")
+        .expect("daemon emits terminal failure receipt")
         .expect("receipt channel remains open");
     assert_eq!(receipt.message_id, message_id);
-    assert_eq!(receipt.status, "failed: resource transfer timed out");
+    assert_eq!(receipt.status, "failed: resource transfer failed");
     assert_eq!(receipt.delivery_kind.as_deref(), Some("resource-failed"));
     assert_eq!(receipt.resource_hash.as_deref(), Some(resource_hash_hex.as_str()));
     assert!(peer.resource_map.lock().expect("resource map").is_empty());
@@ -378,6 +391,6 @@ async fn production_daemon_consumer_reports_resource_timeout_and_cleans_tracking
     .expect("persist Resource timeout status");
     assert_eq!(
         peer.daemon.message_receipt_status(message_id).expect("receipt status"),
-        Some("failed: resource transfer timed out".to_string())
+        Some("failed: resource transfer failed".to_string())
     );
 }

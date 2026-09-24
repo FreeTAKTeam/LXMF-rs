@@ -4,6 +4,8 @@ include!("inbound_propagation_payload_is_inges_sections/core_tests.rs");
 include!("inbound_propagation_payload_is_inges_sections/resource_progress_status.rs");
 include!("inbound_propagation_payload_is_inges_sections/outbound_resource_rejection.rs");
 include!("inbound_propagation_payload_is_inges_sections/resource_terminal_consumer.rs");
+include!("inbound_propagation_payload_is_inges_sections/resource_link_close_consumer.rs");
+include!("inbound_propagation_payload_is_inges_sections/inbound_resource_retry_timeout.rs");
 mod partial_inbound_resource_teardown {
     use super::*;
     include!("inbound_propagation_payload_is_inges_sections/partial_inbound_resource_teardown.rs");

@@ -65,8 +65,9 @@ cleanup, including suppression of a repeated completion notification. The
 timeout-failure receipt path now has the same exactly-once metadata and cleanup
 coverage, including peer backoff status. The daemon now logs inbound Resource
 progress counters with hash/Link context instead of discarding the progress
-event; its focused status-format regression passes. Other consumer
-callback/status paths remain open. Focused `lxmf-runtime` tests also
+event; its focused status-format regression passes. At that point, the remaining
+terminal consumer paths had not yet been fully audited; the completed audit is
+recorded below. Focused `lxmf-runtime` tests also
 confirm `OutboundFailed` and `OutboundCancelled` become distinct SDK transport
 errors and cleanup is attempted, without claiming the remaining consumer
 matrix. The 2026-09-23 #610 increment aligns Python Resource cancellation
@@ -74,8 +75,8 @@ contexts: `RESOURCE_RCL` is an outbound rejection (`OutboundRejected`),
 `RESOURCE_ICL` is an inbound remote cancellation (`InboundFailed`), and a
 Rust-local outgoing cancel remains `OutboundCancelled`. Pinned-Python,
 transport, SDK, daemon receipt, remote-control, and utility-consumer regressions
-cover the distinction; the wider timeout and consumer-status matrix remains
-open.
+cover the distinction; later entries below complete the terminal-event
+consumer/status audit while retaining unrelated wider fault-matrix limits.
 
 The focused #610 compression regression now exercises the production Resource
 path in both directions against pinned Python: compressible input follows the
@@ -116,21 +117,32 @@ The daemon observes `InboundFailed(remote_cancelled)` with partial progress,
 creates no completion, receipt, or delivered content, and accepts a subsequent
 exact-payload Resource over the same active Link. The pinned Python
 `Resource.cancel()`/`Link.py` callback and ICL-routing behavior is recorded in
-the #610 evidence file. This closes only that software consumer path; the
-broader callback/status matrix remains open.
+the #610 evidence file. At that stage, only this one software consumer path
+had been closed; the subsequent full terminal-event audit is recorded below.
 
-A production-daemon Resource-timeout consumer regression now holds an outbound
-request on an active Link through its terminal timeout and verifies the
-correlated `resource-failed` receipt, tracking cleanup, and persisted failure
-status. This adds one consumer path; the broader #610 callback/status matrix
-remains open.
+The production-daemon Resource retry-exhaustion consumer now verifies a
+correlated generic `resource-failed` receipt and tracking cleanup. The event
+API does not carry the failure cause, so the daemon no longer fabricates a
+timeout diagnosis for every `OutboundFailed`; the LXMF SDK's caller deadline
+remains an explicit timeout error and attempts Resource cancellation.
 
 The daemon consumer now also has an end-to-end outbound-completion regression:
 the peer returns a real Resource proof and the daemon persists the correlated
 completion receipt/status and removes tracking. Together with rejection,
 cancellation, timeout, and partial inbound teardown regressions, this covers
 positive and selected negative consumer paths without treating an error as
-success; the broader #610 consumer/failure matrix remains open.
+success; the subsequent full terminal-event audit is recorded below.
+
+The #610 terminal-event audit also found and fixed retained split-inbound
+bytes on later-segment decode failure and retry exhaustion. Both paths now
+publish one failure keyed by the original Resource hash and remove the partial
+assembly. Focused manager tests cover both terminal paths, and a daemon
+retry-timeout regression confirms there is no completion or receipt and that a
+new Resource succeeds on the same Link after cleanup. The full callback/status/
+cleanup audit also found and fixed propagation-download waiters that hid inbound
+Resource failure behind a request timeout; the terminal-aware waiter now returns
+the failure. The sole remaining #610 acceptance item is locally proven and
+awaits updated PR #638 checks before its issue checkbox is changed.
 
 A separate pinned-Python Resource fault regression now times out a dropped Link
 establishment, reuses the carrier with a fresh production Link ID, and

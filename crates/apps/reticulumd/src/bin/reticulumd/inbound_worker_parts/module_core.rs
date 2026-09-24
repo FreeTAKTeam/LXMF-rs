@@ -303,7 +303,7 @@ fn handle_outbound_resource_failure(
             daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
             emit_receipt_event(
                 receipt_tx,
-                ReceiptEvent::new(tracking.message_id, "failed: resource transfer timed out")
+                ReceiptEvent::new(tracking.message_id, "failed: resource transfer failed")
                     .with_resource_hash(resource_hash_hex)
                     .with_peer(tracking.peer)
                     .with_delivery_kind("resource-failed")
