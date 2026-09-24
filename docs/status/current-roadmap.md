@@ -137,11 +137,16 @@ The #633 follow-up also verifies runtime WebP configuration forwarding: a
 production `rngit` process selects a deterministic stub `ffmpeg`, passes its
 configured quality and maximum-dimension options, and returns WebP metadata to
 a pinned Python Link. This adds CLI-to-backend wiring evidence only; #613
-remains partial. A second pinned-Python Link regression injects a nonzero
-encoder exit, verifies the exact raw PNG fallback and filename metadata, checks
-that the encoder's stderr detail is logged, and confirms the failed conversion
-directory is removed. No production mismatch was found. The new Verify lane
-provisions ImageMagick and GraphicsMagick and runs the production-Link test
+remains partial. A new config-file path reads `[pages].media_conversion`
+from `--config <directory>/config`, defaults conversion on, rejects malformed
+values, and preserves `--no-media-conversion` as an explicit override. The
+production-Link regression confirms configured-off serves the original PNG;
+this closes that configuration slice only, while the remaining #613
+page/media/error cases remain open. A second pinned-Python Link regression
+injects a nonzero encoder exit, verifies the exact raw PNG fallback and filename
+metadata, checks that the encoder's stderr detail is logged, and confirms the
+failed conversion directory is removed. No production mismatch was found. The
+new Verify lane provisions ImageMagick and GraphicsMagick and runs the production-Link test
 against real `convert` and `gm` executables, checking forwarded quality and
 resize arguments, 8x4-to-1x1 WebP output, filename metadata, raw fallback, and
 Link-scoped cleanup. Hosted Verify run `36024299709` passed at PR #633 head

@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[path = "rngit_parts/media_config.rs"]
+mod media_config;
+
 mod rngit_network {
     include!("rngit_parts/network.rs");
 }

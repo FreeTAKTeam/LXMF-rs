@@ -2,6 +2,7 @@ use super::{
     decode_page_request, log_page_media_cleanup_failure, page_paths, rngit_paths, Cli,
     PageLinkCleanup, PageResponse, ReticulumGitNode,
 };
+use super::media_config::media_conversion_enabled;
 use rns_transport::destination::link::{LinkEvent, LinkStatus};
 use rns_transport::destination::DestinationName;
 use rns_transport::error::RnsError;
@@ -82,7 +83,7 @@ async fn run_async(cli: &Cli) -> io::Result<()> {
         })?;
         node.blocked_identities.insert(identity);
     }
-    node.media_conversion = !cli.no_media_conversion;
+    node.media_conversion = !cli.no_media_conversion && media_conversion_enabled(cli.config.as_deref())?;
     node.media_quality = cli.media_quality;
     node.media_max_dimension = cli.media_max_dimension.filter(|value| *value > 0);
     let _registered_page_paths = page_paths();

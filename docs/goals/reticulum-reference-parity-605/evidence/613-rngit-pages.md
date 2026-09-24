@@ -904,3 +904,26 @@ complete #613.
 cargo test -p rns-tools --bin rngit periodic_sweep_removes_media_for_silently_disappeared_link -- --nocapture
   PASS (1 test)
 ```
+
+### `[pages].media_conversion` through the rngit configuration directory
+
+Pinned `pages.py` defaults `media_conversion` to enabled and reads its optional
+boolean from the `[pages]` section of the rngit config. Rust now accepts
+`--config <directory>` and reads `<directory>/config` with the same supported
+boolean forms; a missing setting keeps conversion enabled, malformed values
+fail with an explicit configuration error, and `--no-media-conversion`
+continues to force conversion off. A production TCP Link test starts rngit
+with `[pages] media_conversion = no` and confirms the pinned Python client gets
+the original PNG bytes and filename rather than a converted Resource. Existing
+backend tests separately cover automatic winner/fallback behavior and
+argument-safe bounded conversion; this adds the previously missing config-file
+path and does not close the broader #613 page/media matrix.
+
+```text
+TMPDIR=/dev/shm cargo test -p rns-tools --bin rngit --all-features media_config -- --nocapture
+  PASS (2 tests; default/boolean forms and malformed value)
+TMPDIR=/dev/shm RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+cargo test -p rns-tools --test rngit_python_interop issue_613_media_compression \
+  -- --ignored --nocapture --test-threads=1
+  PASS (2 tests; pinned helper selection and production-Link configured raw-media behavior)
+```

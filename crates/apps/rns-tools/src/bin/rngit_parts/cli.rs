@@ -3,6 +3,8 @@
 struct Cli {
     #[arg(long)]
     root: PathBuf,
+    #[arg(long, value_name = "DIRECTORY", help = "Read rngit configuration from this directory (config file)")]
+    config: Option<PathBuf>,
     #[arg(long, value_name = "HOST:PORT", action = clap::ArgAction::Append)]
     listen: Vec<String>,
     #[arg(long, value_name = "HOST:PORT", action = clap::ArgAction::Append)]

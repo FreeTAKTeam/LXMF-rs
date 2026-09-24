@@ -72,6 +72,9 @@ fn rngit_media_resource_preserves_precompressed_png_without_resource_compression
         "pinned pages.py must register PATH_MEDIA with auto_compress=False"
     );
 
+    let rngit_config = temp.path().join("rngit-config");
+    fs::create_dir(&rngit_config)?;
+    fs::write(rngit_config.join("config"), "[pages]\nmedia_conversion = no\n")?;
     let port = free_port()?;
     let identity_seed = "rngit-python-precompressed-media";
     let mut server = Command::new(env!("CARGO_BIN_EXE_rngit"))
@@ -82,7 +85,8 @@ fn rngit_media_resource_preserves_precompressed_png_without_resource_compression
             &format!("127.0.0.1:{port}"),
             "--identity-seed",
             identity_seed,
-            "--no-media-conversion",
+            "--config",
+            rngit_config.to_string_lossy().as_ref(),
             "--silent",
         ])
         .stdout(Stdio::null())
