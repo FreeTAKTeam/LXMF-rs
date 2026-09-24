@@ -341,7 +341,7 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
-async fn rust_resource_compression_size_limit_matches_pinned_python() {
+async fn rust_resource_compression_threshold_matches_pinned_python() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
     let server_port = free_tcp_port();
@@ -387,13 +387,16 @@ async fn rust_resource_compression_size_limit_matches_pinned_python() {
         .expect("register channel handler");
 
     let mut resource_events = transport.resource_events();
-    for (label, size, compressed) in [("at-limit", 64 * 1024 * 1024, true)] {
+    for (label, size, compressed) in [
+        ("at-compression-threshold", 64 * 1024 * 1024, true),
+        ("above-compression-threshold", 64 * 1024 * 1024 + 1, false),
+    ] {
         let payload = vec![b'R'; size];
         let digest = digest_hex(&payload);
         let resource_hash = transport
             .send_resource(&link_id, payload, None)
             .await
-            .expect("send threshold Resource");
+            .expect("send Resource at and above the compression threshold");
         wait_for_outbound_resource_complete(
             &mut resource_events,
             resource_hash,
@@ -416,12 +419,6 @@ async fn rust_resource_compression_size_limit_matches_pinned_python() {
         .await
         .unwrap_or_else(|_| panic!("Python did not confirm {label} compression: {expected}"));
     }
-
-    let above_limit = vec![b'R'; 64 * 1024 * 1024 + 1];
-    assert!(
-        transport.send_resource(&link_id, above_limit, None).await.is_err(),
-        "Rust must reject a Resource above its production size limit before advertisement"
-    );
 }
 
 #[tokio::test]
