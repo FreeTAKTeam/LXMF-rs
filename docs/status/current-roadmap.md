@@ -650,7 +650,10 @@ out on B-to-A delivery. The expanded recovery test also verifies fresh
 Resource delivery with exact size/digest/metadata in both directions. A
 separate isolated pinned-Python test now verifies that an in-flight large
 DIRECT LXMF Resource is retried exactly once with a new Link and Resource after
-upstream restart. Deeper relay replacement and broader multi-hop
+upstream restart. A new isolated pinned-Python production-path test also queues
+one DIRECT LXMF message while the upstream Rust relay is stopped, clears route
+state, restarts the relay, and verifies one exact-payload receipt plus terminal
+`delivered` status. Deeper relay replacement and broader multi-hop
 packet/proof/link duplicate cases remain open.
 Cached path-table restore now also checks the identity recovered from the
 cached announce against transport blackhole policy before installing the route;

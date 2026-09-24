@@ -792,6 +792,35 @@ and replaces the upstream Rust relay with its route database cleared, releases
 the gate, rediscovers paths, and requires the same LXMF message to be delivered
 exactly once using a different Resource and Link.
 
+A focused ignored production-path regression,
+`python_shared_instance_queued_direct_recovers_after_upstream_restart_e2e`, now
+isolates queued DIRECT message recovery from the flaky bidirectional mixed-shape
+scenario. It uses the same Python shared-instance sender, two separate Rust
+relay processes, and Python receiver; the sender first caches the receiver
+identity, then queues a DIRECT message while upstream relay A is stopped. The
+test clears relay A's Reticulum route database, restarts it, verifies no active
+routes were restored, waits for the downstream TCP client to reconnect, and
+explicitly relearns both Python routes. It requires the outbound message's
+terminal state to be `delivered` and exactly one receiver inbox entry with the
+exact payload.
+
+```text
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/LXMF \
+LXMF_PYTHON_BIN=python3 cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  python_shared_instance_queued_direct_recovers_after_upstream_restart_e2e \
+  -- --ignored --exact --nocapture --test-threads=1
+# Reticulum 99de23c040d507e3fefca19e87b182302902725d
+# LXMF 727830cefda83d9c6e3982b48675425f3f988f9c
+# 2 consecutive runs passed; 0 failed (24.94s, 24.92s)
+```
+
+`TMPDIR=/dev/shm` is required in this environment because the default temporary
+directory exceeded its per-user quota before the fixture could start. This
+isolated pass establishes only queued DIRECT delivery after route-cleared
+upstream restart; it does not close the broader #609 transport/recovery matrix.
+
 ```text
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
 LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF \
