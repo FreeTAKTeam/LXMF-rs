@@ -56,8 +56,11 @@ does not close the broader #611 utility matrix.
 The current #631 path-table slice adds a `get_path_table` daemon RPC and
 `rnpath-rs --table`/`--max` output backed by the transport path table, with
 focused hop-filter, RPC-shape, bridge-serialization, and CLI-ordering tests.
-This is local software evidence, not a live non-empty Python/Rust path-table
-trace; interface-label parity and the broader #611 matrix remain open.
+An ignored live loopback trace now connects the Rust daemon and a separate
+pinned-Python observer to a Python announcing peer and compares a non-empty
+table row: destination hash, via, and hop count match, with numeric expiry
+fields. The configured Rust interface label differs from Python's interface
+object string; this limitation and the broader #611 matrix remain open.
 
 The current #631 `rncp` increment observes packed and received Resource
 advertisement sizes/flags for all six Python/Rust compression roles, with a
