@@ -31,6 +31,23 @@
         }
     }
 
+    #[test]
+    fn native_link_local_enumeration_returns_only_well_formed_candidates() {
+        let candidates = enumerate_link_local_candidates().expect("enumerate host interfaces");
+
+        // An empty set is valid on hosts/containers without an eligible NIC.
+        // This exercises the native enumeration API without opening sockets,
+        // sending multicast, or assuming a particular interface exists.
+        for candidate in candidates {
+            assert!(!candidate.ifname.is_empty(), "eligible interface has a name");
+            assert!(!candidate.ipv6_addresses.is_empty(), "eligible interface has an address");
+            for address in candidate.ipv6_addresses {
+                let parsed: std::net::Ipv6Addr = address.parse().expect("valid IPv6 address");
+                assert!(parsed.is_unicast_link_local(), "address is link-local: {parsed}");
+            }
+        }
+    }
+
     fn default_link_auto_iface() -> TestIface {
         TestIface {
             config: AutoInterfaceConfig {
