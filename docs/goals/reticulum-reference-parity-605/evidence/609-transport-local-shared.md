@@ -667,3 +667,20 @@ This proves the transport-disabled shared-child announce cell for a locally
 hosted destination. Combined with the existing enabled announce and enabled /
 disabled LinkRequest cells, it adds one point to the local-delivery matrix;
 other packet classes and the remaining #609 acceptance gates remain open.
+
+The enabled counterpart is now also exercised through production inbound
+admission (`preprocess_inbound_message` followed by
+`process_inbound_message`), rather than only calling `handle_announce`
+directly. `enabled_shared_daemon_does_not_transit_announce_for_local_destination`
+asserts no remote path, no queued/cached retransmission, and no sibling output
+for a valid announce from a shared virtual child when transit forwarding is
+enabled. This matches the pinned Python `Transport._inbound` local-destination
+branch: path learning/retransmission occurs only when no local destination
+matches. It complements the transport-disabled production-path announce test;
+it remains one matrix cell and does not promote #609.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  enabled_shared_daemon_does_not_transit_announce_for_local_destination -- --nocapture
+# 1 passed; 0 failed
+```
