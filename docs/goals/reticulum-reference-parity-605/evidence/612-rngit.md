@@ -291,6 +291,16 @@ unit/source evidence, not a Python differential. Both tests cover narrow
 request/permission seams only, so the broad #612 operation and permission
 criteria remain open.
 
+The ignored pinned-Python differential
+`work_complete_denial_and_request_errors_match_pinned_python_without_mutation`
+drives both implementations' production `handle_work` paths for three cases:
+valid-ID completion denied by missing repository write permission, missing
+`doc_id`, and malformed `doc_id`. It compares exact response status/body and
+active/completed directory state. All three cases passed against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`. This covers failure behavior for
+`complete` only; successful completion, other operation gates and the broad
+#612 request/authorization/scope/metadata/side-effect matrix remain open.
+
 ## Deliberate remaining gaps
 
 - The transport-neutral local request seam still carries only the remote

@@ -111,6 +111,12 @@ without `doc_id`: pinned Python and Rust both return `INVALID_REQ` with
 this operation-specific request error; the remaining work-operation matrix
 and hosted evidence are still open.
 
+A focused #612 `complete` production-handler differential now compares pinned
+Python and Rust for denied write authorization, a missing document ID, and a
+malformed document ID. Exact status/body and active/completed directory state
+match in all three cases. This adds bounded denial and request-shape evidence;
+it does not complete the broader operation or permission matrix.
+
 A new pinned-Python production-handler differential covers `list` with an
 unknown scope: Rust now returns `RES_OK` and the same empty `active`,
 `completed`, and `proposed` arrays as RNS 1.5.4. A separate local regression
