@@ -635,7 +635,14 @@ both paths are relearned, a short opportunistic LXMF message queued during relay
 downtime reaches the peer and is acknowledged as delivered, and fresh RNS links
 and raw packets pass in both directions. Direct/resource retry modes, broader
 multi-hop packet/proof/link duplicate cases and deeper relay replacement remain
-open. Cached path-table restore now also checks the identity recovered from the
+open. The two-relay post-restart trace now passes three consecutive local runs
+after the relay records the shared-owner handoff and forwards its
+`LinkRequestProof` on that exact interface when the destination identity is not
+locally available; ordinary transit proofs still require destination-identity
+validation. This resolves the traced reverse-direction delivery failure for
+that scenario, while direct/resource retry modes, broader multi-hop
+packet/proof/link duplicate cases and deeper relay replacement remain open.
+Cached path-table restore now also checks the identity recovered from the
 cached announce against transport blackhole policy before installing the route;
 a production save/blackhole/restore regression reports one skipped row and no
 restored path, matching the pinned Python startup predicate. A mixed pinned-Python
