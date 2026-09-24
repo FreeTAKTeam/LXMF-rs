@@ -59,6 +59,12 @@ A focused pinned-Python permission regression now compares configured group
 Rust group loader. Both configured and sidecar grants remain effective, so this
 slice required no code change; remaining permission combinations stay open.
 
+A production `gperms` refresh differential now also updates the group sidecar
+through Rust's production handler and frozen Python `handle_perms`, then checks
+that configured read access and sidecar administrator inheritance both remain
+effective immediately after the update. This covers one update transition;
+broader group/repository/document permission combinations remain open.
+
 The pinned-Python #612 delete-handler differential confirms that `scope` is
 validated but ignored for document selection: deletion searches active,
 completed, then proposed. Rust now matches that behavior for delete only. The
