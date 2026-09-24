@@ -963,9 +963,11 @@ The daemon transport emits exactly one `InboundFailed` for the transfer with
 nonzero but incomplete part counts; it emits no `Complete`. The daemon worker
 produces no receipt. An existing `sending: link resource` record keeps that
 status and its empty content, with no delivered message added to the store.
-This is focused proof for one partial-transfer
-Link teardown path; it does not establish every Resource failure reason,
-callback/status consumer, or the broader #610 acceptance matrix.
+The identical payload then completes with exact bytes on a fresh Link, showing
+that a follow-up receive succeeds after the failed Link is removed. This is
+focused proof for one partial-transfer Link teardown path; it does not establish
+every Resource failure reason, callback/status consumer, or the broader #610
+acceptance matrix.
 
 Focused validation on the #638 candidate worktree:
 

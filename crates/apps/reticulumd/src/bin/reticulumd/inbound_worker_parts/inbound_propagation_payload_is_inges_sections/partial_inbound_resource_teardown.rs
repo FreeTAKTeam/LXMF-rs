@@ -34,8 +34,9 @@ async fn daemon_reports_partial_inbound_resource_failure_after_gated_link_teardo
     tokio::spawn(async move {
         let mut held_tx = Some(held_tx);
         let mut forwarded_resource_parts = 0usize;
+        let mut gate_active = true;
         while let Some(message) = peer_tx.recv().await {
-            if message.packet.context == PacketContext::Resource {
+            if gate_active && message.packet.context == PacketContext::Resource {
                 forwarded_resource_parts += 1;
                 if forwarded_resource_parts > 1 {
                     if let Some(held_tx) = held_tx.take() {
@@ -49,13 +50,16 @@ async fn daemon_reports_partial_inbound_resource_failure_after_gated_link_teardo
             if daemon_rx
                 .send(RxMessage {
                     address: daemon_addr,
-                    packet: message.packet,
+                    packet: message.packet.clone(),
                     source: IfaceSource::None,
                 })
                 .await
                 .is_err()
             {
                 break;
+            }
+            if message.packet.context == PacketContext::LinkClose {
+                gate_active = false;
             }
         }
     });
@@ -117,7 +121,7 @@ async fn daemon_reports_partial_inbound_resource_failure_after_gated_link_teardo
         .map(|index| ((index * 73 + index / 251) & 0xff) as u8)
         .collect::<Vec<_>>();
     let resource_hash = peer_transport
-        .send_resource(&link_id, payload, None)
+        .send_resource(&link_id, payload.clone(), None)
         .await
         .expect("peer advertises inbound Resource over active Link");
 
@@ -200,4 +204,43 @@ async fn daemon_reports_partial_inbound_resource_failure_after_gated_link_teardo
     assert_eq!(messages.len(), 1, "partial payload does not add delivered content");
     assert_eq!(messages[0]["id"], message_id);
     assert_eq!(messages[0]["content"], "");
+
+    let recovery_link = daemon_transport.link(destination).await;
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if recovery_link.lock().await.status() == LinkStatus::Active {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("fresh Link becomes active after partial-state cleanup");
+    let recovery_link_id = *recovery_link.lock().await.id();
+    let recovery_hash = peer_transport
+        .send_resource(&recovery_link_id, payload.clone(), None)
+        .await
+        .expect("same payload is accepted on fresh Link");
+    timeout(Duration::from_secs(5), async {
+        loop {
+            match resource_events.recv().await {
+                Ok(event) if event.hash == recovery_hash => match event.kind {
+                    ResourceEventKind::Complete(complete) => {
+                        assert_eq!(complete.data, payload);
+                        break;
+                    }
+                    ResourceEventKind::InboundFailed(failure) => {
+                        panic!("fresh Link retry failed after partial cleanup: {}", failure.reason)
+                    }
+                    _ => {}
+                },
+                Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    panic!("Resource event stream closed before fresh-Link recovery")
+                }
+            }
+        }
+    })
+    .await
+    .expect("fresh Link accepts complete retry of the same Resource hash");
 }

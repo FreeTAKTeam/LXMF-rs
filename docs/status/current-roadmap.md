@@ -107,7 +107,8 @@ a test-only packet gate forwards the advertisement and first Resource fragment,
 holds later Resource traffic while allowing LinkClose through, and verifies
 partial progress followed by one inbound terminal failure, with no completion,
 receipt, status transition, or fabricated delivered content. The broader #610
-failure/consumer matrix remains open.
+failure/consumer matrix remains open; the identical payload then completes
+with exact bytes on a fresh Link after the failed Link is removed.
 
 A separate pinned-Python Resource fault regression now times out a dropped Link
 establishment, reuses the carrier with a fresh production Link ID, and
