@@ -2,22 +2,59 @@ use super::*;
 
 #[cfg(unix)]
 #[test]
-#[ignore = "requires local pinned Python Reticulum checkout and ffmpeg/ffprobe"]
-fn configured_ffmpeg_serves_decodable_webp_and_falls_back_to_raw_media() -> io::Result<()> {
+#[ignore = "requires local pinned Python Reticulum checkout, selected WebP backend, and ffprobe"]
+fn configured_backend_serves_decodable_webp_and_falls_back_to_raw_media() -> io::Result<()> {
     let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
-    for tool in ["ffmpeg", "ffprobe"] {
+    let backend = std::env::var("RNGIT_TEST_WEBP_BACKEND").map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "RNGIT_TEST_WEBP_BACKEND must select a real encoder",
+        )
+    })?;
+    if !["magick", "convert", "gm", "ffmpeg", "avconv"].contains(&backend.as_str()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unsupported test backend name: {backend}"),
+        ));
+    }
+    for tool in [backend.as_str(), "ffprobe"] {
         let status = Command::new(tool)
             .arg("-version")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()?;
         if !status.success() {
-            return Err(io::Error::other(format!("{tool} version probe exited with {status}")));
+            return Err(io::Error::other(format!(
+                "required WebP test tool {tool} version probe exited with {status}"
+            )));
         }
     }
+    let resolved_backend = Command::new("which").arg(&backend).output()?;
+    if !resolved_backend.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("required native WebP backend is not on PATH: {backend}"),
+        ));
+    }
+    let backend_executable = String::from_utf8_lossy(&resolved_backend.stdout).trim().to_owned();
 
     let temp = tempfile::tempdir()?;
     let root = create_repository_fixture(temp.path())?;
+    let source = temp.path().join("source");
+    let png = Command::new(python_bin())
+        .arg("-c")
+        .arg(PNG_FIXTURE_WRITER)
+        .arg(source.join("valid.png"))
+        .output()?;
+    if !png.status.success() {
+        return Err(io::Error::other(format!(
+            "could not prepare multi-pixel PNG fixture: {}",
+            String::from_utf8_lossy(&png.stderr)
+        )));
+    }
+    run_git(&source, &["add", "valid.png"])?;
+    run_git(&source, &["commit", "--amend", "--no-edit", "-q"])?;
+    run_git(&source, &["push", "--force", "origin", "main"])?;
     let python_repo = python_repo();
     if !python_repo.join("RNS/Link.py").is_file() {
         return Err(io::Error::new(
@@ -27,21 +64,24 @@ fn configured_ffmpeg_serves_decodable_webp_and_falls_back_to_raw_media() -> io::
     }
     let media_temp = temp.path().join("media-temp");
     fs::create_dir(&media_temp)?;
-    let priority_backend_dir = temp.path().join("priority-backend");
-    fs::create_dir(&priority_backend_dir)?;
-    let automatic_backend_marker = temp.path().join("automatic-backend-was-used");
-    let higher_preference_backend = priority_backend_dir.join("magick");
+    let backend_dir = temp.path().join("backend-probe");
+    fs::create_dir(&backend_dir)?;
+    let args_path = temp.path().join("backend-argv");
+    let backend_probe = backend_dir.join(&backend);
     fs::write(
-        &higher_preference_backend,
-        format!("#!/bin/sh\nprintf called > '{}'\nexit 91\n", automatic_backend_marker.display()),
+        &backend_probe,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' --BEGIN-- \"$@\" >> \"$RNGIT_TEST_MEDIA_ARGS\"\nexec '{}' \"$@\"\n",
+            backend_executable.replace('\'', "'\\''")
+        ),
     )?;
     use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(&higher_preference_backend, fs::Permissions::from_mode(0o755))?;
-    let mut search_paths = vec![priority_backend_dir];
+    fs::set_permissions(&backend_probe, fs::Permissions::from_mode(0o755))?;
+    let mut search_paths = vec![backend_dir];
     search_paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
     let path = std::env::join_paths(search_paths).map_err(io::Error::other)?;
     let port = free_port()?;
-    let identity_seed = "rngit-configured-ffmpeg-link-regression";
+    let identity_seed = format!("rngit-configured-{backend}-link-regression");
     let mut server = Command::new(env!("CARGO_BIN_EXE_rngit"))
         .args([
             "--root",
@@ -49,10 +89,16 @@ fn configured_ffmpeg_serves_decodable_webp_and_falls_back_to_raw_media() -> io::
             "--listen",
             &format!("127.0.0.1:{port}"),
             "--identity-seed",
-            identity_seed,
+            &identity_seed,
+            "--media-quality",
+            "37",
+            "--media-max-dimension",
+            "1",
             "--silent",
         ])
-        .env("RNGIT_MEDIA_BACKEND", "ffmpeg")
+        .env("RNGIT_MEDIA_BACKEND", &backend)
+        .env("RNGIT_TEST_WEBP_BACKEND", &backend)
+        .env("RNGIT_TEST_MEDIA_ARGS", &args_path)
         .env("PATH", path)
         .env("TMPDIR", &media_temp)
         .env("TEMP", &media_temp)
@@ -62,7 +108,7 @@ fn configured_ffmpeg_serves_decodable_webp_and_falls_back_to_raw_media() -> io::
 
     let result = (|| {
         wait_for_port(port, &mut server)?;
-        let destination = rust_destination(&root, identity_seed)?;
+        let destination = rust_destination(&root, &identity_seed)?;
         let config_dir = temp.path().join("python-client");
         fs::create_dir_all(&config_dir)?;
         write_python_config(&config_dir, port)?;
@@ -78,7 +124,7 @@ fn configured_ffmpeg_serves_decodable_webp_and_falls_back_to_raw_media() -> io::
             .output()?;
         if !output.status.success() {
             return Err(io::Error::other(format!(
-                "configured ffmpeg Link client failed: {}\nstdout:\n{}\nstderr:\n{}",
+                "configured {backend} Link client failed: {}\nstdout:\n{}\nstderr:\n{}",
                 output.status,
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
@@ -91,14 +137,28 @@ fn configured_ffmpeg_serves_decodable_webp_and_falls_back_to_raw_media() -> io::
         assert_eq!(response["conversion_temp_directories_while_link_open"], 1);
         assert_eq!(response["fallback_name"], "image.png");
         assert_eq!(response["fallback_size"], 8192);
-        assert!(
-            !automatic_backend_marker.exists(),
-            "explicit ffmpeg setting must override the earlier magick preference"
-        );
         assert_eq!(
             response["fallback_sha256"],
             "f8e920545e99cdc9bbc2650eb8282344e8971a7ff0c397c91355d0fcaf6c61fa"
         );
+        let argv_file = fs::read_to_string(&args_path)?;
+        let argv = argv_file
+            .split_once("--BEGIN--\n")
+            .map(|(_, args)| {
+                args.lines().take_while(|line| *line != "--BEGIN--").collect::<Vec<_>>()
+            })
+            .ok_or_else(|| io::Error::other("backend did not record its first invocation"))?;
+        assert!(argv.windows(2).any(|pair| pair == ["-quality", "37"]), "argv: {argv:?}");
+        let dimension_option_present = if matches!(backend.as_str(), "magick" | "convert" | "gm") {
+            argv.windows(2).any(|pair| pair == ["-resize", "1x1>"])
+        } else {
+            argv.windows(2).any(|pair| {
+                pair[0] == "-vf"
+                    && pair[1]
+                        == "scale='min(iw,1)':'min(ih,1)':force_original_aspect_ratio=decrease"
+            })
+        };
+        assert!(dimension_option_present, "argv: {argv:?}");
 
         let probe = Command::new("ffprobe")
             .args([
@@ -198,4 +258,14 @@ print(json.dumps({
     "fallback_size": fallback["size"],
     "fallback_sha256": fallback["sha256"],
 }, sort_keys=True))
+"#;
+
+const PNG_FIXTURE_WRITER: &str = r#"
+import binascii, struct, sys, zlib
+def chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
+width, height = 8, 4
+rows = b"".join(b"\0" + bytes(channel for x in range(width) for channel in (x * 29, y * 53, (x + y) * 17)) for y in range(height))
+png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+open(sys.argv[1], "wb").write(png)
 "#;

@@ -309,6 +309,12 @@ tears down the Link, and verifies no false completion, receiver Resource state
 or files, Linux server child processes, or serving temp directory remain; the
 transport Resource-manager link-close regression asserts tracked sender and
 receiver state is cleared.
+The same PR adds a fail-closed Verify lane that installs ImageMagick and
+GraphicsMagick and runs the production-Link WebP test with their `convert` and
+`gm` commands. It checks real conversion, configured quality/resize arguments,
+decoded dimensions, response metadata, raw fallback, and Link-scoped cleanup;
+the hosted result is pending. ImageMagick 7's `magick` command, `avconv`, and
+full rendering parity remain unverified.
 An abrupt Python process exit still left the Rust link
 `Active` after 104 seconds without inbound traffic, so the live stale-transition
 path and other filesystem failures remain unverified. The separate

@@ -128,8 +128,13 @@ a pinned Python Link. This adds CLI-to-backend wiring evidence only; #613
 remains partial. A second pinned-Python Link regression injects a nonzero
 encoder exit, verifies the exact raw PNG fallback and filename metadata, checks
 that the encoder's stderr detail is logged, and confirms the failed conversion
-directory is removed. No production mismatch was found; execution across the
-other native backend families remains unverified.
+directory is removed. No production mismatch was found. The new Verify lane
+provisions ImageMagick and GraphicsMagick and runs the production-Link test
+against real `convert` and `gm` executables, checking forwarded quality and
+resize arguments, 8x4-to-1x1 WebP output, filename metadata, raw fallback, and
+Link-scoped cleanup. This CI evidence is pending hosted execution; the
+ImageMagick 7 `magick` CLI, `avconv`, and broader rendering parity remain
+unverified.
 The production-Link page/media differential also covers one nested image path
 containing a space and confirms that rendered Micron markup matches the frozen
 Python `quote_plus(file_path)` encoding. A focused parity test additionally
