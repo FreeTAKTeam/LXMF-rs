@@ -36,6 +36,18 @@ Rust kept the page Link active after a failed Resource response.
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown, response-send-detected abrupt client exit, in-flight `/media` Resource cancellation, and pipeline child-status errors are exercised | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client`, `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown`, `rngit_python_interop::rngit_cleans_media_after_response_fails_on_abrupt_client_exit`, and `rngit_python_interop::issue_613_cleanup_isolation::rngit_disconnect_cleanup_preserves_an_independent_active_media_response` | active, stale, closed, missing-link, graceful-disconnect, synchronized partial-Resource cancellation, abrupt client exit detected by a failed response, cross-Link cleanup/active-response isolation, and child-status-error termination/reaping verified; silent exits without a failed response and other filesystem failures remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault paths remain open |
 
+### Disconnect cancels an in-flight conversion
+
+The production page request now polls the requesting Link while the WebP
+pipeline runs. When the Link is no longer active, the cancellation path is
+treated as a conversion failure, both live child processes are terminated and
+reaped, and the failed converted output is removed before raw fallback. The
+deterministic Unix test
+`webp_pipeline_disconnect_cancellation_terminates_and_reaps_children` passed
+with the sibling status-error and timeout process tests (3 tests total). This
+is process-supervisor evidence; by itself it does not establish active-response
+isolation or the complete Link/temp-directory lifecycle.
+
 ### Automatic WebP backend winner
 
 The pinned `media.py::_selected_backend` caches the last automatically selected

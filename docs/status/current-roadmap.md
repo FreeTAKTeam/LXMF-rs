@@ -89,7 +89,11 @@ under `--silent`. Focused timeout and injected child-status-error regressions
 prove both WebP pipeline subprocesses are terminated and reaped on those paths,
 allowing conversion fallback and temporary-directory cleanup to complete. This
 does not cover silent peer exits without a failed response or other filesystem
-failures. A same-Link pinned-Python media differential now verifies the
+failures. The WebP supervisor now also receives cancellation from the requesting
+Link's status; a deterministic Unix regression verifies that disconnect
+cancellation promptly terminates and reaps both live pipeline children. This
+process-level test does not close the broader cleanup criterion. A same-Link
+pinned-Python media differential now verifies the
 successful `main` Resource control and scalar-`False` denials for missing or
 malformed request fields, denied private access, absent blobs, and invalid
 refs, with no Resource metadata or media bytes on denial. Object-info failure
