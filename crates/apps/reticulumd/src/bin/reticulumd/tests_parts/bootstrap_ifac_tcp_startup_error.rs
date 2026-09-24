@@ -89,3 +89,54 @@ interfaces = [
         drop(occupied);
     });
 }
+
+#[test]
+fn bootstrap_strict_startup_rejects_bind_failure_for_ifac_enabled_tcp_listener() {
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    runtime.block_on(async {
+        let occupied = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("reserve TCP listener port");
+        let port = occupied.local_addr().expect("reserved TCP address").port();
+        let temp = TempDir::new().expect("temp dir");
+        let db_path = temp.path().join("reticulum.db");
+        let config_path = temp.path().join("daemon.toml");
+        fs::write(
+            &config_path,
+            format!(
+                r#"
+interfaces = [
+  {{ type = "tcp_server", enabled = true, name = "ifac-strict-tcp-startup", host = "127.0.0.1", port = {port}, ifac_size = 16, network_name = "strict-tcp-network", passphrase = "strict-tcp-secret" }}
+]
+"#
+            ),
+        )
+        .expect("write IFAC TCP config");
+
+        let result = std::panic::AssertUnwindSafe(bootstrap::bootstrap(test_args(
+            db_path,
+            Some(config_path),
+            None,
+            true,
+        )))
+        .catch_unwind()
+        .await;
+        let panic_payload = match result {
+            Ok(_) => panic!("strict startup should reject the IFAC TCP bind failure"),
+            Err(payload) => payload,
+        };
+        let panic_message = if let Some(message) = panic_payload.downcast_ref::<String>() {
+            message.clone()
+        } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
+            (*message).to_string()
+        } else {
+            String::new()
+        };
+
+        assert!(panic_message.contains("strict interface startup policy rejected 1 interface(s)"));
+        assert!(panic_message.contains("ifac-strict-tcp-startup (tcp_server)"));
+        assert!(!panic_message.contains("strict-tcp-secret"));
+        drop(occupied);
+    });
+}

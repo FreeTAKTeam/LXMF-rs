@@ -801,19 +801,31 @@ TCP port, starts an IFAC-configured `tcp_server`, and polls `list_interfaces`
 until the worker reports `listener_state = "bind_error"`. It verifies the
 runtime error contains neither the configured network name nor passphrase and
 that the failed listener reports zero accepted connections and no admitted
-client interface. This supplements the existing UDP bind-failure coverage; it
-does not exercise TCP accepted-stream authentication or prove the broader
-startup/configuration matrix.
+client interface. A strict-startup companion uses the same occupied-port
+fixture and verifies that `bootstrap()` waits for the TCP worker's initial bind
+result and rejects startup with a credential-free policy error. The listener
+worker continues its existing retry behavior after reporting that first result;
+best-effort startup still returns and exposes the deferred runtime diagnostic.
+This supplements the existing UDP bind-failure coverage; it does not exercise
+TCP accepted-stream authentication or prove the broader startup/configuration
+matrix.
 
 ```text
 TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
   bootstrap_reports_sanitized_bind_failure_for_ifac_enabled_tcp_listener -- --nocapture
 # 1 passed; failed IFAC TCP listener reported sanitized bind_error and admitted no clients
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  tests::bootstrap_strict_startup_rejects_bind_failure_for_ifac_enabled_tcp_listener -- --exact
+# 1 passed; strict startup rejected the initial worker bind result without exposing credentials
+cargo test -p reticulumd --bin reticulumd
+# 476 passed; 0 failed
 ```
 
 The regression exposed that startup records lacked the `tcp.listener_status`
 object required by the existing runtime refresher. Bootstrap now seeds the
 configured listener status so the worker's bind failure reaches `list_interfaces`.
+Strict bootstrap additionally receives the worker's initial bind outcome over
+an optional one-shot result channel; best-effort startup does not wait on it.
 This is software-only local evidence; no physical/HIL test was run.
 
 ## Unix shared-instance clients keep the reference plaintext exception

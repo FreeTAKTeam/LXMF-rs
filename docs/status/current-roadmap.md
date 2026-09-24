@@ -40,9 +40,11 @@ diagnostic; raw config values and credentials are not included. The spawned
 IFAC-enabled UDP bind failure is also covered in both best-effort diagnostic
 mode and strict-startup rejection mode, with no passphrase disclosure; the
 IFAC-configured TCP listener bind failure now also appears in `list_interfaces`
-as a sanitized `bind_error` with zero accepted clients; this is distinct from
-the UDP worker path and does not complete TCP accepted-stream or broad startup
-coverage. The broader startup/error and carrier matrices remain open. The spawned
+as a sanitized `bind_error` with zero accepted clients. Strict startup waits for
+that worker's initial bind result and rejects a failed bind; best-effort startup
+retains deferred retry and reporting. This is distinct from the UDP worker path
+and does not complete TCP accepted-stream or broad startup coverage. The broader
+startup/error and carrier matrices remain open. The spawned
 `PipeInterface` worker also has a Unix subprocess loopback regression for its
 8-byte IFAC default and authenticated HDLC packet admission. Other carrier
 families now include duplex-stream serial and KISS IFAC regressions for wrong-key
