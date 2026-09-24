@@ -10,6 +10,9 @@ const PINNED_RETICULUM_REVISION: &str = "99de23c040d507e3fefca19e87b182302902725
 
 static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[path = "rncp_transfer_diagnostics.rs"]
+mod rncp_transfer_diagnostics;
+
 fn free_port() -> io::Result<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
@@ -1051,18 +1054,26 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
         &repo,
     )?;
     fs::write(&resource_observation_log, b"")?;
-    let mut python_no_compress_listener = spawn_python_listener(
-        &python_runtime,
-        &python_no_compress_config,
-        &python_no_compress_identity,
-        &python_listener_root,
-        &[&rust_fetch_hash],
-        true,
-    )?;
+    let mut python_no_compress_listener =
+        rncp_transfer_diagnostics::spawn_python_listener_capturing_stdout(
+            &python_runtime,
+            &python_no_compress_config,
+            &python_no_compress_identity,
+            &python_listener_root,
+            &[&rust_fetch_hash],
+            true,
+        )?;
+    let listener_log_rx =
+        rncp_transfer_diagnostics::capture_listener_logs(&mut python_no_compress_listener)?;
     let result = (|| {
         wait_for_port(python_no_compress_port, &mut python_no_compress_listener)?;
         let rust_fetch_root = temp.path().join("rust-fetch-no-compress");
         fs::create_dir_all(&rust_fetch_root)?;
+        let phase_trace = vec![
+            "phase=final_no_compression_fetch".to_owned(),
+            "event=listener_tcp_ready".to_owned(),
+            "event=rust_fetch_started resource=fetch-default.bin compression=disabled".to_owned(),
+        ];
         let fetched = run_rust_fetch(
             Path::new("fetch-default.bin"),
             &python_no_compress_destination,
@@ -1073,12 +1084,13 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
             false,
         )?;
         if !fetched.status.success() {
-            return Err(io::Error::other(format!(
-                "Rust rncp no-compression fetch failed: {}\nstdout:\n{}\nstderr:\n{}",
-                fetched.status,
-                String::from_utf8_lossy(&fetched.stdout),
-                String::from_utf8_lossy(&fetched.stderr)
-            )));
+            return Err(rncp_transfer_diagnostics::no_compression_fetch_failure(
+                &fetched,
+                &listener_log_rx,
+                &resource_observation_log,
+                temp.path(),
+                &phase_trace,
+            ));
         }
         assert_eq!(fs::read(rust_fetch_root.join("fetch-default.bin"))?, compressible_payload);
         assert_resource_advertisements(
