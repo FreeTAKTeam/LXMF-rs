@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import hashlib
 import json
 import socketserver
 import sys
@@ -52,6 +53,7 @@ class EndpointState:
         self.delivery_destination = None
         self.raw_link = None
         self.raw_messages = []
+        self.raw_resources = []
         self.link = None
         self.link_established_count = 0
         self.link_closed_count = 0
@@ -84,6 +86,20 @@ class EndpointState:
         print("python_lxmf_endpoint: endpoint state ready", file=sys.stderr, flush=True)
 
     def _on_raw_link_established(self, link) -> None:
+        link.set_resource_strategy(RNS.Link.ACCEPT_ALL)
+
+        def on_resource_concluded(resource) -> None:
+            if resource.status != RNS.Resource.COMPLETE:
+                return
+            data = resource.data.read()
+            with self.lock:
+                self.raw_resources.append({
+                    "size": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "metadata": resource.metadata,
+                })
+
+        link.set_resource_concluded_callback(on_resource_concluded)
         if not getattr(link, "_codex_raw_packet_capture_installed", False):
             original_packet_callback = link.callbacks.packet
 
@@ -498,6 +514,36 @@ class EndpointState:
 
         raise RuntimeError(f"timed out waiting for raw link packet {content!r}")
 
+    def send_raw_resource(self, size: int, metadata: str, timeout: float = 60.0) -> dict:
+        with self.lock:
+            link = self.raw_link
+        if link is None or link.status != RNS.Link.ACTIVE:
+            raise RuntimeError("no active raw link")
+        data = bytes((index * 31 + 7) % 256 for index in range(size))
+        completed = threading.Event()
+        result = {}
+
+        def on_concluded(resource) -> None:
+            result["status"] = resource.status
+            completed.set()
+
+        resource = RNS.Resource(data, link, metadata=metadata, callback=on_concluded, timeout=timeout)
+        if not completed.wait(timeout):
+            raise RuntimeError(f"Resource did not complete; status={resource.status}")
+        if result.get("status") != RNS.Resource.COMPLETE:
+            raise RuntimeError(f"Resource caller completion was not successful: {result}")
+        return {"completed": True, "size": size, "sha256": hashlib.sha256(data).hexdigest()}
+
+    def wait_raw_resource(self, size: int, digest: str, metadata: str, timeout: float = 60.0) -> dict:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self.lock:
+                for resource in self.raw_resources:
+                    if resource == {"size": size, "sha256": digest, "metadata": metadata}:
+                        return {"received": True, **resource}
+            time.sleep(0.05)
+        raise RuntimeError(f"timed out waiting for Resource size={size} sha256={digest} metadata={metadata!r}")
+
     def link_status(self) -> dict:
         return self._link_snapshot()
 
@@ -598,6 +644,15 @@ class ControlHandler(socketserver.StreamRequestHandler):
             elif method == "wait_raw_message":
                 result = self.server.state.wait_raw_message(
                     params["content"],
+                    float(params.get("timeout", 60.0)),
+                )
+            elif method == "send_raw_resource":
+                result = self.server.state.send_raw_resource(
+                    int(params["size"]), params["metadata"], float(params.get("timeout", 60.0))
+                )
+            elif method == "wait_raw_resource":
+                result = self.server.state.wait_raw_resource(
+                    int(params["size"]), params["sha256"], params["metadata"],
                     float(params.get("timeout", 60.0)),
                 )
             elif method == "link_status":

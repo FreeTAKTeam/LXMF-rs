@@ -773,6 +773,14 @@ receiver-side content. Each direction then opens a fresh raw Reticulum Link over
 the recovered path, exchanges application bytes, and asserts both peer-side
 Link states are active.
 
+The same recovery test now sends one 131,101-byte Resource from Python endpoint
+A to endpoint B over that fresh recovered Link. The receiving Python process
+verifies the exact byte count, SHA-256 digest, and Resource metadata; the
+sender waits for its production `RNS.Resource` callback and requires
+`Resource.COMPLETE`. This is a real post-restart Resource transfer over
+separate pinned-Python/Rust processes, not a simulated transfer or an LXMF
+direct/opportunistic retry matrix.
+
 ```text
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
 LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF \
@@ -782,12 +790,14 @@ cargo test -p lxmf-cli --test python_lxmd_remote_relay \
   -- --ignored --nocapture --test-threads=1
 # pinned Reticulum 99de23c040d507e3fefca19e87b182302902725d
 # pinned LXMF 727830cefda83d9c6e3982b48675425f3f988f9c
-# 2 consecutive passes; each 1 passed; 0 failed
+# 2 consecutive passes including the Resource assertion; each 1 passed; 0 failed
 ```
 
 The regression required no production change: the first experiment reused
 pre-restart Python LXMF direct Links, so the acceptance now sends only fresh
 application traffic after restart. This closes the shared-instance/multi-hop
-discovery, delivery-proof, raw-Link traffic, and daemon-replacement slice of
-#609. It does not close the umbrella issue or its separate discrepancy-tracking
-row; other transport/recovery behaviors remain open.
+discovery, delivery-proof, raw-Link traffic, daemon-replacement, and one
+post-restart Resource digest/metadata/completion slice of #609. It does not
+close the umbrella issue or its separate discrepancy-tracking row;
+direct/opportunistic LXMF retry modes and other transport/recovery behaviors
+remain open.

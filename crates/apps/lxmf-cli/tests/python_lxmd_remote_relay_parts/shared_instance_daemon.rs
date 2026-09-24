@@ -998,6 +998,38 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
                 return Err(format!("{label} multi-hop raw Link was not active: {link_status}"));
             }
         }
+
+        let resource_size = 131_101;
+        let resource_metadata = "restart-resource.bin;application=octet-stream";
+        let sent_resource = python_control_call(
+            python_control_a_port,
+            "send_raw_resource",
+            Some(json!({
+                "size": resource_size,
+                "metadata": resource_metadata,
+                "timeout": 45.0,
+            })),
+        )?;
+        if sent_resource.get("completed") != Some(&Value::Bool(true)) {
+            return Err(format!("Python sender did not report Resource completion: {sent_resource}"));
+        }
+        let digest = sent_resource
+            .get("sha256")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("Python sender returned no Resource digest: {sent_resource}"))?;
+        let received_resource = python_control_call(
+            python_control_b_port,
+            "wait_raw_resource",
+            Some(json!({
+                "size": resource_size,
+                "sha256": digest,
+                "metadata": resource_metadata,
+                "timeout": 45.0,
+            })),
+        )?;
+        if received_resource.get("received") != Some(&Value::Bool(true)) {
+            return Err(format!("Python receiver did not verify Resource: {received_resource}"));
+        }
         Ok(())
     })();
 
