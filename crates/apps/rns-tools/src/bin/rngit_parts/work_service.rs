@@ -148,6 +148,12 @@ impl ReticulumGitNode {
                 if map_value(request, &rmpv::Value::String("doc_id".into())).is_none() {
                     return response(Self::RES_INVALID_REQ, "No document ID specified", None);
                 }
+                if map_value(request, &rmpv::Value::String("doc_id".into()))
+                    .and_then(rmpv::Value::as_i64)
+                    .is_some_and(|id| id < 0)
+                {
+                    return response(Self::RES_NOT_FOUND, "Not found", None);
+                }
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
