@@ -302,3 +302,33 @@ establish physical Windows pairing or carrier behavior.
   physical carrier evidence remain open under #614/#616.
 - No live Python↔Rust interface transcript, external client trace, or paired
   hardware evidence was available in this run.
+
+## Additional configured UDP loopback slice
+
+The focused trace runs reticulumd strict startup from a Python-style UDPInterface
+configuration. A local peer receives the daemon's valid outbound packet and
+returns the exact datagram bytes to the configured bind endpoint; rnstatus-rs
+must report bound state and positive packet RX/TX counters. It then verifies
+clean daemon shutdown and successful restart on the same configured ports.
+The behavioral comparison is limited to the frozen Python implementation at
+99de23c040d507e3fefca19e87b182302902725d, RNS/Interfaces/UDPInterface.py:
+incoming datagrams reach owner.inbound and outgoing bytes use sendto at the
+configured forward address. This does not establish multicast, multi-host,
+cross-platform, mobile, or physical behavior.
+
+Observed report: status pass; 167-byte packet SHA-256
+e29082366eb70bebc3f51526dee624173f3ec9e9e6f4839098344ead2b40ef84; before
+restart, packets_rx=1, packets_tx=2, bytes_rx=167, bytes_tx=334; after clean
+shutdown the same ports restarted with startup_status=spawned and
+link_state=bound.
+
+Validation:
+
+- tools/scripts/udp-configured-packet-smoke.sh: PASS
+- cargo test -p reticulumd --test udp_loopback_smoke_contract -- --nocapture:
+  PASS (3 tests)
+- cargo fmt --all -- --check: PASS
+- cargo clippy -p reticulumd --bin reticulumd --all-targets --no-deps --
+  -D warnings: PASS
+- tools/scripts/check-module-size.sh: PASS
+- git diff --check: PASS
