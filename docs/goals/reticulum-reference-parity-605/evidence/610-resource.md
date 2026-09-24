@@ -440,6 +440,15 @@ is removed, transmitted-byte accounting is retained, and the peer is marked
 inactive with the expected backoff. Other failure and consumer paths remain
 outside this focused regression.
 
+The daemon's inbound Resource event consumer previously discarded every
+`Progress` event even though `ResourceManager` emitted received/total byte and
+part counts. It now writes those counts at debug level with the Resource hash
+and Link ID. `inbound_resource_progress_status_preserves_bytes_and_parts`
+checks that the consumer's status representation retains all four counters
+and both correlation identifiers. This makes intermediate receive progress
+observable to daemon operators when debug logging is enabled; it does not
+complete the broader callback/status/cleanup acceptance matrix.
+
 ```text
 cargo test -p reticulumd --bin reticulumd \
   outbound_resource_completion_event_records_receipt_and_peer_bytes
@@ -447,6 +456,9 @@ cargo test -p reticulumd --bin reticulumd \
 cargo test -p reticulumd --bin reticulumd \
   outbound_resource_failure_event_marks_tracking_failed
 # 1 passed; 466 filtered out
+cargo test -p reticulumd --bin reticulumd \
+  inbound_resource_progress_status_preserves_bytes_and_parts
+# 1 passed; progress counters and event correlation fields preserved
 ```
 
 ## Python RCL/ICL terminal-event distinction

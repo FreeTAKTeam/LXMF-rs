@@ -63,8 +63,10 @@ documented broader gates. A daemon Resource-completion regression now checks
 receipt metadata, peer byte accounting, exactly-once emission, and tracking
 cleanup, including suppression of a repeated completion notification. The
 timeout-failure receipt path now has the same exactly-once metadata and cleanup
-coverage, including peer backoff status; other consumer callback/status paths
-remain open. Focused `lxmf-runtime` tests also
+coverage, including peer backoff status. The daemon now logs inbound Resource
+progress counters with hash/Link context instead of discarding the progress
+event; its focused status-format regression passes. Other consumer
+callback/status paths remain open. Focused `lxmf-runtime` tests also
 confirm `OutboundFailed` and `OutboundCancelled` become distinct SDK transport
 errors and cleanup is attempted, without claiming the remaining consumer
 matrix. The 2026-09-23 #610 increment aligns Python Resource cancellation
