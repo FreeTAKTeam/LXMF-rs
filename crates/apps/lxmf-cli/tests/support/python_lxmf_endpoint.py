@@ -424,6 +424,11 @@ class EndpointState:
             f"(path_found={path_found}, identity_found={identity_found})"
         )
 
+    def request_path(self, destination_hex: str) -> dict:
+        destination_hash = bytes.fromhex(destination_hex)
+        RNS.Transport.request_path(destination_hash)
+        return {"requested": True, "destination": destination_hex}
+
     def open_raw_link(self, destination_hex: str, timeout: float = 60.0) -> dict:
         destination_hash = bytes.fromhex(destination_hex)
         path_deadline = time.time() + timeout
@@ -579,6 +584,8 @@ class ControlHandler(socketserver.StreamRequestHandler):
                     params["destination"],
                     float(params.get("timeout", 60.0)),
                 )
+            elif method == "request_path":
+                result = self.server.state.request_path(params["destination"])
             elif method == "open_raw_link":
                 result = self.server.state.open_raw_link(
                     params["destination"],

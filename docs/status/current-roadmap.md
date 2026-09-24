@@ -37,7 +37,11 @@ verifies Rust receives the initiator close reason. This does not cover physical
 carriers or public-network recovery. A focused shared-instance regression also
 proves that an announce for a locally hosted destination is neither learned as
 a remote route nor fanned out to sibling clients; the broader #609 matrix
-remains open. A production inbound regression now proves the same locally
+remains open. Mixed Python/Rust recovery evidence now covers two Rust relays in
+series: after the upstream relay restarts with an empty route table, both
+Python endpoints rediscover paths and exchange fresh LXMF messages in both
+directions. This closes that combined recovery scenario only; #609's broader
+matrix remains open. A production inbound regression now proves the same locally
 hosted announce behavior with transport disabled and a virtual shared child,
 matching pinned RNS 1.5.4 without a production correction. Separate
 transport-disabled and transport-enabled shared-daemon
