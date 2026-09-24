@@ -136,6 +136,7 @@ impl ReticulumGitNode {
         map: &[(rmpv::Value, rmpv::Value)],
         remote: [u8; 16],
         link_id: [u8; 16],
+        cancelled: &mut dyn FnMut() -> bool,
     ) -> Option<PageResponse> {
         if map_value(map, &rmpv::Value::String("key".into())).is_none() {
             return Some(page_denial_response());
@@ -198,13 +199,14 @@ impl ReticulumGitNode {
                     "blob".to_string(),
                     format!("{resolved}:{file_path}"),
                 ];
-                let converted = convert_to_webp(
+                let converted = convert_to_webp_with_cancel(
                     &input,
                     &output_path,
                     Some(&repository_path),
                     Some(Duration::from_secs(8)),
                     Some(self.media_quality),
                     self.media_max_dimension,
+                    cancelled,
                 );
                 if converted {
                     if let Some(converted_data) = read_bounded_file(&output_path, MEDIA_BLOB_LIMIT) {

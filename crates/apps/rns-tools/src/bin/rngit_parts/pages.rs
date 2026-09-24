@@ -305,9 +305,20 @@ impl ReticulumGitNode {
         remote_identity: [u8; 16],
         link_id: [u8; 16],
     ) -> Option<PageResponse> {
+        self.handle_page_request_with_cancel(path, data, remote_identity, link_id, &mut || false)
+    }
+
+    pub(crate) fn handle_page_request_with_cancel(
+        &mut self,
+        path: &str,
+        data: &rmpv::Value,
+        remote_identity: [u8; 16],
+        link_id: [u8; 16],
+        cancelled: &mut dyn FnMut() -> bool,
+    ) -> Option<PageResponse> {
         let map = request_map(data);
         if path == PAGE_MEDIA {
-            return self.serve_media(map, remote_identity, link_id);
+            return self.serve_media(map, remote_identity, link_id, cancelled);
         }
         if path == FILE_ARTIFACT {
             return self.serve_artifact(map, remote_identity);

@@ -237,13 +237,14 @@ fn wait_encoder(
     status.success()
 }
 
-fn wait_pipeline(
+fn wait_pipeline_with_cancel(
     backend_name: &str,
     input: &mut MediaChild,
     encoder: &mut MediaChild,
     input_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
     encoder_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
     timeout: Duration,
+    mut cancelled: impl FnMut() -> bool,
 ) -> bool {
     wait_pipeline_with_status(
         backend_name,
@@ -252,7 +253,13 @@ fn wait_pipeline(
         input_stderr,
         encoder_stderr,
         timeout,
-        MediaChild::try_wait,
+        |child| {
+            if cancelled() {
+                Err(io::Error::new(io::ErrorKind::Interrupted, "media conversion cancelled"))
+            } else {
+                child.try_wait()
+            }
+        },
     )
 }
 
@@ -339,13 +346,14 @@ fn spawn_command(argv: &[String], cwd: Option<&Path>) -> io::Result<MediaChild> 
     command.spawn()
 }
 
-pub(crate) fn convert_to_webp(
+pub(crate) fn convert_to_webp_with_cancel(
     input_argv: &[String],
     output_path: &Path,
     cwd: Option<&Path>,
     timeout: Option<Duration>,
     quality: Option<u8>,
     max_dimension: Option<u32>,
+    cancelled: impl FnMut() -> bool,
 ) -> bool {
     let Some(backend) = selected_backend() else { return false };
     let encoder_argv = configured_argv(backend, quality, max_dimension);
@@ -400,13 +408,14 @@ pub(crate) fn convert_to_webp(
         let _ = join_stderr(input_stderr);
         return false;
     };
-    let ok = wait_pipeline(
+    let ok = wait_pipeline_with_cancel(
         backend.name,
         &mut input,
         &mut encoder,
         input_stderr,
         encoder_stderr,
         timeout.unwrap_or(MEDIA_CONVERSION_TIMEOUT),
+        cancelled,
     );
     if !ok || !valid_webp(output_path) {
         let _ = fs::remove_file(output_path);

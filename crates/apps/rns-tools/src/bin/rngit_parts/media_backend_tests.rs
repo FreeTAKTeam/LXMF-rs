@@ -1,9 +1,9 @@
 use super::{
-    configured_argv, read_bounded_file, read_stderr_tail, select_backend, wait_pipeline,
-    wait_pipeline_with_status, webp_info, BACKENDS,
+    configured_argv, read_bounded_file, read_stderr_tail, select_backend,
+    wait_pipeline_with_cancel, wait_pipeline_with_status, webp_info, BACKENDS,
 };
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // Expected selections and argv mirror RNS/Utilities/rngit/media.py at
 // Reticulum 99de23c040d507e3fefca19e87b182302902725d.
@@ -230,13 +230,14 @@ fn webp_pipeline_timeout_terminates_and_reaps_both_processes() {
         .expect("start test encoder");
     let encoder_stderr = encoder.stderr.take().expect("encoder stderr");
 
-    let completed = wait_pipeline(
+    let completed = wait_pipeline_with_cancel(
         "test-backend",
         &mut input,
         &mut encoder,
         read_stderr_tail(input_stderr),
         read_stderr_tail(encoder_stderr),
         Duration::from_millis(50),
+        || false,
     );
 
     assert!(!completed, "a timed-out conversion pipeline must fail");
@@ -294,4 +295,46 @@ fn webp_pipeline_status_error_terminates_and_reaps_both_processes() {
         assert!(input.try_wait().expect("reap blob reader").is_some());
         assert!(encoder.try_wait().expect("reap encoder").is_some());
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn webp_pipeline_disconnect_cancellation_terminates_and_reaps_children() {
+    let mut input = Command::new("/bin/sh")
+        .args(["-c", "exec sleep 30"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("start test blob reader");
+    let input_stdout = input.stdout.take().expect("blob reader stdout");
+    let input_stderr = input.stderr.take().expect("blob reader stderr");
+    let mut encoder = Command::new("/bin/sh")
+        .args(["-c", "exec sleep 30"])
+        .stdin(input_stdout)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("start test encoder");
+    let encoder_stderr = encoder.stderr.take().expect("encoder stderr");
+    let started = Instant::now();
+    let mut cancellation_checks = 0;
+
+    let completed = wait_pipeline_with_cancel(
+        "test-backend",
+        &mut input,
+        &mut encoder,
+        read_stderr_tail(input_stderr),
+        read_stderr_tail(encoder_stderr),
+        Duration::from_secs(5),
+        || {
+            cancellation_checks += 1;
+            cancellation_checks > 2
+        },
+    );
+
+    assert!(!completed, "a disconnected Link must cancel conversion");
+    assert!(cancellation_checks >= 3, "cancellation signal was not polled");
+    assert!(started.elapsed() < Duration::from_secs(1), "cancellation waited for child timeout");
+    assert!(input.try_wait().expect("reap blob reader").is_some());
+    assert!(encoder.try_wait().expect("reap encoder").is_some());
 }

@@ -296,13 +296,19 @@ async fn process_request(
         RequestService::Pages => {
             let Some(request) = decode_page_request(&payload).ok().flatten() else { return };
             let _ = request.requested_at;
+            let Some(link) = runtime.transport.find_in_link(&link_id).await else { return };
+            let mut cancelled = || {
+                link.try_lock()
+                    .is_ok_and(|guard| !matches!(guard.status(), LinkStatus::Active))
+            };
             let page_response = {
                 let mut node = runtime.node.lock().await;
-                node.handle_page_request(
+                node.handle_page_request_with_cancel(
                     request.path,
                     &request.data,
                     remote,
                     address_array(&link_id),
+                    &mut cancelled,
                 )
             };
             page_response
