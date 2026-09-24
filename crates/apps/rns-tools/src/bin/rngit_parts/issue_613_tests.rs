@@ -1,4 +1,4 @@
-use super::{decode_page_request, page_paths};
+use super::{decode_page_request, image_markup_media_path, page_paths};
 use rns_transport::destination::link::Link;
 use std::io;
 use std::path::Path;
@@ -166,6 +166,14 @@ fn pages_accept_nomadnet_var_fields_and_render_not_found_errors() {
         )
         .expect("not-found page response");
     assert!(String::from_utf8_lossy(&response.data).contains("Not Found"));
+}
+
+#[test]
+fn image_markup_quotes_only_the_file_path_like_pinned_python() {
+    assert_eq!(
+        image_markup_media_path("group+name", "repo name", "refs/heads/topic", "assets/nested image.png"),
+        "/media/group+name/repo name/refs/heads/topic/assets%2Fnested+image.png"
+    );
 }
 
 #[test]

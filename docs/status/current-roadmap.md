@@ -126,8 +126,10 @@ directory is removed. No production mismatch was found; execution across the
 other native backend families remains unverified.
 The production-Link page/media differential also covers one nested image path
 containing a space and confirms that rendered Micron markup matches the frozen
-Python `quote_plus(file_path)` encoding. Other template and rendering behavior
-remains unverified, so #613 stays partial.
+Python `quote_plus(file_path)` encoding. A focused parity test additionally
+confirms group, repository, and ref are interpolated literally, with only the
+file path encoded as in pinned `pages.py`. Other template and rendering
+behavior remains unverified, so #613 stays partial.
 The frozen handler's key check is presence-only: a `None` value with a valid
 media path still returns the Resource and filename metadata. A production-Link
 regression now proves that response alongside absent-key denial; Rust already

@@ -27,7 +27,7 @@ Rust kept the page Link active after a failed Resource response.
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
 | NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
-| Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression now checks a nested image path containing a space against frozen `pages.py`'s `urllib.parse.quote_plus(file_path)` output; missing repository, invalid ref, missing blob are covered; visual/reference rendering remains incomplete |
+| Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression checks nested file-path encoding; unit regression confirms that only `file_path` receives `quote_plus`, while group/repository/ref remain literal as in frozen `pages.py`; missing repository, invalid ref, missing blob are covered; visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and converted-output reads (32 MiB media-response cap), output validation, temporary-directory cleanup, raw fallback | local code/tests; deterministic software differential coverage matches pinned-Python backend selection and configured argv for all five backend families; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; exact-limit/over-limit converted-file regression; pinned-Python production-Link test with an explicitly unavailable backend returns the original `image.png` name and all 8,192 raw bytes unchanged; timeout regression verifies both pipeline children are terminated and reaped; real encoder operation for `magick`, `convert`, `gm`, and `avconv`, plus visual parity, remain unverified |
@@ -83,6 +83,24 @@ TMPDIR="$PWD/target/tmp" RETICULUM_PY_REPO="$PWD/target/tmp/pinned-reticulum" \
 ```
 
 ## Commands and results
+
+### Image markup quotes only the file path
+
+Inspection of pinned `pages.py` at Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` shows the image markup is built as
+`/media/{group_name}/{repo_name}/{ref}/{quote_plus(file_path)}`: the first three
+fields are interpolated literally, and only the file path is URL-encoded. Rust
+previously encoded all four fields. The focused unit regression now verifies a
+`+` in the group, a space in the repository, a slash in the ref, and the
+reference `quote_plus` result for a nested file path. The implementation now
+preserves those first three fields and continues encoding only the file path.
+This establishes markup-construction parity for the tested characters, not
+full page rendering or successful media retrieval for unusual names.
+
+```text
+cargo test -p rns-tools --bin rngit --all-features \
+  image_markup_quotes_only_the_file_path_like_pinned_python  PASS (1 test)
+```
 
 The original bounded implementation commands below ran in the isolated
 `codex/issue-605-parity` worktree; the #613 cleanup follow-up ran in its own

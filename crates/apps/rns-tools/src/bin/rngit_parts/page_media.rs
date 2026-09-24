@@ -89,6 +89,13 @@ fn percent_encode_plus(value: &str) -> String {
     encoded
 }
 
+fn image_markup_media_path(group: &str, repository: &str, reference: &str, file_path: &str) -> String {
+    format!(
+        "/media/{group}/{repository}/{reference}/{}",
+        percent_encode_plus(file_path)
+    )
+}
+
 fn resource_metadata(name: &str) -> Option<Vec<u8>> {
     pack_value(&rmpv::Value::Map(vec![(
         rmpv::Value::String("name".into()),

@@ -332,13 +332,8 @@ impl ReticulumGitNode {
                 if extension.as_deref().is_some_and(|value| {
                     matches!(value, "webp" | "png" | "jpg" | "jpeg" | "gif" | "tiff" | "tif" | "bmp")
                 }) {
-                    let media_path = format!(
-                        "/media/{}/{}/{}/{}",
-                        percent_encode_plus(&group),
-                        percent_encode_plus(&repository),
-                        percent_encode_plus(&reference),
-                        percent_encode_plus(&file_path)
-                    );
+                    let media_path =
+                        image_markup_media_path(&group, &repository, &reference, &file_path);
                     content.push_str(&format!("`(Image file`w=n`a=c`:{media_path})\n"));
                 } else {
                     content.push_str(
