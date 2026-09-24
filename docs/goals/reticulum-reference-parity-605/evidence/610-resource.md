@@ -745,27 +745,21 @@ Resource. A file-handle response is always a metadata-bearing Resource,
 independent of its size. The Resource transfer matrix does not establish this
 Link-level selection behavior.
 
-Rust now exposes `Transport::send_response`, which applies that rule using the
-negotiated Link MDU and reports whether it sent a packet or advertised a
-Resource. The mixed-peer request/response cases exercise the production Link
-and Request paths in both directions: ordinary small responses are delivered
-as packets; oversized ordinary responses are delivered as Resources; and the
-Python file response arrives as Resource content with its exact decoded
-`python-file-meta` metadata. The oversized Python response case checks exact
-response content, UTF-8 byte length, and SHA-256 reported by the Python peer;
-Rust verifies these against the expected response. Rust's Resource response
-case verifies the selected Resource hash reaches completion and Python reports
-the exact response bytes. Existing tests cover a clearly-small and a clearly-
-oversized response; they do not probe `mdu - 1`, `mdu`, and `mdu + 1` with
-production peers, so the exact inclusive edge remains open. This closes the
-missing automatic Rust selection path but does not claim edge-boundary proof.
+Rust's `Transport::send_response` applies that rule using the negotiated Link
+MDU, returns `None` for a sent packet and the Resource hash for a selected
+Resource, and propagates packet-send and Resource-send errors. Mixed-peer
+request/response cases exercise production Links in both directions, including
+ordinary small and oversized responses and a metadata-bearing Python file
+response. The exact inclusive boundary is covered separately below with
+production peer sessions at `mdu - 1`, `mdu`, and `mdu + 1`.
 
 ```text
-RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
   request_response -- --ignored --nocapture --test-threads=1
-# 7 passed; packet and Resource response paths in both directions, including
-# Rust Resource selection and exact response size/content/SHA-256 assertions
+# 8 passed; packet and Resource response paths in both directions, including
+# the production MDU-1 / MDU / MDU+1 selection boundary
 
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
@@ -794,7 +788,8 @@ a response Resource above it. These are three one-request peer sessions; no
 multi-hop HIL job was run.
 
 ```text
-RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
   python_to_rust_request_response_matches_exact_negotiated_mdu_boundary \
   -- --ignored --nocapture --test-threads=1

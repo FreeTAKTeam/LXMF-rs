@@ -451,10 +451,11 @@ Scoped release evidence is split as follows:
   packet at or below negotiated MDU and a response Resource above it; a
   metadata-bearing file response always uses Resource. Production mixed-peer
   tests cover clearly-small, oversized, and metadata-bearing responses in both
-  directions with exact response content and digest checks. The exact
-  `mdu - 1` / `mdu` / `mdu + 1` wire boundary remains unverified. Note the
-  request-id asymmetry — a packet-borne request has no id field, so the
-  responder derives one from the packet hash.
+  directions with exact response content and digest checks. A production
+  mixed-peer differential also verifies packet selection at `mdu - 1` and
+  `mdu`, and Resource selection at `mdu + 1`, against the peer's negotiated
+  MDU. Note the request-id asymmetry — a packet-borne request has no id field,
+  so the responder derives one from the packet hash.
 - Cached remote path responses now keep the cached announce payload while
   stamping the direct response packet as `PATH_RESPONSE`, aligning another
   Python announce/path discovery edge policy.
