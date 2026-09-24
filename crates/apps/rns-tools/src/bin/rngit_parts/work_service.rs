@@ -195,7 +195,7 @@ impl ReticulumGitNode {
                     &repository,
                     id,
                     Self::PERM_READ,
-                );
+                ) || self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN);
                 let can_write = self.resolve_doc_permission(
                     &remote,
                     &group,

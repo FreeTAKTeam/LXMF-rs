@@ -104,6 +104,18 @@ jobs:
           cargo test -p rns-tools --bin rngit \
             tests::repository_admin_can_view_document_denied_by_its_sidecar_like_pinned_python \
             -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_comment_uses_pinned_python_document_read_gate \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_edit_uses_pinned_python_document_read_gate \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_delete_uses_pinned_python_document_read_gate \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_permissions_get_uses_pinned_python_document_read_gate \
+            -- --ignored --exact --nocapture
 
       - name: Run pinned Python rngit concurrency, CLI, and malformed-request interoperability
         env:

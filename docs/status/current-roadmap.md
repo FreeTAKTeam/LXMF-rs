@@ -111,6 +111,16 @@ present. Rust now applies the same administrator fallback to `view`; this is
 one authorization case only, and the wider permission/work-operation matrix
 and hosted evidence remain open.
 
+A follow-up #612 pinned-Python matrix compares administrator `comment`, `edit`,
+`delete`, and `perms` requests against documents with `read:none`, while
+granting each operation's own required rights. It found one mismatch: comment
+authorization omitted the repository-admin fallback in Rust. That fallback is
+now applied without relaxing the required interaction permission. The edit,
+delete, and permission-get cases already match. For permission-get, repository
+admin is also the operation-specific permission, so it cannot be independently
+separated from the shared fallback. This four-case slice does not complete the
+broader permission or work-operation acceptance.
+
 The new bidirectional MessagePack work-record regression verifies exact binary
 author/identity/signature values and integer document IDs/timestamps across
 Python↔Rust storage and production Link response boundaries. It also corrected
