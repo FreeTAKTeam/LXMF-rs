@@ -749,6 +749,25 @@ This verifies reporting for the missing-credential IFAC configuration case. It
 does not complete other parse/startup reporting, carrier-family,
 physical-device, or broader #608 acceptance.
 
+## Rejected live IFAC update remains fail-closed on the restarted UDP daemon
+
+The Python/Rust UDP reconfiguration E2E now attempts an invalid live
+`set_interfaces` update after the Rust daemon has restarted with its valid
+rotated IFAC credentials, while a separate Python UDP peer continuously sends
+plaintext announces. The update must return the typed IFAC configuration RPC
+error; the daemon's IFAC-violation counter must increase, and `path_status` for
+the plaintext peer's destination must remain unknown. This ties rejection,
+continued authentication, and externally visible routing state to the same
+running daemon/carrier session rather than inferring rollback from helper
+results. It supplements the earlier authenticated-peer continuity case and
+does not close the remaining startup/configuration or carrier-family matrix.
+
+```text
+TMPDIR=/dev/shm cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  python_rust_lxmd_ifac_udp_credential_rotation_and_restart_e2e -- --ignored --nocapture
+# 1 passed; pinned Python plaintext announces remained rejected across failed update
+```
+
 ## IFAC-configured TCP listener bind failure reporting
 
 At pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,

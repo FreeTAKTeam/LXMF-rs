@@ -60,6 +60,8 @@ fn wait_for_python_announce_path(
 #[ignore = "requires local Python Reticulum/LXMF repos and daemon runtime"]
 fn python_rust_lxmd_ifac_udp_credential_rotation_and_restart_e2e() {
     use std::net::UdpSocket;
+    use std::sync::mpsc;
+    use std::thread;
 
     let lxmd_bin = resolve_test_binary("lxmd", option_env!("CARGO_BIN_EXE_lxmd"));
     let reticulumd_bin = resolve_test_binary("reticulumd", option_env!("CARGO_BIN_EXE_reticulumd"));
@@ -404,14 +406,103 @@ fn python_rust_lxmd_ifac_udp_credential_rotation_and_restart_e2e() {
             python_b_node.as_mut().expect("Python plaintext peer"),
             "python-ifac-plaintext-peer",
         )?;
+
         let before_plaintext_peer = daemon_status(rust_rpc_port)?;
         let plaintext_baseline = transport_ifac_violations(&before_plaintext_peer)
             .ok_or_else(|| format!("missing IFAC violation counter before plaintext peer: {before_plaintext_peer}"))?;
-        python_control_call(python_plain_control_port, "announce", None)?;
+        // A rejected live update must leave the restarted carrier authenticated;
+        // probe that exact state with a real plaintext Python UDP peer.
+        let (probe_started_tx, probe_started_rx) = mpsc::channel();
+        let (stop_probe_tx, stop_probe_rx) = mpsc::channel();
+        let plaintext_probe = thread::spawn(move || -> Result<usize, String> {
+            let mut announces = 0;
+            probe_started_tx
+                .send(())
+                .map_err(|err| format!("signal plaintext probe start: {err}"))?;
+            while stop_probe_rx.try_recv().is_err() {
+                python_control_call(python_plain_control_port, "announce", None)?;
+                announces += 1;
+            }
+            Ok(announces)
+        });
+        probe_started_rx
+            .recv()
+            .map_err(|err| format!("wait for plaintext probe start: {err}"))?;
+        let failed_live_reconfiguration = rpc_call(
+            rust_rpc_port,
+            "set_interfaces",
+            Some(json!({
+                "interfaces": [{
+                    "type": "udp",
+                    "enabled": true,
+                    "host": "127.0.0.1",
+                    "port": rust_udp_port,
+                    "name": "ifac-udp",
+                    "settings": {
+                        "target_host": "127.0.0.1",
+                        "target_port": python_b_udp_port,
+                        "ifac_size": IFAC_SIZE_BITS
+                    }
+                }]
+            })),
+        );
+        thread::sleep(Duration::from_millis(100));
+        stop_probe_tx
+            .send(())
+            .map_err(|err| format!("stop plaintext probe: {err}"))?;
+        let plaintext_announces = plaintext_probe
+            .join()
+            .map_err(|_| "plaintext probe thread panicked".to_string())??;
+        if plaintext_announces == 0 {
+            return Err("plaintext probe sent no announces during the live update".to_string());
+        }
         wait_for_ifac_violations_at_least(
             rust_rpc_port,
             plaintext_baseline.saturating_add(1),
         )?;
+        match failed_live_reconfiguration {
+            Err(error) => {
+                let rpc_error: Value = serde_json::from_str(&error)
+                    .map_err(|_| "failed live IFAC update returned a malformed RPC error".to_string())?;
+                let fields = rpc_error.as_array().ok_or_else(|| {
+                    "failed live IFAC update returned an unexpected RPC error shape".to_string()
+                })?;
+                if fields.first().and_then(Value::as_str) != Some("CONFIG_INVALID_IFAC")
+                    || fields.get(1).and_then(Value::as_str)
+                        != Some("IFAC interface configuration was rejected")
+                    || fields.get(2).and_then(Value::as_str)
+                        != Some("INVALID_IFAC_CONFIGURATION")
+                {
+                    return Err(format!(
+                        "failed live IFAC update returned unexpected RPC error fields: {rpc_error}"
+                    ));
+                }
+            }
+            Ok(response) => {
+                return Err(format!(
+                    "incomplete live IFAC configuration was not rejected: {response}"
+                ));
+            }
+        }
+
+        let plaintext_destination = python_control_call(python_plain_control_port, "status", None)?
+            .get("delivery_destination_hash")
+            .and_then(Value::as_str)
+            .filter(|hash| !hash.is_empty())
+            .map(str::to_owned)
+            .ok_or_else(|| "missing plaintext Python destination hash".to_string())?;
+        let plaintext_path = rpc_call(
+            rust_rpc_port,
+            "path_status",
+            Some(json!({ "destination": plaintext_destination })),
+        )?;
+        if plaintext_path["known"].as_bool() == Some(true)
+            || plaintext_path["path_found"].as_bool() == Some(true)
+        {
+            return Err(format!(
+                "plaintext announce learned a route after rejected IFAC reconfiguration: {plaintext_path}"
+            ));
+        }
         Ok(())
     })();
 
