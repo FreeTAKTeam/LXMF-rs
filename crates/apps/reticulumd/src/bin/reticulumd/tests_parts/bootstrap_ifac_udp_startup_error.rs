@@ -74,6 +74,55 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_strict_startup_rejects_bind_failure_for_ifac_enabled_udp_interface() {
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    runtime.block_on(async {
+        let occupied = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("reserve UDP port");
+        let port = occupied.local_addr().expect("reserved UDP address").port();
+        let temp = TempDir::new().expect("temp dir");
+        let db_path = temp.path().join("reticulum.db");
+        let config_path = temp.path().join("daemon.toml");
+        fs::write(
+            &config_path,
+            format!(
+                r#"
+interfaces = [
+  {{ type = "udp", enabled = true, name = "ifac-strict-startup", host = "127.0.0.1", port = {port}, target_host = "127.0.0.1", target_port = 4242, ifac_size = 128, network_name = "startup-test", passphrase = "strict-startup-secret" }}
+]
+"#
+            ),
+        )
+        .expect("write IFAC UDP config");
+
+        let result = std::panic::AssertUnwindSafe(bootstrap::bootstrap(test_args(
+            db_path,
+            Some(config_path),
+            None,
+            true,
+        )))
+        .catch_unwind()
+        .await;
+        let panic_payload = match result {
+            Ok(_) => panic!("strict startup should reject the IFAC UDP bind failure"),
+            Err(payload) => payload,
+        };
+        let panic_message = if let Some(message) = panic_payload.downcast_ref::<String>() {
+            message.clone()
+        } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
+            (*message).to_string()
+        } else {
+            String::new()
+        };
+
+        assert!(panic_message.contains("strict interface startup policy rejected 1 interface(s)"));
+        assert!(panic_message.contains("ifac-strict-startup (udp)"));
+        assert!(!panic_message.contains("strict-startup-secret"));
+        drop(occupied);
+    });
+}
+
+#[test]
 fn bootstrap_reports_invalid_ifac_config_without_creating_interface() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

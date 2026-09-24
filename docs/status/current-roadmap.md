@@ -37,6 +37,9 @@ rotations and verifies plaintext remains rejected; it does not claim
 physical-carrier coverage. An invalid IFAC startup configuration remains
 fail-closed and now appears in `list_interfaces` as a sanitized failed startup
 diagnostic; raw config values and credentials are not included. The spawned
+IFAC-enabled UDP bind failure is also covered in both best-effort diagnostic
+mode and strict-startup rejection mode, with no passphrase disclosure; the
+broader startup/error and carrier matrices remain open. The spawned
 `PipeInterface` worker also has a Unix subprocess loopback regression for its
 8-byte IFAC default and authenticated HDLC packet admission. Other carrier
 families now include duplex-stream serial and KISS IFAC regressions for wrong-key

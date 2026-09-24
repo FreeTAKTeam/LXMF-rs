@@ -596,9 +596,19 @@ best-effort mode, and reads live `list_interfaces` status until the worker
 reports `bind_failed`. It asserts that daemon startup distinguishes interface
 creation (`startup_status=spawned`) from worker health, exposes the socket
 failure through UDP `last_error`, and does not reflect the configured
-passphrase in that error. This covers one software startup/error-reporting
-case; it does not exercise strict-startup policy, runtime configuration
-rollback, credential rotation, child inheritance, restart, or other carriers.
+passphrase in that error.
+
+The strict-startup counterpart,
+`bootstrap_strict_startup_rejects_bind_failure_for_ifac_enabled_udp_interface`,
+reserves a loopback UDP port and attempts bootstrap with strict interface
+startup enabled and the same IFAC configuration. Bootstrap panics with the
+strict-policy rejection, identifies exactly one failed
+`ifac-strict-startup (udp)` interface, and does not include the configured
+passphrase. Because bootstrap fails before returning a daemon context, the
+failed interface is not available as an active daemon interface. The original
+best-effort test remains unchanged. This adds one software-only UDP startup
+case; it does not expand the carrier matrix or complete broader #608
+acceptance.
 
 ```text
 cargo fmt --all -- --check
@@ -606,6 +616,9 @@ cargo fmt --all -- --check
 TMPDIR=/var/tmp cargo test -p reticulumd --bin reticulumd \
   bootstrap_reports_bind_failure_for_ifac_enabled_udp_interface -- --nocapture
 # 1 passed; IFAC UDP bind failure and redacted runtime error reported
+TMPDIR=/var/tmp cargo test -p reticulumd --bin reticulumd \
+  bootstrap_strict_startup_rejects_bind_failure_for_ifac_enabled_udp_interface -- --nocapture
+# 1 passed; strict bootstrap rejected the failed IFAC UDP interface without credential disclosure
 ```
 
 This narrows one startup/error-reporting gap only. The remaining lifecycle and
