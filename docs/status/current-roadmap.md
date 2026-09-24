@@ -141,6 +141,12 @@ stops the worker and reaps the restarted child. This remains Linux software
 evidence only; daemon-level, cross-platform, peer-exchange, and physical
 acceptance remain unverified.
 
+The Linux UDP production worker also has a loopback cancellation regression:
+it reaches `bound`, exits on interface cancellation, reports `closed`, and
+releases the same port for immediate reuse. This verifies one status/teardown
+slice only; UDP packet exchange, daemon startup, cross-platform behavior, and
+the broader #614/#605 interface matrix remain open.
+
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The 1.5 alignment adds bounded
