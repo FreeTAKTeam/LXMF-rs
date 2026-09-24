@@ -53,11 +53,14 @@ async fn start_daemon_resource_peer(
 ) -> DaemonResourcePeer {
     let daemon = daemon_with_sending_message(message_id);
     let daemon_identity = PrivateIdentity::new_from_rand(OsRng);
-    let transport = Arc::new(Transport::new(TransportConfig::new(
+    let mut daemon_config = TransportConfig::new(
         format!("daemon-{message_id}"),
         &daemon_identity,
         true,
-    )));
+    );
+    daemon_config.set_resource_retry_interval_secs(1);
+    daemon_config.set_resource_retry_limit(1);
+    let transport = Arc::new(Transport::new(daemon_config));
     let peer_transport = Arc::new(Transport::new(TransportConfig::new(
         format!("peer-{message_id}"),
         &PrivateIdentity::new_from_rand(OsRng),
@@ -289,4 +292,52 @@ async fn production_daemon_consumer_cleans_cancelled_resource_without_success_re
         peer.receipt_rx.try_recv(),
         Err(mpsc::error::TryRecvError::Empty)
     ));
+}
+
+#[tokio::test]
+async fn production_daemon_consumer_reports_resource_timeout_and_cleans_tracking() {
+    let message_id = "daemon-resource-timeout-consumer";
+    let mut peer = start_daemon_resource_peer(message_id, ResourcePeerMode::HoldResourceRequests)
+        .await;
+    tokio::task::yield_now().await;
+    let resource_hash = peer
+        .transport
+        .send_resource(&peer.link_id, vec![0xC3; 128], None)
+        .await
+        .expect("send Resource over active daemon Link");
+    let resource_hash_hex = hex::encode(resource_hash.as_slice());
+    track_message_resource(&peer, message_id, resource_hash);
+
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if peer.resource_request_rx.try_recv().is_ok() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("peer receives and holds the Resource request");
+
+    let receipt = timeout(Duration::from_secs(8), peer.receipt_rx.recv())
+        .await
+        .expect("daemon emits terminal timeout receipt")
+        .expect("receipt channel remains open");
+    assert_eq!(receipt.message_id, message_id);
+    assert_eq!(receipt.status, "failed: resource transfer timed out");
+    assert_eq!(receipt.delivery_kind.as_deref(), Some("resource-failed"));
+    assert_eq!(receipt.resource_hash.as_deref(), Some(resource_hash_hex.as_str()));
+    assert!(peer.resource_map.lock().expect("resource map").is_empty());
+
+    persist_receipt_update(
+        peer.daemon.as_ref(),
+        receipt,
+        &Arc::new(Mutex::new(HashMap::new())),
+        &peer.resource_map,
+    )
+    .expect("persist Resource timeout status");
+    assert_eq!(
+        peer.daemon.message_receipt_status(message_id).expect("receipt status"),
+        Some("failed: resource transfer timed out".to_string())
+    );
 }

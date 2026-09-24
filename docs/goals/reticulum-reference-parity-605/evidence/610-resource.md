@@ -937,7 +937,7 @@ private terminal-event handlers directly.
   `OutboundCancelled` event. The daemon consumer clears tracking, leaves the
   status `cancelled`, and emits no success receipt.
 
-Validation on the candidate worktree: `reticulumd` binary tests 472/472,
+Validation on the candidate worktree: `reticulumd` binary tests 474/474,
 `reticulum-rs-transport` library tests 834/834, strict Clippy for both packages,
 formatting, module-size, and diff checks passed. The boundary script could not
 evaluate its allowlists: the unchanged `load_allowlisted_edges` jq call refers
@@ -947,6 +947,28 @@ No dependency manifests changed in this slice.
 This adds production-daemon consumer evidence for outbound rejection and local
 cancellation only. It does not establish the full callback/status/cleanup
 matrix or complete issue #610.
+
+## Outbound timeout through the production daemon consumer
+
+`production_daemon_consumer_reports_resource_timeout_and_cleans_tracking` uses
+the same production daemon worker and active in-memory Link, with a one-second
+Resource retry interval and one-retry budget. The peer receives and holds the
+Resource request without returning fragments, deterministically driving the
+sender to its timeout event. The consumer emits a `resource-failed` receipt
+with the exact message ID and resource hash, clears the tracking entry, and
+persists `failed: resource transfer timed out`; no completion is reported.
+This closes the prior test-layer gap between the direct timeout-handler unit
+test and the live daemon event consumer. No production mismatch was observed;
+broader terminal-event and reconnect coverage remains open.
+
+Focused validation:
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  production_daemon_consumer_reports_resource_timeout_and_cleans_tracking \
+  -- --nocapture
+# 1 passed
+```
 
 ## Deterministic partial inbound failure through the daemon consumer
 
