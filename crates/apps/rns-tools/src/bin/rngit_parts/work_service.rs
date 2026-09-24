@@ -174,7 +174,8 @@ impl ReticulumGitNode {
                     &repository,
                     id,
                     Self::PERM_READ,
-                ) {
+                ) && !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN)
+                {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
                 self.work_view(&root, request)

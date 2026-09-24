@@ -104,6 +104,13 @@ without `doc_id`: pinned Python and Rust both return `INVALID_REQ` with
 this operation-specific request error; the remaining work-operation matrix
 and hosted evidence are still open.
 
+A pinned-Python production-handler differential found and fixes one #612
+permission case: repository administrators can view a document with an
+explicit `read:none` document sidecar when repository-level read access is
+present. Rust now applies the same administrator fallback to `view`; this is
+one authorization case only, and the wider permission/work-operation matrix
+and hosted evidence remain open.
+
 The new bidirectional MessagePack work-record regression verifies exact binary
 author/identity/signature values and integer document IDs/timestamps across
 Python↔Rust storage and production Link response boundaries. It also corrected
