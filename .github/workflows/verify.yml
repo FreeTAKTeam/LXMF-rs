@@ -203,6 +203,15 @@ jobs:
             work_list_completed_scope_matches_pinned_python_and_is_read_only \
             -- --ignored --nocapture --test-threads=1
 
+      - name: Run pinned Python rngit work-view numeric-ID differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            work_view_float_document_id_matches_pinned_python_integer_coercion \
+            -- --ignored --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report

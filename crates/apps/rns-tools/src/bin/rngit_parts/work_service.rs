@@ -1,14 +1,19 @@
 impl ReticulumGitNode {
+    fn work_request_document_id(request: &[(rmpv::Value, rmpv::Value)]) -> Option<u64> {
+        map_value(request, &rmpv::Value::String("doc_id".into())).and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_str()?.parse::<u64>().ok())
+                .or_else(|| {
+                    let numeric = value.as_f64()?;
+                    (numeric.is_finite() && numeric >= 0.0 && numeric < u64::MAX as f64)
+                        .then_some(numeric as u64)
+                })
+        })
+    }
+
     fn valid_work_document_request(request: &[(rmpv::Value, rmpv::Value)]) -> bool {
-        let Some(doc_id) = map_value(request, &rmpv::Value::String("doc_id".into())) else {
-            return false;
-        };
-        if doc_id.as_u64().is_none()
-            && doc_id
-                .as_str()
-                .and_then(|value| value.parse::<u64>().ok())
-                .is_none()
-        {
+        if Self::work_request_document_id(request).is_none() {
             return false;
         }
         let Some(scope) = map_value(request, &rmpv::Value::String("scope".into())) else {
@@ -141,8 +146,7 @@ impl ReticulumGitNode {
         let root = Self::work_root(record);
 
         if matches!(operation.as_str(), "view" | "comment" | "edit" | "delete" | "perms") {
-            let document_id = map_value(request, &rmpv::Value::String("doc_id".into()))
-                .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()));
+            let document_id = Self::work_request_document_id(request);
             if let Some(id) = document_id {
                 if !self.resolve_doc_permission(&remote, &group, &repository, id, Self::PERM_READ)
                     && !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN)

@@ -141,8 +141,7 @@ impl ReticulumGitNode {
         root: &Path,
         request: &[(rmpv::Value, rmpv::Value)],
     ) -> Option<(String, u64, PathBuf, rmpv::Value)> {
-        let id = map_value(request, &rmpv::Value::String("doc_id".into()))
-            .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()))?;
+        let id = Self::work_request_document_id(request)?;
         let requested_scope = map_string(request, &rmpv::Value::String("scope".into()));
         let scopes: Vec<&str> = match requested_scope.as_deref() {
             None | Some("all") => vec!["active", "completed", "proposed"],
@@ -161,8 +160,7 @@ impl ReticulumGitNode {
         root: &Path,
         request: &[(rmpv::Value, rmpv::Value)],
     ) -> Option<(String, u64, PathBuf, rmpv::Value)> {
-        let id = map_value(request, &rmpv::Value::String("doc_id".into()))
-            .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()))?;
+        let id = Self::work_request_document_id(request)?;
         ["active", "completed", "proposed"]
             .into_iter()
             .find_map(|scope| {
@@ -197,8 +195,7 @@ impl ReticulumGitNode {
         root: &Path,
         request: &[(rmpv::Value, rmpv::Value)],
     ) -> Option<(String, u64, PathBuf)> {
-        let id = map_value(request, &rmpv::Value::String("doc_id".into()))
-            .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()))?;
+        let id = Self::work_request_document_id(request)?;
         let requested_scope = map_string(request, &rmpv::Value::String("scope".into()));
         if !matches!(
             requested_scope.as_deref(),
