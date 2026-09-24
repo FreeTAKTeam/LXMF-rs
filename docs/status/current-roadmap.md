@@ -75,6 +75,12 @@ The #631 `rncp` startup check now preserves frozen Python's status 3 and
 `Output directory not found` diagnostic for a missing `--save` directory.
 This is one bounded process failure case; the utility row remains partial.
 
+The #611 `rngit fetch` increment adds one production Rust CLI-to-pinned-Python
+Git workflow: the CLI discovers a listed ref, receives and verifies a real Git
+bundle, and imports it into a local destination ref. A separate-process test
+checks the exact commit and binary blob bytes. Rust CLI push and the broader
+Git remote-helper and utility matrices remain open.
+
 The #631 `rnprobe` follow-up compares `--probes not-an-integer` across the Rust
 and frozen Python processes. Both return exit status 2 with their corresponding
 invalid-integer diagnostics, and Verify runs the focused ignored test against

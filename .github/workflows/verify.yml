@@ -97,6 +97,15 @@ jobs:
           cargo test -p rns-tools --test rngit_concurrent_python_interop
           -- --ignored --nocapture
 
+      - name: Verify Rust rngit fetch CLI against pinned Python
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --test rngit_cli_python_fetch
+          rngit_cli_fetches_python_bundle_into_local_git_ref
+          -- --ignored --exact --nocapture --test-threads=1
+
       - name: Record pinned revisions
         run: |
           git -C reticulum-conformance rev-parse HEAD

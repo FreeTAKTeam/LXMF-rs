@@ -167,7 +167,7 @@ option family; it is not a callable-surface completion claim.
 | `rnpkg` | Package-manager configuration and package workflow entry point | Rust exposes global/example-config options only, matching the currently shipped no-subcommand surface | partial / configuration-only |
 | `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; PTY, controlling terminal, initial dimensions and resize; timeout and mirrored exit status | `f24e0038` adds the native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family. `a32b6d71` adds channel backpressure, bounded queue failure, and large-output coverage. `e57afb99` and `662dcdbe` cover both pinned-Python roles and immediate non-TTY EOF. The listener-side PTY slice now spawns terminal requests with a controlling PTY, applies initial rows/columns/pixel dimensions, forwards `WindowSize` updates, and ties child and I/O tasks to Link cancellation; local PTY child-observation and loopback Rust-client-under-PTY resize tests cover the behavior. All-pipe requests retain pipe-backed stdio. | partial / bounded native, both pinned-Python roles, and end-to-end PTY resize evidenced; broader rnsh matrix remains open |
 | `rnx` | Authenticated Reticulum remote execution, listener/initiator, interactive and stream options, identity and timeout controls | Rust `rnx` is a production interop/diagnostic harness with mesh, resource, BLE, TCP, and path scenarios; its scenarios are not a drop-in `rnsh` endpoint | partial / harness workflows evidenced, reference remote shell remains open |
-| `rngit` | Reticulum Git client/server, repository and work operations, bundles, pages/media, permissions, signatures, and network failure/restart behavior | Rust local CLI plus daemon-side service handlers; #612/#613 records pinned-Python request/bundle/page/media seams and the reciprocal native Rust-client `/git/list`/`/git/fetch`/`/git/push`/signed `/mgmt/work` plus bounded release request trace, with exact fetched-bundle and pushed-ref verification | partial / split across #611–#613 |
+| `rngit` | Reticulum Git client/server, repository and work operations, bundles, pages/media, permissions, signatures, and network failure/restart behavior | Rust local CLI plus daemon-side service handlers; #611 adds a production Rust `rngit fetch` CLI workflow against the pinned Python service, importing a verified bundle into a local ref and checking the exact binary Git blob; #612/#613 separately record service, work, and page/media seams | partial / split across #611–#613 |
 
 The matrix prevents parser-only or local-only commands from being promoted as
 reference-equivalent network utilities. Hardware-facing `rnodeconf` rows and
@@ -756,6 +756,35 @@ callback returns. These observations separate Resource transport completion
 from local save success and leave the reference's unresolved client state
 visible.
 
+## Rust `rngit fetch` CLI against the pinned Python service
+
+The ignored `rngit_cli_python_fetch::rngit_cli_fetches_python_bundle_into_local_git_ref`
+process regression starts the frozen Python `ReticulumGitNode` service and the
+production Rust `rngit` CLI as separate processes, with independent Reticulum
+configuration, service storage, source Git repository, and destination Git
+repository under one temporary root. The Rust CLI requests the Python
+service's `refs/heads/main` bundle, verifies it with `git bundle verify`, and
+imports it using `git fetch` into `refs/remotes/rns/main`. The test compares
+the fetched ref's commit ID with the source and reads a binary blob from the
+fetched commit with `git cat-file`, asserting exact bytes including NUL and
+non-UTF-8 values. It was run against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` and passed; Verify runs this focused
+test against its pinned checkout. This closes one
+production Rust CLI fetch path only; Rust CLI push, the complete Git remote
+helper workflow, initial-branch variation, and the broader #611 utility matrix
+remain open.
+
+Validation against a checkout at the pinned revision:
+
+```text
+TMPDIR=/dev/shm RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
+  --test rngit_cli_python_fetch \
+  rngit_cli_fetches_python_bundle_into_local_git_ref \
+  -- --ignored --exact --nocapture --test-threads=1
+PASS: 1 passed
+```
+
 ## Unresolved requirements
 
 The following #611 acceptance items remain open and are deliberately not
@@ -773,8 +802,10 @@ classified as complete:
   pipe/PTY combinations, the remaining `rnsh` fault/restart matrix,
   public/multi-hop behavior, or network workflows to `rnsd` and the
   radio/interactive utilities remain open.
-- Prove real `rngit` fetch/push/bundle workflows and configured initial-branch
-  behavior under #601; bounded pinned-Python `/git/list`, `/git/fetch`,
+- Prove the full `rngit` fetch/push/bundle workflows and configured initial-branch
+  behavior under #601. The new separate-process Rust CLI test proves one
+  pinned-Python `/git/list` + `/git/fetch` bundle import into a local Git ref;
+  bounded pinned-Python `/git/list`, `/git/fetch`,
   `/git/push`, `/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and
   `/git/mirror` requests now prove the `git.repositories`
   listing/bundle/mutation/clone seam, while the remaining Git/work network
