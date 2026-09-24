@@ -7,6 +7,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[path = "support/slow_tcp_proxy.rs"]
 mod slow_tcp_proxy;
 
 use slow_tcp_proxy::{SlowTcpProxy, SLOW_PATH_FIRST_RESPONSE_DELAY};
