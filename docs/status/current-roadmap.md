@@ -37,7 +37,10 @@ verifies Rust receives the initiator close reason. This does not cover physical
 carriers or public-network recovery. A focused shared-instance regression also
 proves that an announce for a locally hosted destination is neither learned as
 a remote route nor fanned out to sibling clients; the broader #609 matrix
-remains open. Separate transport-disabled and transport-enabled shared-daemon
+remains open. A production inbound regression now proves the same locally
+hosted announce behavior with transport disabled and a virtual shared child,
+matching pinned RNS 1.5.4 without a production correction. Separate
+transport-disabled and transport-enabled shared-daemon
 regressions deliver a locally hosted LinkRequest from one virtual child and
 emit exactly one LinkRequestProof back to that child, with no sibling/transit
 packet. These cover both forwarding-policy settings for this single local-

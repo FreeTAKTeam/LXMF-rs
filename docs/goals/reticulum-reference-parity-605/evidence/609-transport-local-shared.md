@@ -639,3 +639,31 @@ cargo test -p reticulum-rs-transport --lib \
 Both transport-mode regressions were rerun at PR #629 head
 `8bff93caa992cf3694e4b3a8f1dd4597651d5754`; each passed (1 test, 0 failed).
 The broader #609 acceptance row remains open.
+
+## Transport-disabled locally hosted announce from a shared child
+
+`disabled_shared_daemon_does_not_transit_announce_for_local_destination`
+drives a valid announce for a destination hosted on the shared daemon through
+the production inbound admission and packet processing path. The ingress is a
+virtual local client and a sibling is attached; transport forwarding is
+disabled. The announce is accepted for handling but creates neither a remote
+path nor a queued/cached retransmission, and the parent emits no packet to the
+sibling.
+
+The frozen Python reference at Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` takes the matching local-destination
+branch in `RNS/Transport.py`: announce path learning and retransmission are
+inside `if local_destination == None and announce_valid`, so a valid announce
+for a hosted destination is not treated as transit traffic. Rust matches this
+behavior without a production change.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  disabled_shared_daemon_does_not_transit_announce_for_local_destination -- --nocapture
+# 1 passed; 0 failed
+```
+
+This proves the transport-disabled shared-child announce cell for a locally
+hosted destination. Combined with the existing enabled announce and enabled /
+disabled LinkRequest cells, it adds one point to the local-delivery matrix;
+other packet classes and the remaining #609 acceptance gates remain open.
