@@ -1,12 +1,12 @@
 #[test]
 #[ignore = "requires the pinned Python Reticulum reference"]
-fn work_view_float_document_id_matches_pinned_python_integer_coercion() {
+fn work_view_float_document_ids_match_pinned_python_integer_coercion() {
     use std::path::PathBuf;
     use std::process::Command;
 
     const PYTHON_REFERENCE_REVISION: &str = "99de23c040d507e3fefca19e87b182302902725d";
     const REMOTE: [u8; 16] = [0x42; 16];
-    const DOCUMENT_ID: u64 = 7;
+    const DOCUMENT_IDS: [u64; 2] = [0, 7];
     let reference = PathBuf::from(
         std::env::var_os("RETICULUM_PY_REPO")
             .expect("RETICULUM_PY_REPO must point to the pinned Python checkout"),
@@ -46,10 +46,11 @@ fn work_view_float_document_id_matches_pinned_python_integer_coercion() {
         .permissions;
     repository_permissions.read.add(PermissionTarget::All);
     repository_permissions.admin.add(PermissionTarget::All);
-    let rust_document = rust_group.join("repo.work/active").join(DOCUMENT_ID.to_string());
-    fs::create_dir_all(&rust_document).expect("Rust work directory");
-    let rust_value = rmpv::Value::Map(vec![
-            (rmpv::Value::from("content"), rmpv::Value::from("float IDs truncate")),
+    for document_id in DOCUMENT_IDS {
+        let rust_document = rust_group.join("repo.work/active").join(document_id.to_string());
+        fs::create_dir_all(&rust_document).expect("Rust work directory");
+        let rust_value = rmpv::Value::Map(vec![
+            (rmpv::Value::from("content"), rmpv::Value::from(format!("document {document_id}"))),
             (
                 rmpv::Value::from("meta"),
                 rmpv::Value::Map(vec![
@@ -59,9 +60,10 @@ fn work_view_float_document_id_matches_pinned_python_integer_coercion() {
                 ]),
             ),
         ]);
-    let mut rust_bytes = Vec::new();
-    rmpv::encode::write_value(&mut rust_bytes, &rust_value).expect("encode Rust fixture");
-    fs::write(rust_document.join("root"), rust_bytes).expect("seed Rust work document");
+        let mut rust_bytes = Vec::new();
+        rmpv::encode::write_value(&mut rust_bytes, &rust_value).expect("encode Rust fixture");
+        fs::write(rust_document.join("root"), rust_bytes).expect("seed Rust work document");
+    }
 
     let python_temp = tempfile::tempdir().expect("Python fixture");
     let python_group = python_temp.path().join("group");
@@ -72,21 +74,24 @@ fn work_view_float_document_id_matches_pinned_python_integer_coercion() {
         .status()
         .expect("initialize Python repository")
         .success());
-    let python_document = python_group.join("repo.work/active/7");
-    fs::create_dir_all(&python_document).expect("Python work directory");
-    let seed = Command::new(
+    for document_id in DOCUMENT_IDS {
+        let python_document = python_group.join("repo.work/active").join(document_id.to_string());
+        fs::create_dir_all(&python_document).expect("Python work directory");
+        let seed = Command::new(
         std::env::var_os("LXMF_PYTHON_BIN").unwrap_or_else(|| "python3".into()),
     )
     .env("PYTHONPATH", &reference)
     .args([
         "-c",
-        "import msgpack, sys; msgpack.pack({'content':'float IDs truncate','meta':{'author':bytes.fromhex(sys.argv[2]),'created':1,'edited':2}}, open(sys.argv[1], 'wb'))",
+        "import msgpack, sys; msgpack.pack({'content':'document '+sys.argv[2],'meta':{'author':bytes.fromhex(sys.argv[3]),'created':1,'edited':2}}, open(sys.argv[1], 'wb'))",
     ])
-    .arg(python_document.join("root"))
-    .arg(hex::encode(REMOTE))
-    .status()
-    .expect("seed Python work document");
-    assert!(seed.success());
+            .arg(python_document.join("root"))
+            .arg(document_id.to_string())
+            .arg(hex::encode(REMOTE))
+            .status()
+            .expect("seed Python work document");
+        assert!(seed.success());
+    }
 
     let python_script = r#"
 import json, sys
@@ -100,10 +105,11 @@ node.log_request = lambda *args: None
 node.parse_request_repository_path = lambda _path: ("group", "repo")
 node.resolve_permission = lambda *_args: True
 node.resolve_doc_permission = lambda *_args: True
-response = node.handle_work("/mgmt/work", {
-    0: "group/repo", "operation": "view", "doc_id": 7.9,
-}, 1, SimpleNamespace(hash=bytes.fromhex(remote_hex)), 0)
-print(json.dumps({"status": response[0], "body": response[1:].hex()}))
+identity = SimpleNamespace(hash=bytes.fromhex(remote_hex))
+responses = [node.handle_work("/mgmt/work", {
+    0: "group/repo", "operation": "view", "doc_id": doc_id,
+}, 1, identity, 0) for doc_id in (7.9, -0.1)]
+print(json.dumps([{"status": response[0], "body": response[1:].hex()} for response in responses]))
 "#;
     let python = Command::new(std::env::var_os("LXMF_PYTHON_BIN").unwrap_or_else(|| "python3".into()))
         .env("PYTHONPATH", &reference)
@@ -116,13 +122,15 @@ print(json.dumps({"status": response[0], "body": response[1:].hex()}))
     assert!(python.status.success(), "Python handler failed: {}", String::from_utf8_lossy(&python.stderr));
     let python: serde_json::Value = serde_json::from_slice(&python.stdout).expect("Python response JSON");
 
-    let request = [
-        (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
-        (rmpv::Value::from("operation"), rmpv::Value::from("view")),
-        (rmpv::Value::from("doc_id"), rmpv::Value::F64(7.9)),
-    ];
-    let rust_response = rust_node.handle_work_request(&request, REMOTE);
-    assert_eq!(rust_response[0], python["status"].as_u64().expect("Python status") as u8);
-    assert_eq!(hex::encode(&rust_response[1..]), python["body"].as_str().expect("Python body"));
-    assert_eq!(rust_response[0], ReticulumGitNode::RES_OK);
+    for (doc_id, python) in [(7.9, &python[0]), (-0.1, &python[1])] {
+        let request = [
+            (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
+            (rmpv::Value::from("operation"), rmpv::Value::from("view")),
+            (rmpv::Value::from("doc_id"), rmpv::Value::F64(doc_id)),
+        ];
+        let rust_response = rust_node.handle_work_request(&request, REMOTE);
+        assert_eq!(rust_response[0], python["status"].as_u64().expect("Python status") as u8);
+        assert_eq!(hex::encode(&rust_response[1..]), python["body"].as_str().expect("Python body"));
+        assert_eq!(rust_response[0], ReticulumGitNode::RES_OK);
+    }
 }

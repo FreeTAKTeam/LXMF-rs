@@ -111,6 +111,14 @@ without `doc_id`: pinned Python and Rust both return `INVALID_REQ` with
 this operation-specific request error; the remaining work-operation matrix
 and hosted evidence are still open.
 
+A focused pinned-Python `view` differential now verifies document-ID float
+coercion: Python's `int()` behavior maps `7.9` to document `7` and `-0.1` to
+document `0`, and Rust returns the same status and exact MessagePack response
+body for both requests. This evidence covers those two values only; non-finite
+and out-of-range floats, other fractional/negative boundaries, and other
+numeric representations remain unverified. The broader #612 operation,
+permission, storage, and mixed-peer acceptance remains partial.
+
 A focused #612 `complete` production-handler differential now compares pinned
 Python and Rust for denied write authorization, a missing document ID, and a
 malformed document ID. Exact status/body and active/completed directory state

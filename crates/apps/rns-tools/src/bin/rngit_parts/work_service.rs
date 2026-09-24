@@ -6,7 +6,7 @@ impl ReticulumGitNode {
                 .or_else(|| value.as_str()?.parse::<u64>().ok())
                 .or_else(|| {
                     let numeric = value.as_f64()?;
-                    (numeric.is_finite() && numeric >= 0.0 && numeric < u64::MAX as f64)
+                    (numeric.is_finite() && numeric > -1.0 && numeric < u64::MAX as f64)
                         .then_some(numeric as u64)
                 })
         })

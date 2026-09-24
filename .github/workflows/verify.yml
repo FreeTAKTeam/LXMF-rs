@@ -209,7 +209,7 @@ jobs:
           LXMF_PYTHON_BIN: python
         run: |
           cargo test -p rns-tools --bin rngit \
-            work_view_float_document_id_matches_pinned_python_integer_coercion \
+            work_view_float_document_ids_match_pinned_python_integer_coercion \
             -- --ignored --nocapture --test-threads=1
 
       - name: Generate PR HIL support report
