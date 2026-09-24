@@ -59,6 +59,12 @@ A focused pinned-Python permission regression now compares configured group
 Rust group loader. Both configured and sidecar grants remain effective, so this
 slice required no code change; remaining permission combinations stay open.
 
+The pinned-Python #612 delete-handler differential confirms that `scope` is
+validated but ignored for document selection: deletion searches active,
+completed, then proposed. Rust now matches that behavior for delete only. The
+regression covers an active item requested as completed, both author success
+and non-author denial; remaining work-operation and storage cases stay open.
+
 For #612 acceptance row 3, the pinned RNS 1.5.4 server dispatches each Link
 request on its own thread, while rngit's work ID selection is scan-then-use and
 document writes use a fixed `<path>.tmp` followed by `os.rename`, without a

@@ -308,3 +308,140 @@ print(json.dumps(decisions))
         "pinned Python configured access and sidecar policies should merge additively"
     );
 }
+
+#[test]
+#[ignore = "requires the pinned Python Reticulum reference"]
+fn work_delete_ignores_requested_scope_like_pinned_python() {
+    use std::path::PathBuf;
+
+    const PYTHON_REFERENCE_REVISION: &str = "99de23c040d507e3fefca19e87b182302902725d";
+    const AUTHOR: [u8; 16] = [0x11; 16];
+    const OTHER: [u8; 16] = [0x22; 16];
+    let reference = std::env::var_os("RETICULUM_PY_REPO")
+        .map(PathBuf::from)
+        .expect("RETICULUM_PY_REPO must point to the pinned Python checkout");
+    let revision = Command::new("git")
+        .arg("-C")
+        .arg(&reference)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .expect("read Python reference revision");
+    assert!(revision.status.success(), "could not resolve Python reference HEAD");
+    assert_eq!(String::from_utf8_lossy(&revision.stdout).trim(), PYTHON_REFERENCE_REVISION);
+
+    let rust_temp = tempfile::tempdir().expect("Rust fixture directory");
+    let group_path = rust_temp.path().join("group");
+    fs::create_dir_all(&group_path).expect("Rust group directory");
+    assert!(Command::new("git")
+        .args(["init", "--bare", "--quiet", group_path.join("repo").to_string_lossy().as_ref()])
+        .status()
+        .expect("Rust git init")
+        .success());
+    let mut rust_node = ReticulumGitNode::default();
+    rust_node.load_repository_group("group", &group_path).expect("load Rust group");
+    let permissions = &mut rust_node.groups.get_mut("group").expect("Rust group").permissions;
+    for permission in [&mut permissions.read, &mut permissions.write, &mut permissions.interact] {
+        permission.add(PermissionTarget::All);
+    }
+
+    let document = |author: [u8; 16]| {
+        rmpv::Value::Map(vec![
+            (rmpv::Value::from("content"), rmpv::Value::from("body")),
+            (
+                rmpv::Value::from("meta"),
+                rmpv::Value::Map(vec![(rmpv::Value::from("author"), rmpv::Value::Binary(author.to_vec()))]),
+            ),
+        ])
+    };
+    for (id, author) in [(7_u64, AUTHOR), (8_u64, AUTHOR)] {
+        let directory = group_path.join(format!("repo.work/active/{id}"));
+        fs::create_dir_all(&directory).expect("Rust active document");
+        fs::write(directory.join("root"), rngit_work_fixture(&document(author)))
+            .expect("write Rust work document");
+        fs::write(group_path.join(format!("repo.work/{id}.allowed")), "write:all\ninteract:all\n")
+            .expect("write Rust document permissions");
+    }
+
+    let python_temp = tempfile::tempdir().expect("Python fixture directory");
+    let python_group = python_temp.path().join("group");
+    let python_repo = python_group.join("repo");
+    fs::create_dir_all(&python_group).expect("Python group directory");
+    assert!(Command::new("git")
+        .args(["init", "--bare", "--quiet", python_repo.to_string_lossy().as_ref()])
+        .status()
+        .expect("Python git init")
+        .success());
+    for id in [7_u64, 8_u64] {
+        let directory = python_group.join(format!("repo.work/active/{id}"));
+        fs::create_dir_all(&directory).expect("Python active document");
+        fs::write(python_group.join(format!("repo.work/{id}.allowed")), "write:all\ninteract:all\n")
+            .expect("write Python document permissions");
+    }
+
+    let script = r#"
+import json, msgpack, os, sys
+from types import SimpleNamespace
+from RNS.Utilities.rngit.server import ReticulumGitNode
+repo_path, author_hex, other_hex = sys.argv[1:]
+node = ReticulumGitNode.__new__(ReticulumGitNode)
+node.groups = {"group": {"repositories": {"repo": {"path": repo_path}}}}
+node.blocked_identities = {}
+node.log_request = lambda *args: None
+node.parse_request_repository_path = lambda _path: ("group", "repo")
+node.resolve_permission = lambda _remote, _group, _repo, permission: permission != node.PERM_ADMIN
+node.resolve_doc_permission = lambda _remote, _group, _repo, _doc_id, permission: permission != node.PERM_ADMIN
+for doc_id in (7, 8):
+    root = os.path.join(repo_path + ".work", "active", str(doc_id), "root")
+    with open(root, "wb") as stream:
+        msgpack.pack({"content": "body", "meta": {"author": bytes.fromhex(author_hex)}}, stream)
+responses = []
+for doc_id, identity in ((7, author_hex), (8, other_hex), (9, author_hex)):
+    request = {0: "group/repo", "operation": "delete", "doc_id": doc_id, "scope": "completed"}
+    response = node.handle_work("/mgmt/work", request, 1, SimpleNamespace(hash=bytes.fromhex(identity)), 0)
+    responses.append({
+        "status": response[0],
+        "body": response[1:].decode("utf-8", "replace"),
+        "active_exists": os.path.exists(os.path.join(repo_path + ".work", "active", str(doc_id))),
+    })
+print(json.dumps(responses))
+"#;
+    let python = Command::new(std::env::var_os("LXMF_PYTHON_BIN").unwrap_or_else(|| "python3".into()))
+        .env("PYTHONPATH", &reference)
+        .arg("-c")
+        .arg(script)
+        .arg(&python_repo)
+        .arg(hex::encode(AUTHOR))
+        .arg(hex::encode(OTHER))
+        .output()
+        .expect("run pinned Python production work handler");
+    assert!(python.status.success(), "Python work handler failed: {}", String::from_utf8_lossy(&python.stderr));
+    let json_line = python
+        .stdout
+        .split(|byte| *byte == b'\n')
+        .rfind(|line| !line.is_empty())
+        .expect("Python JSON output line");
+    let python: serde_json::Value = serde_json::from_slice(json_line)
+        .unwrap_or_else(|error| panic!("Python result JSON: {error}; stdout={:?}", String::from_utf8_lossy(&python.stdout)));
+
+    let make_request = |id| vec![
+        (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
+        (rmpv::Value::from("operation"), rmpv::Value::from("delete")),
+        (rmpv::Value::from("doc_id"), rmpv::Value::from(id)),
+        (rmpv::Value::from("scope"), rmpv::Value::from("completed")),
+    ];
+    let rust_success = rust_node.handle_work_request(&make_request(7), AUTHOR);
+    let rust_denied = rust_node.handle_work_request(&make_request(8), OTHER);
+    let rust_missing = rust_node.handle_work_request(&make_request(9), AUTHOR);
+    assert_eq!(rust_success, [ReticulumGitNode::RES_OK]);
+    assert_eq!(rust_denied[0], ReticulumGitNode::RES_DISALLOWED);
+    assert_eq!(&rust_denied[1..], b"No access, not author");
+    assert_eq!(rust_missing[0], ReticulumGitNode::RES_REMOTE_FAIL);
+    assert_eq!(&rust_missing[1..], b"Remote error");
+    assert_eq!(python[0]["status"], ReticulumGitNode::RES_OK);
+    assert_eq!(python[0]["active_exists"], false);
+    assert_eq!(python[1]["status"], ReticulumGitNode::RES_DISALLOWED);
+    assert_eq!(python[1]["body"], "No access, not author");
+    assert_eq!(python[1]["active_exists"], true);
+    assert_eq!(python[2]["status"], ReticulumGitNode::RES_REMOTE_FAIL);
+    assert_eq!(python[2]["body"], "Remote error");
+}

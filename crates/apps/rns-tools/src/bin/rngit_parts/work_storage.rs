@@ -156,6 +156,22 @@ impl ReticulumGitNode {
         })
     }
 
+    fn work_request_document_for_delete(
+        &self,
+        root: &Path,
+        request: &[(rmpv::Value, rmpv::Value)],
+    ) -> Option<(String, u64, PathBuf, rmpv::Value)> {
+        let id = map_value(request, &rmpv::Value::String("doc_id".into()))
+            .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()))?;
+        ["active", "completed", "proposed"]
+            .into_iter()
+            .find_map(|scope| {
+                let directory = root.join(scope).join(id.to_string());
+                let document = self.work_load_document(&directory.join("root"))?;
+                Some((scope.to_string(), id, directory, document))
+            })
+    }
+
     fn work_view_location(
         root: &Path,
         request: &[(rmpv::Value, rmpv::Value)],

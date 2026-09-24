@@ -1,7 +1,7 @@
 impl ReticulumGitNode {
     fn work_delete(&self, root: &Path, request: &[(rmpv::Value, rmpv::Value)]) -> Vec<u8> {
-        let Some((_, id, directory, _)) = self.work_request_document(root, request) else {
-            return response(Self::RES_NOT_FOUND, "Document not found", None);
+        let Some((_, id, directory, _)) = self.work_request_document_for_delete(root, request) else {
+            return response(Self::RES_REMOTE_FAIL, "Remote error", None);
         };
         if let Err(error) = Self::work_remove_permissions(root, id) {
             return response(Self::RES_REMOTE_FAIL, error, None);

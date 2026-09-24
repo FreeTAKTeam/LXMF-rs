@@ -246,8 +246,10 @@ impl ReticulumGitNode {
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
-                let Some((_, id, _, document)) = self.work_request_document(&root, request) else {
-                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                let Some((_, id, _, document)) =
+                    self.work_request_document_for_delete(&root, request)
+                else {
+                    return response(Self::RES_REMOTE_FAIL, "Remote error", None);
                 };
                 let admin = self.resolve_doc_permission(
                     &remote,
@@ -256,10 +258,11 @@ impl ReticulumGitNode {
                     id,
                     Self::PERM_ADMIN,
                 );
-                if (!Self::work_author_matches(&document, &remote) && !admin)
-                    || !self.work_manage_allowed(&remote, &group, &repository, id)
-                {
+                if !self.work_manage_allowed(&remote, &group, &repository, id) {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
+                }
+                if !Self::work_author_matches(&document, &remote) && !admin {
+                    return response(Self::RES_DISALLOWED, "No access, not author", None);
                 }
                 self.work_delete(&root, request)
             }
