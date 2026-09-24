@@ -221,6 +221,100 @@ fn rngit_returns_raw_media_when_webp_backend_is_unavailable() -> io::Result<()> 
     result
 }
 
+#[cfg(unix)]
+#[test]
+#[ignore = "requires local pinned Python Reticulum checkout"]
+fn rngit_does_not_fall_through_from_unavailable_forced_backend() -> io::Result<()> {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let root = create_repository_fixture(temp.path())?;
+    let python_repo = python_repo();
+    if !python_repo.join("RNS/Link.py").is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
+        ));
+    }
+
+    let isolated_path = temp.path().join("isolated-path");
+    fs::create_dir(&isolated_path)?;
+    let git_executable = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .map(|directory| directory.join("git"))
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "git executable not found on PATH"))?;
+    symlink(git_executable, isolated_path.join("git"))?;
+
+    let invocation_marker = temp.path().join("ffmpeg-invoked");
+    let ffmpeg_stub = isolated_path.join("ffmpeg");
+    fs::write(
+        &ffmpeg_stub,
+        "#!/bin/sh\nprintf 'invoked\\n' >> \"$RNGIT_TEST_FFMPEG_MARKER\"\nexit 1\n",
+    )?;
+    fs::set_permissions(&ffmpeg_stub, fs::Permissions::from_mode(0o755))?;
+    let path = std::env::join_paths([isolated_path.as_os_str()]).map_err(io::Error::other)?;
+
+    let port = free_port()?;
+    let identity_seed = "rngit-python-forced-unavailable-magick";
+    let mut server = Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--listen",
+            &format!("127.0.0.1:{port}"),
+            "--identity-seed",
+            identity_seed,
+            "--silent",
+        ])
+        .env("RNGIT_MEDIA_BACKEND", "magick")
+        .env("RNGIT_TEST_FFMPEG_MARKER", &invocation_marker)
+        .env("PATH", path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let result = (|| {
+        wait_for_port(port, &mut server)?;
+        let destination = rust_destination(&root, identity_seed)?;
+        let config_dir = temp.path().join("python-client");
+        fs::create_dir_all(&config_dir)?;
+        write_python_config(&config_dir, port)?;
+        let output = Command::new(python_bin())
+            .arg("-c")
+            .arg(RAW_FALLBACK_PYTHON_CLIENT)
+            .arg(&config_dir)
+            .arg(&destination)
+            .env("PYTHONPATH", &python_repo)
+            .output()?;
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "Python forced-unavailable-backend media client failed: {}\nstdout:\n{}\nstderr:\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        let response: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|error| {
+            io::Error::other(format!(
+                "Python forced-unavailable-backend client returned invalid JSON: {error}\nstdout:\n{}",
+                String::from_utf8_lossy(&output.stdout)
+            ))
+        })?;
+        assert_eq!(response["name"], "image.png");
+        assert_eq!(response["size"], 8192);
+        assert_eq!(response["matches_expected_raw_bytes"], true);
+        assert!(
+            !invocation_marker.exists(),
+            "recognized but unavailable forced magick backend must not fall through to available ffmpeg"
+        );
+        Ok(())
+    })();
+    let _ = server.kill();
+    let _ = server.wait();
+    result
+}
+
 const RAW_FALLBACK_PYTHON_CLIENT: &str = r#"
 import hashlib
 import json

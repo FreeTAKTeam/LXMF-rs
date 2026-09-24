@@ -161,6 +161,16 @@ jobs:
             rngit_serves_pages_and_media_to_pinned_python_client \
             -- --ignored --nocapture
 
+      - name: Verify forced unavailable WebP backend does not fall through over pinned Python Link
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            rngit_does_not_fall_through_from_unavailable_forced_backend \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Verify real ImageMagick and GraphicsMagick WebP backends over pinned Python Links
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity

@@ -153,6 +153,13 @@ media path still returns the Resource and filename metadata. A production-Link
 regression now proves that response alongside absent-key denial; Rust already
 matches, so this slice required no production change.
 
+A new pinned-Python Link regression also forces the recognized `magick` backend
+while an isolated service `PATH` exposes only an alternate `ffmpeg` sentinel
+and `git`; it verifies raw media is returned without falling through to that
+encoder. The local test passes on PR base `af353f33`; hosted Verify is pending.
+This establishes only unavailable-override selection parity, not successful
+`magick`/`avconv` conversion, so #613 remains partial.
+
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted
