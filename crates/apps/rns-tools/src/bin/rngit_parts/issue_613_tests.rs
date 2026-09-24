@@ -374,6 +374,47 @@ fn stale_page_links_are_cleaned_while_active_links_keep_media() {
 }
 
 #[test]
+fn stale_page_link_sweep_retries_filesystem_removal_failure() {
+    let (temporary, mut node) = page_fixture();
+    let link = rns_transport::hash::address_hash(
+        temporary.path().to_string_lossy().as_bytes(),
+    );
+    let directory = node.next_media_directory(link).expect("media directory");
+
+    std::fs::remove_dir(&directory).expect("remove media directory");
+    std::fs::write(&directory, b"blocks directory removal").expect("replacement file");
+
+    let failed_cleanup = super::rngit_network::clean_stale_page_links(
+        &mut node,
+        [(link, Some(LinkStatus::Stale))],
+    );
+
+    assert_eq!(failed_cleanup.removed_directories, 0);
+    assert_eq!(failed_cleanup.failures.len(), 1);
+    assert!(directory.is_file());
+    assert!(node
+        .active_page_links
+        .get(&link)
+        .is_some_and(|paths| paths.contains(&directory)));
+
+    std::fs::remove_file(&directory).expect("remove replacement file");
+    std::fs::create_dir(&directory).expect("restore media directory");
+    let marker = directory.join("marker");
+    std::fs::write(&marker, b"tracked media").expect("marker file");
+
+    let retried_cleanup = super::rngit_network::clean_stale_page_links(
+        &mut node,
+        [(link, Some(LinkStatus::Stale))],
+    );
+
+    assert_eq!(retried_cleanup.removed_directories, 1);
+    assert!(retried_cleanup.failures.is_empty());
+    assert!(!directory.exists());
+    assert!(!marker.exists());
+    assert!(!node.active_page_links.contains_key(&link));
+}
+
+#[test]
 fn blocked_anonymous_client_receives_no_identity_template_for_frozen_null_identity_hash() {
     let (_temporary, mut node) = page_fixture();
     node.blocked_identities.insert(PYTHON_NULL_IDENTITY_HASH);

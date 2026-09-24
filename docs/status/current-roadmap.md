@@ -89,7 +89,10 @@ under `--silent`. Focused timeout and injected child-status-error regressions
 prove both WebP pipeline subprocesses are terminated and reaped on those paths,
 allowing conversion fallback and temporary-directory cleanup to complete. This
 does not cover silent peer exits without a failed response or other filesystem
-failures. The WebP supervisor now also receives cancellation from the requesting
+failures. A new unit regression forces an actual removal error through the
+stale-link sweep helper, confirms the media path remains tracked, and proves a
+later sweep removes it after the directory is restored; other filesystem fault
+paths remain open. The WebP supervisor now also receives cancellation from the requesting
 Link's status; a deterministic Unix regression verifies that disconnect
 cancellation promptly terminates and reaps both live pipeline children. This
 process-level test does not close the broader cleanup criterion. A same-Link
@@ -156,7 +159,8 @@ matches, so this slice required no production change.
 A new pinned-Python Link regression also forces the recognized `magick` backend
 while an isolated service `PATH` exposes only an alternate `ffmpeg` sentinel
 and `git`; it verifies raw media is returned without falling through to that
-encoder. The local test passes on PR base `af353f33`; hosted Verify is pending.
+encoder. The local pinned-Python test passes at PR commit `e7563fca`; Verify runs
+the same regression.
 This establishes only unavailable-override selection parity, not successful
 `magick`/`avconv` conversion, so #613 remains partial.
 
