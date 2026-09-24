@@ -51,6 +51,63 @@ mod issue_612_permission_refresh_tests {
     }
 
     #[test]
+    fn document_admin_can_complete_work_through_production_handler() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let group_path = temp.path().join("group");
+        let repository_path = group_path.join("repo");
+        fs::create_dir_all(&repository_path).expect("repository directory");
+
+        let mut node = ReticulumGitNode::default();
+        let group_permissions = node.permissions_from_allowed_input(Some(
+            "read:all\nwrite:all\ncreate:all\ninteract:all\n",
+        ));
+        node.groups.insert(
+            "group".into(),
+            RepositoryGroup {
+                name: "group".into(),
+                path: group_path.clone(),
+                permissions: group_permissions,
+                repositories: BTreeMap::from([(
+                    "repo".into(),
+                    RepositoryRecord {
+                        name: "repo".into(),
+                        path: repository_path,
+                        fork: None,
+                        mirror: None,
+                        permissions: Default::default(),
+                    },
+                )]),
+            },
+        );
+
+        let request = |operation: &str| {
+            vec![
+                (Value::from(0_u64), Value::from("group/repo")),
+                (Value::from("operation"), Value::from(operation)),
+                (Value::from("doc_id"), Value::from(1_u64)),
+                (Value::from("title"), Value::from("Permission check")),
+                (Value::from("content"), Value::from("Body")),
+            ]
+        };
+        assert_eq!(
+            node.handle_work_request(&request("create"), AUTHOR)[0],
+            ReticulumGitNode::RES_OK
+        );
+        fs::write(
+            group_path.join("repo.work").join("1.allowed"),
+            format!("admin:{}\n", hex::encode(ADMIN)),
+        )
+        .expect("document administrator policy");
+
+        assert_eq!(
+            node.handle_work_request(&request("complete"), ADMIN)[0],
+            ReticulumGitNode::RES_OK,
+            "document-scoped admin should authorize the work transition",
+        );
+        assert!(group_path.join("repo.work/completed/1/root").is_file());
+    }
+
+    #[test]
     #[ignore = "requires the pinned Python Reticulum reference"]
     fn group_permission_refresh_preserves_configured_access_like_pinned_python() {
         use std::{path::PathBuf, process::Command};
