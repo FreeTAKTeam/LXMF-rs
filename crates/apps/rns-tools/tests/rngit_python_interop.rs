@@ -16,6 +16,8 @@ mod issue_613_media_invalid_ref;
 #[cfg(unix)]
 #[path = "rngit_python_interop/issue_613_media_read_failure.rs"]
 mod issue_613_media_read_failure;
+#[path = "rngit_python_interop/issue_613_media_traversal.rs"]
+mod issue_613_media_traversal;
 #[path = "rngit_python_interop/issue_613_media_url.rs"]
 mod issue_613_media_url;
 #[path = "rngit_python_interop/issue_613_no_ident.rs"]
@@ -295,6 +297,8 @@ def request(path, data):
             result["name"] = None
         result["sha256"] = hashlib.sha256(payload).hexdigest()
         result["size"] = len(payload)
+        if not hasattr(value, "read"):
+            result["body"] = payload.decode("utf-8", errors="replace")
         result["page_has_repository"] = b"Repository" in payload
         result["has_not_found"] = b"Not Found" in payload
         result["has_ref_not_found"] = b"reference was not found" in payload

@@ -66,6 +66,14 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(stdout.contains("\"page_has_repository\": true"), "page response: {stdout}");
+        let invalid_reference_body = format!(
+            "#!c=0\n> Anonymous Git Node\n\n>>\n[Node`:/page/index.mu] / [group`:/page/group.mu|g=group] / repo `:/page/repo.mu|g=group|r=repo]\n\n>Not Found\n\nThe requested reference was not found\n\n<\n-\n`a`F666`[Served by rngit {}`:/page/index.mu] - local`f",
+            env!("CARGO_PKG_VERSION")
+        );
+        assert!(
+            stdout.contains(&serde_json::to_string(&invalid_reference_body)?),
+            "invalid reference page rendering differs from its Link fixture: {stdout}"
+        );
         assert!(stdout.contains("\"name\": \"image.png\""), "media metadata: {stdout}");
         assert!(
             stdout.contains(

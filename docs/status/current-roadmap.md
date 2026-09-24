@@ -45,6 +45,17 @@ media-path differential also verifies that group, repository, and ref
 components remain literal while only the file-path tail is URL-decoded, as in
 the pinned Python `serve_media`; encoded `%67roup` is denied rather than
 resolving the `group` repository. #613 remains partial.
+The pinned-Python `/media` differential now also sends a file tail that
+decodes to `assets/../README.md`. The frozen handler passes that path to Git's
+`cat-file` object lookup, which returns no blob; the Rust path validation also
+denies it. The production-Link response is scalar `False` without Resource
+metadata or bytes. This covers one encoded dot-segment traversal case only;
+broader path and media-failure parity remain open, and #613 remains partial.
+The production-Link page/media trace now also checks the complete rendered
+invalid-reference response, including navigation, the exact error text, and
+the base template/footer, against a deterministic fixture received by the
+pinned Python Link. This strengthens one page-error case only; #613 remains
+partial.
 The frozen `pages.py::serve_front_page` gate also now matches its exact
 condition: the remote identity must be absent and the pinned null-identity
 hash (`d7db22f63b453c23bb0688dde565b7c1`) must be blocked before `no_ident` is

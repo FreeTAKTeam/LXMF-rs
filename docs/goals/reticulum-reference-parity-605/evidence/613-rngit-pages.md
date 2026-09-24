@@ -455,3 +455,42 @@ cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings
 cargo fmt --all -- --check; tools/scripts/check-module-size.sh; git diff --check
   PASS
 ```
+
+### Exact invalid-reference page rendering over the pinned Link
+
+The production `rngit` page/media integration now retains the complete page
+body received by the pinned Python `RNS.Link` and checks the invalid-reference
+response against a deterministic rendered fixture. The assertion includes the
+navigation links, `Not Found` heading, exact reference error, base template,
+version footer, and local generation marker. This closes the prior gap where
+the live trace checked only that an error marker appeared. The focused run used
+Reticulum `99de23c040d507e3fefca19e87b182302902725d` and passed both matching
+integration-test declarations; no production behavior change was needed.
+
+```text
+TMPDIR=$PWD/target/tmp \
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
+  --test rngit_python_interop \
+  rngit_serves_pages_and_media_to_pinned_python_client \
+  -- --ignored --nocapture --test-threads=1                       PASS (2 tests)
+```
+
+### Encoded dot-segment path denial over the pinned Link
+
+The production Rust `rngit` service was queried by the pinned Python Link with
+`/media/group/repo/HEAD/assets%2F..%2FREADME.md`. The pinned
+`pages.py::serve_media` decodes only the file tail with `unquote_plus`, then
+passes `assets/../README.md` to `get_blob_info`; the reference Git object lookup
+returns no blob. Rust denies the decoded dot segment before blob lookup. The
+Link receives scalar `False`, with no Resource metadata or media bytes. This
+adds one traversal-shaped validation case and does not establish complete
+path-validation parity or close #613.
+
+```text
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_media_denies_percent_decoded_dot_segment_over_python_link \
+  -- --ignored --nocapture                                      PASS (1 test)
+```

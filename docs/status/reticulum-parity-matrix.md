@@ -159,6 +159,13 @@ unblocked anonymous front page remains compatible, and a second production
 Link trace asserts the exact `READY` no-ident body for a blocked anonymous
 client without exposing private repository content.
 
+The production-Link page/media trace also asserts the complete deterministic
+rendered body for a repository request with a nonexistent ref: navigation,
+`Not Found`, exact error text, base template, version footer, and generation
+marker are checked from the response received by the pinned Python Link. This
+adds response-fixture evidence for one page error only; other error/template
+and visual rendering parity remain partial.
+
 The #613 production-Link media-validation differential uses a single pinned
 Python Link and first verifies the exact Resource name and bytes from valid ref
 `main`. On the same Link, missing key/path, malformed/insufficient/empty paths,
@@ -184,6 +191,12 @@ The same differential now covers component decoding: pinned `serve_media`
 leaves group/repository/ref literal and decodes only the file-path tail, so
 `%67roup` must not resolve the `group` repository; the Rust path parser follows
 that behavior and the pinned-Python test expects scalar `False`.
+An additional pinned-Python production-Link case sends the encoded file tail
+`assets%2F..%2FREADME.md`, which the reference decodes to `assets/../README.md`.
+The frozen handler's Git object lookup returns no blob, and Rust denies the
+decoded dot-segment path; the observed response is scalar `False` with no
+Resource metadata or bytes. This is a single traversal-shaped case, not a
+complete path-validation audit; #613 remains partial.
 
 The issue-specific #613 live trace also observes one WebP conversion temporary
 directory while the pinned-Python Reticulum Link is active, tears that Link
