@@ -113,6 +113,10 @@ The worker-level BLE EOF recovery slice is also covered in software: the
 worker closes the EOF session before reconnecting through a fresh backend and
 closes that session on cancellation. Native GATT EOF and physical recovery
 remain unverified.
+The BLE worker now also observes interface cancellation during startup: a
+blocked fake backend verifies the pending setup is dropped, cleanup runs,
+and the worker exits; forced task abortion and native GATT cancellation remain
+unverified.
 A private, worker-scoped backend factory now enables software-only fault
 injection through the actual BLE worker loop: withholding `CMD_DETECT` triggers
 the configured bounded fallback, a scripted disconnect exercises cleanup and

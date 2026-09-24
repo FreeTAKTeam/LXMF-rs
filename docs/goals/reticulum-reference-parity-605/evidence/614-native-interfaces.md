@@ -24,6 +24,7 @@ acceptance gate.
 | BLE worker recovery after notification EOF | A deterministic backend ends the first worker session with native-style notification-stream EOF. The production worker closes that session before its bounded reconnect, obtains a fresh backend, and closes the recovered session on cancellation. | focused fake-backend worker regression; native stream and carrier unverified |
 | BLE partial setup and retry | Deterministic backends fail once during notification setup and during connection acquisition, recording cleanup before a second startup. Each runtime reconnects successfully, becomes connected, and releases the recovered session on close. This verifies reusable-runtime cleanup/retry after a backend-reported partial setup/connect failure; it does not execute native GATT service discovery or prove Windows/macOS/Android cancellation behavior. | focused fake-backend regressions; native carrier unverified |
 | BLE service-discovery cancellation recovery | The production interface worker receives a deterministic backend cancellation error during its service-discovery/connect phase, closes that partial session before retrying, creates exactly one fresh backend after the configured 1 ms backoff, completes notification subscription/startup writes, and closes the recovered session when stopped. The test is radio-free and bounds both recovery and shutdown. It models a backend-reported cancellation result; it does not cancel/drop the Rust startup future or exercise native GATT cancellation/cleanup. | focused fake-backend worker regression; native carrier unverified |
+| BLE startup cancellation cleanup | The production interface worker selects both interface cancellation tokens while `runtime.startup()` is pending. On cancellation it drops the in-flight setup future, closes the runtime backend, then exits instead of remaining blocked in connect/service discovery. A deterministic backend held indefinitely in `connect()` verifies prompt worker exit and backend close. This is token-driven software cancellation; task abortion and native GATT cancellation are not covered. | focused fake-backend regression; native GATT behavior unverified |
 | BLE worker detection fallback | A private backend factory, used only by this worker and defaulting to the unchanged native backend constructor, lets a deterministic fake run through the actual worker loop. With CMD_DETECT withheld, the configured bounded deadline emits deferred radio configuration; a scripted disconnect verifies cleanup before the worker creates a fresh backend, and cancellation closes that second session. This is software fault injection only, not physical BLE support or device evidence. Behavior was compared with pinned Python's five-second `ble_detect_timeout` wait at `99de23c040d507e3fefca19e87b182302902725d`; Rust's configured fallback remains separately bounded and tested without waiting five seconds. | focused fake-backend worker regression; no physical device |
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
 | Strict I2P startup after SAM handshake rejection | The production `startup_i2p` path runs with strict startup enabled against a deterministic local SAM peer. The peer accepts the production HELLO command but replies with `RESULT=I2P_ERROR`; startup returns no runtime handle, registers no interface with the production `InterfaceManager`, and records one startup failure containing the SAM preflight context and rejection text. | focused fake-SAM daemon-startup regression; does not cover destination creation failure, established-session packet flow, real router behavior, or public I2P connectivity |
@@ -146,6 +147,17 @@ cargo test -p reticulum-rs-transport --features rnode-ble --lib \
   worker_detection_timeout_sends_fallback_and_closes_backend_on_cancel -- --nocapture PASS
 ```
 
+The startup-cancellation regression holds the backend inside `connect()`,
+cancels the production worker's interface token, and verifies that the pending
+setup is dropped, backend cleanup runs, and the worker exits within one second.
+The backend-reported service-discovery cancellation/retry test remains green:
+
+```text
+cargo test -p reticulum-rs-transport --features rnode-ble --lib cancelling_during_ble_startup_closes_the_partial_backend -- --nocapture PASS
+cargo test -p reticulum-rs-transport --features rnode-ble --lib worker_cleans_up_cancelled_service_discovery_before_bounded_retry -- --nocapture PASS
+cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble -- --nocapture PASS (24 tests)
+```
+
 The daemon activation lifecycle regression ran in the same worktree:
 
 ```text
@@ -209,7 +221,9 @@ establish physical Windows pairing or carrier behavior.
   but proves no native GATT or physical-device behavior. The software runtime reconnect
   regressions above cover retry after notification-setup failure and a
   backend-reported service-discovery cancellation, not native GATT cancellation
-  or cleanup. The EOF/idle semantic distinction
+  or cleanup. A separate token-driven test now proves the worker drops a pending
+  startup future and closes its backend; forced task abortion and native GATT
+  cancellation are not covered. The EOF/idle semantic distinction
   is covered by the software regression above, not a native trace.
 - Worker recovery after native-style notification EOF now has deterministic
   backend-factory coverage. Native stream termination, platform cleanup, and

@@ -338,7 +338,21 @@ impl NativeRnodeBleKissInterface {
 
             let backend = backend_factory(settings.clone());
             let mut runtime = RnodeBleKissRuntime::new(backend, config.clone());
-            if let Err(err) = runtime.startup().await {
+            let startup_result = tokio::select! {
+                result = runtime.startup() => Some(result),
+                _ = context.cancel.cancelled() => None,
+                _ = iface_stop.cancelled() => None,
+            };
+            let Some(startup_result) = startup_result else {
+                if let Err(error) = runtime.close().await {
+                    log::warn!(
+                        "RNode BLE cleanup failed after startup cancellation iface={} error={error:?}",
+                        label
+                    );
+                }
+                break;
+            };
+            if let Err(err) = startup_result {
                 log::warn!(
                     "RNode KISS-over-BLE session setup failed iface={} addr={} err={:?}",
                     label,

@@ -25,3 +25,6 @@ include!("rnode_ble_parts/issue_614_detection_fallback_tests.rs");
 
 #[cfg(all(test, feature = "rnode-ble"))]
 include!("rnode_ble_parts/issue_614_discovery_cancel_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/issue_614_startup_cancel_tests.rs");

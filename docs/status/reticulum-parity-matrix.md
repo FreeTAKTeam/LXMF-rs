@@ -550,6 +550,10 @@ before fresh-backend reconnect and cleanup of the recovered session on stop.
 This is simulated software evidence only; native GATT, platform-specific
 cleanup, and physical recovery remain open, so the broader native-interface row
 remains partial and hardware-unverified.
+The BLE worker also now selects interface cancellation while startup is
+pending; a deterministic backend that blocks in `connect()` verifies the
+startup future is dropped, the backend is closed, and the worker exits. This
+does not cover forced task abortion or native GATT cancellation.
 Unknown recursive path discovery now also respects Python's
 `DISCOVER_PATHS_FOR` interface-mode gate, forwarding only from access-point,
 gateway, and roaming interfaces and suppressing waiting discovery requester
