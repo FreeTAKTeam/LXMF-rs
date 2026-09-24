@@ -71,6 +71,11 @@ advertisement sizes/flags for all six Python/Rust compression roles, with a
 focused exact-target Verify step; the utility row remains partial because its
 other workflows and failure/restart gaps are still open.
 
+The pinned #631 `rncp` interop trace also verifies fetch collision handling:
+Python's `-O` and Rust's `--overwrite` replace a pre-existing file with the
+binary transfer and do not leave a `.1` sibling. This covers only that fetch
+overwrite case; the broader utility matrix remains partial.
+
 The #631 `rncp` startup check now preserves frozen Python's status 3 and
 `Output directory not found` diagnostic for a missing `--save` directory.
 This is one bounded process failure case; the utility row remains partial.

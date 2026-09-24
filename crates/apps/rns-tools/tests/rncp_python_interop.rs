@@ -6,6 +6,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+const PINNED_RETICULUM_REVISION: &str = "99de23c040d507e3fefca19e87b182302902725d";
+
 static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn free_port() -> io::Result<u16> {
@@ -78,6 +80,23 @@ fn python_repo() -> PathBuf {
 
 fn python_bin() -> String {
     std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string())
+}
+
+fn assert_pinned_python_revision(repo: &Path) -> io::Result<()> {
+    let output = Command::new("git").args(["rev-parse", "HEAD"]).current_dir(repo).output()?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "could not identify pinned Python Reticulum checkout: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    let actual = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if actual != PINNED_RETICULUM_REVISION {
+        return Err(io::Error::other(format!(
+            "rncp interop requires pinned Reticulum {PINNED_RETICULUM_REVISION}, found {actual}"
+        )));
+    }
+    Ok(())
 }
 
 fn python_identity_output(
@@ -361,6 +380,7 @@ fn run_rust_fetch(
     identity_seed: &str,
     save_root: &Path,
     no_compress: bool,
+    overwrite: bool,
 ) -> io::Result<Output> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_rncp"));
     command.arg(remote_file).arg(destination).args([
@@ -377,6 +397,9 @@ fn run_rust_fetch(
     ]);
     if no_compress {
         command.arg("--no-compress");
+    }
+    if overwrite {
+        command.arg("--overwrite");
     }
     command.output()
 }
@@ -589,6 +612,8 @@ fn rncp_python_listener_reports_received_file_disk_error() -> io::Result<()> {
 fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Result<()> {
     let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
+    let repo = python_repo();
+    assert_pinned_python_revision(&repo)?;
     let rust_listener_root = temp.path().join("rust-listener");
     let python_listener_root = temp.path().join("python-listener");
     let rust_source_root = temp.path().join("rust-source");
@@ -611,7 +636,6 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
     fs::write(&rust_fetch_source, &rust_fetch_payload)?;
     fs::write(rust_listener_root.join("python-to-rust.bin"), b"stale receiver data")?;
 
-    let repo = python_repo();
     let python = python_bin();
     let script = repo.join("RNS/Utilities/rncp.py");
     if !script.is_file() {
@@ -763,12 +787,14 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
 
         let rust_fetch_root = temp.path().join("rust-fetch");
         fs::create_dir_all(&rust_fetch_root)?;
+        fs::write(rust_fetch_root.join("fetch-source.bin"), b"stale Rust fetch data")?;
         let fetched = run_rust_fetch(
             Path::new("fetch-source.bin"),
             &python_destination,
             python_listener_port,
             rust_fetch_identity_seed,
             &rust_fetch_root,
+            true,
             true,
         )?;
         if !fetched.status.success() {
@@ -780,6 +806,10 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
             )));
         }
         assert_eq!(fs::read(rust_fetch_root.join("fetch-source.bin"))?, python_fetch_payload);
+        assert!(
+            !rust_fetch_root.join("fetch-source.bin.1").exists(),
+            "Rust fetch created a collision suffix despite --overwrite"
+        );
 
         let denied = run_rust_fetch(
             Path::new("fetch-source.bin"),
@@ -788,10 +818,16 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
             "rncp-python-interop-rust-denied",
             &rust_fetch_root,
             true,
+            false,
         )?;
         if denied.status.success() {
             return Err(io::Error::other("unauthorised Python rncp fetch unexpectedly succeeded"));
         }
+        assert_eq!(fs::read(rust_fetch_root.join("fetch-source.bin"))?, python_fetch_payload);
+        assert!(
+            !rust_fetch_root.join("fetch-source.bin.1").exists(),
+            "denied fetch left an unexpected collision file"
+        );
         Ok(())
     })();
     let _ = python_listener.kill();
@@ -978,6 +1014,7 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
             rust_fetch_seed,
             &rust_fetch_root,
             false,
+            false,
         )?;
         if !fetched.status.success() {
             return Err(io::Error::other(format!(
@@ -1032,6 +1069,7 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
             python_no_compress_port,
             rust_fetch_seed,
             &rust_fetch_root,
+            false,
             false,
         )?;
         if !fetched.status.success() {
