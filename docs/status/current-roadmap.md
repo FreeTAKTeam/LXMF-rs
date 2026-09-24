@@ -132,6 +132,11 @@ Strict I2P startup now also has one negative fake-SAM daemon-path regression:
 a rejected SAM HELLO prevents interface registration and leaves a contextual
 startup failure. This does not replace destination-creation/session coverage
 or real-router/public-network evidence; #614/#605 remain partial.
+The Linux PipeInterface lifecycle now also has a deterministic production-
+worker regression: child EOF causes one respawn, and interface cancellation
+stops the worker and reaps the restarted child. This remains Linux software
+evidence only; daemon-level, cross-platform, peer-exchange, and physical
+acceptance remain unverified.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
