@@ -110,6 +110,11 @@ Backend discovery now also matches Python's executable-file eligibility on
 Unix, so a non-executable earlier converter cannot mask a later usable one; a
 focused filesystem unit regression covers the permission check. Live encoding
 by the other converter families remains unverified, and #613 remains partial.
+The #633 follow-up also verifies runtime WebP configuration forwarding: a
+production `rngit` process selects a deterministic stub `ffmpeg`, passes its
+configured quality and maximum-dimension options, and returns WebP metadata to
+a pinned Python Link. This adds CLI-to-backend wiring evidence only; #613
+remains partial.
 The production-Link page/media differential also covers one nested image path
 containing a space and confirms that rendered Micron markup matches the frozen
 Python `quote_plus(file_path)` encoding. Other template and rendering behavior

@@ -62,6 +62,26 @@ RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
 This is one backend-selection state-parity increment; encoding by the other
 backend families, visual parity, and the broader #613 acceptance remain open.
 
+### Runtime WebP CLI configuration reaches the selected backend
+
+An ignored production-Link regression now starts `rngit` with the explicit
+`ffmpeg` backend and non-default `--media-quality 37` and
+`--media-max-dimension 321` settings. A deterministic executable stub records
+its argv and emits a minimal valid WebP; a client using pinned Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` verifies the converted Resource
+metadata, while the test verifies the selected executable received both
+configured options and the expected scale filter. This covers runtime wiring
+from CLI configuration through backend selection and serving, beyond the
+existing argv-construction unit cases. No production behavior change was
+needed; the broader #613 acceptance remains open.
+
+```text
+TMPDIR="$PWD/target/tmp" RETICULUM_PY_REPO="$PWD/target/tmp/pinned-reticulum" \
+  cargo test -p rns-tools --test rngit_python_interop \
+  rngit_passes_media_cli_options_to_the_selected_webp_backend \
+  -- --ignored --nocapture --test-threads=1                    PASS (1 test)
+```
+
 ## Commands and results
 
 The original bounded implementation commands below ran in the isolated
