@@ -71,6 +71,13 @@ completed, then proposed. Rust now matches that behavior for delete only. The
 regression covers an active item requested as completed, both author success
 and non-author denial; remaining work-operation and storage cases stay open.
 
+A focused #612 delete regression also matches Python's missing-permission-sidecar
+failure: `_work_delete` unconditionally unlinks the sidecar, and a missing file
+returns `REMOTE_FAIL` / `Remote error` without deleting the work directory.
+Rust's production request handler now preserves that ordering and generic
+error response. The local production-handler regression and frozen-source
+comparison cover this edge; the broad work-operation matrix remains open.
+
 A focused pinned-Python production-handler differential now confirms the same
 fixed active → completed → proposed lookup for #612 view, edit, and comment
 when an active-only document is requested as completed. The edit uses a valid

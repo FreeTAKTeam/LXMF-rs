@@ -54,6 +54,41 @@ fn rngit_work_success_payload(response: &[u8]) -> rmpv::Value {
 }
 
 #[test]
+fn deleting_work_without_permission_sidecar_matches_pinned_handler_failure() {
+    let (_temp, mut node, group_path) = rngit_work_shape_node();
+    let remote = [12_u8; 16];
+    let group_permissions = &mut node.groups.get_mut("group").expect("group").permissions;
+    group_permissions.write.add(PermissionTarget::All);
+    group_permissions.interact.add(PermissionTarget::All);
+    let work_root = group_path.join("repo.work");
+    let document_dir = work_root.join("active/1");
+    fs::create_dir_all(&document_dir).expect("document directory");
+    let document = rmpv::Value::Map(vec![
+        (rmpv::Value::from("content"), rmpv::Value::from("body")),
+        (
+            rmpv::Value::from("meta"),
+            rmpv::Value::Map(vec![(
+                rmpv::Value::from("author"),
+                rmpv::Value::Binary(remote.to_vec()),
+            )]),
+        ),
+    ]);
+    fs::write(document_dir.join("root"), rngit_work_fixture(&document))
+        .expect("persist document");
+    assert!(!work_root.join("1.allowed").exists());
+    let mut request = rngit_work_request("delete");
+    request[3].1 = rmpv::Value::from("active");
+    let encoded = rngit_work_fixture(&rmpv::Value::Map(request));
+
+    let response = node.handle_request("/mgmt/work", &encoded, remote);
+
+    assert_eq!(response[0], ReticulumGitNode::RES_REMOTE_FAIL);
+    assert_eq!(&response[1..], b"Remote error");
+    assert!(document_dir.is_dir(), "failed permission unlink must not delete work");
+    assert!(!work_root.join("1.allowed").exists());
+}
+
+#[test]
 fn viewing_malformed_persisted_work_returns_remote_failure() {
     let temp = tempfile::tempdir().expect("tempdir");
     let group_path = temp.path().join("group");

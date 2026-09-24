@@ -53,7 +53,6 @@ impl ReticulumGitNode {
     fn work_remove_permissions(root: &Path, id: u64) -> Result<(), String> {
         match fs::remove_file(Self::work_permission_path(root, id)) {
             Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.to_string()),
         }
     }

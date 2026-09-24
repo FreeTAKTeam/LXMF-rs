@@ -3,8 +3,8 @@ impl ReticulumGitNode {
         let Some((_, id, directory, _)) = self.work_request_document_for_delete(root, request) else {
             return response(Self::RES_REMOTE_FAIL, "Remote error", None);
         };
-        if let Err(error) = Self::work_remove_permissions(root, id) {
-            return response(Self::RES_REMOTE_FAIL, error, None);
+        if Self::work_remove_permissions(root, id).is_err() {
+            return response(Self::RES_REMOTE_FAIL, "Remote error", None);
         }
         match fs::remove_dir_all(directory) {
             Ok(()) => vec![Self::RES_OK],
