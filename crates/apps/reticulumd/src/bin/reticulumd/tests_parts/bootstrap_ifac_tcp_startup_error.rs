@@ -140,3 +140,54 @@ interfaces = [
         drop(occupied);
     });
 }
+
+#[test]
+fn bootstrap_reports_invalid_ifac_size_for_tcp_listener_without_exposing_credentials() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "tcp_server", enabled = true, name = "invalid-ifac-tcp-size", host = "127.0.0.1", port = 0, ifac_size = 7, network_name = "credential-must-not-appear" }
+]
+"#,
+    )
+    .expect("write invalid TCP IFAC config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path, Some(config_path), None, false)).await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let result = response.result.expect("result");
+    let interfaces = result
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .expect("interfaces array");
+    let rejected = interfaces
+        .iter()
+        .find(|entry| {
+            entry.get("name").and_then(|value| value.as_str()) == Some("invalid-ifac-tcp-size")
+        })
+        .expect("invalid TCP IFAC config should remain visible as a management diagnostic");
+    assert_eq!(rejected.get("type").and_then(|value| value.as_str()), Some("tcp_server"));
+    assert_eq!(rejected.get("enabled").and_then(|value| value.as_bool()), Some(true));
+    let runtime = rejected
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("runtime startup diagnostic");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("failed"));
+    let error = runtime
+        .get("startup_error")
+        .and_then(|value| value.as_str())
+        .expect("safe startup error");
+    assert!(error.contains("IFAC configuration rejected"));
+    assert!(error.contains("8..=512"));
+    assert!(!error.contains("credential-must-not-appear"));
+}

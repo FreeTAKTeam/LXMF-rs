@@ -184,8 +184,11 @@ bearers, and RNodeMulti KISS vports. These deterministic tests use software
 seams only. A fake backend also drives the actual RNode BLE KISS worker to
 prove wrong-key rejection/countering, matching-key admission, and authenticated
 egress; this is software fault-injection evidence, not physical BLE
-verification. Uncovered carrier families and physical/public-network evidence
-remain open. See the [#608 evidence record](../goals/reticulum-reference-parity-605/evidence/608-ifac.md).
+verification. A focused TCP bootstrap regression also verifies that an
+out-of-range IFAC size remains visible as a sanitized failed-startup diagnostic
+with the accepted size range and without the configured credential marker.
+Uncovered carrier families and physical/public-network evidence remain open.
+See the [#608 evidence record](../goals/reticulum-reference-parity-605/evidence/608-ifac.md).
 
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,

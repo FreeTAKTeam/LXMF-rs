@@ -777,6 +777,11 @@ This verifies the Rust startup/error-reporting path for this malformed input;
 it does not assert identical error text or cover other parse failures or the
 broader acceptance row.
 
+The companion TCP listener regression supplies an out-of-range IFAC size and
+checks the failed `list_interfaces` diagnostic, accepted size range, and
+credential redaction. This adds malformed-startup reporting evidence for the
+TCP configuration path; it does not close the broader startup/error matrix.
+
 ```text
 cargo test -p reticulumd --bin reticulumd \
   bootstrap_reports_nonnumeric_ifac_size_without_exposing_credentials -- --nocapture
