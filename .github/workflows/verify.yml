@@ -262,7 +262,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
         run: |
           cargo test -p rns-tools --test rngit_python_interop \
-            issue_613_media_read_failure::rngit_media_content_read_failure_has_no_python_link_response \
+            issue_613_media_read_failure::rngit_media_blob_stat_then_stream_failure_matches_python_empty_resource \
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python rngit media filesystem-failure fallbacks
