@@ -30,7 +30,7 @@ Rust kept the page Link active after a failed Resource response.
 | NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression checks nested file-path encoding; unit regression confirms that only `file_path` receives `quote_plus`, while group/repository/ref remain literal as in frozen `pages.py`; missing repository, invalid ref, missing blob are covered; visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
-| Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
+| Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref; an ordered source-working-directory disappearance after blob-info resolution verifies no-response source-open failure and same-Link recovery |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and streaming encoder-output capture (32 MiB disk cap), output validation, temporary-directory cleanup, raw fallback | Existing production-Link encoding and exact raw-fallback regressions remain; the deterministic oversized fake-backend case checks prompt termination, reaping of both pipeline children, and removal of partial output. Pinned-Python Link regressions prove raw fallback when the forced backend is unavailable and when media temp-directory creation fails because `TMPDIR` resolves to a regular file. A pinned-Python Link regression also forces recognized-but-unavailable `magick` while an `ffmpeg` sentinel is available, proving no encoder fallthrough; local validation passed at PR commit `e7563fca`, and Verify runs that regression. ImageMagick 7 `magick` now also passes locally through the checksum-pinned AppImage and pinned-Python production-Link fixture; `avconv` and visual parity remain unverified. |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; pinned Python inspects the production Resource advertisement and confirms no compression for a precompressed PNG |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown, response-send-detected abrupt client exit, periodic cleanup after silent Link disappearance, in-flight `/media` Resource cancellation, pipeline child-status errors, and stale-sweep removal retry are exercised | deterministic `periodic_sweep_removes_media_for_silently_disappeared_link` test plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client`, `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown`, `rngit_python_interop::rngit_cleans_media_after_response_fails_on_abrupt_client_exit`, and `rngit_python_interop::issue_613_cleanup_isolation::rngit_disconnect_cleanup_preserves_an_independent_active_media_response` | active, stale, closed, missing-link, graceful-disconnect, synchronized partial-Resource cancellation, abrupt client exit detected by a failed response, periodic sweep after silent Link disappearance, cross-Link cleanup/active-response isolation, child-status-error termination/reaping, and one stale-sweep filesystem removal failure/retry verified; other filesystem/media lifecycle fault paths remain open |
@@ -61,9 +61,8 @@ fails at the real `create_dir` call during `/media` conversion setup. The
 pinned Python Reticulum client still receives the original `image.png` Resource
 with its expected filename, 8192-byte size, and SHA-256. This confirms existing
 raw fallback behavior; no production change was needed. It covers temp-path
-creation only and complements the output-file write-failure trace below; temp
-output-file open failure, metadata/stat races, and Resource stream-open failure
-remain unverified.
+creation only and complements the output-file open/write and source-stream-open
+traces below; metadata/stat races remain unverified.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
@@ -83,7 +82,7 @@ receives the original `image.png` Resource with its expected filename, size,
 and SHA-256, and the Rust service remains running. Source inspection verifies
 the frozen Python helper catches conversion errors and its page handler falls
 back to `get_blob_stream`; no production change was needed. This covers output
-write failure only, not metadata/stat races or Resource stream-open failure.
+write failure only, not metadata/stat races.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
@@ -114,7 +113,32 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --exact --nocapture --test-threads=1 PASS (1 test)
 ```
 
-Metadata/stat races and Resource stream-open failure remain unverified.
+Metadata/stat races remain unverified.
+
+### Original blob source-stream open failure has no response and preserves Link recovery
+
+The ignored Unix production-Link regression
+`issue_613_media_source_open_failure::rngit_media_source_stream_open_failure_has_no_response_and_keeps_link_live`
+uses Reticulum `99de23c040d507e3fefca19e87b182302902725d`. A one-shot Git
+wrapper waits for successful `cat-file -s` and the reference-equivalent
+`ls-tree` metadata lookup, then renames only the fixture bare repository
+before Rust can start the original-blob command with that working directory.
+This ordered fault makes `Command::current_dir` fail;
+it does not rely on a sleep to win a race. The pinned Python client receives no
+success or failure callback for that request, matching `pages.py` catching the
+`Popen` exception in `get_blob_stream`, returning `None`, and constructing no
+Resource. The test restores the repository and verifies an exact `README.md`
+payload/metadata response on the same Link, no conversion artifacts for the
+non-image path, and a live Rust service. This is distinct from blob-process
+content-read failure and the conversion temp/output open/write faults. No
+production mismatch was found.
+
+```text
+RETICULUM_PY_REPO=/path/to/Reticulum-at-99de23c \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_source_open_failure::rngit_media_source_stream_open_failure_has_no_response_and_keeps_link_live \
+  -- --ignored --exact --nocapture --test-threads=1 PASS (1 test)
+```
 
 ### Disconnect cancels an in-flight conversion
 

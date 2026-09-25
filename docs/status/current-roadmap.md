@@ -197,8 +197,12 @@ file at the Rust service's `TMPDIR` makes conversion temp-directory creation
 fail, and a service file-size limit makes the real conversion output write
 fail. A pinned Python production Link receives the exact original `/media`
 Resource in both cases, matching the frozen Python conversion-failure fallback;
-no production change was needed. Output-file open failure, metadata/stat races,
-Resource stream-open failure, and the broader #613 matrix remain open.
+no production change was needed. A separate ordered filesystem fault removes
+the fixture repository working directory after blob-info lookup, preventing the
+Rust source command from starting. The pinned Python Link receives no response,
+then recovers on the same Link after restoration, matching frozen `pages.py`
+`Popen` failure behavior; no Resource is constructed and no production change
+was needed. Metadata/stat races and the broader #613 matrix remain open.
 
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
