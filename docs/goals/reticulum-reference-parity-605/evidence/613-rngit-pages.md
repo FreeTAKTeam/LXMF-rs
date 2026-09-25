@@ -192,6 +192,28 @@ checks the same AppImage, repeats the codec smoke, and runs this Link fixture;
 that hosted run is pending and is not claimed as passed here. Real `avconv`
 encoding and visual/reference rendering parity remain unverified.
 
+### Explicit avconv selection through the production Link path (stubbed encoder)
+
+No `avconv` executable or locally available `libav-tools` package is present
+in this environment, so no external binary was installed. A deterministic
+executable named `avconv` instead exercises the production `rngit` conversion
+path under `RNGIT_MEDIA_BACKEND=avconv`. It records each received argument as
+NUL-delimited data, emits a minimal WebP-shaped byte sequence, and the pinned
+Python client verifies the resulting `/media` Resource name and signature.
+The regression compares the entire argv vector, including the quoted scale
+filter containing shell-significant quotes and `>`, at quality 37 and maximum
+dimension 321. This proves Rust's selected-backend process wiring and argument
+boundaries for the tested request; it does not execute libav/avconv, validate
+real encoding/decoding, or establish visual parity. The acceptance checkbox
+therefore remains incomplete. Verify runs the exact ignored process test.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_options::rngit_invokes_selected_avconv_backend_with_argument_safe_options \
+  -- --ignored --exact --nocapture --test-threads=1                    PASS (1 test)
+```
+
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
 LXMF_PYTHON_BIN=python3 RNGIT_TEST_WEBP_BACKEND=magick \

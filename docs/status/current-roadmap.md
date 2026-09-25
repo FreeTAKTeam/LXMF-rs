@@ -139,6 +139,14 @@ plus conversion-directory cleanup. Both exact filters passed locally against
 Reticulum `99de23c040d507e3fefca19e87b182302902725d`; hosted execution of the
 new steps is pending. This adds CI coverage only and does not close the wider
 #613 lifecycle/filesystem gaps.
+The #633 follow-up adds a pinned-Python production-Link test for explicit
+`avconv` selection using a deterministic stub executable. It verifies the
+complete quality/resize argv—including shell-sensitive filter text—and the
+WebP Resource response. No local `avconv` or installable `libav-tools` package
+was available; this is process-wiring evidence only, not real encoder or
+visual parity, so the image/WebP acceptance remains open pending real
+`avconv` behavior and the other listed gaps. The exact ignored test passed
+locally against the pinned Reticulum commit; hosted execution is pending.
 The #633 follow-up also verifies runtime WebP configuration forwarding: a
 production `rngit` process selects a deterministic stub `ffmpeg`, passes its
 configured quality and maximum-dimension options, and returns WebP metadata to
