@@ -89,6 +89,29 @@ git diff --check PASS
 | AutoInterface per-device carrier echo loss/recovery | A deterministic library regression adopts two test devices and drives the production `process_discovery_datagram` and peer-job path: one device stops echoing while the second continues, and exactly the first receives `carrier_lost`; a returning echo produces exactly its `carrier_recovered` event. In the same regression, the actual AutoDiscoveryRuntime binds loopback sockets, awaits explicit `stop()`, proves discovery/data ports can be rebound, and restarts/stops on those same ports. | focused software regression; does not exercise native multicast receipt, OS carrier detection, native link-local enumeration, cross-platform semantics, or physical carrier behavior |
 | Strict I2P daemon startup after SAM handshake rejection | The production `startup_i2p` path is run with strict startup enabled against a deterministic local SAM peer. The peer accepts the production HELLO command but replies with `RESULT=I2P_ERROR`; startup returns no runtime handle, registers no interface with the production `InterfaceManager`, and records one startup failure containing the SAM preflight context and rejection text. | focused fake-SAM daemon-startup regression; does not cover destination creation failure, established-session packet flow, real router behavior, or public I2P connectivity |
 
+### TCP client carrier reconnect restores packet ingress
+
+The frozen Reticulum reference `99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Interfaces/TCPInterface.py`, treats an empty read on an initiator socket
+as a reconnect trigger (`read_loop`), retries through `reconnect`, and starts a
+new `read_loop` after the replacement socket connects. The Rust regression
+`tcp_client_receives_packets_after_established_stream_reconnects` holds a
+loopback TCP connection stable beyond the short-flap threshold, closes that
+stream, observes the same interface's reconnect event, and sends a valid HDLC
+packet on the replacement stream. It requires exact payload delivery through
+the production interface receive channel, positive runtime RX bytes, and a
+clean `closed` state after cancellation.
+
+```text
+CARGO_TARGET_DIR=/dev/shm/lxmf-614-target cargo test -p reticulum-rs-transport --lib tcp_client_receives_packets_after_established_stream_reconnects -- --nocapture
+PASS (1 test; loopback software only)
+```
+
+This fills the packet-ingress-after-reconnect evidence gap for ordinary
+`TCPClientInterface`; it is not a pinned Python↔Rust socket-pair trace and does
+not establish cross-platform, public-network, or physical interface behavior.
+The broader #614 family/platform matrix remains open.
+
 ## Commands and results
 
 ### Bounded Weave software trace

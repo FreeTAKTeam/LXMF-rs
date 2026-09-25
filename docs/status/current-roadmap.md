@@ -153,6 +153,13 @@ worker cancellation/rebind regression, this covers software packet flow and
 restart for the configured UDP unicast path; multicast, multi-host,
 cross-platform, mobile, physical, and wider #614/#605 interface evidence remain
 open.
+The ordinary TCP client now also has a focused loopback regression for packet
+ingress after an established carrier stream closes and reconnects: the test
+observes the reconnect event, delivers an exact HDLC packet on the replacement
+stream, checks live RX-byte status, and verifies clean cancellation. This
+closes the software evidence gap for data-plane recovery on a replaced TCP
+stream, without claiming Python socket-pair parity, cross-platform behavior,
+or completion of the broader #614 family/platform matrix.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at

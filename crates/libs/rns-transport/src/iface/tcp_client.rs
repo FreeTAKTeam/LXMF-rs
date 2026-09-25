@@ -1379,6 +1379,9 @@ impl Interface for TcpClient {
 
 #[cfg(test)]
 mod tests {
+    #[path = "issue_614_reconnected_stream.rs"]
+    mod issue_614_reconnected_stream;
+
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
