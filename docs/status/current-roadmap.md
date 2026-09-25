@@ -190,8 +190,11 @@ documented broader gates. A daemon Resource-completion regression now checks
 receipt metadata, peer byte accounting, exactly-once emission, and tracking
 cleanup, including suppression of a repeated completion notification. The
 timeout-failure receipt path now has the same exactly-once metadata and cleanup
-coverage, including peer backoff status; other consumer callback/status paths
-remain open. Focused `lxmf-runtime` tests also
+coverage, including peer backoff status. The daemon now logs inbound Resource
+progress counters with hash/Link context instead of discarding the progress
+event; its focused status-format regression passes. At that point, the remaining
+terminal consumer paths had not yet been fully audited; the completed audit is
+recorded below. Focused `lxmf-runtime` tests also
 confirm `OutboundFailed` and `OutboundCancelled` become distinct SDK transport
 errors and cleanup is attempted, without claiming the remaining consumer
 matrix. The 2026-09-23 #610 increment aligns Python Resource cancellation
@@ -199,15 +202,79 @@ contexts: `RESOURCE_RCL` is an outbound rejection (`OutboundRejected`),
 `RESOURCE_ICL` is an inbound remote cancellation (`InboundFailed`), and a
 Rust-local outgoing cancel remains `OutboundCancelled`. Pinned-Python,
 transport, SDK, daemon receipt, remote-control, and utility-consumer regressions
-cover the distinction; the wider timeout and consumer-status matrix remains
-open.
+cover the distinction; later entries below complete the terminal-event
+consumer/status audit while retaining unrelated wider fault-matrix limits.
 
 The focused #610 compression regression now exercises the production Resource
 path in both directions against pinned Python: compressible input follows the
 default compressed path, deterministic incompressible input remains
 uncompressed, and the explicit disable option remains uncompressed, all with
-exact payload digests. No production mismatch was found; compression-threshold
-behavior remains unverified, and #610 stays partial.
+exact payload digests. It also verifies compressible and deterministic
+incompressible two-segment payloads above `MAX_EFFICIENT_SIZE`, including
+assembled digests, logical size, and the final segment's compression flag.
+Pinned Python and Rust agree on segment-first accounting and per-segment
+compression. A mixed-peer case now composes split transfer, first-segment
+metadata, and compression: Python verifies exact assembled content and
+metadata, while a focused Rust assertion confirms that first segment's
+compressed advertisement; metadata makes the final 15-byte segment correctly
+remain uncompressed. A pinned-reference boundary probe found that 64 MiB is the
+automatic-compression threshold, not an outbound admission ceiling; the
+reader-backed sender now accepts a 64 MiB + 1 source, leaves it uncompressed,
+and prepares only its first segment. The exact local Resource regression and
+validation record are in the #610 evidence file. No full mixed-peer transfer
+at that size has been run, and the broader #610 acceptance matrix remains
+open; #610 stays partial.
+
+A pinned-Python split-Resource fault trace now accepts the first segment and
+cancels during the second; the Rust sender observes terminal
+`OutboundRejected`. This extends cancellation evidence beyond the first part,
+but the broader #610 segment/callback matrix remains open.
+
+The daemon consumer now has a deterministic partial-inbound teardown regression:
+a test-only packet gate forwards the advertisement and first Resource fragment,
+holds later Resource traffic while allowing LinkClose through, and verifies
+partial progress followed by one inbound terminal failure, with no completion,
+receipt, status transition, or fabricated delivered content. The broader #610
+failure/consumer matrix remains open; the identical payload then completes
+with exact bytes on a fresh Link after the failed Link is removed.
+
+A separate production-daemon regression now gates a partial inbound Resource,
+then cancels it through the peer's public `Transport::cancel_resource` path.
+The daemon observes `InboundFailed(remote_cancelled)` with partial progress,
+creates no completion, receipt, or delivered content, and accepts a subsequent
+exact-payload Resource over the same active Link. The pinned Python
+`Resource.cancel()`/`Link.py` callback and ICL-routing behavior is recorded in
+the #610 evidence file. At that stage, only this one software consumer path
+had been closed; the subsequent full terminal-event audit is recorded below.
+
+The production-daemon Resource retry-exhaustion consumer now verifies a
+correlated generic `resource-failed` receipt and tracking cleanup. The event
+API does not carry the failure cause, so the daemon no longer fabricates a
+timeout diagnosis for every `OutboundFailed`; the LXMF SDK's caller deadline
+remains an explicit timeout error and attempts Resource cancellation.
+
+The daemon consumer now also has an end-to-end outbound-completion regression:
+the peer returns a real Resource proof and the daemon persists the correlated
+completion receipt/status and removes tracking. Together with rejection,
+cancellation, timeout, and partial inbound teardown regressions, this covers
+positive and selected negative consumer paths without treating an error as
+success; the subsequent full terminal-event audit is recorded below.
+
+The #610 terminal-event audit also found and fixed retained split-inbound
+bytes on later-segment decode failure and retry exhaustion. Both paths now
+publish one failure keyed by the original Resource hash and remove the partial
+assembly. Focused manager tests cover both terminal paths, and a daemon
+retry-timeout regression confirms there is no completion or receipt and that a
+new Resource succeeds on the same Link after cleanup. The full callback/status/
+cleanup audit also found and fixed propagation-download waiters that hid inbound
+Resource failure behind a request timeout; the terminal-aware waiter now returns
+the failure. The sole remaining #610 acceptance item is locally proven and
+awaits updated PR #638 checks before its issue checkbox is changed.
+
+A separate pinned-Python Resource fault regression now times out a dropped Link
+establishment, reuses the carrier with a fresh production Link ID, and
+verifies a successful one-part Resource exchange by digest. Split-transfer
+timeout recovery and the broader #610 failure matrix remain open.
 
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
@@ -559,10 +626,11 @@ Scoped release evidence is split as follows:
   packet at or below negotiated MDU and a response Resource above it; a
   metadata-bearing file response always uses Resource. Production mixed-peer
   tests cover clearly-small, oversized, and metadata-bearing responses in both
-  directions with exact response content and digest checks. The exact
-  `mdu - 1` / `mdu` / `mdu + 1` wire boundary remains unverified. Note the
-  request-id asymmetry — a packet-borne request has no id field, so the
-  responder derives one from the packet hash.
+  directions with exact response content and digest checks. A production
+  mixed-peer differential also verifies packet selection at `mdu - 1` and
+  `mdu`, and Resource selection at `mdu + 1`, against the peer's negotiated
+  MDU. Note the request-id asymmetry — a packet-borne request has no id field,
+  so the responder derives one from the packet hash.
 - Cached remote path responses now keep the cached announce payload while
   stamping the direct response packet as `PATH_RESPONSE`, aligning another
   Python announce/path discovery edge policy.

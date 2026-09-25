@@ -94,6 +94,7 @@ async fn resource_wait_failure_runs_cancellation_before_returning() {
     .expect_err("timed-out resource must fail");
 
     assert_eq!(error.category, lxmf_sdk::ErrorCategory::Transport);
+    assert_eq!(error.message, "resource transfer timed out");
     assert!(cancelled.load(Ordering::SeqCst));
 }
 

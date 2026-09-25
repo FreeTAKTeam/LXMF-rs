@@ -55,7 +55,7 @@ fn split_send_builds_only_the_first_segment_up_front() {
         .outgoing_segment_chains
         .get(&original_hash)
         .expect("chain for the unbuilt tail");
-    assert_eq!(pending.next_segment_index, 2);
+    assert_eq!(pending.next_segment_index, Some(2));
     assert_eq!(pending.total_segments, 4);
 
     manager.confirm_outbound_dispatch(original_hash, true);
@@ -276,7 +276,7 @@ fn a_remote_cancel_drops_the_unbuilt_tail() {
     assert_ne!(second.hash, original_hash, "the test is only meaningful if these differ");
     assert_eq!(
         manager.outgoing_segment_chains.get(&original_hash).expect("tail").next_segment_index,
-        3
+        Some(3)
     );
 
     // We are the initiator, so a cancel from the peer is a receiver cancel.
