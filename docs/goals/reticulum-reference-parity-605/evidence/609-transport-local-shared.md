@@ -1152,4 +1152,40 @@ cargo test -p reticulumd --test packet_replay_process_restart -- --nocapture --t
 cargo test -p reticulumd --tests
   PASS (all reticulumd test targets)
 Formatting, strict all-targets Clippy, module-size, and diff checks passed.
+
+## Packet duplicate-filter classes and Python hash-list rotation
+
+At pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`, a new
+source-backed matrix compares duplicate observations from Python
+`Transport.packet_filter()` with Rust's production duplicate filter. The
+ordinary Data, LinkRequest, and Proof cases admit the first copy and filter an
+exact repeat; KeepAlive, ResourceRequest, ResourceProof, Resource,
+CacheRequest, and Channel admit both copies; a repeated Single Announce is
+also admitted. Both the Python script and Rust production cases passed. This
+adds coverage for the previously untested Python context exemptions and
+ordinary LinkRequest/Data classes; it does not expand claims beyond those
+constructed packet shapes.
+
+The same pinned source defines `hashlist_maxsize = 1_000_000` and, when the
+current generation grows strictly beyond half that size, replaces the previous
+generation with the current set and starts a fresh current set
+(`RNS/Transport.py:241,832-834`). A deterministic pinned-Python fixture lowers
+the limit to four, exercises `Transport.packet_filter` against the actual hash
+sets, and applies the same scheduler rotation predicate directly so the
+background-only transition is testable without starting the global thread. It
+verifies rotation at three entries, duplicate rejection for the immediately
+previous generation, and admission after that generation is displaced; it does
+not claim to exercise scheduler timing or its production loop. Rust's current
+`PacketCache` has time-based expiry rather than this two-generation size
+rotation; a focused observation confirms it retains six inserted unique
+entries. Therefore the Python reference contract is tested in a deterministic
+fixture, but Rust size/rotation parity remains an open implementation gap. No
+production behavior was changed in this slice.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_duplicate_filter_context_matrix_matches_rust -- --ignored --nocapture
+  PASS (1 test; Python Reticulum 99de23c040d507e3fefca19e87b182302902725d and Rust duplicate filter agree)
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_packet_hash_rotation_and_size_contract -- --ignored --nocapture
+  PASS (1 test; Python size/rotation contract proven; Rust currently retains entries without size rotation)
+```
 ```
