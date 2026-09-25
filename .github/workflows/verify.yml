@@ -227,6 +227,15 @@ jobs:
             work_view_float_document_ids_match_pinned_python_integer_coercion \
             -- --ignored --nocapture --test-threads=1
 
+      - name: Run pinned Python rngit create/propose validation differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            tests::work_create_and_propose_missing_signature_errors_match_pinned_python_precedence \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report

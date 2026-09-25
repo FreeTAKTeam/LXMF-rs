@@ -111,6 +111,13 @@ without `doc_id`: pinned Python and Rust both return `INVALID_REQ` with
 this operation-specific request error; the remaining work-operation matrix
 and hosted evidence are still open.
 
+A pinned-Python #612 production-handler differential now covers missing
+signatures for both `create` and `propose` when title/content are also empty.
+Python returns `INVALID_REQ / No signature provided` first; Rust now preserves
+that validation order, and neither handler creates work storage. This is one
+error-precedence seam only; other create/propose validation and the broad
+operation/permission matrix remain open.
+
 A focused pinned-Python `view` differential now verifies document-ID float
 coercion: Python's `int()` behavior maps `7.9` to document `7` and `-0.1` to
 document `0`, and Rust returns the same status and exact MessagePack response

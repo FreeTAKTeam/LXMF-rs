@@ -175,14 +175,14 @@ impl ReticulumGitNode {
             .trim()
             .to_string();
         let format = Self::work_format(request);
+        if let Err(error) = Self::validate_work_signature(request, peer_identity) {
+            return response(Self::RES_INVALID_REQ, error, None);
+        }
         if title.is_empty() || content.is_empty() {
             return response(Self::RES_INVALID_REQ, "Title and content are required", None);
         }
         if title.len() + content.len() + format.len() > Self::WORK_DOC_LIMIT {
             return response(Self::RES_INVALID_REQ, "Content limit exceeded", None);
-        }
-        if let Err(error) = Self::validate_work_signature(request, peer_identity) {
-            return response(Self::RES_INVALID_REQ, error, None);
         }
         let scope = if proposed { "proposed" } else { "active" };
         let scope_root = root.join(scope);
