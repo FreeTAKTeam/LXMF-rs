@@ -69,6 +69,7 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 | Permissions get/set authorization gates | Eight production-handler scenarios verify the layered repository-admin and repository write/interact prerequisites plus the document author/admin gate for `perms/get` and `perms/set`. A document's explicit `admin:none` denies a non-author repository administrator for both steps; denied SET leaves the sidecar unchanged. An author with repository manage access and an explicit document admin remain allowed. | Eight focused local pinned-Python handler scenarios; the full #612 permission and work-operation matrix remains partial |
 | Document read gate precedes work mutations | The focused pinned-Python production `handle_work` differential grants the document author write and interact on item 7 while its `.allowed` sidecar explicitly denies read. Python returns `NOT_FOUND / Document not found` before edit dispatch and leaves content unchanged; Rust previously permitted the signed edit. The Rust dispatcher now applies the shared document-read-or-repository-admin gate before view/comment/edit/delete/perms dispatch. | focused local production-handler differential verified against Reticulum `99de23c040d507e3fefca19e87b182302902725d`; only edit with valid ID and this permission combination is covered; other gate combinations and live-Link version remain unverified |
 | Non-author work edit denial | `issue_612_edit_non_author_differential_tests.rs` sends a signed `edit` request from a non-author with repository and document read/write/interact access to both production handlers. It compares exact response bytes and verifies identical document files and unchanged root bytes. Test-first run failed because Rust returned `Not allowed` while pinned Python returned `No access, not author`; Rust now matches the reference denial. Verify runs this ignored differential against the frozen Python revision. | focused local pinned-Python production-handler differential verified at `99de23c040d507e3fefca19e87b182302902725d`; denied edit only; other edit authorization/error combinations and the broad #612 matrix remain open |
+| Work view with document ID zero and explicit read denial | `view_document_zero_keeps_rust_document_read_denial_stricter_than_python_truthiness` sends the same `view` request for item `0` through the production handlers with repository `read:all` and document `read:none`. Pinned Python 1.5.4 returns the document because `if data.get("doc_id")` treats integer zero as false and skips the document-level read gate; Rust returns `NOT_FOUND`. This is deliberately retained as a stricter authorization behavior rather than reproducing the reference's ID-zero gate bypass. | focused local pinned-Python differential verified against Reticulum `99de23c040d507e3fefca19e87b182302902725d`; Rust security divergence is explicit; other ID coercions and the broad #612 operation/permission matrix remain open |
 | Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets. The native Rust client now sends Python-compatible `/git/list`, `/git/fetch`, and oversized `/git/push` plus signed `/mgmt/work` and the multi-step release protocol to a pinned Python `git.repositories` server, including raw Git bundle and artifact Resource handling, exact `git bundle verify`, remote-ref verification after push, release creation/upload/finalization/list/view/latest/delete, and the production compatibility-client bridge. | fixture, both bounded request directions, integer timestamps and binary work values verified over Python↔Rust production Links and in storage; broader cross-process/network restart/concurrency/fault matrix unverified |
 
 The focused `rngit_work_storage_preserves_msgpack_binary_and_integer_types_both_directions`
@@ -387,6 +388,24 @@ cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings PA
 tools/scripts/check-boundaries.sh PASS
 tools/scripts/check-module-size.sh PASS
 git diff --check PASS
+```
+
+### Work view with document ID zero
+
+The ignored differential `view_document_zero_keeps_rust_document_read_denial_stricter_than_python_truthiness` uses pinned Reticulum 1.5.4 revision
+`99de23c040d507e3fefca19e87b182302902725d`, an existing active item `0`,
+repository-level `read:all`, and an explicit document `read:none` sidecar. Python's
+`handle_work` checks `if data.get("doc_id")`; because integer zero is false, it
+does not apply the document-level read gate and `_work_view` returns the item.
+Rust treats the present zero ID as a document and returns `NOT_FOUND`. This
+slice records an intentional fail-closed authorization divergence; no
+implementation change was made to reproduce Python's access bypass.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --bin rngit --all-features \
+  view_document_zero_keeps_rust_document_read_denial_stricter_than_python_truthiness \
+  -- --ignored --nocapture --test-threads=1 PASS
 ```
 
 ### Permission-get repository gates

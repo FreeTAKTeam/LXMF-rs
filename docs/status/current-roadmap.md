@@ -202,6 +202,13 @@ Python's exact `No access, not author` response body. This is one denial branch;
 other edit conditions and the broader #612 operation/permission matrix remain
 open. Verify coverage was added for the ignored differential.
 
+A pinned-Python #612 differential also records an ID-zero authorization
+divergence: Python's truthiness-based `doc_id` gate returns an item despite an
+explicit document `read:none` restriction, while Rust returns `NOT_FOUND`.
+Rust deliberately retains the stricter fail-closed behavior; this remains a
+documented security divergence, and the broader work/permission matrix stays
+open.
+
 The new bidirectional MessagePack work-record regression verifies exact binary
 author/identity/signature values and integer document IDs/timestamps across
 Python↔Rust storage and production Link response boundaries. It also corrected
