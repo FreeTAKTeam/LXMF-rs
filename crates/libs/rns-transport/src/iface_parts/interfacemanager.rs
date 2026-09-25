@@ -72,6 +72,8 @@ impl InterfaceManager {
             address,
             parent: None,
             full_hash,
+            display_name: None,
+            tcp_client_path_table_metadata: None,
             tx_send,
             stop: stop.clone(),
             online: online.clone(),
@@ -334,6 +336,7 @@ impl InterfaceManager {
         let mtu = host_iface.mtu;
         let mode = host_iface.mode;
         let gravity = host_iface.gravity;
+        let display_name = host_iface.display_name.clone();
 
         // Virtual iface gets its own CancellationToken so it can be
         // stopped (and GC'd by `cleanup()`) independently of the host.
@@ -358,6 +361,8 @@ impl InterfaceManager {
             address,
             parent: Some(host),
             full_hash,
+            display_name,
+            tcp_client_path_table_metadata: None,
             tx_send: host_tx,
             stop,
             online: host_online,

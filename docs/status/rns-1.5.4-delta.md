@@ -196,9 +196,27 @@ assertion also exercises the completed Python fetch resource-conclusion/save
 callback. Commit `3c6757ba` additionally covers default and explicit
 no-compression send modes in both Python↔Rust directions, a bzip2-compressed
 payload, and Python listener default/no-compression fetch responses into a Rust
-client. The row remains partial and unverified because direct callback
-telemetry, the complete utility option/behavior matrix, rngit network workflows,
-and slow-interface/remote fault transcripts remain open or owned by #612/#613.
+client. The issue-specific `rncp_listener_reports_received_file_disk_error`
+process regression forces the Rust listener's post-delivery file save to fail
+and asserts its diagnostic, keeping transport receipt distinct from app-level
+save status. The ignored exact-target `rncp_python_listener_reports_received_file_disk_error`
+trace also verifies that a pinned Python receiver logs its save callback error
+after a Rust sender reports successful Resource delivery. PR #631 adds
+exact-target process assertions for packed and received Resource advertisement
+transfer/data sizes and compression flags across Python→Rust sends, Rust→Python
+sends, and Python default/`-C` fetch responses. Verify now runs that focused
+compression matrix automatically. The new exact-target
+`rncp_python_fetch_client_save_error_is_reported_but_never_resolved` trace
+forces the Python fetch save directory to fail after preflight and observes the
+callback's save-error output. The pinned callback returns without resolving the
+transfer, leaving the client running; this is recorded as a reference defect,
+not accepted terminal failure handling. The row remains partial and unverified
+because accurate Python fetch-client terminal failure status, the
+complete utility option/behavior matrix, rngit network workflows, and
+pinned-Python receive-side cancellation remain open or owned by #612/#613. A slow-proxy
+`rncp` regression now proves one delayed/rate-limited TCP send completes under
+the adaptive timeout; this is software-path evidence only and makes no
+carrier-specific or physical timing claim.
 Commit
 `2b281b87` also adds process-level assertions for a missing fetch and a denied
 sender, including nonzero exit status and preserved failure categories.
@@ -210,7 +228,13 @@ listener restart check on the same TCP endpoint with a second binary transfer.
 Commit `9b8e4ed6` adds a fetch save-directory disk-error check with nonzero
 status and preserved `Is a directory` output. Commit `397a9525` adds explicit
 client Ctrl-C cancellation handling with a nonzero status and preserved
-`operation cancelled by user` output. Commit `e668ae60` adds three concurrent
+`operation cancelled by user` output during path discovery. The new
+`rncp_ctrl_c_during_resource_transfer_reports_cancellation` process test sends
+SIGINT after the CLI announces the active Resource-transfer phase, requires
+the same explicit cancellation error and nonzero status, and verifies the
+receiver did not expose a completed file. It covers the native Rust-to-Rust
+workflow; pinned-Python receiver cancellation remains open. Commit `e668ae60`
+adds three concurrent
 client processes with exact listener-side byte verification. Commit `a5f57dba`
 adds flushed non-silent client phase output and an interrupted-Resource process
 check with nonzero status and no partial saved file. Commit `27bb3fac` gates
@@ -225,6 +249,14 @@ exchange: a Python `rnprobe` reaches the Rust daemon's opt-in
 `PROVE_ALL` responder. Both isolated TCP roles deliver two probes with zero
 loss. Public/multi-hop, physical-carrier, and probe fault/restart evidence
 remain open.
+
+The #631 `rnpath` follow-up adds one software network trace beyond the existing
+mock-RPC tests: a separate pinned-Python Reticulum process waits to announce
+until after the Rust `rnpath-rs` client process is launched, using a separate
+`reticulumd` process's live TCP RPC. The CLI returns the announced destination
+and one-hop result. Verify runs the exact-target trace against the frozen
+1.5.4 development checkout; path-table, remote-management, and broader utility
+acceptance remain partial.
 
 Commits `f24e0038` and `a32b6d71` add a bounded native `rnsh` TCP/Link/Channel workflow with
 the frozen Python message family, exact no-aspect destination hashing,

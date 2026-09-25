@@ -341,6 +341,7 @@ impl RpcDaemon {
         match request.method.as_str() {
             "drop_announce_queues" => self.handle_rpc_legacy_drop_announce_queues(request),
             "get_rate_table" => self.handle_rpc_legacy_rate_table(request),
+            "get_path_table" => self.handle_rpc_legacy_path_table(request),
             "discovered_interfaces" => self.handle_rpc_legacy_discovered_interfaces(request),
             "get_packet_rssi" | "get_packet_snr" | "get_packet_q" => {
                 self.handle_rpc_legacy_packet_signal(request)
@@ -354,6 +355,29 @@ impl RpcDaemon {
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
         self.with_runtime_management_bridge(request.id, |bridge| bridge.rate_table())
+    }
+
+    fn handle_rpc_legacy_path_table(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.unwrap_or_else(|| json!({}));
+        if !params.is_object() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "path table params must be an object",
+            ));
+        }
+        let max_hops = match params.get("max_hops") {
+            None | Some(JsonValue::Null) => None,
+            Some(value) => Some(value.as_u64().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "max_hops must be a non-negative integer",
+                )
+            })?),
+        };
+        self.with_runtime_management_bridge(request.id, |bridge| bridge.path_table(max_hops))
     }
 
     fn handle_rpc_legacy_discovered_interfaces(

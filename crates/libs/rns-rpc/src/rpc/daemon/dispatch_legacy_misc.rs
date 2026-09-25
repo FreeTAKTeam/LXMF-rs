@@ -186,6 +186,7 @@ impl RpcDaemon {
             "drop_path" | "drop_all_via" => self.handle_rpc_legacy_path_mutation(request),
             "drop_announce_queues"
             | "get_rate_table"
+            | "get_path_table"
             | "discovered_interfaces"
             | "get_packet_rssi"
             | "get_packet_snr"

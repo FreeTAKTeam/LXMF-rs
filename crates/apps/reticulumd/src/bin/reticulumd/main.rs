@@ -19,6 +19,7 @@ mod outbound_resources;
 mod receipt_events;
 mod receipt_worker;
 mod rpc_loop;
+mod tcp_client_path_table;
 #[cfg(test)]
 mod tests;
 #[cfg(feature = "zmq-pipeline-rpc")]

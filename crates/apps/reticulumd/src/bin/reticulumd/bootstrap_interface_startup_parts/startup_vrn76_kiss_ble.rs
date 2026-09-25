@@ -324,6 +324,19 @@ fn apply_interface_runtime_config(
 ) {
     manager.set_gravity(address, iface.interface_gravity());
     manager.set_outgoing(address, iface.outgoing());
+    manager.set_display_name(
+        address,
+        iface
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(ToOwned::to_owned),
+    );
+    manager.set_tcp_client_path_table_metadata(
+        address,
+        crate::tcp_client_path_table::from_config(iface),
+    );
     if iface.bitrate.is_some() || iface.announce_cap.is_some() {
         let (current_bitrate, current_announce_cap) =
             manager.announce_pacing(&address).unwrap_or((62_500, 2));

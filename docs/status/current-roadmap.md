@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-23
+Last reassessed: 2026-09-25
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -25,11 +25,15 @@ remaining acceptance gates are recorded in
 not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
 open; the focused #611 `rncp` compression/send/fetch matrix, bounded
-`rnprobe` packet/RPC workflow, and bounded native `rnsh` channel workflow,
+`rnprobe` packet/RPC workflow plus one exact-target invalid-option comparison,
+and bounded native `rnsh` channel workflow,
 negative
-failure-category checks, path-discovery-timeout check, listener restart check,
-local disk-failure check, client-cancellation check, concurrent-client check,
-interrupted-link/status-output check, active-interface medium-timeout check,
+failure-category checks, exact `rncp` path-discovery output/status assertion,
+listener restart check,
+local and Rust/Python receiver-side disk-failure callback checks,
+client-cancellation checks during discovery and active Resource transfer,
+concurrent-client check, interrupted-link/status-output check,
+active-interface medium-timeout and delayed/rate-limited TCP-path checks,
 mixed-runtime restart check, and the #612 pinned-Python work-item persistence
   trace across a Rust `rngit` process restart plus the reciprocal native
   Rust-client `/git/list`/`/git/fetch`/`/git/push` and the bounded multi-step
@@ -37,6 +41,129 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
   verification) are evidence for those slices only
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
+
+The current #631 increment adds one isolated `rnpath` discovery trace: the Rust
+CLI calls a live `reticulumd` TCP RPC while a separate pinned-Python peer
+announces the target over a TCP interface. This closes only the mocked-boundary
+gap for that discovery path; #611's broader utility and management matrix stays
+partial.
+
+A separate `rnpath` process regression verifies the daemon-unavailable boundary:
+the production CLI returns failure with no apparent success output and a
+connection-refused diagnostic. This does not exercise transport or a Python peer and
+does not close the broader #611 utility matrix.
+
+The current #631 path-table slice adds a `get_path_table` daemon RPC and
+`rnpath-rs --table`/`--max` output backed by the transport path table, with
+focused hop-filter, RPC-shape, bridge-serialization, and CLI-ordering tests.
+An ignored live loopback trace now connects the Rust daemon and a separate
+pinned-Python observer to a Python announcing peer and compares a non-empty
+table row: destination hash, via, hop count, and the exact TCP-client
+`interface` representation match, with numeric expiry fields. The daemon carries
+optional configured TCP-client name/endpoint metadata separately from ordinary
+interface display names and renders the pinned Python `TCPInterface[...]` value
+only for that supported case; formatter tests also cover IPv6 brackets and
+hot-apply endpoint replacement. Other interface families and the broader #611
+matrix remain open.
+
+The #611 audit also records the frozen `rnstatus -R` remote-management gap:
+Python uses an authenticated Link to the distinct
+`rnstransport.remote.management` destination, where service enablement and the
+`remote_management_allowed` identity ACL gate `/status`; the response carries
+interface statistics and optional link-count/profiling fields. Rust currently
+has the enable flag but no matching allow-list, destination registration, or
+request route. Reusing propagation control or exposing broad daemon status is
+not parity. The exact pinned source references and boundary are recorded in
+[`611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md).
+This is documentation of an open gap only; no #611 acceptance is completed.
+
+The current #631 `rncp` increment observes packed and received Resource
+advertisement sizes/flags for all six Python/Rust compression roles, with a
+focused exact-target Verify step; the utility row remains partial because its
+other workflows and failure/restart gaps are still open.
+
+The pinned #631 `rncp` interop trace also verifies fetch collision handling:
+Python's `-O` and Rust's `--overwrite` replace a pre-existing file with the
+binary transfer and do not leave a `.1` sibling. This covers only that fetch
+overwrite case; the broader utility matrix remains partial.
+
+The #631 `rncp` startup check now preserves frozen Python's status 3 and
+`Output directory not found` diagnostic for a missing `--save` directory.
+This is one bounded process failure case; the utility row remains partial.
+
+The #611 `rngit fetch` and bounded `push` increments add production Rust
+CLI-to-pinned-Python Git workflows: fetch verifies and imports a real bundle;
+push sends a local ref bundle to a requested remote ref. A separate-process
+test checks exact commit IDs and binary blob bytes for both directions. The
+production Rust `git-remote-rns` helper now also passes real Git capability
+discovery/list and fetch against the pinned Python service, with the exact
+remote-tracking commit and binary blob verified. Remote-helper push/deletion,
+batching, initial-branch variation, and broader utility matrices remain open.
+
+The #631 `rnprobe` follow-up compares `--probes not-an-integer` across the Rust
+and frozen Python processes. Both return exit status 2 with their corresponding
+invalid-integer diagnostics, and Verify runs the focused ignored test against
+the exact reference checkout. A further process differential supplies only
+`rnstransport.probe`: frozen Python and Rust now both print CLI help and exit
+0 without starting network activity when the destination hash is omitted.
+The regression checks help output and empty stderr; exact formatting differs
+by parser. Broader `rnprobe` parity remains partial. Its successful-path
+counterpart now withholds a
+pinned Python probe destination announce until native `rnprobe` starts through
+the Rust daemon, then asserts two discovered-path deliveries and structured
+probe results against the exact `99de23c...` peer in Verify. These bounded
+increments now also exercise the known-path/no-proof production failure path:
+the pinned Python destination announces without proving, and native `rnprobe`
+returns a timed-out probe, zero replies, 100% packet-loss JSON, and exit status
+2. The CLI's loss exit mapping already has unit coverage; this exact-target
+regression verifies transport timeout through the live daemon to the process
+result. It matches pinned Python behavior, so no production fix was needed.
+An additional exact-target process regression runs two separate native
+`rnprobe` clients sequentially through one live Rust daemon after the first
+client discovers the pinned-Python responder. Both calls deliver both probes,
+showing shared-daemon utility reuse over production transport; this is not a
+daemon-restart or concurrency claim. No production discrepancy was exposed.
+The new `native_rnprobe_succeeds_after_rust_daemon_restart` process regression
+then gracefully stops and restarts `reticulumd` against the same state database
+while the pinned-Python peer stays live, releases a fresh announce, and asserts
+that a new native `rnprobe` process delivers both probes over the restarted
+production transport. Verify runs it against the exact pinned peer. This is
+software loopback evidence for one restart path, not a general daemon recovery
+or utility matrix claim; #611 remains partial.
+
+A focused `rnprobe` process check now injects a daemon RPC authorization
+rejection and verifies exit status 1, contextual stderr, and empty stdout. It
+pins the existing CLI error propagation at the mocked daemon boundary only;
+it is not live authorization or transport parity and required no production
+change. The broader #611 utility matrix remains partial.
+
+The exact-target Python fetch-client disk-error trace now verifies the full
+payload digest at the pinned save callback, the callback's local save error,
+the pinned client's subsequent `Transfer complete` progress and unresolved
+process state, and the Rust listener's `OutboundComplete` event with a matching
+Resource hash. This records transport delivery separately from local save
+success; it does not add a negative acknowledgment or complete the broader
+#611 utility row.
+
+The `rnsd --exampleconfig` utility option now returns the frozen Python
+configuration example byte-for-byte without starting the daemon. Its focused
+process differential uses the pinned Reticulum revision and leaves the broader
+#611 utility matrix partial.
+
+The reference-style `rnid --identity <file> --sign <path>...` workflow writes
+the frozen Python binary `.rsg` signature envelope for multiple files. It
+refuses an existing output by default with Python's stdout diagnostic/status
+and replaces it with `--force`. The pinned-Python process differential accepts
+both binary payloads and rejects a one-byte mutation with its reference
+invalid-signature exit status. This does not complete the other `rnid` modes
+or the broader #611 utility matrix.
+
+The #631 follow-up adds native `rnid --validate` for frozen Python's signed
+`.rsg` envelope. A production-process regression validates a binary signature
+created by pinned Python, then changes the payload and confirms both Rust and
+Python reject it with status 10. Rust accepts either the payload path or its
+`.rsg` signature path. Identity import/export, network identity requests,
+encryption, and the broader #611 utility matrix remain open.
 
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
@@ -994,9 +1121,24 @@ direction.
   envelopes, stream forwarding, timeout, and mirrored exit status are covered
   by Rust process/auth tests plus reciprocal pinned-Python initiator→Rust
   listener and Rust initiator→pinned-Python listener exchanges (`e57afb99`,
-  `662dcdbe`), including the immediate non-TTY EOF case. PTY/resize, full
-  fault/restart coverage, and public/multi-hop evidence remain open; this does
-  not promote the broader `RNS/Utilities/*` row.
+  `662dcdbe`), including the immediate non-TTY EOF case. Client-timeout teardown
+  now signals and joins the owned session, kills/reaps its remote child, and
+  awaits the command/pipe tasks. The timeout regression now observes the child
+  alive before client timeout; the corrected focused process suite passes 3/3.
+  Authenticated listener rejection now sends the frozen Python fatal error
+  `Identity not allowed` before Link teardown; the shipped client reports the
+  reason on stderr, exits 1, and does not execute the command in a separate-
+  process loopback regression. Other rnsh failure cases remain open.
+  Rust `rnsh` now requests PTY mode for terminal-backed stdio, spawns the remote
+  command with a controlling PTY, applies initial rows/columns/pixel dimensions,
+  and applies later `WindowSize` updates. A real loopback client-under-PTY test
+  observes the remote child at both initial and SIGWINCH-updated dimensions;
+  all-pipe and two complementary mixed per-stream process cases are covered.
+  The mixed-mode EOF regression also ensures command-builder slave descriptors
+  are released and Linux PTY-master EIO is treated as final stream EOF. Mixed
+  controlling-terminal parity, other flag combinations, the remaining rnsh
+  fault/restart matrix, and public/multi-hop evidence remain open; this does not
+  promote the broader `RNS/Utilities/*` row.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through

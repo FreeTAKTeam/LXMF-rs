@@ -9,6 +9,11 @@ fn main() -> ExitCode {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let args: Vec<_> = env::args_os().skip(1).collect();
+    if args.len() == 1 && args[0] == "--exampleconfig" {
+        println!("{}", include_str!("rnsd_example_config.txt"));
+        return ExitCode::SUCCESS;
+    }
+
     let reticulumd = resolve_reticulumd_binary();
 
     #[cfg(unix)]
