@@ -808,6 +808,11 @@ async fn run_i2p_peer_loop_with_ifac(
             );
         }
         log::info!("I2P SAM stream disconnected peer={} iface={}", peer, iface_address);
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = iface_stop.cancelled() => break,
+            _ = tokio::time::sleep(reconnect_wait) => {}
+        }
     }
 }
 
@@ -2031,6 +2036,92 @@ mod tests {
             .await
             .expect("peer loop shutdown timeout")
             .expect("peer loop task");
+    }
+
+    #[tokio::test]
+    async fn i2p_outbound_reconnect_waits_after_established_stream_expires() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("local addr").to_string();
+        let reconnect_wait = Duration::from_millis(120);
+        let (elapsed_tx, elapsed_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (session_socket, _) = listener.accept().await.expect("accept first session");
+            let mut session = BufReader::new(session_socket);
+            for response in [
+                "HELLO REPLY RESULT=OK VERSION=3.3\n",
+                "SESSION STATUS RESULT=OK DESTINATION=fake.b32.i2p\n",
+            ] {
+                let mut command = String::new();
+                session.read_line(&mut command).await.expect("read session command");
+                session.get_mut().write_all(response.as_bytes()).await.expect("reply session");
+            }
+            let (lookup_socket, _) = listener.accept().await.expect("accept first lookup");
+            let mut lookup = BufReader::new(lookup_socket);
+            for response in [
+                "HELLO REPLY RESULT=OK VERSION=3.3\n",
+                "NAMING REPLY RESULT=OK NAME=peer.b32.i2p VALUE=resolved-destination\n",
+            ] {
+                let mut command = String::new();
+                lookup.read_line(&mut command).await.expect("read lookup command");
+                lookup.get_mut().write_all(response.as_bytes()).await.expect("reply lookup");
+            }
+            let (stream_socket, _) = listener.accept().await.expect("accept first stream");
+            let mut stream = BufReader::new(stream_socket);
+            for response in ["HELLO REPLY RESULT=OK VERSION=3.3\n", "STREAM STATUS RESULT=OK\n"] {
+                let mut command = String::new();
+                stream.read_line(&mut command).await.expect("read stream command");
+                stream.get_mut().write_all(response.as_bytes()).await.expect("reply stream");
+            }
+            drop(stream);
+            let disconnected_at = tokio::time::Instant::now();
+
+            let (reconnect_socket, _) = listener.accept().await.expect("accept reconnect session");
+            let elapsed = disconnected_at.elapsed();
+            let mut reconnect = BufReader::new(reconnect_socket);
+            let mut hello = String::new();
+            reconnect.read_line(&mut hello).await.expect("read reconnect HELLO");
+            reconnect
+                .get_mut()
+                .write_all(b"HELLO REPLY RESULT=OK VERSION=3.3\n")
+                .await
+                .expect("reply reconnect HELLO");
+            let _ = elapsed_tx.send(elapsed);
+        });
+
+        let peer = "peer.b32.i2p".to_string();
+        let runtime_status = Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(
+            sam_addr.clone(),
+            false,
+            std::slice::from_ref(&peer),
+        )));
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let (_peer_tx, peer_rx) = tokio::sync::mpsc::channel(8);
+        let peer_loop = tokio::spawn(run_i2p_peer_loop(
+            peer,
+            crate::hash::AddressHash::new([0x44; 16]),
+            sam_addr,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            reconnect_wait,
+            runtime_status,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_channel,
+            peer_rx,
+        ));
+
+        let elapsed = tokio::time::timeout(Duration::from_secs(2), elapsed_rx)
+            .await
+            .expect("reconnect within bound")
+            .expect("elapsed value");
+        assert!(elapsed >= reconnect_wait, "reconnected after only {elapsed:?}");
+        cancel.cancel();
+        peer_loop.abort();
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("fake SAM server exits")
+            .expect("fake SAM server task");
     }
 
     #[tokio::test]

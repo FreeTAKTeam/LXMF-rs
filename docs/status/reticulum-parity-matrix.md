@@ -515,7 +515,13 @@ placeholders:
   software evidence only; SAM session IDs now include the daemon transport
   identity when available to avoid cross-process ID collisions on a shared
   router, and expired accept-session IDs recreate the connectable session
-  instead of retrying a dead ID indefinitely.
+  instead of retrying a dead ID indefinitely. A pinned-Python comparison also
+  found the outbound peer waits `RECONNECT_WAIT` (15 seconds) after an
+  established stream ends; Rust now waits its configured reconnect delay after
+  stream teardown. A production-loop fake-SAM regression verifies the delay
+  with a shortened test duration, and Verify runs that focused test. Local
+  software only; real-router behavior and the broad #614 family/platform matrix
+  remain unverified.
   The config parser recognises I2P-local IFAC aliases `ifac_netname` and
   `ifac_netkey`, but rejects them until Reticulum IFAC authentication is
   implemented.

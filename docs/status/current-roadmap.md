@@ -925,7 +925,10 @@ direction.
   cleanup. SAM session IDs now include the daemon transport identity when
   available to avoid cross-process collisions on a shared router, and expired
   accept-loop session IDs recreate the connectable session instead of retrying
-  a dead ID indefinitely.
+  a dead ID indefinitely. Pinned-Python comparison found outbound reconnects
+  wait 15 seconds after an established stream ends; Rust now applies the
+  configured reconnect delay after stream teardown, with a fake-SAM regression
+  using a bounded shortened delay.
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
   peer-data sockets, transport ingress, outbound routing, multicast proof
   fallback, supervised discovery/data receive loops, transport-side

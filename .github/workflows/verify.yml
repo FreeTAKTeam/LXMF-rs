@@ -120,6 +120,12 @@ jobs:
           TIMEOUT_SECS: "60"
         run: ./tools/scripts/pipe-fake-subprocess-smoke.sh
 
+      - name: Verify I2P outbound reconnect backoff after stream expiry
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          i2p_outbound_reconnect_waits_after_established_stream_expires
+          -- --nocapture
+
       - name: Validate exact-target behavioral inventory
         run: |
           python3 tools/scripts/python_surface_inventory.py --self-test
