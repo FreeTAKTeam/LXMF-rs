@@ -237,8 +237,11 @@ It then starts `reticulumd` with two
 `LocalClientInterface` attach entries using `fixed_mtu = 262144` and
 `force_shared_instance_bitrate = 1000000`. After both Rust attach clients are
 visible, the smoke starts one additional pinned Python traffic client per
-shared instance and sends three `destination.announce` calls through each
-shared instance. Artifacts are written under
+shared instance. Each Python traffic client announces an exact UTF-8
+`app_data` payload, and each shared-instance Python process periodically
+announces a reverse payload; both sides assert the exact received payload.
+The same fixture retains attach/status checks and graceful daemon teardown and
+restart checks. Artifacts are written under
 `target/local-interface-python-shared-smoke/`.
 
 Passing evidence requires:
@@ -249,16 +252,26 @@ Passing evidence requires:
 - The Python TCP shared instance to report `local_client_count >= 2`.
 - The Python Unix shared instance to report `local_client_count >= 2`.
 - Each Python traffic client to report `announced_count >= 3`.
+- Each shared-instance Python process to observe the exact
+  `python-to-shared:<transport>` payload from its Python traffic client.
+- Each Python traffic client to observe the exact `shared-to-python` payload.
 - Each Python shared instance to report `local_client_rxb_total > 0`.
 - Each Python shared instance to report `local_client_txb_total > 0`.
+- After the daemon receives traffic, SIGINT shutdown must reduce the Unix
+  shared instance's Rust-side client count to the surviving Python traffic
+  client; restarting the daemon must restore the Unix attach status and client
+  count.
 - `rnstatus-rs` JSON/human output containing both Rust local client rows.
 - The report to include `python_rns_revision` for the pinned reference checkout.
+- The report to set `unix_teardown_restart_verified = true`.
 
 The report records
-`evidence_scope = "python_shared_instance_tcp_unix_attach_and_announce_forward"` plus a
-`product_boundary` note: this proves attach interop with real pinned Python
-Reticulum shared instances and Python-origin announce fanout through those
-shared instances, but does not prove broad application-level shared-instance traffic parity.
+`evidence_scope = "python_shared_instance_tcp_unix_attach_announce_payload_and_lifecycle"` plus a
+`product_boundary` note: exact announce payloads are observed between pinned
+Python peers on both transports while `reticulumd` is attached and its status
+and lifecycle are checked. The smoke has no daemon application endpoint, so it
+does not prove daemon application-level packet consumption, physical
+interfaces, cross-platform behavior, or broad shared-instance parity.
 
 ## Reticulum Interface Parity Audit
 

@@ -1,7 +1,7 @@
 #[cfg(unix)]
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead as IfacBufRead, BufReader as IfacBufReader};
 #[cfg(unix)]
-use std::process::{Command, Stdio};
+use std::process::{Command as IfacCommand, Stdio as IfacStdio};
 
 #[cfg(unix)]
 #[derive(serde::Deserialize)]
@@ -15,11 +15,11 @@ fn start_python_kiss_pty_bridge() -> (PythonKissPtyBridge, ChildGuard) {
     let python_bin = std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
     let helper = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/support/python_kiss_pty_bridge.py");
-    let child = Command::new(python_bin)
+    let child = IfacCommand::new(python_bin)
         .arg("-u")
         .arg(helper)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(IfacStdio::piped())
+        .stderr(IfacStdio::piped())
         .spawn()
         .expect("spawn Python KISS PTY bridge");
     let mut guard = ChildGuard { child: Some(child) };
@@ -28,8 +28,7 @@ fn start_python_kiss_pty_bridge() -> (PythonKissPtyBridge, ChildGuard) {
         .as_mut()
         .and_then(|child| child.stdout.take())
         .expect("Python KISS PTY bridge stdout");
-    let line = BufReader::new(stdout)
-        .lines()
+    let line = IfacBufRead::lines(IfacBufReader::new(stdout))
         .next()
         .expect("Python KISS PTY bridge should report its devices")
         .expect("read Python KISS PTY bridge devices");

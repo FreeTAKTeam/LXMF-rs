@@ -114,6 +114,7 @@ pub(super) struct BootstrapContext {
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
     pub(super) path_table_persistence: Option<PathTablePersistenceContext>,
+    pub(super) auto_runtime_shutdowns: Vec<transport_startup::AutoRuntimeShutdown>,
 }
 
 const RECEIPT_EVENT_QUEUE_CAPACITY: usize = 1024;
@@ -271,6 +272,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let startup_failures = startup.startup_failures;
     let seeded_hot_apply_interfaces = startup.seeded_hot_apply_interfaces;
     let auto_runtime_refreshes = startup.auto_runtime_refreshes;
+    let auto_runtime_shutdowns = startup.auto_runtime_shutdowns;
     let pipe_runtime_refreshes = startup.pipe_runtime_refreshes;
     let udp_runtime_refreshes = startup.udp_runtime_refreshes;
     let serial_runtime_refreshes = startup.serial_runtime_refreshes;
@@ -649,7 +651,25 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         );
     }
 
-    BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls, path_table_persistence }
+    BootstrapContext {
+        rpc_addr,
+        rpc_unix,
+        daemon,
+        rpc_tls,
+        path_table_persistence,
+        auto_runtime_shutdowns,
+    }
+}
+
+pub(super) async fn shutdown_auto_interfaces(
+    shutdowns: Vec<transport_startup::AutoRuntimeShutdown>,
+) {
+    for shutdown in shutdowns {
+        let host_iface = shutdown.host_iface;
+        if !shutdown.stop().await {
+            log::debug!("[daemon] AutoInterface host already absent during shutdown iface={host_iface}");
+        }
+    }
 }
 
 fn spawn_propagation_storage_maintenance(daemon: Arc<RpcDaemon>) {

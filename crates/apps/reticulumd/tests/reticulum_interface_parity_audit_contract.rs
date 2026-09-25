@@ -31,7 +31,7 @@ fn reticulum_interface_parity_audit_preserves_384_385_evidence_contract() {
         "local-interface-smoke",
         "local-interface-unix-smoke",
         "local-interface-python-shared-smoke",
-        "python_shared_instance_tcp_unix_attach_and_announce_forward",
+        "python_shared_instance_tcp_unix_attach_announce_payload_and_lifecycle",
         "software_unix_shared_instance_local",
         "local-python-tcp-attach",
         "local-python-unix-attach",
