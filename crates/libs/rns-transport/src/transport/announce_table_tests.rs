@@ -1,5 +1,5 @@
 use super::*;
-use crate::packet::{PacketContext, PacketDataBuffer};
+use crate::packet::{PacketContext, PacketDataBuffer, PropagationType};
 use rand_core::OsRng;
 use std::thread;
 use std::time::Duration as StdDuration;
@@ -29,6 +29,11 @@ fn announce_entries_use_random_window_and_grace_retry() {
 
     let messages = table.drain_retransmissions(&transport_id);
     assert_eq!(messages.len(), 1, "first local rebroadcast should fire once");
+    assert_eq!(
+        messages[0].packet.header.propagation_type,
+        PropagationType::Transport,
+        "a relayed announce must carry the transport propagation flag"
+    );
     let entry = table.map.get(&destination).expect("entry stays live for grace retry");
     assert_eq!(entry.retries, 1);
 
@@ -92,6 +97,11 @@ fn path_response_entries_use_shorter_window_without_later_broadcast() {
     assert_eq!(messages.len(), 1);
     assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
     assert_eq!(messages[0].packet.context, PacketContext::PathResponse);
+    assert_eq!(
+        messages[0].packet.header.propagation_type,
+        PropagationType::Transport,
+        "a known-path response must use the reference transport propagation flag"
+    );
     assert!(table.responses.is_empty());
     assert!(table.map.contains_key(&destination));
     assert!(table.add_response(destination, to_iface, 4));

@@ -78,6 +78,22 @@ impl PacketCache {
         is_new_packet
     }
 
+    pub fn restore_hashes(&mut self, hashes: impl IntoIterator<Item = Hash>) -> usize {
+        let mut restored = 0;
+        for hash in hashes {
+            if let std::collections::hash_map::Entry::Vacant(entry) = self.map.entry(hash) {
+                entry.insert(PacketTrack {
+                    time: Instant::now(),
+                    min_hops: 0,
+                    source_iface: None,
+                    destination: AddressHash::new_empty(),
+                });
+                restored += 1;
+            }
+        }
+        restored
+    }
+
     pub fn remove(&mut self, hash: &Hash) {
         if self.map.remove(hash).is_some() {
             self.by_proof_destination.remove(&AddressHash::new_from_hash(hash));

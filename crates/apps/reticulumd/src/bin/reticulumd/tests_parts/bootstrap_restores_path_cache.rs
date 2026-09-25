@@ -70,9 +70,53 @@ fn shutdown_flushes_reticulum_path_table_without_debounce_wait() {
             temp.path()
                 .join("cache")
                 .join("announces")
-                .join(packet_hash_hex)
+                .join(&packet_hash_hex)
                 .exists(),
             "shutdown flush should write Reticulum-compatible announce cache"
+        );
+        let packet_hashlist = std::fs::read(temp.path().join("packet_hashlist.raw"))
+            .expect("shutdown flush writes packet replay hashlist");
+        assert_eq!(packet_hashlist.len() % 32, 0, "packet hashlist uses concatenated 32-byte hashes");
+    });
+}
+
+#[test]
+fn shutdown_flush_attempts_path_table_when_packet_hashlist_persistence_fails() {
+    let temp = TempDir::new().expect("temp dir");
+    fs::create_dir(temp.path().join("packet_hashlist.raw"))
+        .expect("make packet hashlist destination unwritable as a file");
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+
+    runtime.block_on(async {
+        let signer = PrivateIdentity::new_from_name("shutdown-path-table-after-hashlist-failure");
+        let transport_identity =
+            rns_transport::identity_bridge::to_transport_private_identity(&signer);
+        let transport = Arc::new(Transport::new(TransportConfig::new(
+            "shutdown-path-table-after-hashlist-failure",
+            &transport_identity,
+            true,
+        )));
+        let context = crate::announce_persistence::PathTablePersistenceContext::new(
+            transport,
+            temp.path().to_path_buf(),
+        );
+
+        let error = crate::announce_persistence::flush_reticulum_path_table(&context)
+            .await
+            .expect_err("packet hashlist persistence should fail");
+
+        assert!(
+            error.to_string().contains("failed to persist packet hashlist"),
+            "the returned error should identify packet hashlist persistence: {error}"
+        );
+        assert!(
+            temp.path().join("destination_table").exists(),
+            "path-table persistence should still be attempted after packet hashlist failure"
+        );
+        assert!(
+            temp.path().join("tunnels").exists(),
+            "path-table persistence should complete its companion tunnels write"
         );
     });
 }

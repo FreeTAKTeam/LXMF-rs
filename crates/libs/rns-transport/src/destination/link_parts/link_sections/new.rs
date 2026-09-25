@@ -5,6 +5,8 @@ impl Link {
     ) -> Self {
         Self {
             id: AddressHash::new_empty(),
+            is_initiator: true,
+            close_reason: None,
             destination,
             ingress_iface: None,
             priv_identity: PrivateIdentity::new_from_rand(OsRng),
@@ -96,6 +98,7 @@ impl Link {
             data: packet_data,
         };
         self.status = LinkStatus::Pending;
+        self.close_reason = None;
         self.id = LinkId::from(&packet);
         self.derived_key = DerivedKey::new_empty();
         self.session_cipher = None;
@@ -316,7 +319,8 @@ impl Link {
                 match self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
                     Ok(plain_text) if plain_text == self.id.as_slice() => {
                         self.note_inbound(packet.context);
-                        self.finalize_local_close();
+                        let reason = self.remote_close_reason();
+                        self.finalize_local_close(reason);
                     }
                     Ok(plain_text) => {
                         log::warn!(

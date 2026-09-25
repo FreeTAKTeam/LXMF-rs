@@ -23,20 +23,21 @@ pub struct AnnounceEntry {
 }
 
 impl AnnounceEntry {
-    pub fn retransmit(&mut self, transport_id: &AddressHash) -> Option<TxMessage> {
-        if Instant::now() < self.timeout {
+    fn retransmit_at(&mut self, transport_id: &AddressHash, now: Instant) -> Option<TxMessage> {
+        // Python checks `time.time() > deadline`; equality is still early.
+        if now <= self.timeout {
             return None;
         }
 
         self.retries = self.retries.saturating_add(1);
-        self.timeout = Instant::now() + PATHFINDER_RETRY_GRACE + retry_window();
+        self.timeout = now + PATHFINDER_RETRY_GRACE + retry_window();
 
         let packet = Packet {
             header: Header {
                 ifac_flag: self.packet.header.ifac_flag,
                 header_type: HeaderType::Type2,
                 context_flag: self.packet.header.context_flag,
-                propagation_type: PropagationType::Broadcast,
+                propagation_type: PropagationType::Transport,
                 destination_type: self.packet.header.destination_type,
                 packet_type: self.packet.header.packet_type,
                 hops: self.hops,
@@ -324,6 +325,11 @@ impl AnnounceTable {
     }
 
     #[cfg(test)]
+    pub(super) fn timeout_for_destination(&self, destination: &AddressHash) -> Option<Instant> {
+        self.map.get(destination).map(|entry| entry.timeout)
+    }
+
+    #[cfg(test)]
     pub(crate) fn pending_response_for_destination(
         &self,
         destination: &AddressHash,
@@ -331,11 +337,19 @@ impl AnnounceTable {
         self.responses.get(destination)
     }
 
-    pub fn drain_retransmissions(&mut self, transport_id: &AddressHash) -> Vec<TxMessage> {
+    #[cfg(test)]
+    pub(super) fn drain_retransmissions(&mut self, transport_id: &AddressHash) -> Vec<TxMessage> {
+        self.drain_retransmissions_at(transport_id, Instant::now())
+    }
+
+    pub(super) fn drain_retransmissions_at(
+        &mut self,
+        transport_id: &AddressHash,
+        now: Instant,
+    ) -> Vec<TxMessage> {
         let mut messages = vec![];
         let mut completed = vec![];
         let mut completed_responses = vec![];
-        let now = Instant::now();
 
         for (destination, ref mut entry) in &mut self.map {
             if self.responses.contains_key(destination) {
@@ -351,7 +365,7 @@ impl AnnounceTable {
                 continue;
             }
 
-            if let Some(message) = entry.retransmit(transport_id) {
+            if let Some(message) = entry.retransmit_at(transport_id, now) {
                 messages.push(message);
                 if entry.retries > self.retry_limit {
                     completed.push(*destination);
@@ -369,7 +383,7 @@ impl AnnounceTable {
             if now < entry.timeout {
                 continue;
             }
-            if let Some(message) = entry.retransmit(transport_id) {
+            if let Some(message) = entry.retransmit_at(transport_id, now) {
                 messages.push(message);
                 if entry.retries > self.retry_limit {
                     completed_responses.push(*destination);

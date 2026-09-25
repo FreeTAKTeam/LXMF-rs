@@ -85,7 +85,7 @@ fn assert_ordinary_rebroadcast(message: &TxMessage, source: &Packet, learned_ifa
     assert_eq!(message.packet.destination, source.destination);
     assert_eq!(message.packet.context, PacketContext::None);
     assert_eq!(message.packet.header.header_type, HeaderType::Type2);
-    assert_eq!(message.packet.header.propagation_type, PropagationType::Broadcast);
+    assert_eq!(message.packet.header.propagation_type, PropagationType::Transport);
     assert_eq!(message.packet.data.as_slice(), source.data.as_slice());
     assert!(
         message.packet.transport.is_some(),
