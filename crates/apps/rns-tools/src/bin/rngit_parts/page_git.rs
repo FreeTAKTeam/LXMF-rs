@@ -11,6 +11,23 @@ impl ReticulumGitNode {
         page_git_output::read_bounded_child_stdout(&mut child, limit)
     }
 
+    fn page_git_output_with_status(
+        path: &Path,
+        args: &[String],
+        limit: usize,
+    ) -> Option<(bool, Vec<u8>)> {
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let (status, output) = page_git_output::read_bounded_child_stdout_with_status(&mut child, limit)?;
+        Some((status.success(), output))
+    }
+
     fn page_git_text(path: &Path, args: &[String], limit: usize) -> Option<String> {
         let output = Self::page_git_output(path, args, limit)?;
         match String::from_utf8(output) {
@@ -78,6 +95,19 @@ impl ReticulumGitNode {
         }
         let spec = format!("{resolved}:{file_path}");
         Self::page_git_output(path, &["cat-file".into(), "blob".into(), spec], limit)
+    }
+
+    fn page_blob_with_status(
+        path: &Path,
+        resolved: &str,
+        file_path: &str,
+        limit: usize,
+    ) -> Option<(bool, Vec<u8>)> {
+        if !Self::valid_page_path(file_path) {
+            return None;
+        }
+        let spec = format!("{resolved}:{file_path}");
+        Self::page_git_output_with_status(path, &["cat-file".into(), "blob".into(), spec], limit)
     }
 
     fn page_repository<'a>(

@@ -1153,3 +1153,25 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   PASS (1 test; empty/nonempty blobs and tracked-tree output, pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`)
 Strict integration-test Clippy, formatting, module-size, and diff checks passed.
 ```
+
+### Blob metadata/read race on `/media`
+
+One deterministic source race was injected after `git cat-file -s` succeeds:
+the later blob-content command exits unsuccessfully. Pinned Reticulum 1.5.4
+then opens `git show` as a stdout pipe; `Resource.py` stats the pipe as zero,
+proxies its empty contents, and sends a zero-byte Resource with the filename
+metadata. Rust previously returned no response for this sequence. It now
+distinguishes a still-resolvable blob from a missing object and returns the
+same empty Resource for this failed post-probe read; failures to resolve the
+object type still produce no response. The focused production-Link regression
+uses the pinned Python client and asserts the empty Resource and retained
+request path. This does not establish parity for all repository races or close
+#613.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_read_failure::rngit_media_blob_stat_then_stream_failure_matches_python_empty_resource \
+  -- --ignored --exact --nocapture --test-threads=1
+  PASS (1 test; pinned-source guards and injected stat-then-read failure)
+```

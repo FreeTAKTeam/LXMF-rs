@@ -2,6 +2,14 @@ use std::io::Read;
 use std::process::Child;
 
 pub(super) fn read_bounded_child_stdout(child: &mut Child, limit: usize) -> Option<Vec<u8>> {
+    let (status, output) = read_bounded_child_stdout_with_status(child, limit)?;
+    status.success().then_some(output)
+}
+
+pub(super) fn read_bounded_child_stdout_with_status(
+    child: &mut Child,
+    limit: usize,
+) -> Option<(std::process::ExitStatus, Vec<u8>)> {
     let Some(stdout) = child.stdout.take() else {
         terminate_and_reap(child);
         return None;
@@ -26,7 +34,7 @@ pub(super) fn read_bounded_child_stdout(child: &mut Child, limit: usize) -> Opti
             return None;
         }
     };
-    status.success().then_some(output)
+    Some((status, output))
 }
 
 fn terminate_and_reap(child: &mut Child) {

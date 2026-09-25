@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 
 #[test]
 #[ignore = "requires local pinned Python Reticulum checkout"]
-fn rngit_media_content_read_failure_has_no_python_link_response() -> io::Result<()> {
+fn rngit_media_blob_stat_then_stream_failure_matches_python_empty_resource() -> io::Result<()> {
     let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let root = create_repository_fixture(temp.path())?;
@@ -22,9 +22,19 @@ fn rngit_media_content_read_failure_has_no_python_link_response() -> io::Result<
             format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
         ));
     }
+    let reference_pages = fs::read_to_string(python_repo.join("RNS/Utilities/rngit/pages.py"))?;
+    assert!(reference_pages.contains(
+        "result = subprocess.run([\"git\", \"cat-file\", \"-s\", f\"{ref}:{file_path}\"]"
+    ));
+    assert!(reference_pages
+        .contains("proc = subprocess.Popen([\"git\", \"show\", f\"{ref}:{file_path}\"]"));
+    let reference_resource = fs::read_to_string(python_repo.join("RNS/Resource.py"))?;
+    assert!(reference_resource.contains("data_size = os.stat(data.name).st_size"));
+    assert!(reference_resource.contains("if data_size == 0:"));
+    assert!(reference_resource.contains("stream_proxy.write(data.read())"));
 
-    // Let object-info queries succeed, then fail only the content-stream read.
-    // This reproduces get_blob_info() succeeding before get_blob_stream() fails.
+    // Let the size/type metadata probes succeed, then fail only the blob read.
+    // This reproduces Python's zero-stat stdout pipe after get_blob_info().
     let wrapper_dir = temp.path().join("git-wrapper");
     fs::create_dir(&wrapper_dir)?;
     let marker = temp.path().join("content-read-attempted");
@@ -86,8 +96,9 @@ fn rngit_media_content_read_failure_has_no_python_link_response() -> io::Result<
         }
         let observed: serde_json::Value = serde_json::from_slice(&output.stdout)
             .map_err(|error| io::Error::other(format!("invalid client JSON: {error}")))?;
-        assert_eq!(observed["callback_received"], false, "client result: {observed}");
+        assert_eq!(observed["callback_received"], true, "client result: {observed}");
         assert_eq!(observed["failed_callback"], false, "client result: {observed}");
+        assert_eq!(observed["payload_size"], 0, "client result: {observed}");
         assert!(marker.is_file(), "fault was not injected after object-info resolution");
         Ok(())
     })();
@@ -117,10 +128,16 @@ if not ready.wait(30) or link.status != RNS.Link.ACTIVE:
     raise RuntimeError("media read-failure Link did not establish")
 callback = threading.Event()
 failed = threading.Event()
+response_size = []
+def response(receipt):
+    payload = receipt.response.read() if hasattr(receipt.response, "read") else receipt.response
+    response_size.append(len(payload))
+    callback.set()
 link.request("/media", {"key": b"present", "path": "/media/group/repo/main/image.png"},
-             response_callback=lambda _: callback.set(),
+             response_callback=response,
              failed_callback=lambda _: failed.set(), timeout=2)
 threading.Event().wait(4)
-print(json.dumps({"callback_received": callback.is_set(), "failed_callback": failed.is_set()}))
+print(json.dumps({"callback_received": callback.is_set(), "failed_callback": failed.is_set(),
+                  "payload_size": response_size[0] if response_size else None}))
 link.teardown()
 "#;

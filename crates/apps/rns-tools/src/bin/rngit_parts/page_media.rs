@@ -110,6 +110,28 @@ fn filename(value: &str) -> Option<String> {
 }
 
 impl ReticulumGitNode {
+    fn page_media_blob_after_read_failure(
+        repository_path: &Path,
+        resolved: &str,
+        file_path: &str,
+        failed_stream: Option<Vec<u8>>,
+    ) -> Option<Vec<u8>> {
+        let object_type = Self::page_git_output(
+            repository_path,
+            &["cat-file".into(), "-t".into(), format!("{resolved}:{file_path}")],
+            16,
+        )?;
+        match object_type.as_slice() {
+            b"tree\n" => Self::page_git_output(
+                repository_path,
+                &["show".into(), format!("{resolved}:{file_path}")],
+                MEDIA_BLOB_LIMIT,
+            ),
+            b"blob\n" => failed_stream,
+            _ => None,
+        }
+    }
+
     fn media_request_path(path: &str) -> Option<(String, String, String, String)> {
         let remainder = path.strip_prefix(PAGE_MEDIA)?.trim_start_matches('/');
         let mut components = remainder.splitn(4, '/');
@@ -170,28 +192,37 @@ impl ReticulumGitNode {
         {
             return Some(page_denial_response());
         }
-        // A missing object is the pinned handler's False response above. Once
-        // it is known to exist, a failed content read remains no-response.
-        let blob = match Self::page_blob(&repository_path, &resolved, &file_path, MEDIA_BLOB_LIMIT) {
-            Some(blob) => blob,
-            None => {
+        // A missing object is the pinned handler's False response above. If a
+        // blob vanishes after its size probe, Python's zero-stat stream proxy
+        // still produces an empty Resource; preserve that race behavior below.
+        let blob = match Self::page_blob_with_status(
+            &repository_path,
+            &resolved,
+            &file_path,
+            MEDIA_BLOB_LIMIT,
+        ) {
+            Some((true, blob)) => blob,
+            Some((false, blob)) => {
                 // The pinned Python handler accepts any object for which
                 // `cat-file -s` succeeds, then streams `git show`; that
                 // includes tree paths, whose response is Git's tree listing.
-                // Keep the fallback tree-only so blob read failures retain
-                // the existing no-response behavior.
-                let object_type = Self::page_git_output(
+                // Python returns the stream even when `git show` exits
+                // unsuccessfully; Resource consumes its bounded stdout.
+                Self::page_media_blob_after_read_failure(
                     &repository_path,
-                    &["cat-file".into(), "-t".into(), format!("{resolved}:{file_path}")],
-                    16,
-                )?;
-                if object_type.as_slice() != b"tree\n" {
-                    return None;
-                }
-                Self::page_git_output(
+                    &resolved,
+                    &file_path,
+                    Some(blob),
+                )?
+            }
+            None => {
+                // Preserve the prior tree fallback for output/read failures
+                // that cannot be represented as a completed child status.
+                Self::page_media_blob_after_read_failure(
                     &repository_path,
-                    &["show".into(), format!("{resolved}:{file_path}")],
-                    MEDIA_BLOB_LIMIT,
+                    &resolved,
+                    &file_path,
+                    None,
                 )?
             }
         };

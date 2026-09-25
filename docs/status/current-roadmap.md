@@ -202,15 +202,18 @@ the fixture repository working directory after blob-info lookup, preventing the
 Rust source command from starting. The pinned Python Link receives no response,
 then recovers on the same Link after restoration, matching frozen `pages.py`
 `Popen` failure behavior; no Resource is constructed and no production change
-was needed. Metadata/stat races and the broader #613 matrix remain open.
+was needed. One metadata/stat race is now also covered: after a successful
+object-size probe, an injected failed blob stream for an object that remains a
+blob returns the zero-byte Resource implied by Python's zero-stat pipe path.
+Other metadata/stat races and the broader #613 matrix remain open.
 
 A pinned-Python-client production-Link regression now also checks zero-length
 and nonempty tracked media blobs. The pinned source confirms `/media` returns a
 `git show` pipe whose `stat` size is zero and `Resource.py` proxies the stream;
 Rust serves the expected filenames and bytes while keeping the Link active.
 This is a source-checked, reference-shaped case against the Rust server, not a
-Python-server differential. Metadata/stat races and broader #613 acceptance
-remain open.
+Python-server differential. Other metadata/stat races and broader #613
+acceptance remain open.
 
 The pinned-Python `/media` trace now also covers a tracked directory path:
 reference `get_blob_info` accepts its tree object size and `get_blob_stream`
