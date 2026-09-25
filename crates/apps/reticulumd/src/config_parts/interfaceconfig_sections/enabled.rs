@@ -677,15 +677,15 @@ impl InterfaceConfig {
     pub fn ifac_network_name(&self) -> Option<&String> {
         self.network_name
             .as_ref()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| self.networkname.as_ref().filter(|value| !value.trim().is_empty()))
+            .filter(|value| !value.is_empty())
+            .or_else(|| self.networkname.as_ref().filter(|value| !value.is_empty()))
     }
 
     pub fn ifac_passphrase(&self) -> Option<&String> {
         self.pass_phrase
             .as_ref()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| self.passphrase.as_ref().filter(|value| !value.trim().is_empty()))
+            .filter(|value| !value.is_empty())
+            .or_else(|| self.passphrase.as_ref().filter(|value| !value.is_empty()))
     }
 
     fn normalize_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {

@@ -1125,3 +1125,29 @@ cargo clippy -p reticulum-rs-transport --lib --all-targets --no-deps -- -D warni
 cargo fmt --all -- --check
 # passed
 ```
+
+## Whitespace-only IFAC credentials follow pinned Python startup semantics
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d` checks the
+`networkname`/`network_name` and `passphrase`/`pass_phrase` aliases against the
+empty string at `RNS/Reticulum.py:805-815`; it does not trim whitespace. A
+whitespace-only credential is therefore retained and contributes its UTF-8
+bytes to the IFAC origin at `RNS/Reticulum.py:989-1006`. Rust's daemon config
+resolution previously trimmed these values, so a UDP interface configured
+with `network_name = " "` and `pass_phrase = " "` failed startup instead of
+binding with IFAC enabled.
+
+`bootstrap_accepts_whitespace_ifac_credentials_like_pinned_python` is a
+production-path UDP bootstrap regression. It failed before the fix with
+`startup_status = "failed"`; the resolved credentials now remain intact and
+the real software UDP listener reaches `bound`. The minimal config-resolution
+change distinguishes exactly-empty aliases from whitespace values, retaining
+fallback for `""` as in Python. This covers one daemon-startup credential
+coercion case; no packet-level Python/Rust differential is claimed, and the
+broader carrier/startup/error matrix remains open.
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  bootstrap_accepts_whitespace_ifac_credentials_like_pinned_python -- --nocapture
+# 1 passed; production UDP listener bound with both whitespace credentials
+```

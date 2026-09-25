@@ -64,7 +64,11 @@ startup/error and carrier matrices open. IFAC startup now also matches the
 legacy-name fallback when `networkname` is populated and the newer
 `network_name` alias is empty; the resolved credential validates and a
 production UDP bootstrap regression observes the listener bound. This is one
-alias/startup case only. The spawned
+alias/startup case only. Startup now also preserves whitespace-only IFAC
+credentials literally, matching frozen Python's `value != ""` handling; a
+production UDP regression verifies the real listener binds with those values.
+This is one configuration-coercion edge and does not close the broader
+startup/error or carrier matrix. The spawned
 `PipeInterface` worker also has a Unix subprocess loopback regression for its
 8-byte IFAC default and authenticated HDLC packet admission. Other carrier
 families now include duplex-stream serial and KISS IFAC regressions for wrong-key
