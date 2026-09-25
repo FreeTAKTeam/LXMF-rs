@@ -52,7 +52,10 @@ storage and confirms the exact proof is filtered again. This is separate from
 the LXMF `LXMRouter` delivered-ID cache. A deterministic failure-injection
 regression also confirms a failed hashlist save does not suppress path-table
 writes, while persistence errors remain surfaced. This applies only to
-transport-enabled nodes not attached to a shared instance; retransmission
+transport-enabled nodes not attached to a shared instance. Pinned Python
+comparison also found that `RESOURCE_PRF` retransmissions bypass its duplicate
+hash filter; Rust now admits repeated ResourceProof packets to the resource
+state machine with a focused production-filter regression. Other retransmission
 classes, cache rotation/size parity, and the broader #609 recovery matrix
 remain open.
 

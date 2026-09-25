@@ -32,7 +32,12 @@ pub(super) async fn filter_duplicate_packet(
             );
         }
         PacketType::Proof => {
-            if packet.context == PacketContext::LinkRequestProof {
+            if packet.context == PacketContext::ResourceProof {
+                // Reticulum's packet_filter bypasses duplicate filtering for
+                // RESOURCE_PRF packets, so repeated resource proofs must reach
+                // the resource state machine (which validates their payload).
+                allow_duplicate = true;
+            } else if packet.context == PacketContext::LinkRequestProof {
                 if let Some(link) = in_link {
                     if link.lock().await.status().not_yet_active() {
                         allow_duplicate = true;

@@ -154,6 +154,29 @@ async fn drop_duplicates() {
 }
 
 #[tokio::test]
+async fn duplicate_resource_proofs_reach_resource_state_machine() {
+    let transport = Transport::new(TransportConfig::default());
+    let handler = transport.get_handler();
+    let proof = Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Proof,
+            ..Default::default()
+        },
+        destination: AddressHash::new_from_slice(&[0x61; 32]),
+        context: PacketContext::ResourceProof,
+        data: PacketDataBuffer::new_from_slice(b"resource-proof"),
+        ..Default::default()
+    };
+
+    assert!(handler.lock().await.filter_duplicate_packets(&proof).await);
+    assert!(
+        handler.lock().await.filter_duplicate_packets(&proof).await,
+        "pinned Python bypasses duplicate filtering for RESOURCE_PRF packets"
+    );
+}
+
+#[tokio::test]
 async fn announce_lookup_key_uses_destination_hash() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("test", &local_identity, true);

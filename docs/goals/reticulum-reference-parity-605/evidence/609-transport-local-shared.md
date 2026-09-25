@@ -1024,6 +1024,37 @@ prevent the other; errors are still surfaced. This closes only the exact
 ordinary-proof process-restart case; retransmission classes, cache rotation,
 and broader #609 acceptance remain open.
 
+## Duplicate ResourceProof admission
+
+At pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`Transport.packet_filter()` returns immediately for `Packet.RESOURCE_PRF`
+before consulting either packet-hash generation (`RNS/Transport.py:1630-1640`).
+Thus retransmitted resource-proof packets are deliberately admitted to the
+resource state machine, where the resource proof itself is validated. Rust's
+production `filter_duplicate_packet()` previously recorded the first
+`PacketType::Proof` / `PacketContext::ResourceProof` hash and rejected its
+identical retransmission; only pending `LinkRequestProof` duplicates were
+allowed. The new regression calls the production transport duplicate filter
+twice with the same Link ResourceProof and confirms both admissions. Rust now
+matches the pinned context exception while retaining hash filtering for
+ordinary proofs and other proof contexts. This verifies one retransmission
+class only; ordinary proof process-restart evidence, other proof classes,
+cache rotation/size behavior, and broader #609 acceptance remain distinct and
+open.
+
+```text
+cargo test -p reticulum-rs-transport duplicate_resource_proofs_reach_resource_state_machine
+  PASS (1 test)
+cargo fmt --all -- --check
+  PASS
+cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
+  PASS
+tools/scripts/check-module-size.sh
+  PASS
+git diff --check
+  PASS
+```
+
 ```text
 cargo test -p reticulumd --bin reticulumd shutdown_flush_attempts_path_table_when_packet_hashlist_persistence_fails -- --nocapture
   PASS (1 test)
