@@ -404,3 +404,48 @@ interfaces = [
 
     drop(context);
 }
+
+#[test]
+fn bootstrap_uses_nonempty_legacy_ifac_name_when_canonical_alias_is_empty() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "udp", enabled = true, name = "ifac-empty-alias", host = "127.0.0.1", port = 0, target_host = "127.0.0.1", target_port = 4242, ifac_size = 128, networkname = "legacy-network", network_name = "" }
+]
+"#,
+    )
+    .expect("write IFAC config with empty canonical alias");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path, Some(config_path), None, false)).await
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let response = context
+            .daemon
+            .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+            .expect("list_interfaces");
+        let result = response.result.expect("result");
+        let interfaces = result["interfaces"].as_array().expect("interfaces array");
+        let interface = interfaces
+            .iter()
+            .find(|entry| entry.get("name").and_then(|value| value.as_str()) == Some("ifac-empty-alias"))
+            .expect("started IFAC UDP interface");
+        let settings = interface.get("settings").expect("interface settings");
+        assert_eq!(settings["network_name"].as_str(), Some("legacy-network"));
+        let udp_status = &settings["_runtime"]["udp"]["status"];
+        if udp_status["link_state"].as_str() == Some("bound") {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "UDP listener did not bind: {udp_status}");
+        runtime.block_on(async { tokio::time::sleep(Duration::from_millis(10)).await });
+    }
+
+    drop(context);
+}

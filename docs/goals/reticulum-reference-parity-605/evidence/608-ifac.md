@@ -1061,3 +1061,23 @@ cargo test -p reticulumd --bin reticulumd ifac -- --nocapture
 cargo test -p reticulumd --test config ifac -- --nocapture
 # 3 passed
 ```
+
+## Empty canonical IFAC alias falls back to a populated legacy alias
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Reticulum.py::_add_interface`, updates `ifac_netname` only when each
+configured alias is non-empty. Therefore `networkname = "legacy-network"`
+followed by `network_name = ""` retains the legacy value and allows the
+IFAC-configured interface to start. Rust already selected the legacy value for
+resolved settings, but its validation checked the higher-precedence empty
+field before filtering it, incorrectly rejecting the configuration. The
+validation now uses the same non-empty resolved credential as startup, and
+`bootstrap_uses_nonempty_legacy_ifac_name_when_canonical_alias_is_empty`
+verifies that a real software UDP listener binds and reports the legacy name.
+This covers one alias/startup case only; the broad startup/error and
+carrier-family acceptance remains open.
+
+```text
+cargo test -p reticulumd --bin reticulumd bootstrap_uses_nonempty_legacy_ifac_name_when_canonical_alias_is_empty
+# 1 passed; UDP listener bound with the pinned-reference legacy network name
+```
