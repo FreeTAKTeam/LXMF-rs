@@ -129,6 +129,14 @@ configuration example byte-for-byte without starting the daemon. Its focused
 process differential uses the pinned Reticulum revision and leaves the broader
 #611 utility matrix partial.
 
+The reference-style `rnid --identity <file> --sign <path>...` workflow writes
+the frozen Python binary `.rsg` signature envelope for multiple files. It
+refuses an existing output by default with Python's stdout diagnostic/status
+and replaces it with `--force`. The pinned-Python process differential accepts
+both binary payloads and rejects a one-byte mutation with its reference
+invalid-signature exit status. This does not complete the other `rnid` modes
+or the broader #611 utility matrix.
+
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted

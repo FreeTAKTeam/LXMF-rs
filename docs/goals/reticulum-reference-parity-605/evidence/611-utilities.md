@@ -181,7 +181,7 @@ option family; it is not a callable-surface completion claim.
 | `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; a new local `--table`/`--max` path-table RPC/CLI slice; `rnpath_cli` regressions; `rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc` exercises the Rust CLI, live daemon TCP RPC, and a separate pinned-Python Reticulum peer | partial / discovery has one live mixed-runtime trace and table listing has software unit/RPC coverage; remaining reference options open |
 | `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. `f86ecc1c` exercises pinned Python→Rust and native Rust→pinned Python probe roles over isolated TCP interfaces. | partial / bounded software workflow evidenced; physical/public-network and fault/restart evidence remain open |
 | `rnsd` | Configured daemon launch, service/interactive modes, verbosity, example configuration | Rust compatibility shim resolves and delegates to `reticulumd`; delegation/help/status tests exist | partial / daemon delegation evidenced |
-| `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates and displays persisted private identities with overwrite protection | partial / local identity subset evidenced |
+| `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates/displays persisted identities and now emits Python-compatible binary `.rsg` signatures for files; pinned Python validates the signature and rejects a changed payload | partial / local identity and bounded file-signing workflow evidenced |
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
 | `rnodeconf` | Serial RNode information, firmware/bootstrap/update, EEPROM, Wi-Fi/Bluetooth/display/radio management, signing/trust operations | Rust `rnodeconf-rs` exposes daemon-backed management commands and mock-RPC coverage; physical serial/firmware rows are separate | partial / software management evidenced; hardware-unverified |
 | `rnpkg` | Package-manager configuration and package workflow entry point | Rust exposes global/example-config options only, matching the currently shipped no-subcommand surface | partial / configuration-only |
@@ -901,6 +901,26 @@ classified as complete:
 
 These are evidence or implementation gaps, not claims that the local Rust
 process test represents Python interoperability or complete utility parity.
+
+## `rnid` binary file-signing slice
+
+The production Rust `rnid --identity <identity-file> --sign <path>...`
+workflow (also `-i`/`-s`) writes the frozen Python `.rsg` format to each
+`<path>.rsg`: a SHA-256 digest and signer metadata are MessagePack-encoded,
+signed with the identity key, and prefixed with the signature. The ignored
+process differential signs two binary inputs. With the second `.rsg` already
+present, both the frozen Python CLI and Rust no-force invocation sign the first
+input, preserve the second output, and exit `11` with the exact no-overwrite
+diagnostic on stdout and no stderr; Rust adds no prefix. A forced multi-file
+run replaces the existing output. Pinned Python `rnid --validate` accepts both
+Rust signatures, then rejects a changed payload byte with status `10`. The test
+uses the frozen Reticulum-Python revision
+`99de23c040d507e3fefca19e87b182302902725d`.
+
+This proves only the reference-style default binary file-signing contract and
+Python validation of its output. `--raw`, alternate encodings, imports/exports,
+verify commands in Rust, identity requests, encryption, metadata, and the broad
+#611 utility matrix remain open.
 
 The `rncp_missing_save_directory_uses_reference_failure_status` production
 process test covers a separate startup failure. Frozen Reticulum
