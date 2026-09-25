@@ -545,7 +545,7 @@ impl InterfaceConfig {
         };
         config.ifac_context().map_err(|_| {
             format!(
-                "interfaces[{index}] has invalid Reticulum IFAC configuration; ifac_size must be at most 512 whole bits (or below the one-byte minimum to use the carrier default) and credentials must be non-empty"
+                "interfaces[{index}] has invalid Reticulum IFAC configuration; ifac_size must floor to 1..=64 bytes (or be below the one-byte minimum to use the carrier default) and credentials must be non-empty"
             )
         })?;
         Ok(())

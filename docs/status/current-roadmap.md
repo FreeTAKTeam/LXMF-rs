@@ -53,7 +53,14 @@ Reticulum's one-byte minimum now follow the pinned Python startup rule: they
 select the carrier's default tag size while retaining configured credentials.
 Software tests cover the production daemon UDP path and transport default-size
 selection; the pinned behavior was source-audited, not packet-differentially
-tested. The spawned
+tested. Non-byte-aligned sizes at or above the one-byte minimum now follow the
+same frozen Python floor-to-byte rule: a production UDP daemon configured for
+9 IFAC bits binds with a one-byte tag, and its real ingress accepts a matching
+one-byte-authenticated packet without an IFAC violation. The upper bound is
+expressed as a resulting tag size of at most 64 bytes; 520 bits is rejected.
+This is a Rust production-path regression anchored to the pinned config
+semantics, not a Python-process differential, and it leaves the broader
+startup/error and carrier matrices open. The spawned
 `PipeInterface` worker also has a Unix subprocess loopback regression for its
 8-byte IFAC default and authenticated HDLC packet admission. Other carrier
 families now include duplex-stream serial and KISS IFAC regressions for wrong-key

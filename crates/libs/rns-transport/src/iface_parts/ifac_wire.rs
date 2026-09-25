@@ -85,7 +85,7 @@ impl InterfaceSharedConfig {
             // Pinned Python Reticulum only overrides the carrier default when
             // the configured bit count reaches IFAC_MIN_SIZE * 8; smaller
             // values are ignored. For accepted values it floors to bytes.
-            Some(bits) if bits >= (IFAC_MIN_SIZE as u64) * 8 && bits % 8 == 0 => {
+            Some(bits) if bits >= (IFAC_MIN_SIZE as u64) * 8 => {
                 usize::try_from(bits / 8).map_err(|_| RnsError::InvalidArgument)?
             }
             Some(bits) if bits < (IFAC_MIN_SIZE as u64) * 8 => default_size_bytes,
@@ -322,5 +322,30 @@ mod ifac_wire_tests {
         ));
         let decoded_plaintext = decode_packet_ifac(&plaintext, &raw).expect("decode plaintext");
         assert!(decoded_plaintext.ifac.is_none());
+    }
+
+    #[test]
+    fn python_non_byte_aligned_ifac_bits_floor_to_bytes() {
+        let config = InterfaceSharedConfig {
+            ifac_size: Some(9),
+            passphrase: Some("test-ifac-passphrase".to_string()),
+            ..InterfaceSharedConfig::default()
+        };
+
+        let context = config
+            .ifac_context_with_default_size(16)
+            .expect("pinned Python accepts 9 IFAC bits")
+            .expect("passphrase enables IFAC");
+
+        assert_eq!(context.ifac_size(), 1);
+
+        let largest = InterfaceSharedConfig { ifac_size: Some(519), ..config.clone() }
+            .ifac_context_with_default_size(16)
+            .expect("pinned Python floors 519 bits to the 64-byte maximum")
+            .expect("passphrase enables IFAC");
+        assert_eq!(largest.ifac_size(), 64);
+
+        let too_large = InterfaceSharedConfig { ifac_size: Some(520), ..config };
+        assert!(too_large.ifac_context_with_default_size(16).is_err());
     }
 }

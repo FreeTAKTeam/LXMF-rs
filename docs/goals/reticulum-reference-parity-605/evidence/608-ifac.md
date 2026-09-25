@@ -981,9 +981,9 @@ unspecified and retains the supplied network credential, selecting the carrier
 default rather than disabling authentication. A transport regression checks
 the 16-byte default and the daemon regression bootstraps a real UDP carrier
 with this configuration. The pinned-Python branch was confirmed by reference
-source inspection; no subprocess Python/Rust packet differential was run or
-added in this increment. Higher malformed sizes and non-byte-aligned values
-remain rejected. This is narrow software configuration evidence only.
+source inspection; no subprocess Python/Rust packet differential was run in
+that increment. Sizes that floor above the 64-byte signature limit remain
+rejected. The non-byte-aligned behavior is now covered separately below.
 
 ```text
 cargo test -p reticulumd --bin reticulumd \
@@ -1031,4 +1031,33 @@ bash tools/scripts/check-module-size.sh
 # passed
 git diff --check
 # passed
+```
+
+## Non-byte-aligned IFAC size follows pinned startup coercion
+
+Frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Reticulum.py` lines 801-803, overrides the carrier default whenever
+`ifac_size >= 8` and sets the byte count to `ifac_size // 8`. Thus `9` bits
+means a one-byte IFAC tag; `519` bits floors to the supported 64-byte maximum.
+Rust previously rejected every non-byte-aligned value, preventing daemon
+startup and diverging from that deterministic configuration rule. The shared
+IFAC configuration conversion now floors accepted sizes identically and still
+rejects values that would exceed the signature limit (for example, 520 bits).
+
+The production `reticulumd` regression starts an IFAC UDP listener configured
+with 9 bits, waits for the worker to bind, then sends a well-formed packet
+encoded with the corresponding one-byte tag through the real UDP ingress. The
+transport snapshot records received bytes and zero IFAC violations. A focused
+transport test checks the 9-to-1-byte and 519-to-64-byte conversions and the
+520-bit rejection. This validates the frozen startup rule against the real
+Rust carrier path; it is not an independent Python process packet differential
+and does not close the broader startup/error matrix or #608.
+
+```text
+cargo test -p reticulum-rs-transport --lib iface::ifac_wire_tests
+# 8 passed
+cargo test -p reticulumd --bin reticulumd ifac -- --nocapture
+# 17 passed, including the production UDP startup/ingress regression
+cargo test -p reticulumd --test config ifac -- --nocapture
+# 3 passed
 ```

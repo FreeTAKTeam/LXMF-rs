@@ -209,6 +209,104 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_floors_non_byte_aligned_ifac_bits_on_real_udp_carrier() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    let port_reservation = std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("reserve UDP port");
+    let port = port_reservation.local_addr().expect("reserved UDP address").port();
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "udp", enabled = true, name = "non-byte-ifac-size", host = "127.0.0.1", port = {port}, target_host = "127.0.0.1", target_port = 42421, ifac_size = 9, passphrase = "python-floor-test" }}
+]
+"#,
+        ),
+    )
+    .expect("write non-byte-aligned IFAC config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    drop(port_reservation);
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path, Some(config_path), None, false)).await
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let response = context
+            .daemon
+            .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+            .expect("list_interfaces");
+        let result = response.result.expect("result");
+        let interfaces = result
+            .get("interfaces")
+            .and_then(|value| value.as_array())
+            .expect("interfaces array");
+        let interface = interfaces
+            .iter()
+            .find(|entry| entry.get("name").and_then(|value| value.as_str()) == Some("non-byte-ifac-size"))
+            .expect("configured IFAC UDP interface");
+        let settings = interface.get("settings").expect("interface settings");
+        let runtime_status = settings.get("_runtime").expect("interface runtime status");
+        assert_eq!(runtime_status["startup_status"].as_str(), Some("spawned"));
+        let udp_status = &runtime_status["udp"]["status"];
+        if udp_status["link_state"].as_str() == Some("bound") {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "IFAC UDP carrier did not bind: {udp_status}"
+        );
+        runtime.block_on(async { tokio::time::sleep(Duration::from_millis(10)).await });
+    }
+
+    let ifac = rns_transport::transport::IfacContext::from_network_credentials(
+        1,
+        None,
+        Some("python-floor-test"),
+    )
+    .expect("derive pinned-Python one-byte IFAC context");
+    let packet = rns_transport::packet::Packet {
+        destination: rns_transport::hash::AddressHash::new([0x47; 16]),
+        data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"floor-to-byte"),
+        ..rns_transport::packet::Packet::default()
+    };
+    let frame = ifac.encode(&packet.to_bytes().expect("serialize test packet"))
+        .expect("encode Python-compatible one-byte IFAC frame");
+    let sender = std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("bind UDP sender");
+    sender.send_to(&frame, ("127.0.0.1", port)).expect("send one-byte IFAC packet");
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let response = context
+            .daemon
+            .handle_rpc(RpcRequest { id: 2, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon_status_ex");
+        let result = response.result.expect("status result");
+        let interfaces = result
+            .pointer("/reticulum/transport/interfaces")
+            .and_then(|value| value.as_array())
+            .expect("transport interface snapshots");
+        if let Some(interface) = interfaces
+            .iter()
+            .find(|interface| interface["rx_bytes"].as_u64().is_some_and(|bytes| bytes > 0))
+        {
+            assert_eq!(interface["violations"]["ifac"].as_u64(), Some(0));
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "production UDP worker did not authenticate the 9-bit-configured frame: {interfaces:?}"
+        );
+        runtime.block_on(async { tokio::time::sleep(Duration::from_millis(10)).await });
+    }
+
+    drop(context);
+}
+
+#[test]
 fn bootstrap_reports_nonnumeric_ifac_size_without_exposing_credentials() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

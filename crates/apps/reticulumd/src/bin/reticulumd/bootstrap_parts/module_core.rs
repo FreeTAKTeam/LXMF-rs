@@ -69,7 +69,7 @@ fn rejected_ifac_interface_records(path: &std::path::Path) -> Vec<InterfaceRecor
             let valid_ifac_size = ifac_size
                 .as_integer()
                 .and_then(|value| u64::try_from(value).ok())
-                .is_some_and(|bits| bits < 8 || ((8..=512).contains(&bits) && bits % 8 == 0));
+                .is_some_and(|bits| bits / 8 <= 64);
             let credential_present = ["network_name", "networkname", "passphrase", "pass_phrase"]
                 .iter()
                 .filter_map(|key| table.get(*key).and_then(toml::Value::as_str))
@@ -83,7 +83,7 @@ fn rejected_ifac_interface_records(path: &std::path::Path) -> Vec<InterfaceRecor
                 .unwrap_or("unknown").to_owned();
             let settings = json!({"_runtime": {
                 "startup_status": "failed",
-                "startup_error": "IFAC configuration rejected: ifac_size must be 8..=512 whole bits divisible by 8 and requires a non-empty network_name or passphrase"
+                "startup_error": "IFAC configuration rejected: ifac_size must floor to 1..=64 bytes (or be below the one-byte minimum to use the carrier default) and requires a non-empty network_name or passphrase"
             }});
             Some(InterfaceRecord {
                 kind,
