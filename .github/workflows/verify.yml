@@ -275,6 +275,9 @@ jobs:
             issue_613_temp_directory_failure::rngit_media_temp_directory_creation_failure_returns_raw_resource \
             -- --ignored --exact --nocapture --test-threads=1
           cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_output_open_failure::rngit_media_output_open_failure_returns_raw_resource \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rngit_python_interop \
             issue_613_output_write_failure::rngit_media_output_write_failure_returns_raw_resource \
             -- --ignored --exact --nocapture --test-threads=1
 

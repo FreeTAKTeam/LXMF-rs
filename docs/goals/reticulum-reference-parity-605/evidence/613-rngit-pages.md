@@ -83,8 +83,7 @@ receives the original `image.png` Resource with its expected filename, size,
 and SHA-256, and the Rust service remains running. Source inspection verifies
 the frozen Python helper catches conversion errors and its page handler falls
 back to `get_blob_stream`; no production change was needed. This covers output
-write failure only, not output-file open failure, metadata/stat races, or
-Resource stream-open failure.
+write failure only, not metadata/stat races or Resource stream-open failure.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
@@ -92,6 +91,30 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   issue_613_output_write_failure::rngit_media_output_write_failure_returns_raw_resource \
   -- --ignored --exact --nocapture --test-threads=1 PASS (1 test)
 ```
+
+### Media conversion output-file open failure falls back to the original Resource
+
+The Linux-only ignored production-Link regression
+`issue_613_output_open_failure::rngit_media_output_open_failure_returns_raw_resource`
+builds an `LD_PRELOAD` shim and applies it only to the Rust service. The shim
+matches the non-exclusive `O_CREAT | O_TRUNC` reopen of the already-created
+`rngit-media-*.webp` path and returns `EACCES`; the tempfile's exclusive create
+and the encoder are not denied. An interception marker proves the intended
+open failed, and the fake `ffmpeg` marker proves the encoder was not started.
+The pinned Python client receives the original `image.png` Resource with its
+expected filename, 8192-byte size, and SHA-256, and the Rust service remains
+running. The pinned Python `media.py` catches the conversion exception and
+returns failure, while `pages.py` falls back to the original blob stream. No
+production change was needed.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_output_open_failure::rngit_media_output_open_failure_returns_raw_resource \
+  -- --ignored --exact --nocapture --test-threads=1 PASS (1 test)
+```
+
+Metadata/stat races and Resource stream-open failure remain unverified.
 
 ### Disconnect cancels an in-flight conversion
 
