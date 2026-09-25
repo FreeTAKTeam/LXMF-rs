@@ -17,6 +17,7 @@ pub(super) async fn filter_duplicate_packet(
     node_name: &str,
     packet: &Packet,
     connected_to_shared_instance: bool,
+    transport_identity: AddressHash,
 ) -> (bool, bool) {
     // The pinned Python packet_filter bypasses hash deduplication for these
     // contexts before applying packet-type or destination-specific filtering.
@@ -29,6 +30,23 @@ pub(super) async fn filter_duplicate_packet(
             | PacketContext::CacheRequest
             | PacketContext::Channel
     );
+    if !connected_to_shared_instance
+        && packet.header.packet_type != PacketType::Announce
+        && matches!(packet.header.destination_type, DestinationType::Plain | DestinationType::Group)
+        && packet.transport.is_some_and(|transport| transport != transport_identity)
+    {
+        // Python rejects packets addressed to another transport before its
+        // Plain/Group duplicate-cache bypass.
+        return (false, false);
+    }
+    if packet.header.packet_type != PacketType::Announce
+        && matches!(packet.header.destination_type, DestinationType::Plain | DestinationType::Group)
+    {
+        // Python's packet_filter accepts local-hop Plain/Group packets before
+        // consulting its packet-hash generations. The ingress path has already
+        // rejected transported (>1 hop) packets and invalid announces.
+        allow_duplicate = true;
+    }
     match packet.header.packet_type {
         PacketType::Announce => return (true, false),
         PacketType::LinkRequest => {}
@@ -93,6 +111,7 @@ pub(super) async fn preprocess_inbound_message(
         packet_cache,
         in_link,
         node_name,
+        transport_identity,
     ) = {
         let handler = handler_arc.lock().await;
         (
@@ -103,6 +122,7 @@ pub(super) async fn preprocess_inbound_message(
             handler.packet_cache.clone(),
             handler.in_links.get(&message.packet.destination).cloned(),
             handler.config.name.clone(),
+            *handler.config.identity.address_hash(),
         )
     };
     if violates_ifac_policy(
@@ -269,6 +289,7 @@ pub(super) async fn preprocess_inbound_message(
             &node_name,
             &message.packet,
             connected_to_shared_instance,
+            transport_identity,
         )
         .await
     };

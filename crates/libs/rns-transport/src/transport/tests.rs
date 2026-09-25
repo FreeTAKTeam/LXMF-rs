@@ -48,6 +48,7 @@ include!("tests_parts/blackhole_path_eviction.rs");
 
 include!("tests_parts/rns_1_5_ingress_admission.rs");
 include!("tests_parts/ordinary_proof_duplicate.rs");
+include!("tests_parts/plain_group_packet_duplicates.rs");
 include!("tests_parts/packet_replay_restart.rs");
 
 include!("tests_parts/reticulum_runtime_management.rs");

@@ -1109,6 +1109,36 @@ and `CHANNEL`) are separate contexts and are not newly claimed as independently
 verified by this regression; broader retransmission and #609 acceptance remain
 open.
 
+## Plain/Group duplicate admission
+
+At pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`Transport.packet_filter()` accepts non-announce Plain and Group packets with
+at most one hop before consulting either packet-hash generation
+(`RNS/Transport.py:1627-1667`). Rust already rejects transported Plain/Group
+packets and invalid announces before duplicate filtering, but then incorrectly
+rejected an identical local-hop replay through its global cache. The production
+ingress regression failed on that second replay before the fix. The Rust filter
+rejects a non-announce Plain/Group packet addressed to a different transport
+identity (unless attached to a shared instance) before bypassing hash
+deduplication; matching local-hop packets bypass the cache. Production-ingress
+regressions cover both outcomes, and the pinned-Python differential exercises
+both Plain and Group, matching two accepted copies with no transport ID,
+rejection with a mismatched ID in ordinary mode, and two accepted mismatched-ID
+copies for a shared-instance client. A separate Rust ingress regression verifies
+the same shared-instance exception. Other duplicate classes, cache rotation/size
+behavior, and broader #609 acceptance remain open.
+
+```text
+cargo test -p reticulum-rs-transport --lib rns_1_5_plain_and_group_packets_bypass_hash_duplicate_filter
+  PASS (1 test; failed before the production-filter fix)
+RETICULUM_PY_REPO=/path/to/reticulum-at-99de23c LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_plain_group_duplicate_filter_matches_production_ingress -- --ignored --nocapture
+  PASS (1 test; pinned Python and Rust production ingress agree)
+cargo test -p reticulum-rs-transport --lib plain_group_packet_for_another_transport_is_rejected_before_duplicate_bypass
+  PASS (1 test)
+cargo test -p reticulum-rs-transport --lib shared_instance_duplicate_bypass_precedes_mismatched_transport_rejection
+  PASS (1 test)
+```
+
 ```text
 cargo test -p reticulum-rs-transport duplicate_resource_packets_pass_production_duplicate_filter --lib
   PASS (1 test; failed before the production-filter fix)

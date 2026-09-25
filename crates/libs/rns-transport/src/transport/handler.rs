@@ -238,6 +238,7 @@ impl TransportHandler {
             &self.config.name,
             packet,
             self.config.connected_to_shared_instance,
+            *self.config.identity.address_hash(),
         )
         .await
         .0

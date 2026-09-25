@@ -701,6 +701,14 @@ direction.
   exact Reticulum `99de23c040d507e3fefca19e87b182302902725d`; this is one
   narrow class only and the broader #609 matrix remains open. See
   `evidence/609-transport-local-shared.md`.
+- Local-hop non-announce Plain and Group packets now bypass packet-hash
+  duplicate suppression, matching the pinned `Transport.packet_filter()` early
+  return after wrong-transport identity rejection (except on shared-instance
+  attachments). Production-ingress regressions and pinned-Python differential
+  cover repeated copies and mismatched transport IDs for both classes.
+  Transported packets and invalid announces remain rejected earlier; other
+  duplicate classes, cache rotation/size behavior, and broad #609 acceptance
+  remain open. See `evidence/609-transport-local-shared.md`.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
