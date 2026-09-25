@@ -244,6 +244,12 @@ to an empty string. The exact production-handler response and persisted bytes
 match the frozen reference; other comment shapes and the broader #612 matrix
 remain open.
 
+A third focused #612 comment differential omits the `content` field entirely.
+The Rust and pinned-Python production handlers both return `INVALID_REQ / Content
+is required` without mutating the work root or creating a comment file, and the
+Verify workflow now runs this request shape. This does not complete the broader
+#612 operation/error matrix.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits
