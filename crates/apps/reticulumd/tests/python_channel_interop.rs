@@ -16,11 +16,15 @@ include!("python_channel_interop_parts/rust_to_python_raw_resource_roundtri.rs")
 
 include!("python_channel_interop_parts/ifac_python_interop.rs");
 
+include!("python_channel_interop_parts/ifac_kiss_pty.rs");
+
 include!("python_channel_interop_parts/resource_size_matrix.rs");
 
 include!("python_channel_interop_parts/resource_memory_profile.rs");
 
 include!("python_channel_interop_parts/resource_faults.rs");
+
+include!("python_channel_interop_parts/resource_timeout_reference.rs");
 
 include!("python_channel_interop_parts/python_resource_fault_matrix.rs");
 

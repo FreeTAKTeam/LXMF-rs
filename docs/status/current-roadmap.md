@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-24
+Last reassessed: 2026-09-25
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -22,14 +22,93 @@ The 2026-09-21 behavior audit confirms that mapped surface coverage is **not
 full operational parity**. The implemented BLE/HDLC/rngit increment and explicit
 remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
-not the canonical release baseline. IFAC daemon wiring, remaining remote
-utility behavior, transport policy differences, and platform validation remain
-open; the focused #611 `rncp` compression/send/fetch matrix, bounded
-`rnprobe` packet/RPC workflow, and bounded native `rnsh` channel workflow,
+not the canonical release baseline. Pinned Python/Rust IFAC Channel and
+Resource interoperability is exercised over TCP and UDP; the `lxmd`/`reticulumd`
+UDP path also has bidirectional IFAC direct-message evidence, valid-frame tamper
+rejection, live credential rotation, fail-closed restart evidence, and an
+IFAC-protected shared-instance path with an attached Rust client. Invalid live
+IFAC reconfiguration now returns a structured RPC error while preserving the
+active authenticated configuration; a plaintext peer remains rejected after
+restart. Packet-level
+IFAC decoding now uses one locked context for frame authentication and
+verified-wire provenance across live reconfiguration. An active-carrier
+software regression also probes ingress during 2,000 live IFAC credential
+rotations and verifies plaintext remains rejected; it does not claim
+physical-carrier coverage. An invalid IFAC startup configuration remains
+fail-closed and now appears in `list_interfaces` as a sanitized failed startup
+diagnostic; raw config values and credentials are not included. The spawned
+IFAC-enabled UDP bind failure is also covered in both best-effort diagnostic
+mode and strict-startup rejection mode, with no passphrase disclosure; the
+IFAC-configured TCP listener bind failure now also appears in `list_interfaces`
+as a sanitized `bind_error` with zero accepted clients. Strict startup waits for
+that worker's initial bind result and rejects a failed bind; best-effort startup
+retains deferred retry and reporting. This is distinct from the UDP worker path
+and does not complete TCP accepted-stream or broad startup coverage. The broader
+startup/error and carrier matrices remain open. A live IFAC UDP replacement
+whose port is occupied now has a focused recovery regression: daemon status
+reports the failed bind without credentials, the replacement retains its IFAC
+configuration through worker retry, and plaintext is rejected and counted
+after the listener binds. Configured IFAC sizes below
+Reticulum's one-byte minimum now follow the pinned Python startup rule: they
+select the carrier's default tag size while retaining configured credentials.
+Software tests cover the production daemon UDP path and transport default-size
+selection; the pinned behavior was source-audited, not packet-differentially
+tested. Non-byte-aligned sizes at or above the one-byte minimum now follow the
+same frozen Python floor-to-byte rule: a production UDP daemon configured for
+9 IFAC bits binds with a one-byte tag, and its real ingress accepts a matching
+one-byte-authenticated packet without an IFAC violation. The upper bound is
+expressed as a resulting tag size of at most 64 bytes; 520 bits is rejected.
+This is a Rust production-path regression anchored to the pinned config
+semantics, not a Python-process differential, and it leaves the broader
+startup/error and carrier matrices open. IFAC startup now also matches the
+legacy-name fallback when `networkname` is populated and the newer
+`network_name` alias is empty; the resolved credential validates and a
+production UDP bootstrap regression observes the listener bound. This is one
+alias/startup case only. Startup now also preserves whitespace-only IFAC
+credentials literally, matching frozen Python's `value != ""` handling; a
+production UDP regression verifies the real listener binds with those values.
+This is one configuration-coercion edge and does not close the broader
+startup/error or carrier matrix. The spawned
+`PipeInterface` worker also has a Unix subprocess loopback regression for its
+8-byte IFAC default and authenticated HDLC packet admission. Other carrier
+families now include duplex-stream serial and KISS IFAC regressions for wrong-key
+rejection and authenticated ingress/egress, with the KISS test also checking
+runtime counters. A pinned-Python regression now also exchanges a Channel
+request/reply between the Python and Rust serial KISS interfaces over a raw
+two-PTY software relay, with bidirectional interface traffic and zero IFAC
+violations; it does not establish modem or physical-serial behavior. The
+outbound I2P peer loop now also has a fake-SAM stream
+regression for wrong-key rejection and authenticated ingress/egress; none of
+these tests is physical-carrier or public-I2P evidence. A second fake-SAM test
+verifies an established virtual I2P peer observes parent IFAC credential
+rotation, rejects stale credentials, and uses the rotated key for egress. An
+accepted-child IFAC regression verifies inbound rejection of the previous
+parent credential and admission under the rotated credential; it now also
+encodes child egress with the inherited state and confirms only the rotated
+parent key authenticates it. This covers both directions after live
+configuration change and required no production-code fix. TCP
+accepted clients now inherit their parent's IFAC policy before the child worker
+is scheduled, with a deterministic first-poll regression proving plaintext is
+rejected; a separate pinned-Python TCP process test now verifies first-frame
+admission, wrong-key rejection, live parent credential rotation, and stop/
+restart with the rotated credentials. This is focused TCP lifecycle evidence,
+and its wrong-key peer also increments the listener's aggregated IFAC
+violation counter without creating a Link, matching the pinned inbound
+authentication-before-admission path. This is not physical-carrier or full
+startup/error coverage. The
+broader software support matrix, remaining remote utility behavior,
+transport policy differences, and platform validation remain open; the
+focused #611 `rncp`
+compression/send/fetch matrix, bounded
+`rnprobe` packet/RPC workflow plus one exact-target invalid-option comparison,
+and bounded native `rnsh` channel workflow,
 negative
-failure-category checks, path-discovery-timeout check, listener restart check,
-local disk-failure check, client-cancellation check, concurrent-client check,
-interrupted-link/status-output check, active-interface medium-timeout check,
+failure-category checks, exact `rncp` path-discovery output/status assertion,
+listener restart check,
+local and Rust/Python receiver-side disk-failure callback checks,
+client-cancellation checks during discovery and active Resource transfer,
+concurrent-client check, interrupted-link/status-output check,
+active-interface medium-timeout and delayed/rate-limited TCP-path checks,
 mixed-runtime restart check, and the #612 pinned-Python work-item persistence
   trace across a Rust `rngit` process restart plus the reciprocal native
   Rust-client `/git/list`/`/git/fetch`/`/git/push` and the bounded multi-step
@@ -37,6 +116,129 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
   verification) are evidence for those slices only
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
+
+The current #631 increment adds one isolated `rnpath` discovery trace: the Rust
+CLI calls a live `reticulumd` TCP RPC while a separate pinned-Python peer
+announces the target over a TCP interface. This closes only the mocked-boundary
+gap for that discovery path; #611's broader utility and management matrix stays
+partial.
+
+A separate `rnpath` process regression verifies the daemon-unavailable boundary:
+the production CLI returns failure with no apparent success output and a
+connection-refused diagnostic. This does not exercise transport or a Python peer and
+does not close the broader #611 utility matrix.
+
+The current #631 path-table slice adds a `get_path_table` daemon RPC and
+`rnpath-rs --table`/`--max` output backed by the transport path table, with
+focused hop-filter, RPC-shape, bridge-serialization, and CLI-ordering tests.
+An ignored live loopback trace now connects the Rust daemon and a separate
+pinned-Python observer to a Python announcing peer and compares a non-empty
+table row: destination hash, via, hop count, and the exact TCP-client
+`interface` representation match, with numeric expiry fields. The daemon carries
+optional configured TCP-client name/endpoint metadata separately from ordinary
+interface display names and renders the pinned Python `TCPInterface[...]` value
+only for that supported case; formatter tests also cover IPv6 brackets and
+hot-apply endpoint replacement. Other interface families and the broader #611
+matrix remain open.
+
+The #611 audit also records the frozen `rnstatus -R` remote-management gap:
+Python uses an authenticated Link to the distinct
+`rnstransport.remote.management` destination, where service enablement and the
+`remote_management_allowed` identity ACL gate `/status`; the response carries
+interface statistics and optional link-count/profiling fields. Rust currently
+has the enable flag but no matching allow-list, destination registration, or
+request route. Reusing propagation control or exposing broad daemon status is
+not parity. The exact pinned source references and boundary are recorded in
+[`611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md).
+This is documentation of an open gap only; no #611 acceptance is completed.
+
+The current #631 `rncp` increment observes packed and received Resource
+advertisement sizes/flags for all six Python/Rust compression roles, with a
+focused exact-target Verify step; the utility row remains partial because its
+other workflows and failure/restart gaps are still open.
+
+The pinned #631 `rncp` interop trace also verifies fetch collision handling:
+Python's `-O` and Rust's `--overwrite` replace a pre-existing file with the
+binary transfer and do not leave a `.1` sibling. This covers only that fetch
+overwrite case; the broader utility matrix remains partial.
+
+The #631 `rncp` startup check now preserves frozen Python's status 3 and
+`Output directory not found` diagnostic for a missing `--save` directory.
+This is one bounded process failure case; the utility row remains partial.
+
+The #611 `rngit fetch` and bounded `push` increments add production Rust
+CLI-to-pinned-Python Git workflows: fetch verifies and imports a real bundle;
+push sends a local ref bundle to a requested remote ref. A separate-process
+test checks exact commit IDs and binary blob bytes for both directions. The
+production Rust `git-remote-rns` helper now also passes real Git capability
+discovery/list and fetch against the pinned Python service, with the exact
+remote-tracking commit and binary blob verified. Remote-helper push/deletion,
+batching, initial-branch variation, and broader utility matrices remain open.
+
+The #631 `rnprobe` follow-up compares `--probes not-an-integer` across the Rust
+and frozen Python processes. Both return exit status 2 with their corresponding
+invalid-integer diagnostics, and Verify runs the focused ignored test against
+the exact reference checkout. A further process differential supplies only
+`rnstransport.probe`: frozen Python and Rust now both print CLI help and exit
+0 without starting network activity when the destination hash is omitted.
+The regression checks help output and empty stderr; exact formatting differs
+by parser. Broader `rnprobe` parity remains partial. Its successful-path
+counterpart now withholds a
+pinned Python probe destination announce until native `rnprobe` starts through
+the Rust daemon, then asserts two discovered-path deliveries and structured
+probe results against the exact `99de23c...` peer in Verify. These bounded
+increments now also exercise the known-path/no-proof production failure path:
+the pinned Python destination announces without proving, and native `rnprobe`
+returns a timed-out probe, zero replies, 100% packet-loss JSON, and exit status
+2. The CLI's loss exit mapping already has unit coverage; this exact-target
+regression verifies transport timeout through the live daemon to the process
+result. It matches pinned Python behavior, so no production fix was needed.
+An additional exact-target process regression runs two separate native
+`rnprobe` clients sequentially through one live Rust daemon after the first
+client discovers the pinned-Python responder. Both calls deliver both probes,
+showing shared-daemon utility reuse over production transport; this is not a
+daemon-restart or concurrency claim. No production discrepancy was exposed.
+The new `native_rnprobe_succeeds_after_rust_daemon_restart` process regression
+then gracefully stops and restarts `reticulumd` against the same state database
+while the pinned-Python peer stays live, releases a fresh announce, and asserts
+that a new native `rnprobe` process delivers both probes over the restarted
+production transport. Verify runs it against the exact pinned peer. This is
+software loopback evidence for one restart path, not a general daemon recovery
+or utility matrix claim; #611 remains partial.
+
+A focused `rnprobe` process check now injects a daemon RPC authorization
+rejection and verifies exit status 1, contextual stderr, and empty stdout. It
+pins the existing CLI error propagation at the mocked daemon boundary only;
+it is not live authorization or transport parity and required no production
+change. The broader #611 utility matrix remains partial.
+
+The exact-target Python fetch-client disk-error trace now verifies the full
+payload digest at the pinned save callback, the callback's local save error,
+the pinned client's subsequent `Transfer complete` progress and unresolved
+process state, and the Rust listener's `OutboundComplete` event with a matching
+Resource hash. This records transport delivery separately from local save
+success; it does not add a negative acknowledgment or complete the broader
+#611 utility row.
+
+The `rnsd --exampleconfig` utility option now returns the frozen Python
+configuration example byte-for-byte without starting the daemon. Its focused
+process differential uses the pinned Reticulum revision and leaves the broader
+#611 utility matrix partial.
+
+The reference-style `rnid --identity <file> --sign <path>...` workflow writes
+the frozen Python binary `.rsg` signature envelope for multiple files. It
+refuses an existing output by default with Python's stdout diagnostic/status
+and replaces it with `--force`. The pinned-Python process differential accepts
+both binary payloads and rejects a one-byte mutation with its reference
+invalid-signature exit status. This does not complete the other `rnid` modes
+or the broader #611 utility matrix.
+
+The #631 follow-up adds native `rnid --validate` for frozen Python's signed
+`.rsg` envelope. A production-process regression validates a binary signature
+created by pinned Python, then changes the payload and confirms both Rust and
+Python reject it with status 10. Rust accepts either the payload path or its
+`.rsg` signature path. Identity import/export, network identity requests,
+encryption, and the broader #611 utility matrix remain open.
 
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
@@ -262,8 +464,11 @@ documented broader gates. A daemon Resource-completion regression now checks
 receipt metadata, peer byte accounting, exactly-once emission, and tracking
 cleanup, including suppression of a repeated completion notification. The
 timeout-failure receipt path now has the same exactly-once metadata and cleanup
-coverage, including peer backoff status; other consumer callback/status paths
-remain open. Focused `lxmf-runtime` tests also
+coverage, including peer backoff status. The daemon now logs inbound Resource
+progress counters with hash/Link context instead of discarding the progress
+event; its focused status-format regression passes. At that point, the remaining
+terminal consumer paths had not yet been fully audited; the completed audit is
+recorded below. Focused `lxmf-runtime` tests also
 confirm `OutboundFailed` and `OutboundCancelled` become distinct SDK transport
 errors and cleanup is attempted, without claiming the remaining consumer
 matrix. The 2026-09-23 #610 increment aligns Python Resource cancellation
@@ -271,15 +476,79 @@ contexts: `RESOURCE_RCL` is an outbound rejection (`OutboundRejected`),
 `RESOURCE_ICL` is an inbound remote cancellation (`InboundFailed`), and a
 Rust-local outgoing cancel remains `OutboundCancelled`. Pinned-Python,
 transport, SDK, daemon receipt, remote-control, and utility-consumer regressions
-cover the distinction; the wider timeout and consumer-status matrix remains
-open.
+cover the distinction; later entries below complete the terminal-event
+consumer/status audit while retaining unrelated wider fault-matrix limits.
 
 The focused #610 compression regression now exercises the production Resource
 path in both directions against pinned Python: compressible input follows the
 default compressed path, deterministic incompressible input remains
 uncompressed, and the explicit disable option remains uncompressed, all with
-exact payload digests. No production mismatch was found; compression-threshold
-behavior remains unverified, and #610 stays partial.
+exact payload digests. It also verifies compressible and deterministic
+incompressible two-segment payloads above `MAX_EFFICIENT_SIZE`, including
+assembled digests, logical size, and the final segment's compression flag.
+Pinned Python and Rust agree on segment-first accounting and per-segment
+compression. A mixed-peer case now composes split transfer, first-segment
+metadata, and compression: Python verifies exact assembled content and
+metadata, while a focused Rust assertion confirms that first segment's
+compressed advertisement; metadata makes the final 15-byte segment correctly
+remain uncompressed. A pinned-reference boundary probe found that 64 MiB is the
+automatic-compression threshold, not an outbound admission ceiling; the
+reader-backed sender now accepts a 64 MiB + 1 source, leaves it uncompressed,
+and prepares only its first segment. The exact local Resource regression and
+validation record are in the #610 evidence file. No full mixed-peer transfer
+at that size has been run, and the broader #610 acceptance matrix remains
+open; #610 stays partial.
+
+A pinned-Python split-Resource fault trace now accepts the first segment and
+cancels during the second; the Rust sender observes terminal
+`OutboundRejected`. This extends cancellation evidence beyond the first part,
+but the broader #610 segment/callback matrix remains open.
+
+The daemon consumer now has a deterministic partial-inbound teardown regression:
+a test-only packet gate forwards the advertisement and first Resource fragment,
+holds later Resource traffic while allowing LinkClose through, and verifies
+partial progress followed by one inbound terminal failure, with no completion,
+receipt, status transition, or fabricated delivered content. The broader #610
+failure/consumer matrix remains open; the identical payload then completes
+with exact bytes on a fresh Link after the failed Link is removed.
+
+A separate production-daemon regression now gates a partial inbound Resource,
+then cancels it through the peer's public `Transport::cancel_resource` path.
+The daemon observes `InboundFailed(remote_cancelled)` with partial progress,
+creates no completion, receipt, or delivered content, and accepts a subsequent
+exact-payload Resource over the same active Link. The pinned Python
+`Resource.cancel()`/`Link.py` callback and ICL-routing behavior is recorded in
+the #610 evidence file. At that stage, only this one software consumer path
+had been closed; the subsequent full terminal-event audit is recorded below.
+
+The production-daemon Resource retry-exhaustion consumer now verifies a
+correlated generic `resource-failed` receipt and tracking cleanup. The event
+API does not carry the failure cause, so the daemon no longer fabricates a
+timeout diagnosis for every `OutboundFailed`; the LXMF SDK's caller deadline
+remains an explicit timeout error and attempts Resource cancellation.
+
+The daemon consumer now also has an end-to-end outbound-completion regression:
+the peer returns a real Resource proof and the daemon persists the correlated
+completion receipt/status and removes tracking. Together with rejection,
+cancellation, timeout, and partial inbound teardown regressions, this covers
+positive and selected negative consumer paths without treating an error as
+success; the subsequent full terminal-event audit is recorded below.
+
+The #610 terminal-event audit also found and fixed retained split-inbound
+bytes on later-segment decode failure and retry exhaustion. Both paths now
+publish one failure keyed by the original Resource hash and remove the partial
+assembly. Focused manager tests cover both terminal paths, and a daemon
+retry-timeout regression confirms there is no completion or receipt and that a
+new Resource succeeds on the same Link after cleanup. The full callback/status/
+cleanup audit also found and fixed propagation-download waiters that hid inbound
+Resource failure behind a request timeout; the terminal-aware waiter now returns
+the failure. The sole remaining #610 acceptance item is locally proven and
+awaits updated PR #638 checks before its issue checkbox is changed.
+
+A separate pinned-Python Resource fault regression now times out a dropped Link
+establishment, reuses the carrier with a fresh production Link ID, and
+verifies a successful one-part Resource exchange by digest. Split-transfer
+timeout recovery and the broader #610 failure matrix remain open.
 
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
@@ -326,11 +595,31 @@ The project is best described by capability level:
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
-| Operationally substitutable | partial | IFAC daemon authentication, remaining remote utility workflows, and recorded transport-policy differences still prevent unconditional substitution. See the 1.5.4 delta acceptance gates. |
-| Python callable inventory coverage | mapped, not a full behavior guarantee | The strict inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry; runtime exclusions and failed differential tests take precedence over these classifications. |
+| Operationally substitutable | partial | IFAC carrier-family/support-matrix acceptance, remaining remote utility workflows, and recorded transport-policy differences still prevent unconditional substitution. See the 1.5.4 delta acceptance gates. |
+| Python callable inventory coverage | mapped, not a full behavior guarantee | The active 1.5.2 inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry. SDK/RPC advisories preserve those callable counts separately from the forward 1.5.4-dev behavioral checkpoint, currently partial/incomplete with 0 verified of 9 applicable requirements; runtime exclusions and failed differential tests take precedence. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 | Independent implementation evidence | published for stable `v0.10.1` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
 | Performance evidence | published for stable `v0.10.1` | Tag workflow [`33254264175`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175) passed with the bounded checksummed JSON, HTML, raw evidence, and regression-gate result. The gate is `pass_with_warnings` for one documented 13.99% Rust resource-sized encode dispersion; throughput/CPU/RSS ratios are `1.013x`/`1.010x`/`1.084x`. |
+
+The #608 IFAC software follow-up now also tests wrong-key rejection and
+authenticated ingress/egress through Meshtastic tunnel, Weave stream, incoming
+I2P accepted-stream workers, AutoInterface peer-data, LoRa streams, RNode
+bearers, and RNodeMulti KISS vports. These deterministic tests use software
+seams only. A fake backend also drives the actual RNode BLE KISS worker to
+prove wrong-key rejection/countering, matching-key admission, and authenticated
+egress; this is software fault-injection evidence, not physical BLE
+verification. A focused TCP bootstrap regression also verifies that an
+out-of-range IFAC size remains visible as a sanitized failed-startup diagnostic
+with the accepted size range and without the configured credential marker.
+Uncovered carrier families and physical/public-network evidence remain open.
+See the [#608 evidence record](../goals/reticulum-reference-parity-605/evidence/608-ifac.md).
+
+The #608 startup diagnostics now retain an IFAC UDP interface when daemon
+deserialization rejects its out-of-range carrier port, even when its
+whitespace-only credential is valid under Python's non-empty-string rule; a
+fixed `list_interfaces` failure record avoids exposing the credential. This is
+one carrier-field parse regression only; other startup/configuration errors
+and uncovered carrier families remain open.
 
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,
@@ -631,10 +920,11 @@ Scoped release evidence is split as follows:
   packet at or below negotiated MDU and a response Resource above it; a
   metadata-bearing file response always uses Resource. Production mixed-peer
   tests cover clearly-small, oversized, and metadata-bearing responses in both
-  directions with exact response content and digest checks. The exact
-  `mdu - 1` / `mdu` / `mdu + 1` wire boundary remains unverified. Note the
-  request-id asymmetry — a packet-borne request has no id field, so the
-  responder derives one from the packet hash.
+  directions with exact response content and digest checks. A production
+  mixed-peer differential also verifies packet selection at `mdu - 1` and
+  `mdu`, and Resource selection at `mdu + 1`, against the peer's negotiated
+  MDU. Note the request-id asymmetry — a packet-borne request has no id field,
+  so the responder derives one from the packet hash.
 - Cached remote path responses now keep the cached announce payload while
   stamping the direct response packet as `PATH_RESPONSE`, aligning another
   Python announce/path discovery edge policy.
@@ -1193,9 +1483,24 @@ direction.
   envelopes, stream forwarding, timeout, and mirrored exit status are covered
   by Rust process/auth tests plus reciprocal pinned-Python initiator→Rust
   listener and Rust initiator→pinned-Python listener exchanges (`e57afb99`,
-  `662dcdbe`), including the immediate non-TTY EOF case. PTY/resize, full
-  fault/restart coverage, and public/multi-hop evidence remain open; this does
-  not promote the broader `RNS/Utilities/*` row.
+  `662dcdbe`), including the immediate non-TTY EOF case. Client-timeout teardown
+  now signals and joins the owned session, kills/reaps its remote child, and
+  awaits the command/pipe tasks. The timeout regression now observes the child
+  alive before client timeout; the corrected focused process suite passes 3/3.
+  Authenticated listener rejection now sends the frozen Python fatal error
+  `Identity not allowed` before Link teardown; the shipped client reports the
+  reason on stderr, exits 1, and does not execute the command in a separate-
+  process loopback regression. Other rnsh failure cases remain open.
+  Rust `rnsh` now requests PTY mode for terminal-backed stdio, spawns the remote
+  command with a controlling PTY, applies initial rows/columns/pixel dimensions,
+  and applies later `WindowSize` updates. A real loopback client-under-PTY test
+  observes the remote child at both initial and SIGWINCH-updated dimensions;
+  all-pipe and two complementary mixed per-stream process cases are covered.
+  The mixed-mode EOF regression also ensures command-builder slave descriptors
+  are released and Linux PTY-master EIO is treated as final stream EOF. Mixed
+  controlling-terminal parity, other flag combinations, the remaining rnsh
+  fault/restart matrix, and public/multi-hop evidence remain open; this does not
+  promote the broader `RNS/Utilities/*` row.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through

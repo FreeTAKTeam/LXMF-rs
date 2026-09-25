@@ -1,4 +1,5 @@
 pub mod lxmf_sdk
+pub use lxmf_sdk::BehavioralParityCheckpoint
 pub use lxmf_sdk::PYTHON_LXMF_REFERENCE_REF
 pub use lxmf_sdk::PYTHON_LXMF_REFERENCE_VERSION
 pub use lxmf_sdk::PYTHON_RETICULUM_REFERENCE_REF

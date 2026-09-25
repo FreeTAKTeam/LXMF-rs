@@ -1476,6 +1476,8 @@ fn rnode_multi_data_command_vport(command: u8) -> Option<u8> {
 
 #[cfg(test)]
 mod tests {
+    include!("rnode_multi_ifac_tests.rs");
+
     use std::collections::BTreeMap;
     use std::io;
     use std::pin::Pin;

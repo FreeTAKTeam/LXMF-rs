@@ -30,6 +30,75 @@ mod tests {
     }
 
     #[test]
+    fn compression_threshold_does_not_cap_outbound_resource_admission() {
+        use std::io::{Repeat, Take};
+
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound = Link::new_from_request(
+            &request,
+            signer.sign_key().clone(),
+            destination,
+            tx,
+        )
+        .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        const CAP: u64 = 64 * 1024 * 1024;
+        let at_limit_reader: Take<Repeat> = std::io::repeat(b'R').take(CAP);
+        let prepared = ResourceManager::prepare_send_from_reader(
+            &outbound,
+            at_limit_reader,
+            CAP,
+            None,
+            None,
+            false,
+            DEFAULT_RESOURCE_INTERFACE_MTU,
+            true,
+        )
+        .expect("production reader sender admits exactly the compression cap");
+        let mut manager = ResourceManager::new();
+        let (_, advertisement_packet) = manager.track_prepared(prepared);
+        assert_eq!(advertisement_packet.context, PacketContext::ResourceAdvrtisement);
+        let advertisement = decrypt_advertisement(&outbound, &advertisement_packet);
+        assert_eq!(advertisement.data_size, CAP);
+        assert_eq!(advertisement.total_segments, 65);
+        assert!(advertisement.compressed(), "compressible first segment is advertised compressed");
+        assert!(manager.drain_events().is_empty(), "preparation is not reported as success");
+
+        let above_limit = ResourceManager::prepare_send_from_reader(
+            &outbound,
+            std::io::repeat(b'R').take(CAP + 1),
+            CAP + 1,
+            None,
+            None,
+            false,
+            DEFAULT_RESOURCE_INTERFACE_MTU,
+            true,
+        )
+        .expect("the compression threshold is not an outbound admission limit");
+        let mut manager = ResourceManager::new();
+        let (_, advertisement_packet) = manager.track_prepared(above_limit);
+        let advertisement = decrypt_advertisement(&outbound, &advertisement_packet);
+        assert_eq!(advertisement.data_size, CAP + 1);
+        assert_eq!(advertisement.total_segments, 65);
+        assert!(!advertisement.compressed());
+        assert!(manager.drain_events().is_empty());
+    }
+
+    #[test]
     fn resource_decompression_is_bounded_by_advertised_size() {
         use bzip2::write::BzEncoder;
         use bzip2::Compression;
@@ -131,6 +200,48 @@ mod tests {
             })
             .expect("resource should complete");
         assert_eq!(complete.data, payload, "decompressed data must round-trip to the original uncompressed payload");
+    }
+
+    #[test]
+    fn split_resource_compresses_first_segment_with_metadata() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound = Link::new_from_request(
+            &request,
+            signer.sign_key().clone(),
+            destination,
+            tx,
+        )
+        .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let data = vec![b'R'; MAX_EFFICIENT_SIZE * 2];
+        let metadata = rmp_serde::to_vec(&"python-meta").expect("encode metadata");
+        let prepared = ResourceManager::prepare_send_with_compression(
+            &outbound,
+            data,
+            Some(metadata),
+            None,
+            false,
+            DEFAULT_RESOURCE_INTERFACE_MTU,
+            true,
+        )
+        .expect("prepare split metadata Resource");
+        let advertisement = decrypt_advertisement(&outbound, &prepared.first.advertisement_packet());
+        assert!(advertisement.compressed());
+        assert_eq!(advertisement.total_segments, 3);
     }
 
     #[test]

@@ -67,7 +67,7 @@ enum ProbeOutcome {
 
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
-    if cli.full_name.is_none() && cli.destination_hash.is_none() {
+    if cli.destination_hash.is_none() {
         let mut command = Cli::command();
         let _ = command.print_help();
         println!();

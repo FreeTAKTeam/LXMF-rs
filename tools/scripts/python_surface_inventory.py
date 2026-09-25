@@ -7,6 +7,7 @@ import argparse
 import ast
 import fnmatch
 import json
+import os
 import re
 import subprocess
 import sys
@@ -45,6 +46,121 @@ VALID_BEHAVIORAL_EVIDENCE_STATUS = {
 }
 VALID_REFERENCE_PROJECTS = {"reticulum", "lxmf", "both", "operational"}
 FULL_REVISION = re.compile(r"[0-9a-f]{40}")
+NOT_APPLICABLE_DECISION_RECORD = "docs/goals/reticulum-reference-parity-605/GOAL.md"
+NOT_APPLICABLE_REVIEW_BASIS = "explicit-user-scope-direction"
+NOT_APPLICABLE_APPROVAL_REFERENCE = (
+    "codex-task:01a0bf74-9050-70e1-b8bf-0e528184c9ad"
+)
+NOT_APPLICABLE_REQUIREMENT_ID = "reticulum-605-616-operational-platform-evidence"
+NOT_APPLICABLE_OWNER_ISSUE = 616
+NOT_APPLICABLE_REFERENCE_PROJECT = "operational"
+NOT_APPLICABLE_EVIDENCE_STATUS = "hardware-unverified"
+NOT_APPLICABLE_DECISION_HEADING = "## Explicit user scope decision"
+NOT_APPLICABLE_TABLE_HEADER = (
+    "Requirement",
+    "Decision",
+    "Review basis",
+    "Approval reference",
+    "Rationale",
+)
+NOT_APPLICABLE_TABLE_SEPARATOR = ("---", "---", "---", "---", "---")
+
+
+def markdown_table_cells(line: str) -> tuple[str, ...] | None:
+    stripped = line.strip()
+    if not stripped.startswith("|") or not stripped.endswith("|"):
+        return None
+    return tuple(cell.strip() for cell in stripped[1:-1].split("|"))
+
+
+def has_canonical_scope_decision_row(
+    document: str,
+    *,
+    requirement_id: str,
+    rationale: str,
+) -> bool:
+    lines = document.splitlines()
+    expected_row = (
+        requirement_id,
+        "exclude-from-software-goal",
+        NOT_APPLICABLE_REVIEW_BASIS,
+        NOT_APPLICABLE_APPROVAL_REFERENCE,
+        rationale,
+    )
+    requirement_rows: list[tuple[str, ...]] = []
+    active_fence: tuple[str, int] | None = None
+    decision_heading_indices: list[int] = []
+    for index, line in enumerate(lines):
+        fence_match = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if active_fence is not None:
+            if (
+                fence_match is not None
+                and fence_match.group(1)[0] == active_fence[0]
+                and len(fence_match.group(1)) >= active_fence[1]
+                and not line[fence_match.end() :].strip()
+            ):
+                active_fence = None
+            continue
+        if fence_match is not None:
+            fence = fence_match.group(1)
+            active_fence = (fence[0], len(fence))
+            continue
+        if line.strip() == NOT_APPLICABLE_DECISION_HEADING:
+            decision_heading_indices.append(index)
+    if len(decision_heading_indices) != 1:
+        return False
+
+    section_start = decision_heading_indices[0] + 1
+    section_end = len(lines)
+    active_fence = None
+    for index in range(section_start, len(lines)):
+        line = lines[index]
+        fence_match = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if active_fence is not None:
+            if (
+                fence_match is not None
+                and fence_match.group(1)[0] == active_fence[0]
+                and len(fence_match.group(1)) >= active_fence[1]
+                and not line[fence_match.end() :].strip()
+            ):
+                active_fence = None
+            continue
+        if fence_match is not None:
+            fence = fence_match.group(1)
+            active_fence = (fence[0], len(fence))
+            continue
+        if re.match(r"^\s*#{1,2}\s+", line):
+            section_end = index
+            break
+
+    active_fence = None
+    for index in range(section_start, section_end - 1):
+        line = lines[index]
+        fence_match = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if active_fence is not None:
+            if (
+                fence_match is not None
+                and fence_match.group(1)[0] == active_fence[0]
+                and len(fence_match.group(1)) >= active_fence[1]
+                and not line[fence_match.end() :].strip()
+            ):
+                active_fence = None
+            continue
+        if fence_match is not None:
+            fence = fence_match.group(1)
+            active_fence = (fence[0], len(fence))
+            continue
+        if markdown_table_cells(line) != NOT_APPLICABLE_TABLE_HEADER:
+            continue
+        if markdown_table_cells(lines[index + 1]) != NOT_APPLICABLE_TABLE_SEPARATOR:
+            continue
+        for table_line in lines[index + 2 : section_end]:
+            cells = markdown_table_cells(table_line)
+            if cells is None:
+                break
+            if cells and cells[0] == requirement_id:
+                requirement_rows.append(cells)
+    return len(requirement_rows) == 1 and requirement_rows[0] == expected_row
 
 
 @dataclass(frozen=True)
@@ -131,6 +247,7 @@ def validate_behavioral_contract(
     target: dict[str, Any] | None = None,
     reference_revisions: dict[str, Any] | None = None,
     artifact_root: Path | None = None,
+    repository_root: Path = ROOT,
     require_references: bool = False,
     require_complete: bool = False,
 ) -> list[str]:
@@ -244,8 +361,93 @@ def validate_behavioral_contract(
         implementation = requirement.get("implementation")
         if implementation not in VALID_IMPLEMENTATION:
             errors.append(f"{requirement_id}: invalid implementation {implementation!r}")
-        if implementation == "not-applicable" and not requirement.get("notes"):
-            errors.append(f"{requirement_id}: not-applicable requirements need notes")
+        if implementation == "not-applicable":
+            if requirement_id != NOT_APPLICABLE_REQUIREMENT_ID:
+                errors.append(
+                    f"{requirement_id}: no approved not-applicable scope decision exists"
+                )
+            if owner_issue != NOT_APPLICABLE_OWNER_ISSUE:
+                errors.append(
+                    f"{requirement_id}: not-applicable scope decision is restricted to issue 616"
+                )
+            if project != NOT_APPLICABLE_REFERENCE_PROJECT:
+                errors.append(
+                    f"{requirement_id}: not-applicable scope decision is restricted to operational evidence"
+                )
+            if evidence_status != NOT_APPLICABLE_EVIDENCE_STATUS:
+                errors.append(
+                    f"{requirement_id}: not-applicable scope decision must remain hardware-unverified"
+                )
+            provenance = requirement.get("not_applicable_provenance")
+            if not isinstance(provenance, dict):
+                errors.append(
+                    f"{requirement_id}: not-applicable requirements need reviewed provenance"
+                )
+            else:
+                if provenance.get("decision") != "exclude-from-software-goal":
+                    errors.append(
+                        f"{requirement_id}: not-applicable provenance has an invalid decision"
+                    )
+                if provenance.get("review_basis") != NOT_APPLICABLE_REVIEW_BASIS:
+                    errors.append(
+                        f"{requirement_id}: not-applicable provenance lacks the accepted scope basis"
+                    )
+                if provenance.get("approval_reference") != NOT_APPLICABLE_APPROVAL_REFERENCE:
+                    errors.append(
+                        f"{requirement_id}: not-applicable provenance lacks its approval reference"
+                    )
+                rationale = provenance.get("rationale")
+                if not isinstance(rationale, str) or not rationale.strip():
+                    errors.append(
+                        f"{requirement_id}: not-applicable provenance needs a rationale"
+                    )
+                decision_record = provenance.get("decision_record")
+                if not isinstance(decision_record, str) or not decision_record:
+                    errors.append(
+                        f"{requirement_id}: not-applicable provenance needs a decision record"
+                    )
+                else:
+                    record_path = Path(decision_record)
+                    if record_path.is_absolute() or ".." in record_path.parts:
+                        errors.append(
+                            f"{requirement_id}: not-applicable decision record must stay within the repository"
+                        )
+                    else:
+                        try:
+                            resolved_record = (repository_root / record_path).resolve(strict=True)
+                        except (OSError, ValueError, RuntimeError):
+                            errors.append(
+                                f"{requirement_id}: not-applicable decision record is malformed or missing: {decision_record}"
+                            )
+                        else:
+                            if not resolved_record.is_relative_to(repository_root.resolve()):
+                                errors.append(
+                                    f"{requirement_id}: not-applicable decision record must stay within the repository"
+                                )
+                            elif not resolved_record.is_file():
+                                errors.append(
+                                    f"{requirement_id}: not-applicable decision record is missing: {decision_record}"
+                                )
+                            elif decision_record != NOT_APPLICABLE_DECISION_RECORD:
+                                errors.append(
+                                    f"{requirement_id}: not-applicable provenance must cite the canonical scope decision record"
+                                )
+                            else:
+                                try:
+                                    record_text = resolved_record.read_text(encoding="utf-8")
+                                except (OSError, UnicodeError):
+                                    errors.append(
+                                        f"{requirement_id}: not-applicable decision record is unreadable"
+                                    )
+                                else:
+                                    if not has_canonical_scope_decision_row(
+                                        record_text,
+                                        requirement_id=requirement_id,
+                                        rationale=rationale,
+                                    ):
+                                        errors.append(
+                                            f"{requirement_id}: decision record does not substantiate not-applicable provenance"
+                                        )
         requirement_reference = requirement.get("reference")
         if requirement_reference is None:
             if require_references:
@@ -770,17 +972,31 @@ def rust_behavioral_constants(contract: dict[str, Any]) -> str:
         for requirement in requirements
         if isinstance(requirement, dict) and requirement.get("evidence_status") == "verified"
     )
+    complete = sum(
+        1
+        for requirement in requirements
+        if isinstance(requirement, dict) and requirement.get("implementation") == "complete"
+    )
     applicable = sum(
         1
         for requirement in requirements
         if isinstance(requirement, dict)
         and requirement.get("implementation") != "not-applicable"
     )
+    partial = sum(
+        1
+        for requirement in requirements
+        if isinstance(requirement, dict) and requirement.get("implementation") == "partial"
+    )
+    not_applicable = len(requirements) - applicable
     level = "unknown" if not applicable else ("complete" if coverage_status == "complete" else "partial")
     return (
         f'pub const PYTHON_BEHAVIORAL_PARITY_LEVEL: &str = "{level}";\n'
         f'pub const PYTHON_BEHAVIORAL_PARITY_COVERAGE_STATUS: &str = "{coverage_status}";\n'
         f"pub const PYTHON_BEHAVIORAL_PARITY_REQUIREMENTS: usize = {len(requirements)};\n"
+        f"pub const PYTHON_BEHAVIORAL_PARITY_COMPLETE: usize = {complete};\n"
+        f"pub const PYTHON_BEHAVIORAL_PARITY_PARTIAL: usize = {partial};\n"
+        f"pub const PYTHON_BEHAVIORAL_PARITY_NOT_APPLICABLE: usize = {not_applicable};\n"
         f"pub const PYTHON_BEHAVIORAL_PARITY_VERIFIED: usize = {verified};\n"
         f"pub const PYTHON_BEHAVIORAL_PARITY_APPLICABLE: usize = {applicable};\n"
         f'pub const PYTHON_BEHAVIORAL_PARITY_REFERENCE_VERSION: &str = "{reticulum["version"]}";\n'
@@ -888,22 +1104,249 @@ def run_generator_self_tests() -> None:
                 "owner_issue": 605,
             },
             {
-                "id": "self-test.na",
+                "id": "reticulum-605-616-operational-platform-evidence",
                 "kind": "behavioral-requirement",
                 "reference_project": "operational",
                 "reference_paths": ["RNS/Interfaces/Interface.py"],
                 "rust_surface": ["docs/status"],
                 "implementation": "not-applicable",
                 "evidence": ["planned"],
-                "evidence_status": "unverified",
+                "evidence_status": "hardware-unverified",
                 "test_command": "documented workflow",
                 "evidence_artifact": "target/self-test.json",
                 "owner_issue": 616,
                 "notes": "Operational validation is a separate evidence axis.",
+                "not_applicable_provenance": {
+                    "decision": "exclude-from-software-goal",
+                    "review_basis": "explicit-user-scope-direction",
+                    "approval_reference": "codex-task:01a0bf74-9050-70e1-b8bf-0e528184c9ad",
+                    "decision_record": "docs/goals/reticulum-reference-parity-605/GOAL.md",
+                    "rationale": "The software goal excludes physical/platform/client/network-soak acceptance and tracks those requirements under issue 616 as hardware-unverified.",
+                },
             },
         ],
     }
     expect(not validate_behavioral_contract(behavioral_contract), "behavioral contract schema")
+    missing_na_provenance = json.loads(json.dumps(behavioral_contract))
+    del missing_na_provenance["requirements"][1]["not_applicable_provenance"]
+    expect(
+        validate_behavioral_contract(missing_na_provenance),
+        "not-applicable classification requires provenance",
+    )
+    na_requirement = behavioral_contract["requirements"][1]
+    na_provenance = na_requirement["not_applicable_provenance"]
+    unrelated_na_requirement = json.loads(json.dumps(behavioral_contract))
+    unrelated_na_requirement["requirements"][0]["implementation"] = "not-applicable"
+    unrelated_na_requirement["requirements"][0]["not_applicable_provenance"] = json.loads(
+        json.dumps(na_provenance)
+    )
+    expect(
+        validate_behavioral_contract(unrelated_na_requirement),
+        "the #616 decision cannot authorize an unrelated not-applicable requirement",
+    )
+    wrong_na_owner = json.loads(json.dumps(behavioral_contract))
+    wrong_na_owner["requirements"][1]["owner_issue"] = 615
+    expect(
+        validate_behavioral_contract(wrong_na_owner),
+        "the #616 exclusion remains bound to its owning issue",
+    )
+    wrong_na_project = json.loads(json.dumps(behavioral_contract))
+    wrong_na_project["requirements"][1]["reference_project"] = "reticulum"
+    expect(
+        validate_behavioral_contract(wrong_na_project),
+        "the #616 exclusion remains bound to operational evidence",
+    )
+    wrong_na_status = json.loads(json.dumps(behavioral_contract))
+    wrong_na_status["requirements"][1]["evidence_status"] = "unverified"
+    expect(
+        validate_behavioral_contract(wrong_na_status),
+        "the #616 exclusion remains hardware-unverified",
+    )
+    missing_approval_reference = json.loads(json.dumps(behavioral_contract))
+    del missing_approval_reference["requirements"][1]["not_applicable_provenance"][
+        "approval_reference"
+    ]
+    expect(
+        validate_behavioral_contract(missing_approval_reference),
+        "not-applicable provenance requires an approval reference",
+    )
+    invalid_na_record = json.loads(json.dumps(behavioral_contract))
+    invalid_na_record["requirements"][1]["not_applicable_provenance"]["decision_record"] = "../outside.md"
+    expect(
+        validate_behavioral_contract(invalid_na_record),
+        "not-applicable provenance rejects a traversal path",
+    )
+    unrelated_na_record = json.loads(json.dumps(behavioral_contract))
+    unrelated_na_record["requirements"][1]["not_applicable_provenance"]["decision_record"] = (
+        "docs/status/current-roadmap.md"
+    )
+    expect(
+        validate_behavioral_contract(unrelated_na_record),
+        "not-applicable provenance must cite the canonical decision record",
+    )
+    fabricated_na_rationale = json.loads(json.dumps(behavioral_contract))
+    fabricated_na_rationale["requirements"][1]["not_applicable_provenance"]["rationale"] = (
+        "Fabricated rationale not present in the canonical decision record."
+    )
+    expect(
+        validate_behavioral_contract(fabricated_na_rationale),
+        "not-applicable rationale must match the canonical decision record",
+    )
+    copied_scope_row = (
+        f"| {na_requirement['id']} | {na_provenance['decision']} | "
+        f"{na_provenance['review_basis']} | {na_provenance['approval_reference']} | "
+        f"{na_provenance['rationale']} |"
+    )
+    copied_prose = (
+        "| Requirement | Decision | Review basis | Approval reference | Rationale |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| other-requirement | exclude-from-software-goal | "
+        "explicit-user-scope-direction | codex-task:other | other rationale |\n\n"
+        f"Copied outside table:\n\n{copied_scope_row}\n"
+    )
+    expect(
+        not has_canonical_scope_decision_row(
+            copied_prose,
+            requirement_id=na_requirement["id"],
+            rationale=na_provenance["rationale"],
+        ),
+        "copied prose cannot substitute for the reviewed decision table row",
+    )
+    unanchored_scope_table = (
+        "## Unrelated section\n\n"
+        "| Requirement | Decision | Review basis | Approval reference | Rationale |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        f"{copied_scope_row}\n"
+    )
+    expect(
+        not has_canonical_scope_decision_row(
+            unanchored_scope_table,
+            requirement_id=na_requirement["id"],
+            rationale=na_provenance["rationale"],
+        ),
+        "decision table outside the designated section is rejected",
+    )
+    outside_decision_section = (
+        f"{NOT_APPLICABLE_DECISION_HEADING}\n\n"
+        "No decision table here.\n\n"
+        "## Another section\n\n"
+        "| Requirement | Decision | Review basis | Approval reference | Rationale |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        f"{copied_scope_row}\n"
+    )
+    expect(
+        not has_canonical_scope_decision_row(
+            outside_decision_section,
+            requirement_id=na_requirement["id"],
+            rationale=na_provenance["rationale"],
+        ),
+        "a matching decision row in another section is rejected",
+    )
+    fenced_heading_in_decision_section = (
+        f"{NOT_APPLICABLE_DECISION_HEADING}\n\n"
+        "```markdown\n## Example heading\n```\n\n"
+        "| Requirement | Decision | Review basis | Approval reference | Rationale |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        f"{copied_scope_row}\n"
+    )
+    expect(
+        has_canonical_scope_decision_row(
+            fenced_heading_in_decision_section,
+            requirement_id=na_requirement["id"],
+            rationale=na_provenance["rationale"],
+        ),
+        "fenced headings do not truncate the designated decision section",
+    )
+    fenced_scope_row = (
+        f"{NOT_APPLICABLE_DECISION_HEADING}\n\n"
+        "```markdown\n"
+        "| Requirement | Decision | Review basis | Approval reference | Rationale |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        f"{copied_scope_row}\n"
+        "```\n"
+    )
+    expect(
+        not has_canonical_scope_decision_row(
+            fenced_scope_row,
+            requirement_id=na_requirement["id"],
+            rationale=na_provenance["rationale"],
+        ),
+        "fenced examples cannot substitute for a decision table",
+    )
+    duplicated_scope_row = (
+        f"{NOT_APPLICABLE_DECISION_HEADING}\n\n"
+        "| Requirement | Decision | Review basis | Approval reference | Rationale |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        f"{copied_scope_row}\n{copied_scope_row}\n"
+    )
+    expect(
+        not has_canonical_scope_decision_row(
+            duplicated_scope_row,
+            requirement_id=na_requirement["id"],
+            rationale=na_provenance["rationale"],
+        ),
+        "duplicate scope-decision rows are ambiguous",
+    )
+    conflicting_scope_row = (
+        f"{NOT_APPLICABLE_DECISION_HEADING}\n\n"
+        "| Requirement | Decision | Review basis | Approval reference | Rationale |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        f"{copied_scope_row}\n"
+        f"| {na_requirement['id']} | approved | {na_provenance['review_basis']} | "
+        f"{na_provenance['approval_reference']} | contradictory decision |\n"
+    )
+    expect(
+        not has_canonical_scope_decision_row(
+            conflicting_scope_row,
+            requirement_id=na_requirement["id"],
+            rationale=na_provenance["rationale"],
+        ),
+        "conflicting duplicate scope-decision rows are rejected",
+    )
+    missing_na_decision_record = json.loads(json.dumps(behavioral_contract))
+    del missing_na_decision_record["requirements"][1]["not_applicable_provenance"][
+        "decision_record"
+    ]
+    expect(
+        validate_behavioral_contract(missing_na_decision_record),
+        "not-applicable provenance requires a decision record",
+    )
+    with tempfile.TemporaryDirectory(prefix="python-surface-decision-record-") as temp_dir:
+        expect(
+            validate_behavioral_contract(
+                behavioral_contract,
+                repository_root=Path(temp_dir),
+            ),
+            "not-applicable provenance requires an existing canonical decision record",
+        )
+    if os.name != "nt":
+        with tempfile.TemporaryDirectory(prefix="python-surface-decision-symlink-") as temp_dir:
+            temporary_root = Path(temp_dir)
+            repository_root = temporary_root / "repo"
+            record_path = repository_root / NOT_APPLICABLE_DECISION_RECORD
+            record_path.parent.mkdir(parents=True)
+            outside_record = temporary_root / "outside-goal.md"
+            outside_record.write_text("outside repository\n", encoding="utf-8")
+            record_path.symlink_to(outside_record)
+            expect(
+                validate_behavioral_contract(
+                    behavioral_contract,
+                    repository_root=repository_root,
+                ),
+                "not-applicable decision record cannot escape through a symlink",
+            )
+    nul_na_record = json.loads(json.dumps(behavioral_contract))
+    nul_na_record["requirements"][1]["not_applicable_provenance"]["decision_record"] = "\u0000"
+    expect(
+        validate_behavioral_contract(nul_na_record),
+        "malformed not-applicable path is rejected without crashing",
+    )
+    behavioral_rust = rust_behavioral_constants(behavioral_contract)
+    expect(
+        "PYTHON_BEHAVIORAL_PARITY_PARTIAL: usize = 1" in behavioral_rust
+        and "PYTHON_BEHAVIORAL_PARITY_NOT_APPLICABLE: usize = 1" in behavioral_rust,
+        "behavioral Rust advisory counts derive from contract classifications",
+    )
     malformed_contract = dict(behavioral_contract)
     malformed_contract["requirements"] = [{"id": "broken"}]
     expect(validate_behavioral_contract(malformed_contract), "malformed behavioral contract")

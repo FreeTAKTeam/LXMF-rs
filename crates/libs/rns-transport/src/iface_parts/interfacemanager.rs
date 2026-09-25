@@ -72,6 +72,8 @@ impl InterfaceManager {
             address,
             parent: None,
             full_hash,
+            display_name: None,
+            tcp_client_path_table_metadata: None,
             tx_send,
             stop: stop.clone(),
             online: online.clone(),
@@ -88,6 +90,7 @@ impl InterfaceManager {
             ifac_state: ifac_state.clone(),
             ifac_violations: ifac_violations.clone(),
             ifac_default_size_bytes,
+            inherit_ifac: true,
             is_shared_instance: false,
             outgoing_pr_history: VecDeque::new(),
             traffic: InterfaceTraffic::default(),
@@ -270,46 +273,6 @@ impl InterfaceManager {
         }
     }
 
-    pub fn inherit_runtime_config(
-        &mut self,
-        source: AddressHash,
-        target: AddressHash,
-    ) -> bool {
-        let Some(source_iface) = self.ifaces.iter().find(|i| i.address == source) else {
-            return false;
-        };
-        let mode = source_iface.mode;
-        let gravity = source_iface.gravity;
-        let outgoing = source_iface.outgoing;
-        let announce_bitrate_bps = source_iface.announce_bitrate_bps;
-        let announce_cap_percent = source_iface.announce_cap_percent;
-        let shared_config = source_iface.shared_config.clone();
-        let ifac_default_size_bytes = source_iface.ifac_default_size_bytes;
-        let is_shared_instance = source_iface.is_shared_instance;
-        let ifac_context = source_iface
-            .ifac_state
-            .read()
-            .ok()
-            .and_then(|context| context.clone());
-
-        let Some(target_iface) = self.ifaces.iter_mut().find(|i| i.address == target) else {
-            return false;
-        };
-        target_iface.mode = mode;
-        target_iface.parent = Some(source);
-        target_iface.gravity = gravity;
-        target_iface.outgoing = outgoing;
-        target_iface.announce_bitrate_bps = announce_bitrate_bps;
-        target_iface.announce_cap_percent = announce_cap_percent;
-        target_iface.shared_config = shared_config;
-        target_iface.ifac_default_size_bytes = ifac_default_size_bytes;
-        if let Ok(mut target_context) = target_iface.ifac_state.write() {
-            *target_context = ifac_context;
-        }
-        target_iface.is_shared_instance = is_shared_instance;
-        true
-    }
-
     /// Register a virtual iface that shares its tx channel with an
     /// existing host iface. Used by the UDP multicast iface to pin
     /// per-peer point-to-point routes without spawning additional
@@ -334,6 +297,7 @@ impl InterfaceManager {
         let mtu = host_iface.mtu;
         let mode = host_iface.mode;
         let gravity = host_iface.gravity;
+        let display_name = host_iface.display_name.clone();
 
         // Virtual iface gets its own CancellationToken so it can be
         // stopped (and GC'd by `cleanup()`) independently of the host.
@@ -358,6 +322,8 @@ impl InterfaceManager {
             address,
             parent: Some(host),
             full_hash,
+            display_name,
+            tcp_client_path_table_metadata: None,
             tx_send: host_tx,
             stop,
             online: host_online,
@@ -374,6 +340,7 @@ impl InterfaceManager {
             ifac_state: host_ifac_state,
             ifac_violations: host_ifac_violations,
             ifac_default_size_bytes,
+            inherit_ifac: true,
             is_shared_instance: host_iface.is_shared_instance,
             outgoing_pr_history: VecDeque::new(),
             traffic: InterfaceTraffic::default(),

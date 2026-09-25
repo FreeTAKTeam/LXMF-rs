@@ -266,6 +266,11 @@ for attempt in range(60):
         if is_retryable_socket_error(exc) and attempt + 1 < 60:
             time.sleep(1)
             continue
+        if is_retryable_socket_error(exc):
+            raise OSError(
+                f"rpc method {method} at {rpc_addr} remained unavailable after "
+                f"{attempt + 1} attempts: {exc}"
+            ) from exc
         raise
     header_end = response.find(b"\r\n\r\n")
     if header_end < 0:
@@ -829,6 +834,14 @@ kill_process_tree() {
 
 cleanup() {
   local status=$?
+  local rust_process_state="not-started"
+  if [[ -n "${RUST_PID:-}" ]]; then
+    if kill -0 "${RUST_PID}" >/dev/null 2>&1; then
+      rust_process_state="running"
+    else
+      rust_process_state="exited"
+    fi
+  fi
   if [[ -n "${PY_ENDPOINT_PID:-}" ]]; then
     kill_process_tree "${PY_ENDPOINT_PID}"
     wait "${PY_ENDPOINT_PID}" >/dev/null 2>&1 || true
@@ -844,6 +857,12 @@ cleanup() {
   if [[ ${status} -ne 0 ]]; then
     echo "[python-lxmd-rust-lxmd-smoke] failed" >&2
     echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}" >&2
+    echo "[python-lxmd-rust-lxmd-smoke] rust_process=${rust_process_state}" >&2
+    if [[ -n "${RUST_LXMD_LOG:-}" && -f "${RUST_LXMD_LOG}" ]]; then
+      echo "[python-lxmd-rust-lxmd-smoke] Rust startup/error log:" >&2
+      grep -Ei 'error|warn|panic|failed|exception|listening on http|delivery destination hash' \
+        "${RUST_LXMD_LOG}" | tail -n 80 >&2 || true
+    fi
   fi
 }
 trap cleanup EXIT
@@ -1053,8 +1072,8 @@ RUST_LOG="${RUST_LOG}" SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
   --config "${RUST_DIR}/launcher.toml" >"${RUST_LXMD_LOG}" 2>&1 &
 RUST_PID=$!
 
-if ! wait_for_file_pattern "${RUST_LXMD_LOG}" "listening on http://|delivery destination hash=" "${TIMEOUT_SECS}"; then
-  echo "Rust lxmd did not become ready" >&2
+if ! wait_for_file_pattern "${RUST_LXMD_LOG}" "listening on http://" "${TIMEOUT_SECS}"; then
+  echo "Rust lxmd RPC listener did not become ready" >&2
   exit 1
 fi
 

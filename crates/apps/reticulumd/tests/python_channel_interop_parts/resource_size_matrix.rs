@@ -3,6 +3,37 @@ use sha2::{Digest, Sha256};
 use rns_transport::resource::ResourceEventKind;
 use rns_transport::resource::MAX_EFFICIENT_SIZE;
 
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn pinned_python_resource_compression_cap_boundary_probe() {
+    let _interop_guard = python_interop_guard().await;
+    let output = python_channel_interop_paths().resource_boundary_probe();
+    assert!(
+        output.status.success(),
+        "pinned Python boundary probe failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let results: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("Python boundary probe JSON");
+    let at_limit = &results[0];
+    assert_eq!(at_limit["size"], 64 * 1024 * 1024);
+    assert_eq!(at_limit["total_size"], 64 * 1024 * 1024);
+    assert_eq!(at_limit["segments"], 65);
+    assert_eq!(at_limit["compressed"], true);
+    assert_eq!(at_limit["status"], 0, "advertise=False leaves Python Resource at NONE");
+    assert_eq!(at_limit["advertised"], false);
+    assert_eq!(at_limit["parts_built"], 1, "probe constructs only the first split segment");
+
+    let above_limit = &results[1];
+    assert_eq!(above_limit["size"], 64 * 1024 * 1024 + 1);
+    assert_eq!(above_limit["total_size"], 64 * 1024 * 1024 + 1);
+    assert_eq!(above_limit["segments"], 65);
+    assert_eq!(above_limit["compressed"], false);
+    assert_eq!(above_limit["status"], 0, "probe suppresses network advertisement");
+    assert_eq!(above_limit["advertised"], false);
+    assert_eq!(above_limit["parts_built"], 1, "probe constructs only the first split segment");
+}
+
 fn rust_resource_fixture(size: usize) -> Vec<u8> {
     let mut state = 0x6051_5eed_u64;
     let mut data = vec![0u8; size];
@@ -144,28 +175,52 @@ async fn rust_resource_compression_defaults_match_pinned_python() {
         .expect("register channel handler");
 
     let mut resource_events = transport.resource_events();
+    let split_metadata = rmp_serde::to_vec(&"python-meta").expect("encode split Resource metadata");
     let mut cases = vec![
-        ("compressible-default", b"resource compression default ".repeat(4096), true, true),
-        ("incompressible-default", rust_resource_fixture(64 * 1024), true, false),
-        ("compressible-disabled", b"resource compression disabled ".repeat(4096), false, false),
+        ("compressible-default", b"resource compression default ".repeat(4096), true, true, None),
+        ("incompressible-default", rust_resource_fixture(64 * 1024), true, false, None),
+        (
+            "compressible-split-segments",
+            vec![b'R'; MAX_EFFICIENT_SIZE * 2],
+            true,
+            true,
+            Some(split_metadata),
+        ),
+        (
+            "incompressible-split-segments",
+            rust_resource_fixture(MAX_EFFICIENT_SIZE * 2),
+            true,
+            false,
+            None,
+        ),
+        ("compressible-disabled", b"resource compression disabled ".repeat(4096), false, false, None),
     ];
-    for (label, payload, auto_compress, expected_compressed) in cases.drain(..) {
+    for (label, payload, auto_compress, expected_compressed, metadata) in cases.drain(..) {
         let digest = digest_hex(&payload);
-        let resource_hash = if auto_compress {
-            transport.send_resource(&link_id, payload.clone(), None).await
-        } else {
-            transport
-                .send_resource_with_compression(&link_id, payload.clone(), None, false)
-                .await
-        }
+        let metadata_wire_size = metadata.as_ref().map(|value| value.len() + 3).unwrap_or(0);
+        let total_size = payload.len() + metadata_wire_size;
+        // Metadata reduces the first segment's source-data slice. Here that
+        // creates a tiny third tail segment; the Python endpoint reports the
+        // final segment's compression flag, which is false when compression
+        // would grow its 15-byte payload. The Rust unit regression separately
+        // checks that the first, metadata-bearing segment is compressed.
+        let reported_compressed = if metadata_wire_size > 0 { false } else { expected_compressed };
+        let resource_hash = transport
+            .send_resource_with_compression(&link_id, payload.clone(), metadata, auto_compress)
+            .await
         .expect("send Resource");
         wait_for_outbound_resource_complete(&mut resource_events, resource_hash, Duration::from_secs(30)).await;
-        let expected = format!(
-            "resource-sha256:{}:{digest}:total_size={}:compressed={}",
-            payload.len(),
-            payload.len(),
-            expected_compressed
-        );
+        let expected = if metadata_wire_size > 0 {
+            format!(
+                "resource-sha256-metadata:{}:{digest}:{total_size}:python-meta:total_size={total_size}:compressed={reported_compressed}",
+                payload.len(),
+            )
+        } else {
+            format!(
+                "resource-sha256:{}:{digest}:total_size={total_size}:compressed={reported_compressed}",
+                payload.len(),
+            )
+        };
         tokio::time::timeout(Duration::from_secs(30), async {
             loop {
                 if seen.lock().expect("seen lock").iter().any(|(id, data)| {
@@ -177,8 +232,47 @@ async fn rust_resource_compression_defaults_match_pinned_python() {
             }
         })
         .await
-        .unwrap_or_else(|_| panic!("Python did not confirm {label} compression: {expected}"));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Python did not confirm {label} compression: expected={expected}; seen={:?}",
+                seen.lock().expect("seen lock")
+            )
+        });
     }
+
+    // The metadata wire prefix is part of the compressed Resource payload,
+    // while the advertisement's logical size remains data + metadata. Verify
+    // both properties against Python's production Resource receiver.
+    let payload = b"compressed resource with metadata ".repeat(2048);
+    let metadata = rmp_serde::to_vec(&"python-meta").expect("encode Resource metadata");
+    let metadata_wire_size = metadata.len() + 3;
+    let digest = digest_hex(&payload);
+    let resource_hash = transport
+        .send_resource(&link_id, payload.clone(), Some(metadata))
+        .await
+        .expect("send metadata-bearing Resource");
+    wait_for_outbound_resource_complete(&mut resource_events, resource_hash, Duration::from_secs(30)).await;
+    let expected = format!(
+        "resource-sha256-metadata:{}:{digest}:{}:python-meta:total_size={}:compressed=true",
+        payload.len(),
+        payload.len() + metadata_wire_size,
+        payload.len() + metadata_wire_size,
+    );
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            if seen
+                .lock()
+                .expect("seen lock")
+                .iter()
+                .any(|(id, data)| id == "rust-resource" && data == &expected)
+            {
+                break;
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("Python did not confirm compressed metadata accounting: {expected}"));
 }
 
 #[tokio::test]
@@ -210,10 +304,12 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
     };
     let mut resource_events = transport.resource_events();
 
-    for (kind, should_compress) in [
-        ("resource-compression-compressible", true),
-        ("resource-compression-incompressible", false),
-        ("resource-compression-disabled", false),
+    for (kind, size, should_compress) in [
+        ("resource-compression-compressible", 64 * 1024, true),
+        ("resource-compression-incompressible", 64 * 1024, false),
+        ("resource-compression-compressible", MAX_EFFICIENT_SIZE * 2, true),
+        ("resource-compression-incompressible", MAX_EFFICIENT_SIZE * 2, false),
+        ("resource-compression-disabled", 64 * 1024, false),
     ] {
         let py_config_dir = temp.path().join(kind);
         fs::create_dir_all(&py_config_dir).expect("python config dir");
@@ -222,7 +318,7 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
             &py_config_dir,
             &destination_hash,
             kind,
-            64 * 1024,
+            size,
             45.0,
         );
         let mut guard = ChildGuard { child: Some(child) };
@@ -240,7 +336,7 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
             Duration::from_secs(30),
         )
         .await;
-        assert_eq!(complete.data.len(), 64 * 1024, "payload length for {kind}");
+        assert_eq!(complete.data.len(), size, "payload length for {kind}");
         let received_digest = digest_hex(&complete.data);
         let child = guard.child.take().expect("Python resource client");
         let output = tokio::task::spawn_blocking(move || child.wait_with_output())
@@ -262,7 +358,7 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
-async fn rust_resource_compression_size_limit_matches_pinned_python() {
+async fn rust_resource_compression_threshold_matches_pinned_python() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
     let server_port = free_tcp_port();
@@ -308,13 +404,16 @@ async fn rust_resource_compression_size_limit_matches_pinned_python() {
         .expect("register channel handler");
 
     let mut resource_events = transport.resource_events();
-    for (label, size, compressed) in [("at-limit", 64 * 1024 * 1024, true)] {
+    for (label, size, compressed) in [
+        ("at-compression-threshold", 64 * 1024 * 1024, true),
+        ("above-compression-threshold", 64 * 1024 * 1024 + 1, false),
+    ] {
         let payload = vec![b'R'; size];
         let digest = digest_hex(&payload);
         let resource_hash = transport
             .send_resource(&link_id, payload, None)
             .await
-            .expect("send threshold Resource");
+            .expect("send Resource at and above the compression threshold");
         wait_for_outbound_resource_complete(
             &mut resource_events,
             resource_hash,
@@ -337,12 +436,6 @@ async fn rust_resource_compression_size_limit_matches_pinned_python() {
         .await
         .unwrap_or_else(|_| panic!("Python did not confirm {label} compression: {expected}"));
     }
-
-    let above_limit = vec![b'R'; 64 * 1024 * 1024 + 1];
-    assert!(
-        transport.send_resource(&link_id, above_limit, None).await.is_err(),
-        "Rust must reject a Resource above its production size limit before advertisement"
-    );
 }
 
 #[tokio::test]

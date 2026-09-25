@@ -34,9 +34,9 @@ pub struct PreparedSend {
 struct PendingSegments {
     link_id: AddressHash,
     source: PendingSegmentSource,
-    /// The segment `build_next` will produce, counting from 1. Past
-    /// `total_segments` the chain is exhausted.
-    next_segment_index: u32,
+    /// The segment `build_next` will produce, counting from 1. `None` marks
+    /// exhaustion, including the case where the final wire index is `u32::MAX`.
+    next_segment_index: Option<u32>,
     total_segments: u32,
     total_size: u64,
     request_id: Option<Vec<u8>>,
@@ -81,9 +81,7 @@ impl std::fmt::Debug for PendingSegments {
 impl PendingSegments {
     /// Builds the next segment, or `None` once every segment has been built.
     fn build_next(&mut self, link: &Link) -> Option<Result<ResourceSender, RnsError>> {
-        if self.next_segment_index > self.total_segments {
-            return None;
-        }
+        let segment_index = self.next_segment_index?;
         let data = match &mut self.source {
             PendingSegmentSource::InMemory { data, offset } => {
                 let end = offset.saturating_add(MAX_EFFICIENT_SIZE).min(data.len());
@@ -110,13 +108,17 @@ impl PendingSegments {
             self.is_response,
             self.interface_mtu,
             Some(self.original_hash),
-            self.next_segment_index,
+            segment_index,
             self.total_segments,
             Some(self.total_size),
             self.auto_compress,
         );
         if sender.is_ok() {
-            self.next_segment_index = self.next_segment_index.saturating_add(1);
+            self.next_segment_index = if segment_index == self.total_segments {
+                None
+            } else {
+                segment_index.checked_add(1)
+            };
         }
         Some(sender)
     }

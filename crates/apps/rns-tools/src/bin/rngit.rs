@@ -9,9 +9,26 @@ mod rngit_network {
     include!("rngit_parts/network.rs");
 }
 
+mod rngit_remote_helper {
+    include!("rngit_parts/remote_helper.rs");
+}
+
 include!("rngit_parts/cli.rs");
 
 pub fn main() -> std::process::ExitCode {
+    if std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_stem().map(|name| name == "git-remote-rns"))
+        .unwrap_or(false)
+    {
+        return match rngit_remote_helper::run() {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("git-remote-rns: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     let cli = Cli::parse();
     if cli.network_mode() {
         return match rngit_network::run(&cli) {
@@ -46,6 +63,12 @@ fn run(cli: &Cli) -> io::Result<ExitStatus> {
             let output = scoped(&root, output)?;
             git(&root, path, &["bundle", "create", output.to_string_lossy().as_ref(), revision])
         }
+        GitCommand::Fetch { .. } => {
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "network Git fetch requires --connect"))
+        }
+        GitCommand::Push { .. } => {
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "network Git push requires --connect"))
+        }
         GitCommand::Unbundle { path, bundle } => {
             let bundle = scoped(&root, bundle)?;
             git(&root, path, &["bundle", "unbundle", bundle.to_string_lossy().as_ref()])
@@ -60,6 +83,8 @@ impl Cli {
             || self.print_identity
             || self.identity_seed.is_some()
             || self.identity.is_some()
+            || matches!(self.command.as_ref(), Some(GitCommand::Fetch { .. }))
+            || matches!(self.command.as_ref(), Some(GitCommand::Push { .. }))
     }
 }
 

@@ -86,10 +86,69 @@ class ChannelEndpoint:
         self.links = []
         self.received = []
         self.buffers = []
+        self.resources = []
+        self.resource_wire_segments = []
+
+    def _install_resource_wire_capture(self) -> None:
+        """Capture decoded Resource segment bytes before pinned RNS strips metadata."""
+        capture_context = threading.local()
+        original_full_hash = RNS.Identity.full_hash
+        original_assemble = RNS.Resource.assemble
+
+        def capture_full_hash(data):
+            active_resource = getattr(capture_context, "resource", None)
+            already_captured = getattr(capture_context, "captured", False)
+            if active_resource is not None and not already_captured:
+                payload = bytes(data[:-RNS.Resource.RANDOM_HASH_SIZE])
+                metadata_prefix_size = 0
+                if active_resource.has_metadata and active_resource.segment_index == 1:
+                    if len(payload) < 3:
+                        raise AssertionError("metadata-bearing first segment lacks its 3-byte length")
+                    metadata_size = int.from_bytes(payload[:3], "big")
+                    metadata_prefix_size = 3 + metadata_size
+                    if metadata_prefix_size > len(payload):
+                        raise AssertionError("first segment ends inside its metadata block")
+
+                with self.lock:
+                    self.resource_wire_segments.append(
+                        {
+                            "segment_index": active_resource.segment_index,
+                            "total_segments": active_resource.total_segments,
+                            "has_metadata": active_resource.has_metadata,
+                            "compressed": active_resource.compressed,
+                            "payload_size": len(payload),
+                            "payload_sha256": hashlib.sha256(payload).hexdigest(),
+                            "metadata_prefix_hex": payload[:metadata_prefix_size].hex(),
+                            "first_content_hex": payload[
+                                metadata_prefix_size : metadata_prefix_size + 32
+                            ].hex(),
+                        }
+                    )
+                capture_context.captured = True
+            return original_full_hash(data)
+
+        def capture_assemble(resource):
+            previous_resource = getattr(capture_context, "resource", None)
+            previous_captured = getattr(capture_context, "captured", False)
+            capture_context.resource = resource
+            capture_context.captured = False
+            try:
+                return original_assemble(resource)
+            finally:
+                capture_context.resource = previous_resource
+                capture_context.captured = previous_captured
+
+        # Resource.assemble calls full_hash(data + random_hash) immediately
+        # before parsing/removing the metadata prefix. Thread-local scoping
+        # keeps unrelated identity hashes in the live endpoint out of capture.
+        RNS.Identity.full_hash = staticmethod(capture_full_hash)
+        RNS.Resource.assemble = capture_assemble
 
     def start(self, config_dir: str) -> RNS.Destination:
         print("python_channel_endpoint: starting Reticulum", file=sys.stderr, flush=True)
         RNS.Reticulum(configdir=config_dir, loglevel=7)
+        if self.payload_kind == "resource-wire":
+            self._install_resource_wire_capture()
 
         identity = RNS.Identity()
         destination = RNS.Destination(
@@ -149,8 +208,10 @@ class ChannelEndpoint:
 
         if self.payload_kind in (
             "resource",
+            "resource-wire",
             "resource-compression",
             "resource-multi-hop",
+            "resource-bidirectional",
             "cancel-resource",
             "resource-shutdown",
             "resource-reader-failure",
@@ -199,7 +260,31 @@ class ChannelEndpoint:
                             "compressed": resource.compressed,
                         }
                     )
-                if metadata is not None and len(data) < 1024 * 1024:
+                if self.payload_kind == "resource-wire":
+                    with self.lock:
+                        wire_segments = sorted(
+                            self.resource_wire_segments,
+                            key=lambda segment: segment["segment_index"],
+                        )
+                    if not wire_segments or wire_segments[0]["segment_index"] != 1:
+                        raise AssertionError("first Resource segment was not captured before metadata parsing")
+                    reply_data = "resource-wire:" + json.dumps(
+                        {
+                            "wire_segments": wire_segments,
+                            "data_size": len(data),
+                            "sha256": digest,
+                            "metadata": metadata,
+                            "compressed": resource.compressed,
+                            "total_size": resource.total_size,
+                            "segments": resource.total_segments,
+                        },
+                        sort_keys=True,
+                    )
+                elif (
+                    metadata is not None
+                    and len(data) < 1024 * 1024
+                    and self.payload_kind != "resource-compression"
+                ):
                     reply_data = f"resource:{data.decode('utf-8')}:{metadata}"
                 elif metadata is not None:
                     metadata_wire_size = len(umsgpack.packb(metadata)) + 3
@@ -230,6 +315,22 @@ class ChannelEndpoint:
             link.set_resource_concluded_callback(on_resource_concluded)
             with self.lock:
                 self.links.append(link)
+            if self.payload_kind == "resource-bidirectional":
+                channel.register_message_type(MessageTest)
+
+                def on_control_message(message) -> bool:
+                    if message.id != "request-python-resource":
+                        return self._on_message(message)
+                    resource = RNS.Resource(
+                        b"python-resource-data",
+                        link,
+                        metadata="python-meta",
+                    )
+                    with self.lock:
+                        self.resources.append(resource)
+                    return True
+
+                channel.add_message_handler(on_control_message)
             return
 
         if self.payload_kind == "buffer":
@@ -446,6 +547,7 @@ class ChannelClient:
             "resource-compression-disabled",
             "resource-multi-hop",
             "cancel-resource",
+            "cancel-resource-segment-two",
             "resource-file-reader-failure",
         ):
             done = threading.Event()
@@ -519,6 +621,21 @@ class ChannelClient:
                     time.sleep(0.01)
                 if resource.status < RNS.Resource.COMPLETE:
                     resource.cancel()
+            elif self.payload_kind == "cancel-resource-segment-two":
+                cancel_requested = threading.Event()
+
+                def cancel_on_second_segment(progress_resource) -> None:
+                    if (
+                        progress_resource.segment_index == 2
+                        and progress_resource.sent_parts > 0
+                        and progress_resource.status < RNS.Resource.COMPLETE
+                        and not cancel_requested.is_set()
+                    ):
+                        cancel_requested.set()
+                        result["cancel_segment"] = progress_resource.segment_index
+                        progress_resource.cancel()
+
+                resource.progress_callback(cancel_on_second_segment)
             while not done.is_set():
                 if time.time() > deadline:
                     print("python_channel_client: timed out waiting for resource", file=sys.stderr, flush=True)
@@ -533,13 +650,19 @@ class ChannelClient:
                     return 0
                 print(f"python_channel_client: resource cancellation failed: {result}", file=sys.stderr, flush=True)
                 return 1
+            if self.payload_kind == "cancel-resource-segment-two":
+                if result.get("status") == RNS.Resource.FAILED and result.get("cancel_segment") == 2:
+                    print(json.dumps({"resource": "cancelled", "segment": 2}), flush=True)
+                    time.sleep(0.5)
+                    return 0
+                print(f"python_channel_client: second-segment cancellation failed: {result}", file=sys.stderr, flush=True)
+                return 1
             if result.get("status") == RNS.Resource.COMPLETE:
                 if self.payload_kind == "resource-multi-hop":
-                    metadata = "python-meta"
-                    total_size = len(resource_data) + len(umsgpack.packb(metadata)) + 3
                     expected = (
                         f"resource-sha256-metadata:{len(resource_data)}:"
-                        f"{hashlib.sha256(resource_data).hexdigest()}:{total_size}:{metadata}"
+                        f"{hashlib.sha256(resource_data).hexdigest()}:"
+                        f"{result['total_size']}:{resource_metadata}"
                     )
                     while True:
                         with self.lock:
@@ -707,6 +830,7 @@ class ChannelClient:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("server", "client"), default="server")
+    parser.add_argument("--resource-boundary-probe", action="store_true")
     parser.add_argument(
         "--payload-kind",
         choices=(
@@ -714,13 +838,16 @@ def main() -> int:
             "channel-reconnect",
             "buffer",
             "resource",
+            "resource-wire",
             "resource-compression",
             "resource-compression-compressible",
             "resource-compression-threshold",
             "resource-compression-incompressible",
             "resource-compression-disabled",
             "resource-multi-hop",
+            "resource-bidirectional",
             "cancel-resource",
+            "cancel-resource-segment-two",
             "resource-shutdown",
             "resource-reader-failure",
             "resource-file-reader-failure",
@@ -734,7 +861,7 @@ def main() -> int:
         ),
         default="channel",
     )
-    parser.add_argument("--config-dir", required=True)
+    parser.add_argument("--config-dir")
     parser.add_argument("--announce-interval", type=float, default=0.25)
     parser.add_argument("--destination-hash")
     parser.add_argument("--message-id", default="python-1")
@@ -745,7 +872,42 @@ def main() -> int:
     parser.add_argument("--response-envelope-delta", type=int, default=0)
     args = parser.parse_args()
 
+    if args.resource_boundary_probe:
+        class ProbeLink:
+            type = RNS.Destination.LINK
+            hash = b"x" * 16
+            mtu = 4 * 1024 * 1024
+            mdu = mtu
+            traffic_timeout_factor = 1
+            rtt = 1
+
+            @staticmethod
+            def encrypt(data: bytes) -> bytes:
+                return data
+
+        results = []
+        for size in (64 * 1024 * 1024, 64 * 1024 * 1024 + 1):
+            with tempfile.TemporaryFile() as source:
+                source.truncate(size)
+                source.seek(0)
+                resource = RNS.Resource(source, ProbeLink(), advertise=False, auto_compress=True)
+                results.append(
+                    {
+                        "size": size,
+                        "total_size": resource.total_size,
+                        "segments": resource.total_segments,
+                        "compressed": resource.compressed,
+                        "status": resource.status,
+                        "parts_built": len(resource.parts),
+                        "advertised": resource.status >= RNS.Resource.ADVERTISED,
+                    }
+                )
+        print(json.dumps(results, sort_keys=True), flush=True)
+        return 0
+
     if args.mode == "client":
+        if args.config_dir is None:
+            parser.error("--config-dir is required outside boundary-probe mode")
         if args.destination_hash is None:
             parser.error("--destination-hash is required in client mode")
         return ChannelClient(args.payload_kind, args.response_envelope_delta).run(
@@ -758,6 +920,8 @@ def main() -> int:
             args.timeout,
         )
 
+    if args.config_dir is None:
+        parser.error("--config-dir is required outside boundary-probe mode")
     endpoint = ChannelEndpoint(args.payload_kind)
     destination = endpoint.start(args.config_dir)
     print(json.dumps({"ready": True, "destination_hash": destination.hash.hex()}), flush=True)

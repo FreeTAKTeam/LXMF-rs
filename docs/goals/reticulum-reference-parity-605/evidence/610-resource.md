@@ -61,6 +61,15 @@ it does not promote the full #610 acceptance contract or close parent issue
   advertisement and Rust emits `InboundFailed(reason=remote_cancelled)`.
   The Python sender also reports its own `FAILED` callback status. A local Rust
   caller cancellation remains the distinct `OutboundCancelled` event.
+- The new pinned-Python sender regression waits until data has been sent in
+  split segment 2 before calling `Resource.cancel()`. Through the production
+  TCP/Link/Resource receiver, Rust observes `InboundFailed` with the exact
+  reference-compatible reason `remote_cancelled`; Python independently reports
+  `FAILED` and segment 2. Existing
+  `remote_cancel_clears_the_partial_split_assembly_and_reports_failure`
+  directly asserts that cancellation on segment 2 removes the active receiver
+  and split assembly and reports one `remote_cancelled` failure. The interop
+  test adds no production state introspection API.
 - The `lxmf-runtime` Resource-event consumer now has explicit terminal-event
   regressions: `OutboundFailed`, `OutboundRejected`, and `OutboundCancelled`
   become SDK transport errors with distinct caller-visible messages, and each
@@ -84,6 +93,37 @@ it does not promote the full #610 acceptance contract or close parent issue
 - A pinned-Python keepalive fault trace drops only `PacketContext::KeepAlive`
   frames after link establishment, leaves setup and teardown control intact,
   and observes Rust's watchdog close the link with `LinkEvent::Closed`.
+
+## 64 MiB outbound compression threshold correction
+
+The pinned reference at `99de23c040d507e3fefca19e87b182302902725d` defines
+`AUTO_COMPRESS_MAX_SIZE` as the maximum source-data size for attempting bz2
+compression. In `Resource.__init__`, `data_size` is the known source length;
+`total_size` adds metadata for split selection. File-like resources above
+`MAX_EFFICIENT_SIZE` calculate `total_segments`, read only the current
+segment, and retain the file for the next segment. There is no 64 MiB
+outbound admission check. The live pinned-reference probe already on PR #638
+observed a 64 MiB + 1 source with compression disabled, `total_size` equal to
+the source length, 65 segments, and only the first segment prepared.
+
+The production reader sender now uses the 64 MiB source-size threshold only to
+select compression and continues to retain larger known-size sources as a
+reader. The byte-slice sender likewise no longer treats the compression
+threshold as an admission ceiling. Both split paths use checked conversion of
+segment counts into the Rust sender's `u32` segment-index representation;
+this is a representational failure boundary, not a new reference-derived
+resource-size policy. Inbound transfer limits are unchanged.
+
+The Rust boundary regression verifies admission of 64 MiB + 1, exact logical
+size and 65 segments, an uncompressed advertisement, and exactly one first
+segment read. A separate test verifies a typed failure if segment count cannot
+fit the sender's representation. These checks do not exercise a complete
+64 MiB + 1 transfer with a Python peer and do not complete the broader #610
+acceptance matrix.
+
+Fix commit: `4902b304f5d36f9a16a99538faed96a6b5272c6c` on the existing PR #638
+branch, based on the live PR head `740ee35e22f7f8ec989fe87ba8e147a7430ad9ae`.
+Validation results for that candidate are recorded below.
 
 ## SDK consumer terminal-event regressions
 
@@ -144,7 +184,8 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   python_to_python_resource_roundtrip_through_rust_transport -- --ignored --nocapture
-  # 1 passed; split Resource crosses two Python endpoints over one forwarding Rust transport
+  # 1 passed; split Resource crosses two Python endpoints over one forwarding
+  # Rust transport; client verifies digest and metadata-bearing size/metadata ack
 
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
@@ -391,21 +432,36 @@ This is a transport-completion receipt, not a remote LXMF delivery
 acknowledgement, and does not stand in for the remaining consumer callback
 matrix.
 
-The companion `outbound_resource_failure_event_marks_tracking_failed`
+The companion
+`outbound_resource_failure_event_marks_tracking_failed_without_inventing_timeout`
 regression verifies one `resource-failed` receipt with the original message ID,
-Resource hash, peer, byte count, and `failed: resource transfer timed out`
-status. A repeated failure notification emits no duplicate receipt; tracking
-is removed, transmitted-byte accounting is retained, and the peer is marked
-inactive with the expected backoff. Other failure and consumer paths remain
-outside this focused regression.
+Resource hash, peer, byte count, and generic `failed: resource transfer failed`
+status. `OutboundFailed` does not carry a cause and can mean retry exhaustion,
+dispatch failure, Link teardown, or split-segment construction failure, so the
+daemon must not label every such event a timeout. A repeated failure
+notification emits no duplicate receipt; tracking is removed, transmitted-byte
+accounting is retained, and the peer is marked inactive with the expected
+backoff.
+
+The daemon's inbound Resource event consumer previously discarded every
+`Progress` event even though `ResourceManager` emitted received/total byte and
+part counts. It now writes those counts at debug level with the Resource hash
+and Link ID. `inbound_resource_progress_status_preserves_bytes_and_parts`
+checks that the consumer's status representation retains all four counters
+and both correlation identifiers. This makes intermediate receive progress
+observable to daemon operators when debug logging is enabled; it does not
+complete the broader callback/status/cleanup acceptance matrix.
 
 ```text
 cargo test -p reticulumd --bin reticulumd \
   outbound_resource_completion_event_records_receipt_and_peer_bytes
 # 1 passed; 466 filtered out
 cargo test -p reticulumd --bin reticulumd \
-  outbound_resource_failure_event_marks_tracking_failed
-# 1 passed; 466 filtered out
+  outbound_resource_failure_event_marks_tracking_failed_without_inventing_timeout
+# 1 passed; generic failure status and tracking cleanup verified
+cargo test -p reticulumd --bin reticulumd \
+  inbound_resource_progress_status_preserves_bytes_and_parts
+# 1 passed; progress counters and event correlation fields preserved
 ```
 
 ## Python RCL/ICL terminal-event distinction
@@ -438,6 +494,12 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
   rust_sender_maps_pinned_python_receiver_cancel_to_rejection \
   -- --ignored --nocapture --test-threads=1
 # 1 passed; pinned Python receiver RCL maps to Rust OutboundRejected
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  rust_receiver_reports_pinned_python_cancel_on_second_resource_segment \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; cancellation after data in segment 2, Rust remote_cancelled and
+# Python FAILED callback both observed
 cargo check -p rns-tools --all-targets --all-features
 cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
 cargo clippy -p lxmf-runtime --all-targets --all-features --no-deps -- -D warnings
@@ -497,12 +559,20 @@ the exact received length and its digest matches the Python sender's digest.
 Both sides report `true, false, false` for the cases. No production mismatch
 was demonstrated, so this increment is regression/evidence only.
 
+The Rust-to-Python defaults case additionally sends a compressible Resource
+with MessagePack metadata. The pinned Python receiver recovered the exact
+content and metadata, report `compressed=true`, and report `total_size` as the
+uncompressed content length plus the three-byte metadata-length prefix and
+encoded metadata. This covers the composition of compression and metadata
+accounting; it does not close the broader #610 acceptance matrix.
+
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
   rust_resource_compression_defaults_match_pinned_python \
   -- --ignored --nocapture --test-threads=1
-# 1 passed; Python observed compressed=true, false, false for the three cases
+# 1 passed; Python observed compressed=true, false, false for the three cases,
+# including compressed metadata and exact total_size accounting
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
   pinned_python_resource_compression_defaults_match_rust \
@@ -510,8 +580,126 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed; Rust received and verified Python's exact payloads/digests and flags
 ```
 
-Above-limit compression selection and the remaining #610 transfer-selection
-and failure matrix remain unverified.
+The distinct 64 MiB-plus-one edge was subsequently probed and corrected in
+the PR #638 follow-up recorded below. The remaining #610 transfer-selection
+and failure matrix remains open.
+
+### Compression selection above the efficient-segment boundary
+
+The production Rust-to-pinned-Python and pinned-Python-to-Rust compression
+differential now sends compressible and deterministic incompressible payloads
+of exactly `2 * MAX_EFFICIENT_SIZE`. Both cross the split boundary into two
+full segments (Python-to-Rust also includes its metadata wire prefix).
+The pinned `RNS/Resource.py` sender first selects the segment using the
+uncompressed `MAX_EFFICIENT_SIZE` accounting, then applies bz2 independently
+to each segment (subject to the 64 MiB whole-resource cap), setting
+`compressed` only when that segment shrinks. Rust's production sender does the
+same: segment accounting precedes per-segment compression. The receivers
+verify the assembled payload digest and logical `total_size`; sender-side
+compression choices are `true` for repeating bytes and `false` for the
+deterministic incompressible payload. This closes only the above-
+`MAX_EFFICIENT_SIZE` selection gap, not the broader #610 contract.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_resource_compression_defaults_match_pinned_python \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Rust-to-Python split cases matched compression flags, size, and digest
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_compression_defaults_match_rust \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Python-to-Rust split cases matched sender flags, logical size, and digest
+```
+
+### Split compression with first-segment metadata
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Resource.py::Resource.__init__` prepends encoded metadata to segment 1
+before compression. The mixed-peer compression matrix now includes a
+compressible 2 MiB source with MessagePack metadata and verifies the assembled
+Python receiver's exact data digest, metadata, and total-size accounting. The
+metadata prefix changes this transfer to three segments; Python's reported
+compression flag belongs to the final 15-byte tail and is correctly false
+because bzip2 framing would expand it. A focused Rust preparation test decrypts
+the first-segment advertisement and confirms that metadata-bearing segment is
+compressed. This closes only the combined split/metadata/compression case; the
+broad #610 acceptance remains partial.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  split_resource_compresses_first_segment_with_metadata -- --nocapture
+# 1 passed; first-segment advertisement is compressed and transfer has 3 segments
+
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_resource_compression_defaults_match_pinned_python \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; Python assembled exact data/metadata/total size; final tail segment
+# correctly reported uncompressed
+```
+
+## Pinned-Python cancellation after the first split segment
+
+The Rust sender now has a later-segment cancellation regression against frozen
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`. Python accepts the first
+part of a split Resource, then cancels while the second segment is in flight;
+Rust observes the terminal `OutboundRejected`. This proves cancellation is
+handled after transfer progress, rather than only before or during the first
+part. It is one focused fault trace, not the complete segment/callback matrix.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_sender_observes_pinned_python_cancel_on_second_resource_segment \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed
+```
+
+## Missing-fragment retry exhaustion after partial progress
+
+Both production Rust and frozen Python now have executable regressions for
+this transition. The Rust `ResourceManager` test accepts the first of two
+advertised parts, leaves the second absent, advances its injected clock past
+the configured retry interval, and verifies the exact terminal
+`retry_limit_exhausted` failure with one received part and no retained inbound
+state.
+
+The ignored pinned-Python test invokes the reference
+`Resource._Resource__watchdog_job` directly on a two-part `Resource.__new__`
+fixture with one received part, `retries_left == 0`, and an expired missing-part
+deadline. In a separate Python subprocess it replaces the module's clock and
+sleep functions, does not start the watchdog thread, and uses an inactive stub
+Link so the real `Resource.cancel()` takes its receiver cleanup path without
+network I/O. It asserts exactly one cancel from `TRANSFERRING`, terminal
+`FAILED`, removal from the Link's incoming-resource list, one fake clock read,
+and only the no-op post-transition sleep request. This is a deterministic
+state-machine differential, not an end-to-end network timeout test. Cross-peer
+timeout timing and the rest of the #610 failure matrix remain open.
+
+Hosted lane ownership is intentionally split by reference pin. The generic
+`python-channel-interop` HIL case inherits canonical Reticulum 1.5.2
+(`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`) and skips only this regression.
+The exact ignored test is instead run by Verify's dedicated
+`Verify frozen 1.5.4 missing-part Resource retry exhaustion` step with
+`RETICULUM_PY_REPO` set to `Reticulum-parity`, checked out at
+`99de23c040d507e3fefca19e87b182302902725d`. Its in-test revision assertion
+remains enabled; the canonical 1.5.2 checkout and unrelated interop cases are
+unchanged.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  resource_manager_exhausts_missing_fragment_retries_after_partial_progress
+# 1 passed
+
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_cancels_after_missing_part_retry_budget \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed against frozen Reticulum 99de23c040d507e3fefca19e87b182302902725d
+```
 
 ## Resource compression size-limit boundary
 
@@ -526,8 +714,8 @@ reported logical/accounted size 67,108,864 and the exact SHA-256 of the
 uncompressed bytes. Rust also rejects a 64 MiB + 1 send before advertisement,
 matching its production Resource admission limit. Since that rejection
 prevents an above-limit Rust-to-Python transfer, the reference's uncompressed
-decision above the threshold is not observed end to end; above-limit selection
-parity remains open.
+decision specifically above the 64 MiB compression cap is not observed end to
+end. This separate cap-edge evidence remains open.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
@@ -545,9 +733,10 @@ metadata_wire_size + 1`, so pinned Python reports `total_size =
 MAX_EFFICIENT_SIZE + 1` and exactly two segments. Rust observes accepted
 segment indexes `[1, 2]`, reassembles the exact encoded `python-meta` value,
 and its content SHA-256 matches the pinned Python sender's report. This
-confirms segment 1 reserves the 3-byte metadata length and encoded metadata,
-leaving one content byte for segment 2. It is a focused mixed-peer boundary
-case; it does not close broader size/chunking or request/response selection.
+confirms the receiver's boundary accounting and reassembly. It does not by
+itself inspect the transmitted first-segment payload bytes or prove their
+metadata placement. It is a focused mixed-peer boundary case; it does not
+close broader size/chunking or request/response selection.
 
 ```text
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
@@ -556,6 +745,38 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
   -- --ignored --nocapture --test-threads=1
 # 1 passed; two exact segment indexes, metadata, total size, and content digest
 ```
+
+### Rust-to-Python first-segment metadata bytes
+
+`rust_to_python_split_resource_first_segment_metadata_wire_matches_reference`
+uses the production Rust `Transport::send_resource_with_compression` path and
+the pinned Python Link/Resource receiver over loopback. Its test-only Python
+wrapper scopes capture to `Resource.assemble` and observes the argument to
+`Identity.full_hash` immediately before the pinned implementation parses and
+strips metadata. It removes only the trailing four-byte Resource random hash
+from that hash input and records each decoded/decompressed segment payload;
+the pinned checkout itself is not modified.
+
+Rust sends an uncompressed two-segment Resource with MessagePack metadata.
+The test verifies both segment captures and checks the complete first-segment
+payload SHA-256 against the expected three-byte metadata length, encoded
+metadata, and first data slice. It also compares the exact metadata-prefix
+bytes, the immediately following 32 content bytes, and the completed
+Resource's digest/metadata. This observes the Resource segment payload after
+packet reassembly and Link decryption (and after decompression, disabled for
+this case), not encrypted Link packets or individual Resource part packets.
+No production protocol behavior was changed.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_to_python_split_resource_first_segment_metadata_wire_matches_reference \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed against frozen Reticulum 99de23c040d507e3fefca19e87b182302902725d
+```
+
+The same exact ignored test is wired into Verify's pinned-1.5.4 job as
+“Verify frozen 1.5.4 first-segment Resource metadata wire placement.”
 
 ## Link request/response packet-versus-Resource selection
 
@@ -567,27 +788,21 @@ Resource. A file-handle response is always a metadata-bearing Resource,
 independent of its size. The Resource transfer matrix does not establish this
 Link-level selection behavior.
 
-Rust now exposes `Transport::send_response`, which applies that rule using the
-negotiated Link MDU and reports whether it sent a packet or advertised a
-Resource. The mixed-peer request/response cases exercise the production Link
-and Request paths in both directions: ordinary small responses are delivered
-as packets; oversized ordinary responses are delivered as Resources; and the
-Python file response arrives as Resource content with its exact decoded
-`python-file-meta` metadata. The oversized Python response case checks exact
-response content, UTF-8 byte length, and SHA-256 reported by the Python peer;
-Rust verifies these against the expected response. Rust's Resource response
-case verifies the selected Resource hash reaches completion and Python reports
-the exact response bytes. Existing tests cover a clearly-small and a clearly-
-oversized response; they do not probe `mdu - 1`, `mdu`, and `mdu + 1` with
-production peers, so the exact inclusive edge remains open. This closes the
-missing automatic Rust selection path but does not claim edge-boundary proof.
+Rust's `Transport::send_response` applies that rule using the negotiated Link
+MDU, returns `None` for a sent packet and the Resource hash for a selected
+Resource, and propagates packet-send and Resource-send errors. Mixed-peer
+request/response cases exercise production Links in both directions, including
+ordinary small and oversized responses and a metadata-bearing Python file
+response. The exact inclusive boundary is covered separately below with
+production peer sessions at `mdu - 1`, `mdu`, and `mdu + 1`.
 
 ```text
-RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
   request_response -- --ignored --nocapture --test-threads=1
-# 7 passed; packet and Resource response paths in both directions, including
-# Rust Resource selection and exact response size/content/SHA-256 assertions
+# 8 passed; packet and Resource response paths in both directions, including
+# the production MDU-1 / MDU / MDU+1 selection boundary
 
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
@@ -616,40 +831,298 @@ a response Resource above it. These are three one-request peer sessions; no
 multi-hop HIL job was run.
 
 ```text
-RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
   python_to_rust_request_response_matches_exact_negotiated_mdu_boundary \
   -- --ignored --nocapture --test-threads=1
 # 1 passed; three sessions at negotiated MDU-1, MDU, MDU+1
 ```
 
+### Link-establishment timeout recovery after a dropped request
+
+The pinned-Python regression
+`pinned_python_link_establishment_timeout_after_dropped_request` drops the
+initial Link request, verifies the Rust Link reaches its establishment timeout,
+restores the same carrier, and requires a fresh Link ID before sending a
+256-byte one-part Resource from Rust to Python. The Python acknowledgement
+matches the expected digest. This verifies one production recovery path; it
+does not establish split-Resource timeout recovery or the broader #610 failure
+matrix.
+
+```text
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c \
+LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_link_establishment_timeout_after_dropped_request \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; fresh production Link and matching 256-byte Resource digest
+```
+
+## 64 MiB outbound admission versus compression boundary
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Resource.py::Resource.__init__` treats 64 MiB as the automatic
+compression threshold, not as an outbound admission limit. A sparse-file
+probe ran the production constructor with `advertise=False` and a synthetic
+large-MDU Link. It built only the first segment for each case, without
+materializing a 64 MiB payload or sending fragments:
+
+```text
+size=67108864  total_size=67108864  segments=65  compressed=true
+status=NONE  advertised=false  parts_built=1
+size=67108865  total_size=67108865  segments=65  compressed=false
+status=NONE  advertised=false  parts_built=1
+```
+
+The initial Rust preparation regression expected 64 MiB + 1 to fail. The
+production change below supersedes that assertion: outbound reader and
+byte-slice senders now admit known-size sources beyond the compression
+threshold, disable automatic compression based on the full source size, and
+retain lazy segmentation. The existing pinned-Python probe suppresses network
+advertisement; no full mixed-peer 64 MiB + 1 transfer is claimed.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_compression_cap_boundary_probe \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; pinned Python production Resource constructor, sparse source,
+# first segment only, no advertisement
+
+cargo test -p reticulum-rs-transport --lib \
+  compression_threshold_does_not_cap_outbound_resource_admission \
+  -- --nocapture
+# 1 passed; exact-cap and +1 production reader advertisements
+
+cargo test -p reticulum-rs-transport --lib \
+  reader_backed_send_admits_one_byte_above_compression_threshold_lazily \
+  -- --nocapture
+# 1 passed; exact logical size/segment count, uncompressed, first segment only
+
+cargo test -p reticulum-rs-transport --lib resource::tests
+# 75 passed; focused Resource unit suite, including lazy 64 MiB + 1 source
+
+cargo fmt --all -- --check
+# passed
+
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+# passed
+
+tools/scripts/check-module-size.sh
+# module-size checks: ok
+
+TMPDIR=/home/pgiuseppe/.codex/worktrees/issue-610-resource-metadata-ack/target \
+  tools/scripts/check-boundaries.sh
+# boundary checks: ok (two existing legacy-boundary notices); /tmp was over
+# its per-user quota, so the script's temporary metadata file used target/
+
+git diff --check
+# passed
+```
+
+## Outbound rejection and cancellation through the daemon consumer
+
+The focused daemon regressions `production_daemon_consumer_persists_peer_resource_rejection`
+and `production_daemon_consumer_cleans_cancelled_resource_without_success_receipt`
+exercise `spawn_inbound_worker` with events emitted by a production `Transport`
+over paired in-memory interfaces and an active Link; they do not call the
+private terminal-event handlers directly.
+
+- For rejection, the peer accepts the Resource advertisement and holds its
+  first request. It sends a Link-encrypted `ResourceReceiverCancel` packet
+  through its public `Transport::send_packet` path. The daemon consumer emits
+  one `rejected` receipt, clears Resource tracking, and the existing receipt
+  persistence consumer stores `rejected` as the message status.
+- For local cancellation, the public `sdk_cancel_message_v2` RPC first records
+  `cancelled`; public `Transport::cancel_resource` then emits the real
+  `OutboundCancelled` event. The daemon consumer clears tracking, leaves the
+  status `cancelled`, and emits no success receipt.
+
+Validation on the candidate worktree: `reticulumd` binary tests 474/474,
+`reticulum-rs-transport` library tests 834/834, strict Clippy for both packages,
+formatting, module-size, and diff checks passed. The boundary script could not
+evaluate its allowlists: the unchanged `load_allowlisted_edges` jq call refers
+to `$key` without passing `--arg key`, so the configured allowlists appear empty.
+No dependency manifests changed in this slice.
+
+This adds production-daemon consumer evidence for outbound rejection and local
+cancellation only. It does not establish the full callback/status/cleanup
+matrix or complete issue #610.
+
+## Outbound retry exhaustion through the production daemon consumer
+
+`production_daemon_consumer_reports_resource_retry_failure_and_cleans_tracking` uses
+the same production daemon worker and active in-memory Link, with a one-second
+Resource retry interval and one-retry budget. The peer receives and holds the
+Resource request without returning fragments, deterministically driving the
+sender to retry exhaustion. The Resource API publishes `OutboundFailed`
+without a timeout reason, so the consumer emits a `resource-failed` receipt
+with the exact message ID and resource hash, clears the tracking entry, and
+persists the generic `failed: resource transfer failed`; no completion is
+reported. The SDK's separate caller deadline maps to the explicit
+`resource transfer timed out` error and attempts Resource cancellation. These
+paths keep the cause distinction without inventing a timeout for Link-close or
+dispatch failures.
+
+Focused validation:
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  production_daemon_consumer_reports_resource_retry_failure_and_cleans_tracking \
+  -- --nocapture
+# 1 passed; retry exhaustion is terminal failure without a false timeout label
+```
+
+## Full Resource terminal-event callback/status/cleanup audit
+
+The audit follows Resource events from `ResourceManager` through `Transport`,
+the in-process LXMF SDK runtime, and the production daemon consumer. The event
+API exposes inbound `Complete`/`InboundFailed` and outbound
+`OutboundComplete`/`OutboundRejected`/`OutboundFailed`/`OutboundCancelled`.
+`OutboundFailed` intentionally has no reason payload; SDK caller-deadline
+timeouts are distinct `SdkError`s, while receiver retry exhaustion carries
+`InboundFailed(reason=retry_limit_exhausted)`.
+
+| Terminal path | Library event and cleanup | SDK/runtime result | Daemon consumer status/observation | Evidence |
+| --- | --- | --- | --- | --- |
+| Inbound complete | `Complete` carries assembled bytes; receiver and completed split assembly are removed before publication. | Runtime send path does not consume inbound events. | The worker sends only `Complete` bytes to delivery/control/propagation handlers; malformed LXMF is dropped with a diagnostic, not converted into empty content. Bridge response waiters return only a matching decoded response. | Transport Resource assembly tests; existing daemon direct-resource delivery/drop regressions; bridge response correlation tests. |
+| Outbound complete | `OutboundComplete` is published only after the matching proof; active sender and split tail are removed. | Matching hash returns success; unrelated hashes are ignored; completed transfer is not cancelled. | Emits/persists `resource-complete` with message ID, hash, peer, and bytes; removes tracking and accounts transmitted bytes. | `resource_send_only_succeeds_after_matching_outbound_completion`; `production_daemon_consumer_persists_resource_completion_and_cleans_tracking`; prior exactly-once handler test. |
+| Remote receiver rejection (RCL) | `OutboundRejected`; pending/active sender and split tail are removed. | Returns `resource transfer rejected` and attempts cleanup. | Emits/persists `rejected` / `resource-rejected`; clears tracking. Bridge request waiters return `BrokenPipe` under the terminal-aware policy. | `resource_manager_receiver_cancel_emits_outbound_rejected_event`; `rejected_resource_is_reported_and_cleanup_is_attempted`; `production_daemon_consumer_persists_peer_resource_rejection`; bridge terminal rejection test. |
+| Generic outbound failure | `OutboundFailed`; dispatch, retry, construction, and Link-close producers remove the corresponding sender state. | Returns `resource transfer failed`; attempts cancellation and preserves cleanup errors. | Emits/persists generic `failed: resource transfer failed`, not a fabricated timeout; clears tracking. Bridge request waiters return `BrokenPipe` under the terminal-aware policy. | `resource_manager_emits_outbound_failed_when_advertisement_dispatch_fails`; `resource_manager_removes_link_state_on_link_close`; `failed_resource_is_reported_and_cleanup_is_attempted`; daemon Link-close consumer and bridge failure regressions. |
+| Local cancellation | `OutboundCancelled`; local cancel removes active/pending sender and split tail before sending ICL. | Returns `resource transfer cancelled` when observed; timeout cleanup also invokes `Transport::cancel_resource`. | SDK cancellation records `cancelled` first; Resource consumer removes tracking and emits no success receipt. Bridge request waiters return `BrokenPipe` under the terminal-aware policy. | `cancel_resource_sends_initiator_cancel_and_removes_outbound_state`; `cancelled_resource_is_reported_and_cleanup_is_attempted`; `production_daemon_consumer_cleans_cancelled_resource_without_success_receipt`; bridge cancel regression. |
+| Remote sender cancellation (ICL) | `InboundFailed(reason=remote_cancelled)`; removes current receiver and any retained split assembly, never `Complete`. | Not an outbound SDK completion; remains observable on public Transport event stream. | Logs reason/progress, emits no delivery receipt/status/content, and accepts another Resource on the same Link. Terminal-aware bridge waiters return `BrokenPipe` with the failure reason instead of timing out. | `remote_cancel_clears_the_partial_split_assembly_and_reports_failure`; production daemon peer-cancel regression and same-Link recovery; bridge inbound-failure regression. |
+| SDK deadline / inbound retry exhaustion | SDK deadline returns `resource transfer timed out` and attempts cancellation; inbound retry exhaustion emits `InboundFailed(reason=retry_limit_exhausted)` and removes receiver plus partial split assembly. Outbound retry exhaustion is generic `OutboundFailed` because that event carries no cause. | Deadline error remains distinct from generic Resource failure; cancellation failure is appended to the returned error. | Outbound generic failure is stored as generic failure; inbound failure logs reason/progress, never `Complete`, receipt, or content. Propagation-download waiters surface a terminal `BrokenPipe` instead of replacing a received failure with their request timeout. | `resource_wait_failure_runs_cancellation_before_returning`; `resource_wait_surfaces_cancellation_failure_with_transfer_error`; split decode/retry cleanup regressions; daemon inbound retry-timeout/same-Link recovery and bridge waiter regressions. |
+
+Two cleanup leaks uncovered during this audit are fixed: a failed later split
+segment and retry exhaustion previously removed only the active receiver while
+leaving earlier assembled segment bytes retained. Both now route through the
+shared split-failure path, emit one failure keyed by the original Resource
+hash, and drop the retained assembly. The focused tests assert no `Complete`,
+no residual incoming receiver/assembly, and same-Link recovery after retry
+exhaustion. The additional consumer audit found that propagation-download
+waiters ignored inbound Resource failures and eventually reported request
+timeout; the terminal-aware wait path now returns the failure as `BrokenPipe`.
+The acceptance criterion is proven by this local event/consumer matrix and its
+focused regressions; leave the GitHub checkbox unchanged until the updated PR
+checks finish successfully.
+
+## Outbound completion through the production daemon consumer
+
+`production_daemon_consumer_persists_resource_completion_and_cleans_tracking`
+uses the production daemon worker and paired in-memory Transports. The peer
+accepts the Resource request and returns the real proof. The daemon consumer
+then emits one `resource-complete` receipt with the matching message ID,
+Resource hash, byte count, and `sent: link resource` status; the receipt
+persister records that status and the outbound tracking entry is removed.
+This exercises the successful callback/status/cleanup path at the same
+consumer boundary as the rejection, cancellation, and timeout regressions.
+Those terminal-error regressions assert rejected/cancelled/failed statuses,
+tracking cleanup, and absence of a fabricated success receipt; the inbound
+teardown regressions assert no `Complete` event or delivered content on
+partial-transfer errors. This focused matrix still does not cover every
+consumer and Resource failure mode. That earlier scoped note is superseded by
+the complete terminal-event/consumer audit below; it records the evidence
+available before the Link-close, split-cleanup, retry-timeout, and bridge-waiter
+regressions were added.
+
+Focused validation:
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  production_daemon_consumer_persists_resource_completion_and_cleans_tracking \
+  -- --nocapture
+# 1 passed; production Link proof, completion receipt/status, and cleanup verified
+```
+
+## Deterministic partial inbound failure through the daemon consumer
+
+`daemon_reports_partial_inbound_resource_failure_after_gated_link_teardown`
+uses the production `Transport`, active Link, and `spawn_inbound_worker` with a
+test-only gate on the paired in-memory interface channels. The gate forwards
+the Resource advertisement and first Resource data packet, then withholds later
+Resource packets while continuing to forward control packets. The test waits
+for the receiver's actual nonzero/incomplete `Progress` event and for a later
+Resource packet to reach the gate before the peer sends LinkClose. No sleep or
+packet-arrival race determines the injection point.
+
+The daemon transport emits exactly one `InboundFailed` for the transfer with
+nonzero but incomplete part counts; it emits no `Complete`. The daemon worker
+produces no receipt. An existing `sending: link resource` record keeps that
+status and its empty content, with no delivered message added to the store.
+The identical payload then completes with exact bytes on a fresh Link, showing
+that a follow-up receive succeeds after the failed Link is removed. This is
+focused proof for one partial-transfer Link teardown path; it does not establish
+every Resource failure reason, callback/status consumer, or the broader #610
+acceptance matrix.
+
+Focused validation on the #638 candidate worktree:
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  daemon_reports_partial_inbound_resource_failure_after_gated_link_teardown \
+  -- --nocapture
+# 1 passed
+
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd
+# 473 passed
+
+cargo clippy -p reticulumd --bin reticulumd --tests --no-deps -- -D warnings
+cargo fmt --all -- --check
+TMPDIR=/dev/shm tools/scripts/check-module-size.sh
+git diff --check
+# all passed
+```
+
+## Peer cancellation of a partial inbound Resource through the daemon consumer
+
+At PR #638 candidate `16a232b86bd326291f354b8b6ae1c036b47c7982`,
+`daemon_observes_remote_cancel_of_partial_inbound_resource_without_false_delivery`
+uses the production `Transport`, active Link, and `spawn_inbound_worker`. A
+test-only interface gate forwards the advertisement and first Resource part,
+holds a later data packet, then allows the peer's public
+`Transport::cancel_resource` call to send its initiator-cancel control packet.
+The daemon observes a correlated `InboundFailed(reason=remote_cancelled)` with
+nonzero but incomplete progress, and no `Complete`. The existing message keeps
+its pre-transfer status and empty content; no receipt or delivered record is
+created. A second Resource then completes with exact bytes over that same
+still-active Link, demonstrating that cancellation removed the partial
+receiver state without requiring Link teardown.
+
+This matches pinned Reticulum revision
+`99de23c040d507e3fefca19e87b182302902725d`:
+`RNS/Resource.py:1090-1123` sets `FAILED`, removes the Resource through
+`resource_concluded`, and calls the callback; `RNS/Link.py:1112-1119` routes
+`RESOURCE_ICL` to the matching inbound Resource. It establishes this one
+daemon-consumer cancellation path, not every callback/status consumer or the
+unchecked compound acceptance item.
+
+Focused validation on the isolated PR-head worktree:
+
+```text
+TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
+  daemon_observes_remote_cancel_of_partial_inbound_resource_without_false_delivery \
+  -- --nocapture
+# 1 passed; 474 filtered out
+```
+
 ## Remaining acceptance boundary
 
-The following #610 requirements remain unverified and are intentionally not
-represented as complete:
+The live #610 issue currently has one unchecked acceptance item: the
+callback/status/cleanup contract. The full terminal-event matrix above now
+audits the public Resource event stream, `lxmf-runtime`, the production daemon
+worker, and terminal-aware daemon request waiters. Focused regressions cover
+completion, generic failure, rejection, local and remote cancellation, SDK and
+receiver timeouts, cleanup, and the no-fabricated-content/completion boundary.
+The criterion is proven locally; the issue checkbox and closure remain gated on
+the updated PR #638 checks passing.
 
-- broader timeout/reconnect coverage beyond the reciprocal traces, while the
-  two pinned-Python matrices cover loss, duplication, reordering, and complete
-  missing-fragment terminal failure in both directions;
-- callbacks/status transitions observed through every library and daemon
-  consumer after each injected failure; outbound completion and timeout-failure
-  receipt paths now have focused daemon-consumer regressions;
-- hosted, physical-interface, public-network, and long-running soak evidence.
-
-The current conclusion is therefore: collision regeneration, shutdown cleanup,
-window-bounded fragment admission, deterministic local loss/duplication/
-reordering recovery, split cancellation cleanup, bidirectional pinned-Python
-cancellation terminal events, bidirectional pinned-Python loss/duplication/
-reordering and missing-fragment terminal evidence, reader-backed bounded source
-retention plus a pinned-Python split reader transfer, a two-carrier pinned-
-Python split Resource forwarding trace with an exact remote callback digest,
-bidirectional release-profile mixed-peer transfers, the pinned-Python
-receiver-shutdown terminal-failure trace, and the independent `rns-rs`
-loss/timeout/latency slice, and exact 50 MiB bidirectional peak-RSS evidence
-under a fixed process budget, and the pinned-Python file-like-reader fault
-trace are implemented with local evidence; the broader Resource failure
-contract remains partial pending broader timeout/reconnect, every consumer
-callback/status assertion, and hosted/physical/soak coverage. The Python reference reader
-exception is observed as a background preparation failure followed by the
-sender's bounded timeout, rather than an explicit Resource `FAILED` callback;
-that reference behavior is retained in the evidence rather than normalized.
+This conclusion is scoped to that acceptance item, not a claim that every
+possible Resource fault combination has been rerun in this turn. The broader
+porting record still distinguishes wider timeout/reconnect matrices,
+public-network/soak evidence, and physical-interface evidence. The user has
+excluded physical testing from this goal. The Python reference reader
+exception remains recorded as a background preparation failure followed by
+the sender's bounded timeout, rather than an explicit Resource `FAILED`
+callback; that reference behavior is retained rather than normalized.

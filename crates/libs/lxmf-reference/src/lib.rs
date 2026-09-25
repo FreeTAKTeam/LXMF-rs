@@ -3,8 +3,9 @@
 mod parity;
 
 pub use parity::{
-    current_software_parity_orientation, ParityCheckpoint, ParityInventory, ParityLevel,
-    ParityRatio, ReferenceRevision, SoftwareParityOrientation, SoftwareParityReferences,
+    current_software_parity_orientation, BehavioralParityCheckpoint, ParityCheckpoint,
+    ParityInventory, ParityLevel, ParityRatio, ReferenceRevision, SoftwareParityOrientation,
+    SoftwareParityReferences,
 };
 
 include!("python_software_parity.rs");
