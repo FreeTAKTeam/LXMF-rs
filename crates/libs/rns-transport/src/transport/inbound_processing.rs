@@ -18,26 +18,26 @@ pub(super) async fn filter_duplicate_packet(
     packet: &Packet,
     connected_to_shared_instance: bool,
 ) -> (bool, bool) {
-    let mut allow_duplicate = false;
+    // The pinned Python packet_filter bypasses hash deduplication for these
+    // contexts before applying packet-type or destination-specific filtering.
+    let mut allow_duplicate = matches!(
+        packet.context,
+        PacketContext::KeepAlive
+            | PacketContext::ResourceRequest
+            | PacketContext::ResourceProof
+            | PacketContext::Resource
+            | PacketContext::CacheRequest
+            | PacketContext::Channel
+    );
     match packet.header.packet_type {
         PacketType::Announce => return (true, false),
         PacketType::LinkRequest => {}
         PacketType::Data => {
-            allow_duplicate = matches!(
-                packet.context,
-                PacketContext::KeepAlive
-                    | PacketContext::LinkClose
-                    | PacketContext::ResourceRequest
-                    | PacketContext::Channel
-            );
+            allow_duplicate |=
+                matches!(packet.context, PacketContext::LinkClose | PacketContext::Channel);
         }
         PacketType::Proof => {
-            if packet.context == PacketContext::ResourceProof {
-                // Reticulum's packet_filter bypasses duplicate filtering for
-                // RESOURCE_PRF packets, so repeated resource proofs must reach
-                // the resource state machine (which validates their payload).
-                allow_duplicate = true;
-            } else if packet.context == PacketContext::LinkRequestProof {
+            if packet.context == PacketContext::LinkRequestProof {
                 if let Some(link) = in_link {
                     if link.lock().await.status().not_yet_active() {
                         allow_duplicate = true;

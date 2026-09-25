@@ -55,9 +55,12 @@ writes, while persistence errors remain surfaced. This applies only to
 transport-enabled nodes not attached to a shared instance. Pinned Python
 comparison also found that `RESOURCE_PRF` retransmissions bypass its duplicate
 hash filter; Rust now admits repeated ResourceProof packets to the resource
-state machine with a focused production-filter regression. Other retransmission
-classes, cache rotation/size parity, and the broader #609 recovery matrix
-remain open.
+state machine with a focused production-filter regression. A further source
+comparison found the same pinned exception for `RESOURCE`; Rust now also admits
+repeated Link Resource packets through the production filter, covered by a
+regression that failed before the fix. Other Python-exempt contexts,
+retransmission classes, cache rotation/size parity, and the broader #609
+recovery matrix remain open.
 
 The previously intermittent B-to-A LXMF delivery was traced to relay A
 rejecting the shared-owner `LinkRequestProof` because it lacked the

@@ -1055,6 +1055,27 @@ git diff --check
   PASS
 ```
 
+## Duplicate Resource packet admission
+
+The same pinned `Transport.packet_filter()` checks `RESOURCE` alongside
+`RESOURCE_PRF` and returns `True` before consulting either packet-hash set
+(`RNS/Transport.py:1635-1640`). Rust previously allowed repeated
+`ResourceProof` packets but passed `PacketContext::Resource` through the
+duplicate cache, dropping an identical retransmission before downstream
+resource handling. `duplicate_resource_packets_pass_production_duplicate_filter`
+calls the production duplicate filter twice with an identical Link Resource
+packet; the regression failed before the fix and now confirms both admissions.
+Rust's unconditional context exemptions now match this part of the Python
+filter. Other Python exemptions (`RESOURCE_REQ`, `CACHE_REQUEST`, `KEEPALIVE`,
+and `CHANNEL`) are separate contexts and are not newly claimed as independently
+verified by this regression; broader retransmission and #609 acceptance remain
+open.
+
+```text
+cargo test -p reticulum-rs-transport duplicate_resource_packets_pass_production_duplicate_filter --lib
+  PASS (1 test; failed before the production-filter fix)
+```
+
 ```text
 cargo test -p reticulumd --bin reticulumd shutdown_flush_attempts_path_table_when_packet_hashlist_persistence_fails -- --nocapture
   PASS (1 test)
