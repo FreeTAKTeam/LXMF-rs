@@ -82,9 +82,13 @@ impl InterfaceSharedConfig {
         }
 
         let ifac_size = match self.ifac_size {
+            // Pinned Python Reticulum only overrides the carrier default when
+            // the configured bit count reaches IFAC_MIN_SIZE * 8; smaller
+            // values are ignored. For accepted values it floors to bytes.
             Some(bits) if bits >= (IFAC_MIN_SIZE as u64) * 8 && bits % 8 == 0 => {
                 usize::try_from(bits / 8).map_err(|_| RnsError::InvalidArgument)?
             }
+            Some(bits) if bits < (IFAC_MIN_SIZE as u64) * 8 => default_size_bytes,
             Some(_) => return Err(RnsError::InvalidArgument),
             None => default_size_bytes,
         };
@@ -214,20 +218,26 @@ mod ifac_wire_tests {
     }
 
     #[test]
-    fn missing_credentials_or_non_byte_size_fails_closed() {
+    fn missing_credentials_fail_closed_and_python_size_coercion_is_preserved() {
         assert!(InterfaceSharedConfig {
             ifac_size: Some(16),
             ..InterfaceSharedConfig::default()
         }
         .ifac_context()
         .is_err());
-        assert!(InterfaceSharedConfig {
-            ifac_size: Some(9),
+        let below_minimum = InterfaceSharedConfig {
+            ifac_size: Some(7),
             network_name: Some("field-net".to_string()),
             ..InterfaceSharedConfig::default()
-        }
-        .ifac_context()
-        .is_err());
+        };
+        assert_eq!(
+            below_minimum
+                .ifac_context_with_default_size(16)
+                .expect("Python ignores below-minimum size")
+                .expect("credentials still enable IFAC")
+                .ifac_size(),
+            16
+        );
     }
 
     #[test]

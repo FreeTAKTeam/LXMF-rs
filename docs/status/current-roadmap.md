@@ -44,7 +44,12 @@ as a sanitized `bind_error` with zero accepted clients. Strict startup waits for
 that worker's initial bind result and rejects a failed bind; best-effort startup
 retains deferred retry and reporting. This is distinct from the UDP worker path
 and does not complete TCP accepted-stream or broad startup coverage. The broader
-startup/error and carrier matrices remain open. The spawned
+startup/error and carrier matrices remain open. Configured IFAC sizes below
+Reticulum's one-byte minimum now follow the pinned Python startup rule: they
+select the carrier's default tag size while retaining configured credentials.
+Software tests cover the production daemon UDP path and transport default-size
+selection; the pinned behavior was source-audited, not packet-differentially
+tested. The spawned
 `PipeInterface` worker also has a Unix subprocess loopback regression for its
 8-byte IFAC default and authenticated HDLC packet admission. Other carrier
 families now include duplex-stream serial and KISS IFAC regressions for wrong-key

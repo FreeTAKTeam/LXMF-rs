@@ -142,7 +142,7 @@ interfaces = [
 }
 
 #[test]
-fn bootstrap_reports_invalid_ifac_size_for_tcp_listener_without_exposing_credentials() {
+fn bootstrap_uses_default_ifac_size_below_minimum_for_tcp_listener() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
     let config_path = temp.path().join("daemon.toml");
@@ -170,24 +170,21 @@ interfaces = [
         .get("interfaces")
         .and_then(|value| value.as_array())
         .expect("interfaces array");
-    let rejected = interfaces
+    let interface = interfaces
         .iter()
         .find(|entry| {
             entry.get("name").and_then(|value| value.as_str()) == Some("invalid-ifac-tcp-size")
         })
-        .expect("invalid TCP IFAC config should remain visible as a management diagnostic");
-    assert_eq!(rejected.get("type").and_then(|value| value.as_str()), Some("tcp_server"));
-    assert_eq!(rejected.get("enabled").and_then(|value| value.as_bool()), Some(true));
-    let runtime = rejected
+        .expect("TCP IFAC config");
+    assert_eq!(interface.get("type").and_then(|value| value.as_str()), Some("tcp_server"));
+    assert_eq!(interface.get("enabled").and_then(|value| value.as_bool()), Some(true));
+    let runtime = interface
         .get("settings")
         .and_then(|value| value.get("_runtime"))
         .expect("runtime startup diagnostic");
-    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("failed"));
-    let error = runtime
-        .get("startup_error")
-        .and_then(|value| value.as_str())
-        .expect("safe startup error");
-    assert!(error.contains("IFAC configuration rejected"));
-    assert!(error.contains("8..=512"));
-    assert!(!error.contains("credential-must-not-appear"));
+    assert!(matches!(
+        runtime.get("startup_status").and_then(|value| value.as_str()),
+        Some("spawned" | "active")
+    ));
+    assert!(runtime.get("startup_error").is_none());
 }

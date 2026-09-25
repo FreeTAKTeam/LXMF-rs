@@ -168,7 +168,7 @@ interfaces = [
 }
 
 #[test]
-fn bootstrap_reports_invalid_ifac_size_without_exposing_credentials() {
+fn bootstrap_uses_python_default_ifac_size_below_minimum_on_real_udp_carrier() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
     let config_path = temp.path().join("daemon.toml");
@@ -176,7 +176,7 @@ fn bootstrap_reports_invalid_ifac_size_without_exposing_credentials() {
         &config_path,
         r#"
 interfaces = [
-  { type = "udp", enabled = true, name = "invalid-ifac-size", host = "127.0.0.1", port = 42420, target_host = "127.0.0.1", target_port = 42421, ifac_size = 7, network_name = "credential-must-not-appear" }
+  { type = "udp", enabled = true, name = "below-minimum-ifac-size", host = "127.0.0.1", port = 0, target_host = "127.0.0.1", target_port = 42421, ifac_size = 7, network_name = "below-minimum-test" }
 ]
 "#,
     )
@@ -196,19 +196,16 @@ interfaces = [
         .get("interfaces")
         .and_then(|value| value.as_array())
         .expect("interfaces array");
-    let rejected = interfaces
+    let interface = interfaces
         .iter()
-        .find(|entry| entry.get("name").and_then(|value| value.as_str()) == Some("invalid-ifac-size"))
-        .expect("invalid IFAC config should remain visible as a management diagnostic");
-    let runtime = rejected
+        .find(|entry| entry.get("name").and_then(|value| value.as_str()) == Some("below-minimum-ifac-size"))
+        .expect("configured IFAC UDP carrier");
+    let runtime = interface
         .get("settings")
         .and_then(|value| value.get("_runtime"))
-        .expect("runtime startup diagnostic");
-    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("failed"));
-    let error = runtime.get("startup_error").and_then(|value| value.as_str()).expect("safe error");
-    assert!(error.contains("IFAC configuration rejected"));
-    assert!(error.contains("8..=512"));
-    assert!(!error.contains("credential-must-not-appear"));
+        .expect("runtime status");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert!(runtime.get("startup_error").is_none());
 }
 
 #[test]

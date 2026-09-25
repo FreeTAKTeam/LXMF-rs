@@ -69,7 +69,7 @@ fn rejected_ifac_interface_records(path: &std::path::Path) -> Vec<InterfaceRecor
             let valid_ifac_size = ifac_size
                 .as_integer()
                 .and_then(|value| u64::try_from(value).ok())
-                .is_some_and(|bits| (8..=512).contains(&bits) && bits % 8 == 0);
+                .is_some_and(|bits| bits < 8 || ((8..=512).contains(&bits) && bits % 8 == 0));
             let credential_present = ["network_name", "networkname", "passphrase", "pass_phrase"]
                 .iter()
                 .filter_map(|key| table.get(*key).and_then(toml::Value::as_str))

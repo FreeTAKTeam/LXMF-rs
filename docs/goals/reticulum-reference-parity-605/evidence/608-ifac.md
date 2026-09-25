@@ -952,3 +952,34 @@ cargo test -p reticulumd --test python_tcp_ifac_lifecycle -- \
   --nocapture --test-threads=1
 # 1 passed; pinned-Python TCP first-frame admission, wrong-key rejection, live credential rotation, and restart
 ```
+
+## Below-minimum IFAC size uses the pinned carrier default
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d` sets an explicit
+`ifac_size` only when its bit count is at least `IFAC_MIN_SIZE * 8`; a smaller
+value is treated as unspecified. `UDPInterface.DEFAULT_IFAC_SIZE` is 16 bytes.
+Rust previously rejected `ifac_size = 7` during daemon configuration, so the
+enabled UDP carrier never started. Rust now treats only below-minimum values as
+unspecified and retains the supplied network credential, selecting the carrier
+default rather than disabling authentication. A transport regression checks
+the 16-byte default and the daemon regression bootstraps a real UDP carrier
+with this configuration. The pinned-Python branch was confirmed by reference
+source inspection; no subprocess Python/Rust packet differential was run or
+added in this increment. Higher malformed sizes and non-byte-aligned values
+remain rejected. This is narrow software configuration evidence only.
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  bootstrap_uses_python_default_ifac_size_below_minimum_on_real_udp_carrier -- --nocapture
+# 1 passed; IFAC-configured UDP daemon interface starts
+cargo test -p reticulumd --bin reticulumd \
+  bootstrap_uses_default_ifac_size_below_minimum_for_tcp_listener -- --nocapture
+# 1 passed; TCP listener starts with below-minimum size
+cargo test -p reticulum-rs-transport --lib \
+  missing_credentials_fail_closed_and_python_size_coercion_is_preserved -- --nocapture
+# 1 passed; missing credentials still fail closed and below-minimum size selects the 16-byte default
+cargo fmt --all -- --check
+# passed
+git diff --check
+# passed
+```
