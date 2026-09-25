@@ -103,13 +103,10 @@ impl ReticulumGitNode {
         {
             return response(Self::RES_DISALLOWED, "Not allowed", None);
         }
-        let Some(value) = map_value(request, &rmpv::Value::String("doc_id".into())) else {
+        if map_value(request, &rmpv::Value::String("doc_id".into())).is_none() {
             return response(Self::RES_INVALID_REQ, "No document ID specified", None);
-        };
-        let Some(id) = value
-            .as_u64()
-            .or_else(|| value.as_str()?.parse::<u64>().ok())
-        else {
+        }
+        let Some(id) = Self::work_request_document_id(request) else {
             return response(Self::RES_INVALID_REQ, "Invalid document ID", None);
         };
         let source_scopes: &[&str] = if activate {

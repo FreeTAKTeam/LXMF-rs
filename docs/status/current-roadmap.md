@@ -71,6 +71,12 @@ completed, then proposed. Rust now matches that behavior for delete only. The
 regression covers an active item requested as completed, both author success
 and non-author denial; remaining work-operation and storage cases stay open.
 
+The pinned-Python #612 completion differential also covers MessagePack float
+document IDs: `complete` with `doc_id=7.9` is coerced by Python to document `7`.
+Rust now applies the same shared ID coercion and matches the successful response
+and directory transition. This is one request-shape edge only; the broad work
+operation matrix and #612 acceptance remain open.
+
 The pinned-Python #612 view differential now also verifies malformed document
 ID handling for an authorized request: a nonnumeric string returns the exact
 `INVALID_REQ / Invalid request` response in Rust and Python, while finite float
