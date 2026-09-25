@@ -284,7 +284,7 @@ jobs:
             issue_613_media_source_open_failure::rngit_media_source_stream_open_failure_has_no_response_and_keeps_link_live \
             -- --ignored --exact --nocapture --test-threads=1
           cargo test -p rns-tools --test rngit_python_interop \
-            issue_613_media_zero_stat::rngit_media_zero_sized_pipe_preserves_resource_metadata_and_link \
+            issue_613_media_zero_stat::rngit_media_zero_stat_and_tree_paths_match_pinned_show_behavior \
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify raw media fallback when WebP backend is unavailable

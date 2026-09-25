@@ -1,9 +1,10 @@
 # #613 rngit NomadNet pages, media, and link cleanup evidence
 
-Status: **partial / unverified**. This records the bounded implementation and
-live pinned-Python trace at candidate commit `e41189c8` on
-`codex/issue-605-parity`; it does not claim the
-full #613 or #605 acceptance gate. The current issue-specific increment adds
+Status: **partial / unverified**. This records bounded implementation and
+pinned-Python traces across PR #633; the earlier baseline was candidate
+`e41189c8` on `codex/issue-605-parity`, and the current branch head before this
+working-tree increment was `eea22967`. It does not claim the full #613 or #605
+acceptance gate. The current issue-specific increment adds
 deterministic failure-injection regressions for temporary-directory and
 pipeline-child cleanup, plus a pinned-Python cancellation trace for an
 in-flight `/media` Resource. A
@@ -114,6 +115,33 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
 ```
 
 Metadata/stat races remain unverified.
+
+### `/media` tracked tree paths follow pinned `git show` behavior
+
+The pinned `pages.py::serve_media` path first calls `get_blob_info`, whose
+`git cat-file -s` succeeds for a tree, then falls through to
+`get_blob_stream`, which runs `git show <ref>:<path>`. Rust previously only
+used `git cat-file blob`, rejecting that tree path without a response. The
+production-Link regression now requests a tracked directory with a pinned
+Python client, checks the pinned source call pattern, and compares the exact
+Resource bytes to `git show` output (including the `assets` filename). Rust
+handles this as a tree-only fallback while preserving the existing no-response
+behavior for failed blob reads; output remains capped at `MEDIA_BLOB_LIMIT`.
+The same regression retains empty/nonempty zero-stat blob assertions. This is
+a source-checked trace against the Rust server, not a Python-server
+differential, and does not close the broader #613 acceptance.
+
+Focused validation on the #633 worktree:
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_zero_stat::rngit_media_zero_stat_and_tree_paths_match_pinned_show_behavior \
+  -- --ignored --exact --nocapture --test-threads=1 PASS (1 test)
+cargo fmt --all -- --check PASS
+cargo clippy -p rns-tools --all-targets --all-features --no-deps -- -D warnings PASS
+tools/scripts/check-module-size.sh PASS
+```
 
 ### Original blob source-stream open failure has no response and preserves Link recovery
 
@@ -1094,8 +1122,8 @@ Python-server-vs-Rust-server differential; no production change was needed.
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
-  issue_613_media_zero_stat::rngit_media_zero_sized_pipe_preserves_resource_metadata_and_link \
+  issue_613_media_zero_stat::rngit_media_zero_stat_and_tree_paths_match_pinned_show_behavior \
   -- --ignored --exact --nocapture --test-threads=1
-  PASS (1 test; empty and nonempty blobs, pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`)
+  PASS (1 test; empty/nonempty blobs and tracked-tree output, pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`)
 Strict integration-test Clippy, formatting, module-size, and diff checks passed.
 ```

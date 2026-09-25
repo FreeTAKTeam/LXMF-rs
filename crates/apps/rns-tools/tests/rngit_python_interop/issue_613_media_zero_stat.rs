@@ -10,7 +10,7 @@ const PYTHON_RETICULUM_PARITY_REF: &str = "99de23c040d507e3fefca19e87b1823029027
 
 #[test]
 #[ignore = "requires local pinned Python Reticulum checkout"]
-fn rngit_media_zero_sized_pipe_preserves_resource_metadata_and_link() -> io::Result<()> {
+fn rngit_media_zero_stat_and_tree_paths_match_pinned_show_behavior() -> io::Result<()> {
     let _test_guard =
         super::PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
@@ -34,6 +34,10 @@ fn rngit_media_zero_sized_pipe_preserves_resource_metadata_and_link() -> io::Res
     let pages = fs::read_to_string(python_repo.join("RNS/Utilities/rngit/pages.py"))?;
     assert!(pages.contains("subprocess.Popen([\"git\", \"show\", f\"{ref}:{file_path}\"]"));
     assert!(pages.contains("return [stream, {\"name\": response_name.encode(\"utf-8\")}]"));
+    assert!(pages.contains(
+        "result = subprocess.run([\"git\", \"cat-file\", \"-s\", f\"{ref}:{file_path}\"]"
+    ));
+    assert!(pages.contains("def get_blob_stream(self, repo_path, ref, path):"));
     let resource = fs::read_to_string(python_repo.join("RNS/Resource.py"))?;
     assert!(resource.contains("data_size = os.stat(data.name).st_size"));
     assert!(resource.contains("if data_size == 0:"));
@@ -104,6 +108,19 @@ fn rngit_media_zero_sized_pipe_preserves_resource_metadata_and_link() -> io::Res
             "{observed}"
         );
         assert_eq!(observed["nonempty_payload_size"], 56, "{observed}");
+        let resolved =
+            Command::new("git").args(["rev-parse", "main"]).current_dir(&source).output()?;
+        if !resolved.status.success() {
+            return Err(io::Error::other("could not resolve the media fixture commit"));
+        }
+        let tree_spec = format!("{}:assets", String::from_utf8_lossy(&resolved.stdout).trim());
+        let tree = Command::new("git").args(["show", &tree_spec]).current_dir(&source).output()?;
+        if !tree.status.success() {
+            return Err(io::Error::other("reference Git tree fixture could not be read"));
+        }
+        assert_eq!(observed["tree_received"], true, "{observed}");
+        assert_eq!(observed["tree_name"], "assets", "{observed}");
+        assert_eq!(observed["tree_payload_hex"], hex_bytes(&tree.stdout), "{observed}");
         assert_eq!(observed["link_active"], true, "{observed}");
         assert!(server.try_wait()?.is_none(), "zero-size stat case terminated rngit");
         Ok(())
@@ -112,6 +129,16 @@ fn rngit_media_zero_sized_pipe_preserves_resource_metadata_and_link() -> io::Res
     let _ = server.kill();
     let _ = server.wait();
     result
+}
+
+fn hex_bytes(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(char::from(HEX[(byte >> 4) as usize]));
+        encoded.push(char::from(HEX[(byte & 0x0f) as usize]));
+    }
+    encoded
 }
 
 fn run_git(directory: &std::path::Path, args: &[&str]) -> io::Result<()> {
@@ -177,10 +204,13 @@ def request_media(path):
 
 empty = request_media("/media/group/repo/HEAD/empty.bin")
 nonempty = request_media("/media/group/repo/HEAD/nonempty.bin")
+tree = request_media("/media/group/repo/HEAD/assets")
 if not empty["response_received"] or empty["failed"]:
     raise RuntimeError("empty-blob media response failed: " + repr(empty))
 if not nonempty["response_received"] or nonempty["failed"]:
     raise RuntimeError("nonempty-blob media response failed: " + repr(nonempty))
+if not tree["response_received"] or tree["failed"]:
+    raise RuntimeError("tree media response failed: " + repr(tree))
 result = {
     "response_received": empty["response_received"],
     "failed": empty["failed"],
@@ -190,6 +220,9 @@ result = {
     "nonempty_payload_hex": nonempty["payload_hex"],
     "nonempty_sha256": nonempty["sha256"],
     "nonempty_payload_size": nonempty["payload_size"],
+    "tree_received": tree["response_received"],
+    "tree_name": tree["name"],
+    "tree_payload_hex": tree["payload_hex"],
 }
 result["link_active"] = link.status == RNS.Link.ACTIVE
 link.teardown()

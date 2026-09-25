@@ -172,7 +172,29 @@ impl ReticulumGitNode {
         }
         // A missing object is the pinned handler's False response above. Once
         // it is known to exist, a failed content read remains no-response.
-        let blob = Self::page_blob(&repository_path, &resolved, &file_path, MEDIA_BLOB_LIMIT)?;
+        let blob = match Self::page_blob(&repository_path, &resolved, &file_path, MEDIA_BLOB_LIMIT) {
+            Some(blob) => blob,
+            None => {
+                // The pinned Python handler accepts any object for which
+                // `cat-file -s` succeeds, then streams `git show`; that
+                // includes tree paths, whose response is Git's tree listing.
+                // Keep the fallback tree-only so blob read failures retain
+                // the existing no-response behavior.
+                let object_type = Self::page_git_output(
+                    &repository_path,
+                    &["cat-file".into(), "-t".into(), format!("{resolved}:{file_path}")],
+                    16,
+                )?;
+                if object_type.as_slice() != b"tree\n" {
+                    return None;
+                }
+                Self::page_git_output(
+                    &repository_path,
+                    &["show".into(), format!("{resolved}:{file_path}")],
+                    MEDIA_BLOB_LIMIT,
+                )?
+            }
+        };
         let Some(original_name) = filename(&file_path) else {
             return Some(page_denial_response());
         };
