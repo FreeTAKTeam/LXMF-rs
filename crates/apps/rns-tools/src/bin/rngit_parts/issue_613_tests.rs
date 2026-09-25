@@ -178,6 +178,17 @@ fn image_markup_quotes_only_the_file_path_like_pinned_python() {
 }
 
 #[test]
+fn image_markup_matches_pinned_python_quote_plus_for_utf8_and_reserved_path_bytes() {
+    // Fixture from urllib.parse.quote_plus at Reticulum 99de23c's pages.py
+    // image-markup call site: only file_path is quoted, with UTF-8 encoded
+    // bytes, literal '+' and '%' escaped, space mapped to '+', and '#' escaped.
+    assert_eq!(
+        image_markup_media_path("group", "repo", "HEAD", "images/café+50% #1.png"),
+        "/media/group/repo/HEAD/images%2Fcaf%C3%A9%2B50%25+%231.png"
+    );
+}
+
+#[test]
 fn unknown_page_request_returns_the_protocol_not_found_response() {
     let (_temporary, mut node) = page_fixture();
     let request = request_map(&[]);

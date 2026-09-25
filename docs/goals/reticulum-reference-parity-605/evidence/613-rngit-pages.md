@@ -244,6 +244,19 @@ preserves those first three fields and continues encoding only the file path.
 This establishes markup-construction parity for the tested characters, not
 full page rendering or successful media retrieval for unusual names.
 
+A second exact fixture covers pinned `urllib.parse.quote_plus` behavior for
+`images/café+50% #1.png`: UTF-8 bytes become `%C3%A9`, literal `+`, `%`, and
+`#` are escaped, and the space becomes `+`. The Rust result matches the frozen
+Python fixture, so this increment found no production mismatch. Verify runs the
+focused unit test; this does not establish end-to-end retrieval for unusual
+filenames or visual parity.
+
+```text
+cargo test -p rns-tools --bin rngit --all-features \
+  tests::image_markup_matches_pinned_python_quote_plus_for_utf8_and_reserved_path_bytes \
+  -- --exact  PASS (1 test)
+```
+
 ```text
 cargo test -p rns-tools --bin rngit --all-features \
   image_markup_quotes_only_the_file_path_like_pinned_python  PASS (1 test)

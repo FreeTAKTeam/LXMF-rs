@@ -329,6 +329,12 @@ jobs:
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
 
+      - name: Verify pinned Python quote_plus image-markup edge fixture
+        run: >-
+          cargo test -p rns-tools --bin rngit --all-features
+          tests::image_markup_matches_pinned_python_quote_plus_for_utf8_and_reserved_path_bytes
+          -- --exact
+
       - name: Verify bidirectional Resource timeout and recovery
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity

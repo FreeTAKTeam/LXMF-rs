@@ -160,6 +160,9 @@ page/media/error cases remain open. A second pinned-Python Link regression
 injects a nonzero encoder exit, verifies the exact raw PNG fallback and filename
 metadata, checks that the encoder's stderr detail is logged, and confirms the
 failed conversion directory is removed. No production mismatch was found. The
+image-markup fixture now also records the pinned `urllib.parse.quote_plus`
+output for a filename containing UTF-8, `+`, `%`, space, and `#`; no Rust
+mismatch was observed and broader rendering/retrieval parity remains open. The
 new Verify lane provisions ImageMagick and GraphicsMagick and runs the production-Link test
 against real `convert` and `gm` executables, checking forwarded quality and
 resize arguments, 8x4-to-1x1 WebP output, filename metadata, raw fallback, and
