@@ -66,6 +66,17 @@ only for that supported case; formatter tests also cover IPv6 brackets and
 hot-apply endpoint replacement. Other interface families and the broader #611
 matrix remain open.
 
+The #611 audit also records the frozen `rnstatus -R` remote-management gap:
+Python uses an authenticated Link to the distinct
+`rnstransport.remote.management` destination, where service enablement and the
+`remote_management_allowed` identity ACL gate `/status`; the response carries
+interface statistics and optional link-count/profiling fields. Rust currently
+has the enable flag but no matching allow-list, destination registration, or
+request route. Reusing propagation control or exposing broad daemon status is
+not parity. The exact pinned source references and boundary are recorded in
+[`611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md).
+This is documentation of an open gap only; no #611 acceptance is completed.
+
 The current #631 `rncp` increment observes packed and received Resource
 advertisement sizes/flags for all six Python/Rust compression roles, with a
 focused exact-target Verify step; the utility row remains partial because its

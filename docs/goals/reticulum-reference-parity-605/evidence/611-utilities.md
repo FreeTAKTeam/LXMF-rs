@@ -196,6 +196,7 @@ option family; it is not a callable-surface completion claim.
 | `rncp` | Local copy; authenticated listener/send/fetch; jail/save/overwrite; compression; identity allow-list; progress, timeout, cancellation, and file failure status | Native TCP/Link/Resource send/fetch plus isolated Rust processes and pinned-Python send/fetch roles in this record | partial / bounded network slice evidenced |
 | `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; a new local `--table`/`--max` path-table RPC/CLI slice; `rnpath_cli` regressions; `rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc` exercises the Rust CLI, live daemon TCP RPC, and a separate pinned-Python Reticulum peer | partial / discovery has one live mixed-runtime trace and table listing has software unit/RPC coverage; remaining reference options open |
 | `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. `f86ecc1c` exercises pinned Python→Rust and native Rust→pinned Python probe roles over isolated TCP interfaces. The ignored `native_rnprobe_succeeds_after_rust_daemon_restart` process test verifies successful probe delivery after a graceful daemon restart. | partial / bounded software workflow evidenced; broader failure/restart, physical, and public-network evidence remain open |
+| `rnstatus -R` | Query remote transport status over an authenticated Reticulum Link, with optional link-count and profiling data | Frozen Python uses a distinct `rnstransport.remote.management` destination. Its service must be enabled and the identified management identity must pass `remote_management_allowed` before `/status` returns interface stats, optionally followed by link count and profiling results. Rust parses the enable flag but lacks the allow-list, destination registration, and `/status` request route. The existing propagation-control endpoint is a different protocol/policy; returning broad daemon status would not be parity and risks exposing fields outside this response contract. See the pinned sources below. | not implemented / explicit software parity gap; do not infer completion from local `rnstatus-rs` |
 | `rnsd` | Configured daemon launch, service/interactive modes, verbosity, example configuration | Rust compatibility shim resolves and delegates to `reticulumd`; delegation/help/status tests exist | partial / daemon delegation evidenced |
 | `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates/displays persisted identities, emits Python-compatible binary `.rsg` signatures, and validates pinned-Python signed `.rsg` envelopes; the process regression checks valid binary input and tampering against both implementations | partial / local identity, bounded file-signing, and signature-validation workflows evidenced; other reference modes open |
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
@@ -208,6 +209,33 @@ option family; it is not a callable-surface completion claim.
 The matrix prevents parser-only or local-only commands from being promoted as
 reference-equivalent network utilities. Hardware-facing `rnodeconf` rows and
 physical/public-network evidence remain outside the software-only pass.
+
+### Frozen `rnstatus -R` remote-management contract and Rust gap
+
+The frozen Reticulum source is pinned here to
+[`99de23c040d507e3fefca19e87b182302902725d`](https://github.com/markqvist/Reticulum/tree/99de23c040d507e3fefca19e87b182302902725d):
+[`rnstatus.py`](https://github.com/markqvist/Reticulum/blob/99de23c040d507e3fefca19e87b182302902725d/RNS/Utilities/rnstatus.py#L66-L157)
+recalls the transport identity, opens a Link to the distinct
+`rnstransport.remote.management` destination, identifies with the supplied
+management identity, and requests `/status`. The service registration and
+handler in
+[`Transport.py`](https://github.com/markqvist/Reticulum/blob/99de23c040d507e3fefca19e87b182302902725d/RNS/Transport.py#L367-L373)
+and [the status handler](https://github.com/markqvist/Reticulum/blob/99de23c040d507e3fefca19e87b182302902725d/RNS/Transport.py#L3325-L3343)
+require remote management to be enabled, require an identified peer, and register
+`/status` with `Destination.ALLOW_LIST` and `Transport.remote_management_allowed`.
+The response is a list whose first element is interface statistics; when the
+request flags opt in, it may be followed by link count and profiling results.
+The [allow-list policy](https://github.com/markqvist/Reticulum/blob/99de23c040d507e3fefca19e87b182302902725d/RNS/Destination.py#L381-L398)
+specifies identified peers in the configured list.
+
+Rust currently parses `enable_remote_management`, but has no matching
+`remote_management_allowed` config field, does not register the distinct
+destination, and has no `/status` route. The existing daemon remote-control
+route serves propagation-specific operations and status, so reusing it would
+not match this destination or policy. The broad daemon status snapshot is also
+not a substitute for the Python interface-stats response contract. This is a
+documented gap only: no implementation, parity acceptance, or issue completion
+is claimed here.
 
 ## Implemented behavior matrix
 
