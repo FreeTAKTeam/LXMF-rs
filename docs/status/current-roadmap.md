@@ -643,8 +643,12 @@ exchanges LXMF in both directions, injects a one-shot drop on the first
 opportunistic LXMF data packet, replaces the Rust daemon while that message
 remains queued, and verifies a matching retry packet traverses the replacement
 relay and is delivered exactly once; fresh RNS links and raw packets then pass
-in both directions. This does not test persistence across Python
-`LXMRouter` process restart. The original two-relay post-restart trace passed
+in both directions. A focused Python/Rust process regression now verifies the
+pinned `LXMRouter` delivered-ID cache remains a `has_message()` hit after a
+graceful Python process restart with stable identity/storage, while new
+messages complete in both directions and the Rust sender reaches `delivered`.
+It does not replay the old packet, and Python `pending_outbound` is not a
+reference persistence contract. The original two-relay post-restart trace passed
 three consecutive local runs after the relay records the shared-owner handoff
 and forwards its `LinkRequestProof` only on that exact interface when the
 destination identity is unavailable; ordinary transit proofs still require

@@ -299,6 +299,37 @@ does not prove persistence across a Python LXMRouter process restart,
 direct/resource retry modes, deeper multi-relay replacement, or broader
 packet/proof duplicate classes; the #609 row stays partial.
 
+## Python LXMRouter delivered-ID cache across process restart
+
+Pinned LXMF `LXMRouter.__init__` loads `local_deliveries` into
+`locally_delivered_transient_ids`, `has_message()` consults that cache, and
+`exit_handler()` flushes it. This is a delivered-ID duplicate-suppression
+contract, not persistence of `pending_outbound` (which is initialized as an
+empty in-memory list on each process start). The focused multi-process test
+keeps one Rust `lxmd`/transport process alive while a Python endpoint owner is
+gracefully stopped through `LXMRouter.exit_handler()` and restarted with the
+same delivery identity, RNS config, and storage directory. It confirms the
+first message's exact transient ID remains a `has_message()` hit after restart,
+then proves fresh production-path Rust→Python delivery reaches Rust's terminal
+`delivered` receipt with one Python callback; a Python→Rust reply also succeeds.
+The test does not replay the old network packet, so packet/proof duplicate
+handling across restart remains unclaimed.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/LXMF LXMF_PYTHON_BIN=python3 \
+  cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  python_lxmf_router_delivery_cache_survives_process_restart_e2e \
+  -- --ignored --nocapture --test-threads=1
+# Two isolated passes; latest: 1 passed, 0 failed, 10 filtered out; 7.59s
+```
+
+Verified against LXMF `727830cefda83d9c6e3982b48675425f3f988f9c` and Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`. This closes only the supported
+delivered-ID cache restore and post-restart traffic slice; queued Python
+outbound persistence is not a reference contract, and broader #609 transport,
+retry, duplicate-packet, and multi-relay acceptance remains open.
+
 ## Caller-visible close-reason parity
 
 The pinned Python reference exposes `Link.teardown_reason` to its closed-link

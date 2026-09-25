@@ -81,7 +81,11 @@ class EndpointState:
         self.router = LXMF.LXMRouter(storagepath=str(self.storage), enforce_stamps=False)
         print("python_lxmf_endpoint: registering delivery callback", file=sys.stderr, flush=True)
         self.router.register_delivery_callback(self._on_delivery)
-        identity = RNS.Identity()
+        identity_path = self.storage / "delivery_identity"
+        identity = RNS.Identity.from_file(str(identity_path)) if identity_path.exists() else None
+        if identity is None:
+            identity = RNS.Identity()
+            identity.to_file(str(identity_path))
         print("python_lxmf_endpoint: registering delivery identity", file=sys.stderr, flush=True)
         self.delivery_destination = self.router.register_delivery_identity(
             identity,
@@ -311,6 +315,7 @@ class EndpointState:
         with self.lock:
             self.messages.append(
                 {
+                    "message_hash": message.hash.hex(),
                     "source_hash": message.source_hash.hex(),
                     "destination_hash": message.destination_hash.hex(),
                     "title": message.title_as_string(),
@@ -457,6 +462,15 @@ class EndpointState:
     def list_messages(self) -> dict:
         with self.lock:
             return {"messages": list(self.messages)}
+
+    def delivery_cache_status(self, message_hash: str) -> dict:
+        transient_id = bytes.fromhex(message_hash)
+        cache = self.router.locally_delivered_transient_ids
+        return {
+            "message_hash": message_hash,
+            "cache_contains": self.router.has_message(transient_id),
+            "cache_entries": len(cache),
+        }
 
     def wait_message(self, content: str, timeout: float = 60.0) -> dict:
         deadline = time.time() + timeout
@@ -834,6 +848,8 @@ class ControlHandler(socketserver.StreamRequestHandler):
                 result = self.server.state.announce()
             elif method == "list_messages":
                 result = self.server.state.list_messages()
+            elif method == "delivery_cache_status":
+                result = self.server.state.delivery_cache_status(params["message_hash"])
             elif method == "wait_message":
                 result = self.server.state.wait_message(
                     params["content"],
@@ -867,6 +883,9 @@ class ControlHandler(socketserver.StreamRequestHandler):
                 result = self.server.state.set_router_resource_callback_chaining(
                     bool(params.get("enabled", False))
                 )
+            elif method == "shutdown":
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                result = {"shutting_down": True}
             elif method == "arm_outbound_packet_drop":
                 result = self.server.state.arm_outbound_packet_drop(params["destination"])
             elif method == "wait_outbound_packet_drop":
@@ -971,7 +990,10 @@ def main() -> None:
     print("python_lxmf_endpoint: starting control server", file=sys.stderr, flush=True)
     with ControlServer(("127.0.0.1", args.control_port), ControlHandler, state) as server:
         print("python_lxmf_endpoint: control server ready", file=sys.stderr, flush=True)
-        server.serve_forever(poll_interval=0.1)
+        try:
+            server.serve_forever(poll_interval=0.1)
+        finally:
+            state.router.exit_handler()
 
 
 if __name__ == "__main__":
