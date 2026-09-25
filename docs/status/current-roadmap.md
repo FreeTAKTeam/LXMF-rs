@@ -71,6 +71,13 @@ completed, then proposed. Rust now matches that behavior for delete only. The
 regression covers an active item requested as completed, both author success
 and non-author denial; remaining work-operation and storage cases stay open.
 
+The pinned-Python #612 view differential now also verifies malformed document
+ID handling for an authorized request: a nonnumeric string returns the exact
+`INVALID_REQ / Invalid request` response in Rust and Python, while finite float
+IDs retain Python integer-coercion behavior. Other malformed types,
+authorization-precedence cases, and the broad work-operation matrix remain
+open.
+
 A focused #612 delete regression also matches Python's missing-permission-sidecar
 failure: `_work_delete` unconditionally unlinks the sidecar, and a missing file
 returns `REMOTE_FAIL` / `Remote error` without deleting the work directory.

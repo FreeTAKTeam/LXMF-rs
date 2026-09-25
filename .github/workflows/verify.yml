@@ -227,7 +227,7 @@ jobs:
           LXMF_PYTHON_BIN: python
         run: |
           cargo test -p rns-tools --bin rngit \
-            work_view_float_document_ids_match_pinned_python_integer_coercion \
+            work_view_document_id_coercion_matches_pinned_python \
             -- --ignored --nocapture --test-threads=1
 
       - name: Run pinned Python rngit create/propose validation differential

@@ -1,6 +1,6 @@
 #[test]
 #[ignore = "requires the pinned Python Reticulum reference"]
-fn work_view_float_document_ids_match_pinned_python_integer_coercion() {
+fn work_view_document_id_coercion_matches_pinned_python() {
     use std::path::PathBuf;
     use std::process::Command;
 
@@ -108,7 +108,7 @@ node.resolve_doc_permission = lambda *_args: True
 identity = SimpleNamespace(hash=bytes.fromhex(remote_hex))
 responses = [node.handle_work("/mgmt/work", {
     0: "group/repo", "operation": "view", "doc_id": doc_id,
-}, 1, identity, 0) for doc_id in (7.9, -0.1)]
+}, 1, identity, 0) for doc_id in (7.9, -0.1, "not-an-id")]
 print(json.dumps([{"status": response[0], "body": response[1:].hex()} for response in responses]))
 "#;
     let python = Command::new(std::env::var_os("LXMF_PYTHON_BIN").unwrap_or_else(|| "python3".into()))
@@ -122,15 +122,22 @@ print(json.dumps([{"status": response[0], "body": response[1:].hex()} for respon
     assert!(python.status.success(), "Python handler failed: {}", String::from_utf8_lossy(&python.stderr));
     let python: serde_json::Value = serde_json::from_slice(&python.stdout).expect("Python response JSON");
 
-    for (doc_id, python) in [(7.9, &python[0]), (-0.1, &python[1])] {
+    for (doc_id, python) in [
+        (rmpv::Value::F64(7.9), &python[0]),
+        (rmpv::Value::F64(-0.1), &python[1]),
+        (rmpv::Value::from("not-an-id"), &python[2]),
+    ] {
         let request = [
             (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
             (rmpv::Value::from("operation"), rmpv::Value::from("view")),
-            (rmpv::Value::from("doc_id"), rmpv::Value::F64(doc_id)),
+            (rmpv::Value::from("doc_id"), doc_id),
         ];
         let rust_response = rust_node.handle_work_request(&request, REMOTE);
         assert_eq!(rust_response[0], python["status"].as_u64().expect("Python status") as u8);
         assert_eq!(hex::encode(&rust_response[1..]), python["body"].as_str().expect("Python body"));
-        assert_eq!(rust_response[0], ReticulumGitNode::RES_OK);
     }
+    assert_eq!(python[0]["status"], ReticulumGitNode::RES_OK);
+    assert_eq!(python[1]["status"], ReticulumGitNode::RES_OK);
+    assert_eq!(python[2]["status"], ReticulumGitNode::RES_INVALID_REQ);
+    assert_eq!(python[2]["body"], hex::encode("Invalid request"));
 }

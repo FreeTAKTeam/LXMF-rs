@@ -170,6 +170,9 @@ impl ReticulumGitNode {
                 {
                     return response(Self::RES_NOT_FOUND, "Not found", None);
                 }
+                if Self::work_request_document_id(request).is_none() {
+                    return response(Self::RES_INVALID_REQ, "Invalid request", None);
+                }
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
