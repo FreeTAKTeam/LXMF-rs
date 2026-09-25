@@ -61,13 +61,35 @@ fails at the real `create_dir` call during `/media` conversion setup. The
 pinned Python Reticulum client still receives the original `image.png` Resource
 with its expected filename, 8192-byte size, and SHA-256. This confirms existing
 raw fallback behavior; no production change was needed. It covers temp-path
-creation only, not output-file creation/write, stat/open races, or Resource
-stream-open failure.
+creation only and complements the output-file write-failure trace below; temp
+output-file open failure, metadata/stat races, and Resource stream-open failure
+remain unverified.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   issue_613_temp_directory_failure::rngit_media_temp_directory_creation_failure_returns_raw_resource \
+  -- --ignored --exact --nocapture --test-threads=1 PASS (1 test)
+```
+
+### Media conversion output-file write failure falls back to the original Resource
+
+The ignored production-Link regression
+`issue_613_output_write_failure::rngit_media_output_write_failure_returns_raw_resource`
+starts the Rust service under a 4 KiB file-size limit with `SIGXFSZ` ignored.
+A deterministic fake `ffmpeg` emits a valid WebP header followed by enough data
+to make the real conversion capture write fail. The pinned Python client still
+receives the original `image.png` Resource with its expected filename, size,
+and SHA-256, and the Rust service remains running. Source inspection verifies
+the frozen Python helper catches conversion errors and its page handler falls
+back to `get_blob_stream`; no production change was needed. This covers output
+write failure only, not output-file open failure, metadata/stat races, or
+Resource stream-open failure.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_output_write_failure::rngit_media_output_write_failure_returns_raw_resource \
   -- --ignored --exact --nocapture --test-threads=1 PASS (1 test)
 ```
 

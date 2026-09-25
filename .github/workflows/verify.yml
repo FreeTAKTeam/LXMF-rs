@@ -265,6 +265,19 @@ jobs:
             issue_613_media_read_failure::rngit_media_content_read_failure_has_no_python_link_response \
             -- --ignored --exact --nocapture --test-threads=1
 
+      - name: Verify pinned Python rngit media filesystem-failure fallbacks
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_temp_directory_failure::rngit_media_temp_directory_creation_failure_returns_raw_resource \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_output_write_failure::rngit_media_output_write_failure_returns_raw_resource \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Verify raw media fallback when WebP backend is unavailable
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity

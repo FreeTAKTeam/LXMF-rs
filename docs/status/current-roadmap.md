@@ -192,12 +192,13 @@ Local pinned-Python production-Link conversion with checksum-pinned ImageMagick
 `avconv` conversion and broader visual parity remain unverified, so #613 stays
 partial.
 
-The #633 follow-up adds one filesystem-failure acceptance slice: with the Rust
-service's `TMPDIR` set to a regular file, a pinned Python production Link still
-receives the exact raw `/media` Resource when conversion temp-directory
-creation fails. The behavior was already correct, so this is regression and
-evidence only; output-file write/open faults, metadata/stat races, Resource
-stream-open failure, and the broader #613 matrix remain open.
+The #633 follow-up adds two filesystem-failure acceptance slices: a regular
+file at the Rust service's `TMPDIR` makes conversion temp-directory creation
+fail, and a service file-size limit makes the real conversion output write
+fail. A pinned Python production Link receives the exact original `/media`
+Resource in both cases, matching the frozen Python conversion-failure fallback;
+no production change was needed. Output-file open failure, metadata/stat races,
+Resource stream-open failure, and the broader #613 matrix remain open.
 
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python

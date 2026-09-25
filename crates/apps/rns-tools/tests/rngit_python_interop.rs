@@ -30,6 +30,9 @@ mod issue_613_media_url;
 #[path = "rngit_python_interop/issue_613_no_ident.rs"]
 mod issue_613_no_ident;
 #[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_output_write_failure.rs"]
+mod issue_613_output_write_failure;
+#[cfg(unix)]
 #[path = "rngit_python_interop/issue_613_temp_directory_failure.rs"]
 mod issue_613_temp_directory_failure;
 
