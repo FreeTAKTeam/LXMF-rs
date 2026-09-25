@@ -1,4 +1,49 @@
 impl RpcDaemon {
+    pub(super) fn interface_mutation_error_response(
+        id: u64,
+        error: &std::io::Error,
+    ) -> RpcResponse {
+        let invalid_input = error.kind() == std::io::ErrorKind::InvalidInput;
+        let invalid_ifac = invalid_input
+            && error
+                .get_ref()
+                .and_then(|source| source.downcast_ref::<InterfaceMutationFailure>())
+                .is_some_and(|failure| {
+                    matches!(failure, InterfaceMutationFailure::InvalidIfacConfiguration)
+                });
+        let (code, machine_code, message) = if invalid_ifac {
+            (
+                "CONFIG_INVALID_IFAC",
+                "INVALID_IFAC_CONFIGURATION",
+                "IFAC interface configuration was rejected",
+            )
+        } else if invalid_input {
+            (
+                "CONFIG_INVALID_INTERFACE",
+                "INVALID_INTERFACE_CONFIGURATION",
+                "interface configuration was rejected",
+            )
+        } else {
+            (
+                "CONFIG_INTERFACE_APPLY_FAILED",
+                "INTERFACE_MUTATION_FAILED",
+                "interface configuration could not be applied",
+            )
+        };
+        let retryable = matches!(
+            error.kind(),
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+        );
+
+        let mut rpc_error = RpcError::new(code, message);
+        rpc_error.machine_code = Some(machine_code.to_string());
+        rpc_error.category = Some("Config".to_string());
+        rpc_error.retryable = Some(retryable);
+        rpc_error.is_user_actionable = Some(invalid_input);
+
+        RpcResponse { id, result: None, error: Some(rpc_error) }
+    }
+
     pub(super) fn restart_required_response(
         id: u64,
         operation: &str,

@@ -14,5 +14,10 @@ include!("rnode_ble_parts/runtime_startup_notification_drain.rs");
 
 include!("rnode_ble_parts/rnodeblecommandmonitor.rs");
 
+include!("rnode_ble_parts/runtime_status_handle.rs");
+
 #[cfg(all(test, feature = "rnode-ble"))]
 include!("rnode_ble_parts/runtime_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/ifac_worker_tests.rs");

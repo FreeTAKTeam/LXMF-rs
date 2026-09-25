@@ -186,23 +186,6 @@ pub fn rnode_ble_runtime_status_json(
     value
 }
 
-#[derive(Clone)]
-pub struct RnodeBleRuntimeStatusHandle {
-    inner: Arc<Mutex<serde_json::Value>>,
-}
-
-impl RnodeBleRuntimeStatusHandle {
-    #[must_use]
-    pub fn new(inner: Arc<Mutex<serde_json::Value>>) -> Self {
-        Self { inner }
-    }
-
-    #[must_use]
-    pub fn to_json(&self) -> serde_json::Value {
-        self.inner.lock().expect("RNode BLE status mutex poisoned").clone()
-    }
-}
-
 #[cfg(feature = "rnode-ble")]
 fn rnode_ble_management_channel(
 ) -> (RnodeBleManagementFrameSender, RnodeBleManagementFrameReceiver) {

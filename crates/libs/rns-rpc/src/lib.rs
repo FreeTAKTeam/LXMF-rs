@@ -17,9 +17,9 @@ pub use lxmf_reference::{
 pub use rpc::http;
 pub use rpc::{
     AnnounceBridge, DeliveryPolicy, DeliveryTraceEntry, EventSinkBridge, InterfaceMutationBridge,
-    InterfaceRecord, OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome,
-    PaperEncodeEnvelope, PathLookupBridge, PeerRecord, ProbeReceiptRegistry, PropagationState,
-    RNodeManagementBridge, RemoteControlBridge, RpcDaemon, RpcError, RpcEvent,
+    InterfaceMutationFailure, InterfaceRecord, OutboundBridge, OutboundDeliveryOptions,
+    PaperDecodeOutcome, PaperEncodeEnvelope, PathLookupBridge, PeerRecord, ProbeReceiptRegistry,
+    PropagationState, RNodeManagementBridge, RemoteControlBridge, RpcDaemon, RpcError, RpcEvent,
     RpcEventSinkEnvelope, RpcRequest, RpcResponse, SdkCustomOperationSpec, ServiceIdentityBridge,
     ServiceIdentityRecord, ServiceIdentitySpec, StampPolicy, TicketRecord,
     WeaveDisplayControlBridge,

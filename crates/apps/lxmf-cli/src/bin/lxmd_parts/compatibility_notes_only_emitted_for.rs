@@ -217,6 +217,50 @@ force_shared_instance_bitrate = 1000000
     }
 
     #[test]
+    fn single_toml_udp_target_and_ifac_config_reach_reticulumd() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("lxmd.toml");
+        fs::write(
+            &path,
+            r#"
+[rpc]
+listen = "127.0.0.1:5555"
+
+[[interfaces]]
+type = "udp"
+enabled = true
+name = "ifac-udp"
+host = "127.0.0.1"
+port = 4242
+target_host = "127.0.0.1"
+target_port = 4243
+ifac_size = 128
+network_name = "field-net"
+passphrase = "test-only-credential"
+"#,
+        )
+        .expect("write UDP IFAC config");
+
+        let args = super::Args::parse_from(["lxmd", "--config", path.to_str().expect("utf8 path")]);
+        let _effective = load_effective_args(&args).expect("load UDP IFAC config");
+        let generated = temp.path().join(super::GENERATED_RETICULUMD_CONFIG);
+        let generated_contents = fs::read_to_string(generated).expect("generated reticulum config");
+
+        for expected in [
+            "type = \"udp\"",
+            "host = \"127.0.0.1\"",
+            "port = 4242",
+            "target_host = \"127.0.0.1\"",
+            "target_port = 4243",
+            "ifac_size = 128",
+            "network_name = \"field-net\"",
+            "passphrase = \"test-only-credential\"",
+        ] {
+            assert!(generated_contents.contains(expected), "missing generated config line {expected}");
+        }
+    }
+
+    #[test]
     fn python_reticulum_interfaces_parse_tcp_server_and_client() {
         let interfaces = parse_python_reticulum_interfaces(
             r#"
@@ -244,6 +288,49 @@ force_shared_instance_bitrate = 1000000
     }
 
     #[test]
+    fn python_reticulum_udp_ifac_aliases_preserve_bind_forward_and_shared_port() {
+        let interfaces = parse_python_reticulum_interfaces(
+            r#"
+[interfaces]
+  [[UDP IFAC Interface]]
+    type = UDPInterface
+    enabled = yes
+    listen_ip = 127.0.0.1
+    listen_port = 4244
+    forward_ip = 127.0.0.1
+    forward_port = 4245
+    networkname = field-net
+    passphrase = test-only-credential
+    ifac_size = 128
+
+  [[UDP Shared Port]]
+    type = UDPInterface
+    enabled = yes
+    listen_ip = 127.0.0.1
+    port = 4246
+    forward_ip = 127.0.0.1
+"#,
+        );
+
+        assert_eq!(interfaces.len(), 2);
+        let explicit = &interfaces[0];
+        assert_eq!(explicit.interface_type, "udp");
+        assert_eq!(explicit.host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(explicit.port, Some(4244));
+        assert_eq!(explicit.target_host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(explicit.target_port, Some(4245));
+        assert_eq!(explicit.ifac_size, Some(128));
+        assert_eq!(explicit.network_name.as_deref(), Some("field-net"));
+        assert_eq!(explicit.passphrase.as_deref(), Some("test-only-credential"));
+
+        let shared = &interfaces[1];
+        assert_eq!(shared.interface_type, "udp");
+        assert_eq!(shared.port, Some(4246));
+        assert_eq!(shared.target_host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(shared.target_port, Some(4246));
+    }
+
+    #[test]
     fn python_config_generates_reticulumd_interfaces_file() {
         let temp = tempfile::tempdir().expect("tempdir");
         let config_dir = temp.path().join("lxmd");
@@ -262,6 +349,17 @@ auth_required = yes
     type = TCPServerInterface
     enabled = yes
     listen_port = 4242
+
+  [[UDP IFAC Interface]]
+    type = UDPInterface
+    enabled = yes
+    listen_ip = 127.0.0.1
+    listen_port = 4244
+    forward_ip = 127.0.0.1
+    forward_port = 4245
+    networkname = field-net
+    passphrase = test-only-credential
+    ifac_size = 128
 "#,
         )
         .expect("write config");
@@ -278,6 +376,13 @@ auth_required = yes
         assert!(generated_contents.contains("type = \"tcp_server\""));
         assert!(generated_contents.contains("host = \"0.0.0.0\""));
         assert!(generated_contents.contains("port = 4242"));
+        assert!(generated_contents.contains("type = \"udp\""));
+        assert!(generated_contents.contains("port = 4244"));
+        assert!(generated_contents.contains("target_host = \"127.0.0.1\""));
+        assert!(generated_contents.contains("target_port = 4245"));
+        assert!(generated_contents.contains("ifac_size = 128"));
+        assert!(generated_contents.contains("network_name = \"field-net\""));
+        assert!(generated_contents.contains("passphrase = \"test-only-credential\""));
     }
 
     #[test]

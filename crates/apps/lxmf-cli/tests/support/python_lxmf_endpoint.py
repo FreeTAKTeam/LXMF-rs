@@ -445,6 +445,10 @@ class EndpointState:
             "delivery_destination_hash": self.delivery_destination.hash.hex(),
             "identity_hash": self.delivery_destination.identity.hash.hex(),
             "inbox_count": len(self.messages),
+            "ifac_violations": sum(
+                int(getattr(interface, "ifac_violations", 0))
+                for interface in RNS.Transport.interfaces
+            ),
             "reticulum": {
                 "is_shared_instance": bool(getattr(self.reticulum, "is_shared_instance", False)),
                 "is_connected_to_shared_instance": bool(

@@ -162,6 +162,77 @@ async fn rns_1_5_ingress_records_live_ifac_flag_policy_violations() {
 }
 
 #[tokio::test]
+async fn rns_1_5_virtual_ifac_child_enforces_inherited_authentication_policy() {
+    let transport = Transport::new(TransportConfig::default());
+    let handler = transport.get_handler();
+    let child = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let parent = *manager.new_channel(8).address();
+        assert!(manager.set_shared_config(
+            parent,
+            crate::iface::InterfaceSharedConfig {
+                ifac_size: Some(16),
+                network_name: Some("virtual-ifac-net".to_string()),
+                passphrase: Some("virtual-ifac-secret".to_string()),
+                ..Default::default()
+            },
+        ));
+        manager.register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("register authenticated virtual child")
+    };
+
+    let open_packet = crate::iface::RxMessage {
+        address: child,
+        packet: Packet {
+            destination: AddressHash::new_from_slice(&[0xA1; crate::hash::ADDRESS_HASH_SIZE]),
+            ..Default::default()
+        },
+        source: Default::default(),
+    };
+    assert!(
+        preprocess_inbound_message(&handler, &transport.iface_messages_tx, open_packet)
+            .await
+            .is_none(),
+        "a virtual child must reject packets missing its inherited IFAC flag"
+    );
+
+    let authenticated_packet = crate::iface::RxMessage {
+        address: child,
+        packet: Packet {
+            header: Header {
+                ifac_flag: crate::packet::IfacFlag::Authenticated,
+                ..Default::default()
+            },
+            ifac: Some(crate::packet::PacketIfac::new_from_slice(&[0xA5; 8])),
+            destination: AddressHash::new_from_slice(&[0xA2; crate::hash::ADDRESS_HASH_SIZE]),
+            ..Default::default()
+        },
+        source: Default::default(),
+    };
+    assert!(
+        preprocess_inbound_message(
+            &handler,
+            &transport.iface_messages_tx,
+            authenticated_packet,
+        )
+        .await
+        .is_some(),
+        "a virtual child must admit the authenticated packet form"
+    );
+
+    let snapshot = transport
+        .iface_manager()
+        .lock()
+        .await
+        .traffic_snapshots()
+        .into_iter()
+        .find(|snapshot| snapshot.address == child)
+        .expect("virtual child traffic snapshot");
+    assert_eq!(snapshot.ifac_violations, 1);
+}
+
+#[tokio::test]
 async fn rns_1_5_parent_interface_reports_active_child_burst_counts() {
     let transport = Transport::new(TransportConfig::default());
     let (parent, child) = {
@@ -416,46 +487,4 @@ async fn rns_1_5_invalid_transported_path_request_does_not_poison_valid_retry() 
     );
 }
 
-#[tokio::test]
-async fn rns_1_5_shared_instance_client_defers_duplicate_filtering_to_owner() {
-    let local_identity = PrivateIdentity::new_from_rand(OsRng);
-    let mut config = TransportConfig::new("shared-client", &local_identity, false);
-    config.set_connected_to_shared_instance(true);
-    let transport = Transport::new(config);
-    let handler = transport.get_handler();
-    let iface = {
-        let manager = transport.iface_manager();
-        let mut manager = manager.lock().await;
-        let iface = *manager.new_channel(8).address();
-        assert!(manager.set_shared_instance(iface, true));
-        iface
-    };
-    let packet = Packet {
-        header: Header {
-            destination_type: crate::packet::DestinationType::Single,
-            packet_type: PacketType::Data,
-            ..Default::default()
-        },
-        context: crate::packet::PacketContext::None,
-        destination: AddressHash::new_from_slice(&[0x9A; crate::hash::ADDRESS_HASH_SIZE]),
-        data: PacketDataBuffer::new_from_slice(b"shared-instance duplicate"),
-        ..Default::default()
-    };
-
-    for arrival in 1..=2 {
-        assert!(
-            preprocess_inbound_message(
-                &handler,
-                &transport.iface_messages_tx,
-                crate::iface::RxMessage {
-                    address: iface,
-                    packet: packet.clone(),
-                    source: crate::iface::IfaceSource::None,
-                },
-            )
-            .await
-            .is_some(),
-            "the shared-instance owner filters duplicate #{arrival}"
-        );
-    }
-}
+include!("rns_1_5_ingress_shared_instance.rs");

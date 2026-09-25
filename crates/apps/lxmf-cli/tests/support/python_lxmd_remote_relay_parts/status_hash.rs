@@ -291,8 +291,37 @@ print(RNS.hexrep(destination.hash, delimit=False).lower())
 
 pub fn rpc_snapshot(rpc_port: u16, method: &str, params: Option<Value>) -> String {
     match rpc_call(rpc_port, method, params) {
-        Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
+        Ok(mut value) => {
+            redact_sensitive_fields(&mut value);
+            serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
+        }
         Err(err) => format!("rpc error: {err}"),
+    }
+}
+
+fn redact_sensitive_fields(value: &mut Value) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                redact_sensitive_fields(item);
+            }
+        }
+        Value::Object(fields) => {
+            for (key, item) in fields {
+                let normalized = key.to_ascii_lowercase().replace(['_', '-'], "");
+                let sensitive_suffixes =
+                    ["passphrase", "password", "ifacnetkey", "networkkey", "secret", "token"];
+                if sensitive_suffixes
+                    .iter()
+                    .any(|suffix| normalized == *suffix || normalized.ends_with(suffix))
+                {
+                    *item = Value::String("[REDACTED]".to_string());
+                } else {
+                    redact_sensitive_fields(item);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -447,4 +476,37 @@ fn trim_log(mut text: String, max_chars: usize) -> String {
     let split_at = text.len().saturating_sub(max_chars);
     text.drain(..split_at);
     format!("...<truncated>\n{text}")
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::redact_sensitive_fields;
+    use serde_json::json;
+
+    #[test]
+    fn rpc_diagnostics_redact_ifac_credentials_recursively() {
+        let mut value = json!({
+            "interfaces": [{
+                "settings": {
+                    "passphrase": "test-only-credential",
+                    "ifac_netkey": "test-only-key",
+                    "shared_secret": "test-only-secret",
+                    "access_token": "test-only-token",
+                    "network_name": "field-net"
+                }
+            }]
+        });
+
+        redact_sensitive_fields(&mut value);
+
+        assert_eq!(value["interfaces"][0]["settings"]["passphrase"], "[REDACTED]");
+        assert_eq!(value["interfaces"][0]["settings"]["ifac_netkey"], "[REDACTED]");
+        assert_eq!(value["interfaces"][0]["settings"]["shared_secret"], "[REDACTED]");
+        assert_eq!(value["interfaces"][0]["settings"]["access_token"], "[REDACTED]");
+        assert_eq!(value["interfaces"][0]["settings"]["network_name"], "field-net");
+        assert!(!value.to_string().contains("test-only-credential"));
+        assert!(!value.to_string().contains("test-only-key"));
+        assert!(!value.to_string().contains("test-only-secret"));
+        assert!(!value.to_string().contains("test-only-token"));
+    }
 }

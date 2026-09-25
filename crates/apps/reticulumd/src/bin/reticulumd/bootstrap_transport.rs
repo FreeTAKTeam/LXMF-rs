@@ -7,6 +7,10 @@ use super::{
 mod interface_startup;
 #[path = "bootstrap_transport_path_restore.rs"]
 mod path_restore;
+#[path = "bootstrap_transport_tcp_server_adapter.rs"]
+mod tcp_server_adapter;
+#[path = "bootstrap_transport_tcp_startup.rs"]
+mod tcp_startup;
 #[cfg(test)]
 #[path = "bootstrap_transport_tests.rs"]
 mod tests;
@@ -36,13 +40,15 @@ use rns_core::identity::PrivateIdentity;
 use rns_rpc::{InterfaceRecord, ProbeReceiptRegistry};
 use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
-use rns_transport::iface::tcp_client::TcpSocketTuning;
-use rns_transport::iface::tcp_server::{FastFlapPolicy, TcpServer};
+use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::transport::{
     InboundQueueLimits, RestoredReticulumPathIdentity, Transport, TransportConfig,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use tcp_server_adapter::build_selected_tcp_server_adapter;
+#[cfg(test)]
+use tcp_server_adapter::selected_fast_flap_policy;
 
 const STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY: usize = 32;
 
@@ -119,49 +125,6 @@ fn spawn_stream_reconnect_tunnel_synthesizer(
             }
         }
     });
-}
-
-fn build_selected_tcp_server_adapter(
-    addr: String,
-    iface_manager: Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    selected_tcp_server: &TcpServerSelection,
-) -> TcpServer {
-    let mut server = selected_tcp_server
-        .client_mtu
-        .map(|mtu| TcpServer::new(addr.clone(), iface_manager.clone()).with_client_mtu(mtu))
-        .unwrap_or_else(|| TcpServer::new(addr, iface_manager));
-    server = server.with_prefer_ipv6(selected_tcp_server.prefer_ipv6);
-    if let Some(bitrate_bps) = selected_tcp_server.client_forced_bitrate_bps {
-        server = server.with_client_forced_bitrate(bitrate_bps);
-    }
-    if selected_tcp_server.kind == "backbone" {
-        let fast_flap_policy = selected_fast_flap_policy(selected_tcp_server);
-        server = server
-            .with_client_socket_tuning(TcpSocketTuning::backbone())
-            .with_backbone_client_liveness()
-            .with_fast_flapping(
-                fast_flap_policy.enabled,
-                fast_flap_policy.threshold,
-                fast_flap_policy.grace,
-                fast_flap_policy.expiry,
-            );
-    } else if selected_tcp_server.kind == "tcp_server" && selected_tcp_server.i2p_tunneled {
-        server = server.with_client_socket_tuning(TcpSocketTuning::i2p_tunneled());
-    }
-    server
-}
-
-fn selected_fast_flap_policy(selected_tcp_server: &TcpServerSelection) -> FastFlapPolicy {
-    FastFlapPolicy {
-        enabled: selected_tcp_server.block_fast_flapping.unwrap_or(true),
-        threshold: std::time::Duration::from_secs_f64(
-            selected_tcp_server.fast_flapping_threshold.unwrap_or(20.0).max(0.0),
-        ),
-        grace: selected_tcp_server.fast_flapping_grace.unwrap_or(5),
-        expiry: std::time::Duration::from_secs_f64(
-            selected_tcp_server.fast_flapping_block_time.unwrap_or(12.0 * 60.0).max(0.0) * 60.0,
-        ),
-    }
 }
 
 pub(super) async fn start_transport_and_interfaces(
@@ -279,6 +242,12 @@ pub(super) async fn start_transport_and_interfaces(
                 iface_manager.clone(),
                 &selected_tcp_server,
             );
+            let (server, startup_result) = if tcp_startup::strict_startup(args, daemon_config) {
+                let (server, result) = server.with_startup_result();
+                (server, Some(result))
+            } else {
+                (server, None)
+            };
             let runtime_status = server.runtime_status_handle();
             let active_iface = iface_manager.lock().await.spawn(server, TcpServer::spawn);
             log::info!(
@@ -287,7 +256,26 @@ pub(super) async fn start_transport_and_interfaces(
                 active_iface,
                 addr
             );
-            startup_successes += 1;
+            if let Some(startup_result) = startup_result {
+                let label = selected_tcp_server
+                    .selected_index
+                    .and_then(|index| {
+                        daemon_config?
+                            .interfaces
+                            .get(index)
+                            .map(|iface| interface_label(iface, index))
+                    })
+                    .unwrap_or_else(|| selected_tcp_server.kind.clone());
+                tcp_startup::record_initial_bind_result(
+                    startup_result.await,
+                    label,
+                    selected_tcp_server.kind.clone(),
+                    &mut startup_successes,
+                    &mut startup_failures,
+                );
+            } else {
+                startup_successes += 1;
+            }
             server_iface = Some(active_iface);
             tcp_runtime_refreshes.push(TcpRuntimeRefresh {
                 runtime_iface: active_iface,

@@ -68,21 +68,21 @@ The machine-checked contract is stored in
 in the generated [`python-surface-parity.json`](python-surface-parity.json).
 It requires every forward requirement to name its Python reference path, exact
 reference commit, Rust owner surface, implementation status, evidence status,
-test command, evidence artifact, and owning issue. It contains ten tracked
-requirements; the scoped #615 software gate is verified, while overall
-behavioral coverage remains incomplete:
+test command, evidence artifact, and owning issue. The #615 software gate is
+closed; eight other tracked requirements remain open, with physical acceptance
+separately tracked under #616:
 
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
-| #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
+| #607 | Review and integrate the initial PR increment | closed; merged PR #604 and its acceptance checks are recorded |
+| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, KISS/AX.25 stream wrong-key rejection plus authenticated ingress/egress with runtime-counter assertions, outbound I2P fake-SAM stream and incoming accepted-stream worker regressions, Meshtastic tunnel and Weave stream regressions, and AutoInterface peer-data, LoRa, RNode bearer, and RNodeMulti KISS-vport wrong-key rejection/authenticated ingress/egress; broader carrier and lifecycle matrices remain pending |
 | #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery delivers one queued OPPORTUNISTIC LXMF message after relay replacement; the two-relay restart test transfers fresh raw Resources in both directions. An isolated pinned-Python test verifies in-flight large DIRECT LXMF Resource retry after upstream relay replacement, on a distinct Link and Resource, with exactly one message delivery. Other evidence includes attached-client duplicate delegation, standalone repeated-LinkRequest suppression, pinned-Python clean-close reason mapping, five-attempt Channel retry exhaustion over localhost TCP, transport-disabled local LinkRequest delivery from a virtual child, expired persisted-route rejection followed by fresh-announce recovery, and strict announce-job deadline equality with exactly one local-client retransmit. Deeper relay replacement and duplicate behavior remain open; the broad reverse-delivery scenario has an intermittent B-to-A timeout |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are regression-tested; Python peers verify response packet selection at MDU-1 and MDU and Resource selection at MDU+1; a pinned-Python sender cancellation after data in split segment 2 produces Rust `InboundFailed(remote_cancelled)` through production TCP/Link/Resource; broader timeout/reconnect and consumer callback/status evidence remains open |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
 | #613 | Match rngit NomadNet pages, media, and link cleanup | partial / unverified |
 | #614 | Validate native interface runtimes and Windows BLE behavior | partial / hardware-unverified |
-| #615 | Run differential conformance and exact-candidate software release acceptance | complete / verified (scoped software gate; #616 excluded) |
+| #615 | Run differential conformance and exact-candidate software release acceptance | closed; scoped software acceptance completed, with physical/platform/public-network/soak work tracked separately |
 | #616 | Maintain separate physical, platform, client, network-soak, and operational evidence | not-applicable to software / hardware-unverified |
 
 The SDK/RPC parity advisory now exposes an optional `forward_behavioral`
@@ -102,10 +102,52 @@ Both remain partial and do not promote the forward behavioral rows.
 The #608 implementation slice now has committed local software evidence in
 [`evidence/608-ifac.md`](../goals/reticulum-reference-parity-605/evidence/608-ifac.md):
 configured carrier ingress/egress, live reconfiguration, child inheritance,
-fail-closed malformed-frame handling, and feature-gated carrier builds are
-covered. The row remains unverified until pinned Python↔Rust daemon traffic
-proves bidirectional behavior through real carriers; hardware and public-network
-evidence remain separate acceptance axes.
+fail-closed malformed- and wrong-key-frame handling, and feature-gated carrier
+builds are covered. Pinned Python↔Rust TCP Channel/Resource and UDP
+Channel/Resource software traffic is evidenced; UDP Resources transfer in both
+directions on the same Rust-initiated Link. PR #628 additionally verifies
+bidirectional authenticated UDP direct-message delivery through separate
+`lxmd`/`reticulumd` and Python processes, with an active Python link and zero
+live IFAC violations. Its later regressions also reject a valid authenticated
+UDP frame tampered in transit before routing, rotate credentials through live
+interface reconfiguration, reject the old key, and preserve identity plus
+authenticated delivery across daemon restart. Another pinned-Python trace
+exercises an IFAC-protected UDP shared-instance owner, an attached Rust local
+client, and a separate Python peer, with bidirectional delivery and zero IFAC
+violations; a focused ingress regression verifies inherited policy on a
+virtual child. Invalid live IFAC reconfiguration now returns a static,
+structured `CONFIG_INVALID_IFAC` RPC error without displacing the active
+authenticated configuration; after restart a plaintext peer remains rejected.
+The focused RPC regression also verifies that failed interface application
+does not replace stored interfaces. The packet decoder now derives authentication and verified-wire
+provenance from one IFAC-state snapshot across hot reconfiguration. A Unix
+subprocess regression also exercises the production PipeInterface worker with
+the reference 8-byte default IFAC tag and authenticated HDLC echo; this is
+loopback carrier evidence, not a Python-peer trace. A separate deterministic
+serial-stream test rejects a wrong-key frame before admission and verifies
+authenticated ingress and egress through the production serial stream worker;
+it does not claim physical serial evidence. The KISS/AX.25 stream worker also
+has a deterministic duplex regression for wrong-key rejection, authenticated
+ingress/egress, the 8-byte default tag, and runtime counters; it is not modem,
+radio, or Python-peer KISS evidence. The outbound I2P peer loop now also has
+fake-SAM regressions for wrong-key rejection before packet admission,
+authenticated ingress/egress, and shared parent IFAC rotation on an established
+virtual peer. These are software stream tests, not public I2P evidence, and do
+not cover broader tunnel lifecycle behavior. Other carrier families remain
+open; hardware and public-network evidence remain separate acceptance gates.
+The transport ingress suite also verifies that an already-attached accepted
+child decoder rejects the old parent IFAC key and admits the newly configured
+key after a live parent update. The existing config propagation was sufficient,
+so this increment adds regression evidence without a production behavior
+change; #608 remains partial.
+Commit `49b7999f` adds software-only production-worker regressions for
+Meshtastic tunnel reassembly, Weave streams, and the incoming I2P accepted
+stream. Each rejects wrong-key traffic before admission and verifies
+authenticated ingress/egress; the I2P case uses a local TCP pair rather than a
+SAM router, so the SAM accept-loop integration remains unverified. The transport library passes 823 unit tests, including 394 tests
+matching the `ifac` filter, with all-feature Clippy, architecture boundaries,
+module-size, and formatting checks passing. These new adapter cases narrow but
+do not close the remaining carrier-family or physical acceptance gaps.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):

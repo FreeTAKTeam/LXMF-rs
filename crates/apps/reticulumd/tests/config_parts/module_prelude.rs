@@ -760,6 +760,39 @@ interfaces = [
 }
 
 #[test]
+fn negative_reticulum_ifac_size_uses_carrier_default_and_keeps_credentials_required() {
+    let configured = r#"
+interfaces = [
+  { type = "UDPInterface", enabled = true, name = "udp-ifac", listen_ip = "127.0.0.1", listen_port = 4242, ifac_size = -1, networkname = "field-net" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(configured).expect("negative IFAC bits use carrier default");
+    assert_eq!(cfg.interfaces[0].ifac_size, Some(0));
+    let shared = rns_transport::iface::InterfaceSharedConfig {
+        ifac_size: cfg.interfaces[0].ifac_size,
+        network_name: cfg.interfaces[0].networkname.clone(),
+        ..Default::default()
+    };
+    assert_eq!(
+        shared
+            .ifac_context_with_default_size(16)
+            .expect("negative IFAC bits select UDP default")
+            .expect("credentials enable IFAC")
+            .ifac_size(),
+        16
+    );
+
+    let missing_credentials = r#"
+interfaces = [
+  { type = "UDPInterface", enabled = true, name = "udp-ifac", listen_ip = "127.0.0.1", listen_port = 4242, ifac_size = -1 }
+]
+"#;
+    let error = DaemonConfig::from_toml(missing_credentials)
+        .expect_err("explicit IFAC size without credentials must fail closed");
+    assert!(error.to_string().contains("ifac_size requires network_name or passphrase"));
+}
+
+#[test]
 fn parses_common_reticulum_discovery_metadata_fields() {
     let input = r#"
 interfaces = [

@@ -52,6 +52,55 @@ use transport_startup::{start_transport_and_interfaces, TransportStartupInput};
 
 const INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 
+fn rejected_ifac_interface_records(path: &std::path::Path) -> Vec<InterfaceRecord> {
+    let Ok(source) = std::fs::read_to_string(path) else { return Vec::new() };
+    let Ok(document) = source.parse::<toml::Value>() else { return Vec::new() };
+    let Some(interfaces) = document.get("interfaces") else { return Vec::new() };
+    let rows: Vec<(Option<&str>, &toml::Value)> = match interfaces {
+        toml::Value::Array(items) => items.iter().map(|item| (None, item)).collect(),
+        toml::Value::Table(items) => items.iter().map(|(name, item)| (Some(name.as_str()), item)).collect(),
+        _ => return Vec::new(),
+    };
+    rows.into_iter()
+        .enumerate()
+        .filter_map(|(index, (section_name, value))| {
+            let table = value.as_table()?;
+            let ifac_size = table.get("ifac_size")?;
+            let valid_ifac_size = ifac_size
+                .as_integer()
+                .and_then(|value| u64::try_from(value).ok())
+                .is_some_and(|bits| bits / 8 <= 64);
+            let credential_present = ["network_name", "networkname", "passphrase", "pass_phrase"]
+                .iter()
+                .filter_map(|key| table.get(*key).and_then(toml::Value::as_str))
+                .any(|credential| !credential.is_empty());
+            let name = table.get("name").and_then(toml::Value::as_str).or(section_name)
+                .map(str::to_owned).or_else(|| Some(format!("interfaces[{index}]")));
+            let kind = table.get("type").and_then(toml::Value::as_str).or(section_name)
+                .unwrap_or("unknown").to_owned();
+            let startup_error = if valid_ifac_size && credential_present {
+                "daemon configuration rejected before interface startup; inspect daemon log"
+            } else {
+                "IFAC configuration rejected: ifac_size must floor to 1..=64 bytes (or be below the one-byte minimum to use the carrier default) and requires a non-empty network_name or passphrase"
+            };
+            let settings = json!({"_runtime": {
+                "startup_status": "failed",
+                "startup_error": startup_error
+            }});
+            Some(InterfaceRecord {
+                kind,
+                enabled: table.get("enabled").and_then(toml::Value::as_bool)
+                    .or_else(|| table.get("interface_enabled").and_then(toml::Value::as_bool))
+                    .unwrap_or(false),
+                host: table.get("host").and_then(toml::Value::as_str).map(str::to_owned),
+                port: table.get("port").and_then(toml::Value::as_integer).and_then(|port| u16::try_from(port).ok()),
+                name,
+                settings: Some(settings),
+            })
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct RpcTlsConfig {
     pub(super) cert_chain_path: PathBuf,
@@ -113,10 +162,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         args.db.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     let mut local_identity_hash = [0u8; 16];
     local_identity_hash.copy_from_slice(identity.address_hash().as_slice());
+    let mut rejected_ifac_interfaces = Vec::new();
     let daemon_config = args.config.as_ref().and_then(|path| match DaemonConfig::from_path(path) {
         Ok(config) => Some(config),
         Err(err) => {
             log::error!("[daemon] failed to load config {}: {}", path.display(), err);
+            rejected_ifac_interfaces = rejected_ifac_interface_records(path);
             None
         }
     });
@@ -170,6 +221,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             config.interfaces.iter().map(interface_record_from_config).collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    configured_interfaces.extend(rejected_ifac_interfaces);
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let probe_receipts = Arc::new(ProbeReceiptRegistry::default());
     let outbound_resource_map: OutboundResourceMap = Arc::new(Mutex::new(HashMap::new()));
