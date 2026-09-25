@@ -110,11 +110,17 @@ and platform matrix remains partial, and #616 remains excluded.
 
 On PR #634 head `785597d8eea37db75c3413bb5844c165291a5c63`, the production
 fake-PTY daemon smoke passed locally and recorded
-`evidence_scope = "software_fake_pty_weave"`. CI now runs this bounded Linux
-trace on pull requests and uploads the report and run logs; the hosted result
-for this workflow change is pending. This makes the existing software Weave
-trace repeatable in the PR gate, but does not add native serial, cross-platform,
-or physical evidence.
+`evidence_scope = "software_fake_pty_weave"`. The first hosted run after adding
+the Linux job, `36102148581` at PR head `6c1b5512`, failed because the smoke
+started its runtime-readiness deadline before cold Cargo builds. The CI artifact
+records successful fake-peer discovery and connect frames, but the health poll
+timed out before validating daemon status. The smoke now starts a fresh bounded
+readiness deadline after the build and daemon spawn; a contract test guards this
+ordering. A local clean-build smoke passed with the corrected deadline. The CI
+artifact upload is narrowed to the JSON report and logs, excluding generated
+identity, database, and IPC socket files. The hosted rerun is pending. This
+makes the existing software Weave trace repeatable in the PR gate, but does not
+add native serial, cross-platform, or physical evidence.
 
 On the exact existing PR #634 head `6c6cecd8551fb471a58fb4fa9c123535b12cdccc`,
 the pinned-Python process regression passed with reference revision
