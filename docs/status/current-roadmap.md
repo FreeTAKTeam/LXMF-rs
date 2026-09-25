@@ -88,7 +88,10 @@ is scheduled, with a deterministic first-poll regression proving plaintext is
 rejected; a separate pinned-Python TCP process test now verifies first-frame
 admission, wrong-key rejection, live parent credential rotation, and stop/
 restart with the rotated credentials. This is focused TCP lifecycle evidence,
-not physical-carrier or full startup/error coverage. The
+and its wrong-key peer also increments the listener's aggregated IFAC
+violation counter without creating a Link, matching the pinned inbound
+authentication-before-admission path. This is not physical-carrier or full
+startup/error coverage. The
 broader software support matrix, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`

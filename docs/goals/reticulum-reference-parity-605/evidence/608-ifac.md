@@ -970,6 +970,29 @@ cargo test -p reticulumd --test python_tcp_ifac_lifecycle -- \
 # 1 passed; pinned-Python TCP first-frame admission, wrong-key rejection, live credential rotation, and restart
 ```
 
+## Accepted TCP child reports wrong-key IFAC ingress
+
+The same pinned-Python TCP listener regression now snapshots the production
+listener traffic counter before a wrong-key peer connects, verifies that the
+accepted child sends bytes but creates no Link, and asserts the listener's
+aggregated IFAC violation count increases. This covers the counter/visibility
+side of accepted-child ingress, which was not asserted by the prior lifecycle
+trace. In frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`TCPInterface.py:304-311` passes the accepted child's bytes to
+`Transport.inbound`; `Transport.py:1762-1777` authenticates before packet
+admission and calls `interface.ifac_violation` on a bad or missing IFAC.
+The focused Rust check runs that peer through the production TCP listener and
+child worker. It is software-only and does not close broader startup/error,
+carrier-family, platform, or physical acceptance.
+
+```text
+TMPDIR=/dev/shm RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+cargo test -p reticulumd --test python_tcp_ifac_lifecycle -- \
+  --ignored --exact python_tcp_ifac_accepted_child_rotation_and_restart_fail_closed \
+  --nocapture --test-threads=1
+# 1 passed; wrong-key accepted-child ingress increments the listener's IFAC counter and creates no Link
+```
+
 ## Below-minimum IFAC size uses the pinned carrier default
 
 Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d` sets an explicit

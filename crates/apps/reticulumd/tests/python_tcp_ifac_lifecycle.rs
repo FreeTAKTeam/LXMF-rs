@@ -188,6 +188,13 @@ async fn python_tcp_ifac_accepted_child_rotation_and_restart_fail_closed() {
     // Wrong-key peers must be rejected before even an announce reaches the
     // transport routing tables.
     let baseline_links = transport.link_count().await;
+    let baseline_ifac_violations = transport
+        .interface_traffic_snapshots()
+        .await
+        .into_iter()
+        .find(|snapshot| snapshot.address == server)
+        .expect("listener traffic snapshot before wrong-key peer")
+        .ifac_violations;
     let before_wrong = listener_status.to_json();
     let wrong_dir = temp.path().join("wrong-key-client");
     write_client_config(&wrong_dir, server_port, IFAC_NETWORK_NAME, WRONG_PASSPHRASE);
@@ -202,6 +209,17 @@ async fn python_tcp_ifac_accepted_child_rotation_and_restart_fail_closed() {
         Duration::from_secs(2),
     )
     .await;
+    let rejected_ifac_violations = transport
+        .interface_traffic_snapshots()
+        .await
+        .into_iter()
+        .find(|snapshot| snapshot.address == server)
+        .expect("listener traffic snapshot after wrong-key peer")
+        .ifac_violations;
+    assert!(
+        rejected_ifac_violations > baseline_ifac_violations,
+        "accepted TCP child must account for wrong-key IFAC ingress before routing"
+    );
     drop(wrong);
 
     // Rotate through the production InterfaceManager operation. Existing
