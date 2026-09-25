@@ -57,6 +57,7 @@ async fn link_in_payload_is_forwarded_to_received_data() {
             id: link_id,
             address_hash,
             event: LinkEvent::Data(Box::new(payload)),
+            close_reason: None,
         })
         .is_ok(), "link input forwarder remains subscribed");
 
@@ -88,6 +89,7 @@ async fn link_out_payload_is_forwarded_to_received_data() {
             id: link_id,
             address_hash,
             event: LinkEvent::Data(Box::new(payload)),
+            close_reason: None,
         })
         .is_ok(), "link output forwarder remains subscribed");
 
@@ -149,6 +151,48 @@ async fn drop_duplicates() {
 
     // Packet should have been removed from cache (stale)
     assert!(handler.lock().await.filter_duplicate_packets(&duplicate).await);
+}
+
+#[tokio::test]
+async fn duplicate_resource_proofs_reach_resource_state_machine() {
+    let transport = Transport::new(TransportConfig::default());
+    let handler = transport.get_handler();
+    let proof = Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Proof,
+            ..Default::default()
+        },
+        destination: AddressHash::new_from_slice(&[0x61; 32]),
+        context: PacketContext::ResourceProof,
+        data: PacketDataBuffer::new_from_slice(b"resource-proof"),
+        ..Default::default()
+    };
+
+    assert!(handler.lock().await.filter_duplicate_packets(&proof).await);
+    assert!(
+        handler.lock().await.filter_duplicate_packets(&proof).await,
+        "pinned Python bypasses duplicate filtering for RESOURCE_PRF packets"
+    );
+}
+
+#[tokio::test]
+async fn duplicate_resource_packets_pass_production_duplicate_filter() {
+    let transport = Transport::new(TransportConfig::default());
+    let handler = transport.get_handler();
+    let packet = Packet {
+        header: Header { destination_type: DestinationType::Link, ..Default::default() },
+        destination: AddressHash::new_from_slice(&[0x62; 32]),
+        context: PacketContext::Resource,
+        data: PacketDataBuffer::new_from_slice(b"resource-data"),
+        ..Default::default()
+    };
+
+    assert!(handler.lock().await.filter_duplicate_packets(&packet).await);
+    assert!(
+        handler.lock().await.filter_duplicate_packets(&packet).await,
+        "pinned Python bypasses duplicate filtering for RESOURCE packets"
+    );
 }
 
 #[tokio::test]

@@ -111,7 +111,7 @@ impl Transport {
     pub async fn save_packet_hashlist<P: AsRef<Path>>(&self, storage_path: P) -> io::Result<usize> {
         let hashes = {
             let handler = self.handler.lock().await;
-            if handler.config.transport_enabled {
+            if handler.config.transport_enabled && !handler.config.connected_to_shared_instance {
                 handler
                     .packet_cache
                     .try_lock()
@@ -125,6 +125,25 @@ impl Transport {
             .save_packet_hashlist(storage_path, &hashes)
             .await?;
         Ok(hashes.len())
+    }
+
+    pub async fn restore_packet_hashlist<P: AsRef<Path>>(
+        &self,
+        storage_path: P,
+    ) -> io::Result<usize> {
+        let packet_cache = {
+            let handler = self.handler.lock().await;
+            if !handler.config.transport_enabled || handler.config.connected_to_shared_instance {
+                return Ok(0);
+            }
+            handler.packet_cache.clone()
+        };
+
+        let hashes = ReticulumPacketDiskCache::new(storage_path.as_ref())
+            .load_packet_hashlist(storage_path)
+            .await?;
+        let restored = packet_cache.lock().await.restore_hashes(hashes);
+        Ok(restored)
     }
 
     pub async fn persist_data<P: AsRef<Path>>(

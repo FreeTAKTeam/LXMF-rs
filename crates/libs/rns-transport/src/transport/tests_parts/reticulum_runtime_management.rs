@@ -171,7 +171,7 @@ async fn transport_runtime_helpers_match_shared_instance_and_hop_delta_policy() 
 }
 
 #[tokio::test]
-async fn packet_hashlist_persistence_uses_python_messagepack_list() {
+async fn packet_hashlist_persistence_uses_pinned_python_raw_hash_list() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("hashlist", &identity, true);
     config.set_retransmit(true);
@@ -180,7 +180,22 @@ async fn packet_hashlist_persistence_uses_python_messagepack_list() {
     transport.get_handler().lock().await.packet_cache.lock().await.update(&packet);
     let temp = tempfile::tempdir().expect("tempdir");
     assert_eq!(transport.save_packet_hashlist(temp.path()).await.expect("save"), 1);
-    let payload = std::fs::read(temp.path().join("packet_hashlist")).expect("hashlist");
-    let value = rmpv::decode::read_value(&mut std::io::Cursor::new(payload)).expect("msgpack");
-    assert_eq!(value.as_array().map(Vec::len), Some(1));
+    let payload = std::fs::read(temp.path().join("packet_hashlist.raw")).expect("hashlist");
+    assert_eq!(payload, packet.hash().as_slice());
+}
+
+#[tokio::test]
+async fn packet_hashlist_restore_reads_legacy_rust_messagepack_file() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("legacy-hashlist", &identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let temp = tempfile::tempdir().expect("transport storage");
+    let hash = crate::hash::Hash::new([0x42; crate::hash::HASH_SIZE]);
+    let legacy = rmpv::Value::Array(vec![rmpv::Value::Binary(hash.as_slice().to_vec())]);
+    let mut payload = Vec::new();
+    rmpv::encode::write_value(&mut payload, &legacy).expect("encode legacy hashlist");
+    std::fs::write(temp.path().join("packet_hashlist"), payload).expect("write legacy hashlist");
+
+    assert_eq!(transport.restore_packet_hashlist(temp.path()).await.expect("restore legacy"), 1);
 }

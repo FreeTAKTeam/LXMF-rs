@@ -8,6 +8,7 @@ async fn a_pending_out_link_that_outlives_its_establishment_timeout_is_closed_an
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);
     let transport = Transport::new(config);
+    let mut link_events = transport.out_link_events();
     let handler = transport.get_handler();
     let mut iface_channel = transport.iface_manager().lock().await.new_channel(16);
     let iface = *iface_channel.address();
@@ -39,6 +40,13 @@ async fn a_pending_out_link_that_outlives_its_establishment_timeout_is_closed_an
     super::jobs::handle_check_links(handler.lock().await).await;
 
     assert_eq!(link.lock().await.status(), LinkStatus::Closed, "the link is closed, not requested again");
+    let close_event = timeout(Duration::from_millis(200), link_events.recv())
+        .await
+        .expect("link timeout should publish a close event")
+        .expect("out-link event stream remains open");
+    assert_eq!(close_event.id, *link.lock().await.id());
+    assert!(matches!(close_event.event, crate::destination::link::LinkEvent::Closed));
+    assert_eq!(close_event.close_reason, Some(crate::destination::link::LinkCloseReason::Timeout));
     assert!(!handler.lock().await.out_links.contains_key(&destination_hash));
     assert!(handler.lock().await.path_table.get(&destination_hash).is_none(), "the path it was tried on is expired");
     let rediscovery = timeout(Duration::from_millis(200), iface_channel.tx_channel.recv())

@@ -486,3 +486,5 @@ async fn rns_1_5_invalid_transported_path_request_does_not_poison_valid_retry() 
         "invalid transported request must not reserve duplicate or in-flight state"
     );
 }
+
+include!("rns_1_5_ingress_shared_instance.rs");

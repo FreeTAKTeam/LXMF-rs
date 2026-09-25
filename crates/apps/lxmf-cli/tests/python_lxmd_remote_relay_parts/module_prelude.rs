@@ -10,6 +10,16 @@ use support::python_lxmd_remote_relay::*;
 
 const REMOTE_PATH_RESPONSE_MIN: Duration = Duration::from_millis(900);
 
+fn wait_for_python_backchannel(receiver: u16, sender_hash: &str, context: &str) -> Result<(), String> {
+    python_control_call(
+        receiver,
+        "wait_backchannel",
+        Some(json!({ "destination": sender_hash, "timeout": 10.0 })),
+    )
+    .map(|_| ())
+    .map_err(|error| format!("{context}: receiver backchannel for sender {sender_hash}: {error}"))
+}
+
 #[test]
 #[ignore = "requires local Python Reticulum/LXMF repos and daemon runtime"]
 fn rust_to_python_lxmd_relay_remote_path_e2e() {

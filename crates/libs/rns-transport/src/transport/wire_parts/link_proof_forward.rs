@@ -16,6 +16,15 @@ async fn should_forward_link_table_proof(
     if packet.context != PacketContext::LinkRequestProof {
         return true;
     }
+    if packet.header.destination_type != DestinationType::Link {
+        log::debug!(
+            "[tp-diag] lrproof_forward_skip node={} reason=not_link_destination link={} iface={}",
+            handler.config.name,
+            packet.destination,
+            iface
+        );
+        return false;
+    }
 
     let Some((original_destination, expected_iface)) =
         handler.link_table.proof_validation_context(&packet.destination)
@@ -41,6 +50,16 @@ async fn should_forward_link_table_proof(
 
     let Some(destination) = handler.single_out_destinations.get(&original_destination).cloned()
     else {
+        if handler.link_table.allows_shared_owner_proof_on_iface(&packet.destination, iface) {
+            log::debug!(
+                "[tp-diag] lrproof_forward_trust_shared_owner node={} link={} dst={} iface={}",
+                handler.config.name,
+                packet.destination,
+                original_destination,
+                iface
+            );
+            return true;
+        }
         log::debug!(
             "[tp-diag] lrproof_forward_skip node={} reason=missing_destination_identity link={} dst={}",
             handler.config.name,

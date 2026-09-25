@@ -400,6 +400,8 @@ class ChannelClient:
         self.link = None
         self.received = []
         self.buffer = None
+        self.closed = threading.Event()
+        self.close_reason = None
 
     def run(
         self,
@@ -410,6 +412,7 @@ class ChannelClient:
         resource_size,
         send_delay: float,
         timeout: float,
+        hold_after_close: bool,
     ) -> int:
         print("python_channel_client: starting Reticulum", file=sys.stderr, flush=True)
         RNS.Reticulum(configdir=config_dir, loglevel=7)
@@ -451,6 +454,18 @@ class ChannelClient:
             time.sleep(0.05)
 
         time.sleep(send_delay)
+        if self.payload_kind == "link-close":
+            active_link.teardown()
+            print(
+                json.dumps({"closed": True, "teardown_reason": active_link.teardown_reason}),
+                flush=True,
+            )
+            # Keep Reticulum's interface worker alive until the Rust peer has
+            # observed the close packet; the integration test releases stdin.
+            if hold_after_close:
+                sys.stdin.buffer.readline()
+            return 0
+
         if self.payload_kind == "identify":
             self.identity = RNS.Identity()
             active_link.set_packet_callback(self._on_link_data)
@@ -710,6 +725,34 @@ class ChannelClient:
                 time.sleep(0.25)
         elif self.payload_kind in ("channel", "channel-reconnect"):
             active_link.get_channel().send(MessageTest(message_id, message_data))
+        elif self.payload_kind == "channel-retry-exhaustion":
+            envelope = active_link.get_channel().send(MessageTest(message_id, message_data))
+            while not self.closed.wait(0.05):
+                if time.time() > deadline:
+                    print(
+                        "python_channel_client: timed out waiting for Channel retry exhaustion",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    return 1
+            if self.close_reason != RNS.Link.INITIATOR_CLOSED:
+                print(
+                    f"python_channel_client: unexpected retry-exhaustion close reason {self.close_reason}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return 1
+            print(
+                json.dumps(
+                    {
+                        "channel": "retry-exhausted",
+                        "tries": envelope.tries,
+                        "teardown_reason": self.close_reason,
+                    }
+                ),
+                flush=True,
+            )
+            return 0
         reconnect_started = False
         while True:
             with self.lock:
@@ -808,6 +851,8 @@ class ChannelClient:
             self.link = link
 
     def _on_link_closed(self, _link) -> None:
+        self.close_reason = _link.teardown_reason
+        self.closed.set()
         print("python_channel_client: link closed", file=sys.stderr, flush=True)
 
     def _on_link_data(self, message, _packet) -> None:
@@ -836,6 +881,7 @@ def main() -> int:
         choices=(
             "channel",
             "channel-reconnect",
+            "channel-retry-exhaustion",
             "buffer",
             "resource",
             "resource-wire",
@@ -857,6 +903,7 @@ def main() -> int:
             "mdu-boundary",
             "file-response",
             "identify",
+            "link-close",
             "channel-sequence",
         ),
         default="channel",
@@ -869,6 +916,7 @@ def main() -> int:
     parser.add_argument("--resource-size", type=int)
     parser.add_argument("--send-delay", type=float, default=0.3)
     parser.add_argument("--timeout", type=float, default=8.0)
+    parser.add_argument("--hold-after-close", action="store_true")
     parser.add_argument("--response-envelope-delta", type=int, default=0)
     args = parser.parse_args()
 
@@ -918,6 +966,7 @@ def main() -> int:
             args.resource_size,
             args.send_delay,
             args.timeout,
+            args.hold_after_close,
         )
 
     if args.config_dir is None:

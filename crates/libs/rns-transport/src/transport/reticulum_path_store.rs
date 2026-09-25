@@ -22,6 +22,7 @@ pub struct ReticulumPathTableRestoreSkipped {
     pub active_invalid_cached_announce: usize,
     pub active_mismatched_cached_announce: usize,
     pub active_identity_conflict: usize,
+    pub active_blackholed_identity: usize,
     pub tunnel_duplicate_packet_hash: usize,
     pub tunnel_expired: usize,
     pub tunnel_missing_cached_announce: usize,
@@ -231,6 +232,10 @@ impl Transport {
                 candidate.entry.destination,
             ) {
                 report.skipped.active_identity_conflict += 1;
+                continue;
+            }
+            if handler.is_identity_blackholed(&candidate.cached.destination.identity.address_hash) {
+                report.skipped.active_blackholed_identity += 1;
                 continue;
             }
             let dest_hash = candidate.cached.destination.desc.address_hash;

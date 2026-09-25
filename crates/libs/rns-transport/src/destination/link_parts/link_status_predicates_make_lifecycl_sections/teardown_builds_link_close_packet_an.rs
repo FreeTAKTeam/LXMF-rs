@@ -24,6 +24,7 @@
         assert_eq!(packet.header.packet_type, PacketType::Data);
         assert_eq!(packet.context, PacketContext::LinkClose);
         assert_eq!(outbound.status(), LinkStatus::Closed);
+        assert_eq!(outbound.close_reason(), Some(LinkCloseReason::InitiatorClosed));
         assert!(outbound.session_cipher.is_none());
         assert_eq!(outbound.derived_key.as_bytes(), DerivedKey::new_empty().as_bytes());
         assert_eq!(outbound.peer_identity().address_hash, Identity::default().address_hash);
@@ -31,6 +32,58 @@
         let mut plain = [0u8; PACKET_MDU];
         let decrypted = inbound.decrypt(packet.data.as_slice(), &mut plain).expect("decrypt close");
         assert_eq!(decrypted, outbound.id().as_slice());
+    }
+
+    #[tokio::test]
+    async fn close_events_expose_python_teardown_reason_codes() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+
+        let (tx, mut events) = tokio::sync::broadcast::channel(4);
+        let mut outbound = Link::new(destination, tx.clone());
+        outbound.request();
+        outbound.close();
+        let event = events.recv().await.expect("local close event");
+        assert!(matches!(event.event, LinkEvent::Closed));
+        assert_eq!(event.close_reason, Some(LinkCloseReason::InitiatorClosed));
+        assert_eq!(event.close_reason.expect("reason").as_u8(), 0x02);
+        outbound.close();
+        assert_eq!(outbound.close_reason(), Some(LinkCloseReason::InitiatorClosed));
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+
+        let (request_tx, _) = tokio::sync::broadcast::channel(4);
+        let mut request_sender = Link::new(destination, request_tx);
+        let request = request_sender.request();
+        let (inbound_tx, mut inbound_events) = tokio::sync::broadcast::channel(4);
+        let mut inbound = Link::new_from_request(
+            &request,
+            signer.sign_key().clone(),
+            destination,
+            inbound_tx.clone(),
+        )
+        .expect("inbound request");
+        inbound.close();
+        let event = inbound_events.recv().await.expect("destination close event");
+        assert!(matches!(event.event, LinkEvent::Closed));
+        assert_eq!(event.close_reason, Some(LinkCloseReason::DestinationClosed));
+        assert_eq!(event.close_reason.expect("reason").as_u8(), 0x03);
+
+        let (timeout_tx, mut timeout_events) = tokio::sync::broadcast::channel(4);
+        let mut timed_out = Link::new(destination, timeout_tx);
+        timed_out.request();
+        timed_out.close_with_reason(LinkCloseReason::Timeout);
+        let event = timeout_events.recv().await.expect("timeout close event");
+        assert!(matches!(event.event, LinkEvent::Closed));
+        assert_eq!(event.close_reason, Some(LinkCloseReason::Timeout));
+        assert_eq!(event.close_reason.expect("reason").as_u8(), 0x01);
     }
 
     #[test]
@@ -59,6 +112,7 @@
             outbound.teardown().expect("active teardown should produce close packet");
         assert!(matches!(inbound.handle_packet(&close_packet, iface), LinkHandleResult::None));
         assert_eq!(inbound.status(), LinkStatus::Closed);
+        assert_eq!(inbound.close_reason(), Some(LinkCloseReason::InitiatorClosed));
         assert!(inbound.session_cipher.is_none());
         assert_eq!(inbound.derived_key.as_bytes(), DerivedKey::new_empty().as_bytes());
     }
@@ -137,7 +191,7 @@
             address_hash: identity.address_hash,
             name: DestinationName::new("lxmf", "delivery"),
         };
-        let (tx, _) = tokio::sync::broadcast::channel(4);
+        let (tx, mut events) = tokio::sync::broadcast::channel(4);
 
         let mut link = Link::new(destination, tx);
         link.status = LinkStatus::Active;
@@ -163,6 +217,10 @@
         };
         assert_eq!(packet.context, PacketContext::LinkClose);
         assert_eq!(link.status, LinkStatus::Closed);
+        assert_eq!(link.close_reason(), Some(LinkCloseReason::Timeout));
+        let close_event = events.try_recv().expect("stale timeout publishes close event");
+        assert!(matches!(close_event.event, LinkEvent::Closed));
+        assert_eq!(close_event.close_reason, Some(LinkCloseReason::Timeout));
     }
 
     #[test]

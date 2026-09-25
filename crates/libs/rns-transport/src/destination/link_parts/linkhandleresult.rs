@@ -22,15 +22,37 @@ pub enum LinkEvent {
     Closed,
 }
 
+/// Why an RNS link entered its closed state. Numeric values match
+/// `RNS.Link.TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED`.
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[repr(u8)]
+pub enum LinkCloseReason {
+    Timeout = 0x01,
+    InitiatorClosed = 0x02,
+    DestinationClosed = 0x03,
+}
+
+impl LinkCloseReason {
+    #[must_use]
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
 #[derive(Clone)]
 pub struct LinkEventData {
     pub id: LinkId,
     pub address_hash: AddressHash,
     pub event: LinkEvent,
+    /// Present only for `LinkEvent::Closed` and matches the pinned Python
+    /// `Link.teardown_reason` value.
+    pub close_reason: Option<LinkCloseReason>,
 }
 
 pub struct Link {
     id: LinkId,
+    is_initiator: bool,
+    close_reason: Option<LinkCloseReason>,
     destination: DestinationDesc,
     ingress_iface: Option<AddressHash>,
     priv_identity: PrivateIdentity,

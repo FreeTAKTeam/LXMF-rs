@@ -1,9 +1,9 @@
-use super::announce::{release_held_announces, retransmit_announces};
+use super::announce::announce_retransmit_tick;
 use super::inbound_processing::{
     preprocess_inbound_message, process_inbound_message, rollback_rejected_inbound,
 };
 use super::*;
-use crate::destination::link::LinkWatchdogAction;
+use crate::destination::link::{LinkCloseReason, LinkWatchdogAction};
 
 #[allow(dead_code)]
 const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);
@@ -151,7 +151,6 @@ pub(super) async fn manage_transport(
     iface_messages_tx: broadcast::Sender<RxMessage>,
 ) {
     let cancel = handler_arc.lock().await.cancel.clone();
-    let transport_enabled = handler_arc.lock().await.config.transport_enabled;
 
     // Worker supervision (issue #525): every worker handle is retained in
     // this set. The loop at the end of this function fails loudly and
@@ -321,16 +320,7 @@ pub(super) async fn manage_transport(
                         break;
                     },
                     _ = time::sleep(INTERVAL_ANNOUNCES_RETRANSMIT) => {
-                        let guard = handler.lock().await;
-                        if transport_enabled {
-                            retransmit_announces(guard).await;
-                        } else {
-                            release_held_announces(guard).await;
-                            handler.lock().await.iface_manager.lock().await.release_queued_announces().await;
-                            continue;
-                        }
-                        release_held_announces(handler.lock().await).await;
-                        handler.lock().await.iface_manager.lock().await.release_queued_announces().await;
+                        announce_retransmit_tick(&handler, Instant::now()).await;
                     }
                 }
             }
