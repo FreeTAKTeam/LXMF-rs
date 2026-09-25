@@ -23,6 +23,26 @@ TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
   1 passed; 0 failed
 ```
 
+## IFAC interface remains visible when carrier config parsing fails
+
+`bootstrap_reports_ifac_interface_rejected_by_invalid_carrier_port` uses an
+IFAC UDP configuration with `port = 70000` and a whitespace-only `network_name`.
+Python treats that credential as non-empty; the daemon rejects the out-of-range
+port before interface startup. `list_interfaces` now exposes exactly one
+failed startup record with the generic fixed configuration diagnostic, rather
+than misclassifying the credential as invalid or exposing it. This covers one
+carrier-field parse failure only; other startup/configuration errors and the
+broader #608 carrier-family/platform acceptance remain open.
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  bootstrap_reports_ifac_interface_rejected_by_invalid_carrier_port
+# 1 passed; regression failed before the reporting fix because the row was absent
+cargo test -p reticulumd --bin reticulumd \
+  bootstrap_reports_invalid_ifac_config_without_creating_interface
+# 1 passed
+```
+
 Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child
 IFAC policy evidenced; serial and KISS stream runtime paths have deterministic
 software regressions; outbound I2P fake-SAM stream IFAC rejection,

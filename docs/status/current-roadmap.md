@@ -221,6 +221,13 @@ with the accepted size range and without the configured credential marker.
 Uncovered carrier families and physical/public-network evidence remain open.
 See the [#608 evidence record](../goals/reticulum-reference-parity-605/evidence/608-ifac.md).
 
+The #608 startup diagnostics now retain an IFAC UDP interface when daemon
+deserialization rejects its out-of-range carrier port, even when its
+whitespace-only credential is valid under Python's non-empty-string rule; a
+fixed `list_interfaces` failure record avoids exposing the credential. This is
+one carrier-field parse regression only; other startup/configuration errors
+and uncovered carrier families remain open.
+
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,
 or public-network soak. Pull requests run the bounded rns-rs profile; nightly and

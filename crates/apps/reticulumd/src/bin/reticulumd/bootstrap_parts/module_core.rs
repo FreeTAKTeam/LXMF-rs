@@ -73,17 +73,19 @@ fn rejected_ifac_interface_records(path: &std::path::Path) -> Vec<InterfaceRecor
             let credential_present = ["network_name", "networkname", "passphrase", "pass_phrase"]
                 .iter()
                 .filter_map(|key| table.get(*key).and_then(toml::Value::as_str))
-                .any(|credential| !credential.trim().is_empty());
-            if valid_ifac_size && credential_present {
-                return None;
-            }
+                .any(|credential| !credential.is_empty());
             let name = table.get("name").and_then(toml::Value::as_str).or(section_name)
                 .map(str::to_owned).or_else(|| Some(format!("interfaces[{index}]")));
             let kind = table.get("type").and_then(toml::Value::as_str).or(section_name)
                 .unwrap_or("unknown").to_owned();
+            let startup_error = if valid_ifac_size && credential_present {
+                "daemon configuration rejected before interface startup; inspect daemon log"
+            } else {
+                "IFAC configuration rejected: ifac_size must floor to 1..=64 bytes (or be below the one-byte minimum to use the carrier default) and requires a non-empty network_name or passphrase"
+            };
             let settings = json!({"_runtime": {
                 "startup_status": "failed",
-                "startup_error": "IFAC configuration rejected: ifac_size must floor to 1..=64 bytes (or be below the one-byte minimum to use the carrier default) and requires a non-empty network_name or passphrase"
+                "startup_error": startup_error
             }});
             Some(InterfaceRecord {
                 kind,
