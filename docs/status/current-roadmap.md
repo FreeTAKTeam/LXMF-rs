@@ -160,6 +160,12 @@ stream, checks live RX-byte status, and verifies clean cancellation. This
 closes the software evidence gap for data-plane recovery on a replaced TCP
 stream, without claiming Python socket-pair parity, cross-platform behavior,
 or completion of the broader #614 family/platform matrix.
+The production TCP server now also has a loopback accepted-child regression:
+two clients each deliver HDLC packets through the listener, the first child
+reports closed after peer EOF, and the listener remains able to accept and
+route the second client. This fills a distinct accepted-server software
+evidence gap; it does not establish Backbone-specific or cross-platform parity,
+and #614/#605 remain partial.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at

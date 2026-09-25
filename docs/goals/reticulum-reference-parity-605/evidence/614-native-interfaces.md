@@ -112,6 +112,25 @@ This fills the packet-ingress-after-reconnect evidence gap for ordinary
 not establish cross-platform, public-network, or physical interface behavior.
 The broader #614 family/platform matrix remains open.
 
+### TCP server accepted-child packet and EOF lifecycle
+
+The frozen Reticulum `TCPServerInterface.incoming_connection()` path creates a
+child `TCPClientInterface` for each accepted socket, and that child owns HDLC
+receive and teardown behavior. The production `TcpServer::spawn` regression
+now connects two loopback clients sequentially: each sends a valid HDLC packet
+through the listener into the interface manager; the first client's EOF
+transitions its child stream status to `closed`, while the listener continues
+accepting and routing packets for the second client. It also verifies the
+received packet is attributed to a virtual child, not the listener.
+
+```text
+cargo test -p reticulum-rs-transport --lib tcp_server_routes_accepted_packets_and_recovers_after_peer_eof -- --nocapture PASS (1 test; loopback software only)
+```
+
+This fills a focused TCP server accepted-child data-plane/lifecycle evidence
+gap without repeating the separate TCP client reconnect test. It does not
+claim Backbone-specific, cross-platform, external-peer, or full #614 parity.
+
 ## Commands and results
 
 ### Bounded Weave software trace
