@@ -27,6 +27,8 @@ rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version =
 rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.11.0" }
 rand_core = { workspace = true, features = ["getrandom"] }
 bzip2.workspace = true
+# process-wrap 8.2 keeps process-tree cleanup compatible with the workspace MSRV (1.85).
+process-wrap = { version = "=8.2.1", default-features = false, features = ["std", "process-group", "job-object", "tracing"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
@@ -36,6 +38,9 @@ btleplug = "0.12"
 futures = "0.3.31"
 uuid = "1.16.0"
 tokio = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "=0.30.1", default-features = false, features = ["fs"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Unify btleplug's Linux dbus dependency with its vendored feature so musl

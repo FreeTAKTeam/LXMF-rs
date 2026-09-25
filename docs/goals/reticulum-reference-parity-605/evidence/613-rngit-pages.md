@@ -1179,20 +1179,40 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
 ### Failed executable page template falls back to the built-in template
 
 Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d` handles an
-executable template failure in `pages.py::get_template` by logging and
-returning `None`; `render_template` then uses the built-in template. Rust
-previously propagated an executable-template launch failure from
-`load_page_templates`, aborting startup. It now logs an executable-template
-launch failure (`NotFound`) and skips that unavailable override, preserving
-the built-in fallback. The focused Unix regression uses an executable
-`base.mu` with a missing shebang interpreter. A pinned Python client at that
-exact revision requests `/page/index.mu` over a real TCP Reticulum Link from
-the Rust service, verifies the built-in footer and absence of override output,
-and confirms the service remains alive. This covers executable-template
-launch failure only; the remaining #613 rendering and lifecycle gates remain
-open.
+executable-template exception in `pages.py::get_template` by logging and
+returning `None`; `render_template` then uses the built-in template. Rust now
+logs dynamic-template spawn, bounded-I/O, timeout, and UTF-8 decoding errors
+and skips the unavailable override instead of aborting startup. Its bounded
+runner preserves Python's default `check=False` behavior by using stdout even
+when the child exits nonzero. Unit regressions cover a missing interpreter,
+an unlaunchable interpreter (`PermissionDenied`), and stdout from a nonzero
+exit. A pinned Python client at the exact revision requests `/page/index.mu`
+over a real TCP Reticulum Link from the Rust service with a missing shebang
+interpreter, verifies the built-in footer and absence of override output, and
+confirms the service remains alive. On Unix, bounded executables run in a new
+process group; on Windows, they run in a Job Object. Process completion and
+stdout/stderr draining share a two-second deadline. Unix drains nonblocking
+pipes on the bounded loop, so a descendant that escapes the process group
+cannot hold the loader or leave a reader thread blocked; after timeout the
+group is terminated and the pipe readers are dropped. Such an escaped process
+may itself outlive the fallback. Windows uses reader threads and terminates
+the Job Object before joining them. Rust also caps captured output at 256 KiB;
+these safety bounds use the built-in fallback, unlike Python's unbounded
+subprocess call. Two Linux regressions start background children that retain
+the template pipes after the parent exits, including one that uses `setsid` to
+escape the process group; both verify fallback within a three-second guard
+(the two-second timeout is observed). Unit regressions cover a missing
+interpreter, an unlaunchable interpreter (`PermissionDenied`), stdout from a
+nonzero exit, and both pipe-inheriting descendant cases. Other failure
+variants are not all independently exercised over Link, and the remaining
+#613 rendering and lifecycle gates remain open.
 
 ```text
+cargo test -p rns-tools --bin rngit --all-features \
+  issue_613_template_failure_tests -- --nocapture --test-threads=1
+  PASS (5 tests: missing interpreter, PermissionDenied, nonzero exit stdout,
+  group descendant and setsid-escaped descendant bounded by the two-second timeout)
+
 RETICULUM_PY_REPO=/path/to/Reticulum-at-99de23c \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   issue_613_template_launch_failure::rngit_page_request_uses_builtin_template_when_executable_override_cannot_launch \

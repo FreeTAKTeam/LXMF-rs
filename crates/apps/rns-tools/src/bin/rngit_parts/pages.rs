@@ -198,21 +198,20 @@ impl ReticulumGitNode {
                 continue;
             };
             let content = match fs::metadata(&path) {
-                Ok(metadata) if is_executable_file(&metadata) => match run_permission_resolver(&path) {
+                Ok(metadata) if is_executable_file(&metadata) => match run_dynamic_template(&path) {
                     Ok(content) => content,
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    Err(error) => {
                         eprintln!(
                             "rngit: could not get dynamic template content from {}: {error}",
                             path.display()
                         );
                         continue;
                     }
-                    Err(error) => return Err(error),
                 },
                 Ok(_) => fs::read_to_string(&path)?,
                 Err(error) => return Err(error),
             };
-            if content.len() > 256 * 1024 {
+            if content.len() > MAX_DYNAMIC_TEMPLATE_OUTPUT {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("page template is too large: {}", path.display()),
