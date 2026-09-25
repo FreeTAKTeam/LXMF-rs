@@ -380,8 +380,9 @@ impl NativeRnodeBleKissInterface {
             if let (Some(monitor), Some(status)) =
                 (command_monitor.as_ref(), rnode_status.as_ref())
             {
-                *status.lock().expect("RNode BLE status mutex poisoned") =
-                    monitor.runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str());
+                RnodeBleRuntimeStatusHandle::new(status.clone()).update_runtime_status(
+                    monitor.runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str()),
+                );
             }
             let mut radio_config_sent = command_monitor.is_none();
             log::info!(
@@ -558,10 +559,11 @@ impl NativeRnodeBleKissInterface {
                                 break;
                             }
                             if let Some(status) = rnode_status.as_ref() {
-                                *status.lock().expect("RNode BLE status mutex poisoned") = monitor
-                                    .runtime_status_json(
+                                RnodeBleRuntimeStatusHandle::new(status.clone()).update_runtime_status(
+                                    monitor.runtime_status_json(
                                         format!("ble://{}", settings.peripheral_id).as_str(),
-                                    );
+                                    ),
+                                );
                             }
                             if !radio_config_sent && monitor.is_detected() {
                                 log::info!(
@@ -626,6 +628,10 @@ impl NativeRnodeBleKissInterface {
                     Err(_) => {}
                     Ok(Err(err)) => {
                         log::warn!("RNode BLE packet read failed iface={} err={:?}", label, err);
+                        if let Some(status) = rnode_status.as_ref() {
+                            RnodeBleRuntimeStatusHandle::new(status.clone())
+                                .set_worker_error(&format!("packet read failed: {err:?}"));
+                        }
                         reconnect_needed = true;
                         break;
                     }
@@ -641,8 +647,9 @@ impl NativeRnodeBleKissInterface {
                         break;
                     }
                     if let Some(status) = rnode_status.as_ref() {
-                        *status.lock().expect("RNode BLE status mutex poisoned") = monitor
-                            .runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str());
+                        RnodeBleRuntimeStatusHandle::new(status.clone()).update_runtime_status(
+                            monitor.runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str()),
+                        );
                     }
                 }
             }

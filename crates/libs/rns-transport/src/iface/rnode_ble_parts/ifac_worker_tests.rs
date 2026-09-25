@@ -268,6 +268,7 @@ struct StartupRetryState {
 struct StartupRetryBackend {
     state: Arc<StartupRetryState>,
     fail_connect: bool,
+    fail_notification: bool,
 }
 
 impl RnodeBleBackend for StartupRetryBackend {
@@ -288,6 +289,9 @@ impl RnodeBleBackend for StartupRetryBackend {
     }
 
     async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String> {
+        if self.fail_notification {
+            return Err("injected BLE notification failure".into());
+        }
         Ok(self.state.io.incoming.lock().await.pop_front())
     }
 
@@ -314,7 +318,7 @@ async fn rnode_ble_worker_cleans_up_failed_startup_before_retry_and_stop() {
         context,
         move |_| {
             let attempt = worker_state.attempts.fetch_add(1, Ordering::SeqCst);
-            StartupRetryBackend { state: worker_state.clone(), fail_connect: attempt == 0 }
+            StartupRetryBackend { state: worker_state.clone(), fail_connect: attempt == 0, fail_notification: false }
         },
     ));
 
@@ -383,7 +387,7 @@ async fn rnode_ble_startup_retry_keeps_ifac_required_and_counts_plaintext_reject
         context,
         move |_| {
             let attempt = worker_state.attempts.fetch_add(1, Ordering::SeqCst);
-            StartupRetryBackend { state: worker_state.clone(), fail_connect: attempt == 0 }
+            StartupRetryBackend { state: worker_state.clone(), fail_connect: attempt == 0, fail_notification: false }
         },
     ));
 
@@ -411,3 +415,5 @@ async fn rnode_ble_startup_retry_keeps_ifac_required_and_counts_plaintext_reject
         .expect("worker stops after cancellation")
         .expect("worker task joins");
 }
+
+include!("ifac_runtime_failure_test.rs");

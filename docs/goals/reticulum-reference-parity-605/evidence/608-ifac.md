@@ -108,9 +108,34 @@ error-status reporting, other startup/stop/restart paths, other carrier
 families, physical BLE/RNode behavior, or public-network behavior. Acceptance
 item 4 and issue #608 therefore remain open.
 
+## Mocked BLE runtime failure, recovery, and fail-closed stop
+
+`rnode_ble_runtime_error_is_reported_and_restart_remains_ifac_fail_closed`
+injects a notification-read failure on the first connected fake BLE backend,
+then allows the worker to reconnect. The failure is retained in the RNode
+runtime status snapshot as `worker_error`; after reconnect, plaintext KISS
+ingress is still rejected and counted as an IFAC violation while authenticated
+ingress is admitted. Cancelling the worker prevents another backend attempt,
+and both sessions are cleaned up. This exposed that the worker previously
+logged runtime read failures but did not publish one in the status snapshot;
+the status now carries the last worker read error. This is mocked software
+evidence for one BLE runtime-error/reconnect path, not evidence for other
+failure classes, carrier families, physical BLE/RNode behavior, or public
+networks.
+
+```text
+cargo test -p reticulum-rs-transport --features rnode-ble --lib \
+  rnode_ble_runtime_error_is_reported_and_restart_remains_ifac_fail_closed -- --nocapture
+  1 passed; 0 failed
+```
+
+The broader acceptance item remains open for other startup/configuration,
+stop/restart, runtime-error, and carrier-family cases; physical and public
+network evidence remains separate.
+
 ```text
 cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble_ -- --nocapture
-  5 passed; 0 failed (all current RNode BLE unit regressions)
+  6 passed; 0 failed (all current RNode BLE unit regressions)
 cargo fmt --all -- --check
   passed
 git diff --check
