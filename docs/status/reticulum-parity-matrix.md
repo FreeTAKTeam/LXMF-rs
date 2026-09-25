@@ -85,11 +85,14 @@ software inventory.
 
 SDK negotiation exposes an optional typed `software_parity` orientation, and
 daemon `status`, `daemon_status_ex`, and `rns.runtime.status` expose the same
-structure under `reticulum.parity`. It separates overall, Reticulum, and LXMF
-checkpoints, includes pinned reference versions and revisions, and reports
-exact complete/applicable ratios alongside the inventory counts. It is marked
-`advisory: true` for consumer orientation and does not replace capability
-negotiation, runtime feature checks, or the separate hardware-evidence axis.
+structure under `reticulum.parity`. The existing overall, Reticulum, and LXMF
+checkpoints remain the active 1.5.2 callable inventory; their `complete` values
+do not imply forward behavior completion. The additive `forward_behavioral`
+checkpoint reports the frozen 1.5.4-dev contract separately. It is currently
+`partial` / `incomplete` with 0 verified of 9 applicable requirements at
+`99de23c040d507e3fefca19e87b182302902725d`. The advisory does not replace
+capability negotiation, runtime feature checks, or the separate
+hardware-evidence axis.
 
 ## RNS 1.5.4 forward candidate
 

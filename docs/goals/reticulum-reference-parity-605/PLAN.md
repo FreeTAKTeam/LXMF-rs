@@ -66,10 +66,17 @@ Acceptance evidence gate: this goal may close only after #606’s deliberate-fai
 ### 1. #606 — Freeze reference and behavioral evidence contract (P0, first)
 
 - Files: existing reference-pin manifest/checker, inventory generator/mapping/generated files, `lxmf-reference`, active roadmap/matrices/ledger, and focused checker tests.
-- Output: exact 1.5.4 development target (or explicitly reviewed replacement); behavior rows covering protocol, state, configuration, persistence, private effects, interface families, utilities, and runtime integration; explicit statuses/evidence/owner/test/artifact fields; wildcard and fixed-count loopholes removed; unsupported and hardware-unverified states distinct; deliberate corrupt-fixture failures enforced by CI.
+- Output: exact 1.5.4 development target (or explicitly reviewed replacement); behavior rows covering protocol, state, configuration, persistence, private effects, interface families, utilities, and runtime integration; explicit statuses/evidence/owner/test/artifact fields; wildcard and fixed-count loopholes removed; unsupported and hardware-unverified states distinct; not-applicable rows backed by structured rationale and an in-repository decision record; deliberate corrupt-fixture failures enforced by CI.
 - Verification: exact source checkout assertions; pin-mirror checker; inventory regeneration/check; deliberate unmapped, stale-reference, malformed-summary, contradictory-status, and missing-evidence fixtures; generated Rust/status artifacts match exact inputs.
 - Evidence: committed contract/delta report and raw command outputs tied to exact reference commits.
 - Parallel safety: first; later implementation rows may proceed only against the frozen contract.
+
+#### #606 public advisory contract (additive compatibility slice)
+
+- Keep `overall`, `reticulum`, and `lxmf` inventory fields and their active RNS 1.5.2/LXMF reference semantics unchanged; document `overall` as the historical Python callable inventory, not forward behavioral coverage.
+- Add a separately named optional `forward_behavioral` checkpoint generated from the mapping contract. It carries the behavioral level and coverage status, requirement counts (10 total, 9 applicable, 0 verified on the current candidate), and the exact RNS 1.5.4-dev revision. Do not infer this checkpoint from callable totals or promote it from symbol matches. Preserve `overall`, `reticulum`, and `lxmf` names, values, and their active 1.5.2 meaning; explicitly label `overall` as the historical Python callable inventory.
+- The SDK/RPC serialization change is additive: `forward_behavioral` is `None` when absent, omitted when re-serialized, and populated for the current build. Update `docs/openrpc/sdk-v2.openrpc.json` and compatibility fixtures; do not claim an old strict schema accepts the new property. Keep the active callable counts and levels byte-for-byte equivalent in the serialized fields.
+- Verify mapping-to-generated-constant agreement, typed SDK round-trip and old advisory-payload deserialization/omission, updated OpenRPC schema validation/fixtures, `sdk_negotiate_v2`, and daemon status snapshot at `reticulum.parity`. Update current status docs and #606 evidence only after observed tests pass; run the applicable public-API compatibility check.
 
 ### 2. #607 — Review and integrate PR #604’s bounded increment (P0)
 

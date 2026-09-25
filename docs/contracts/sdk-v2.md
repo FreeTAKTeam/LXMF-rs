@@ -75,12 +75,25 @@ Startup handshake response includes:
 - `schema_namespace`
 - optional `software_parity`, an advisory orientation containing the pinned
   Reticulum and LXMF reference versions/revisions plus separate overall,
-  Reticulum, and LXMF checkpoints
+  Reticulum, and LXMF callable-inventory checkpoints; optional
+  `forward_behavioral` reports the separately pinned forward behavior contract
 
 `software_parity` is additive and optional so clients can deserialize older
 negotiation responses. Its exact complete/applicable ratios and inventory
 counts help consumers orient themselves, but they do not replace
 `effective_capabilities` or runtime feature checks.
+
+`software_parity.overall`, `.reticulum`, and `.lxmf` retain the active RNS
+1.5.2/LXMF callable-inventory counts; in particular, `overall.level =
+complete` is not a claim of forward behavioral parity. The optional
+`software_parity.forward_behavioral` checkpoint is generated from the frozen
+forward behavioral contract and includes its status, counts, and exact
+reference revision. For the current RNS 1.5.4-dev candidate it reports
+`partial` / `incomplete` (10 requirements, 9 applicable, 0 verified). It is
+omitted when no forward checkpoint is available, so clients can distinguish
+older payloads from a verified result. The OpenRPC schema is authoritative for
+the current v2.6 response shape; strict clients must validate against the
+schema matching the negotiated contract release.
 
 Capability descriptor fields:
 
