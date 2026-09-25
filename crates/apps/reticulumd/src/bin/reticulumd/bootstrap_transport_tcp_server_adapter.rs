@@ -33,7 +33,9 @@ pub(super) fn build_selected_tcp_server_adapter(
     server
 }
 
-pub(super) fn selected_fast_flap_policy(selected_tcp_server: &TcpServerSelection) -> FastFlapPolicy {
+pub(super) fn selected_fast_flap_policy(
+    selected_tcp_server: &TcpServerSelection,
+) -> FastFlapPolicy {
     FastFlapPolicy {
         enabled: selected_tcp_server.block_fast_flapping.unwrap_or(true),
         threshold: std::time::Duration::from_secs_f64(
