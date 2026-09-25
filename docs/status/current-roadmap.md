@@ -120,7 +120,10 @@ ImageMagick 6 `convert`, GraphicsMagick `gm`, and ImageMagick 7 `magick` now
 passes locally against the pinned Python client; the `magick` runtime is the
 official checksum-pinned 7.1.2-31 AppImage. Hosted Verify already covers
 `convert` and `gm`; the updated hosted `magick` smoke/integration lane is
-pending. Broader #613 page/media and rendering parity remains partial.
+pending. Tree/commit pagination, navigable child links, and file-scoped commit
+history now have local source-contract regressions. Full rendered-output,
+Markdown, diff/work-document, remaining media, and lifecycle parity remain
+partial for #613.
 Automatic WebP backend selection now also retains Python's `_winner` behavior:
 the previously selected available backend stays preferred, explicit backend
 configuration still wins, and a missing cached executable falls back to normal

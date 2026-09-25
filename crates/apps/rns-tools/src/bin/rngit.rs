@@ -360,6 +360,7 @@ mod tests {
     include!("rngit_parts/issue_612_work_storage_failure_tests.rs");
     include!("rngit_parts/issue_612_concurrency_tests.rs");
     include!("rngit_parts/issue_613_tests.rs");
+    include!("rngit_parts/issue_613_pagination_tests.rs");
     include!("rngit_parts/page_git_output_tests.rs");
 
     #[test]

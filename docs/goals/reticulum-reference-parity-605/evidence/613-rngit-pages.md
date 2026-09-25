@@ -29,7 +29,7 @@ Rust kept the page Link active after a failed Resource response.
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
 | NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
-| Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression checks nested file-path encoding; unit regression confirms that only `file_path` receives `quote_plus`, while group/repository/ref remain literal as in frozen `pages.py`; missing repository, invalid ref, missing blob are covered; visual/reference rendering remains incomplete |
+| Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python production-Link regression checks nested file-path encoding; unit regression confirms that only `file_path` receives `quote_plus`, while group/repository/ref remain literal as in frozen `pages.py`; missing repository, invalid ref, missing blob, tree/commit pagination, child links, directory-first sorting, and path-scoped commit history are covered; full visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref; an ordered source-working-directory disappearance after blob-info resolution verifies no-response source-open failure and same-Link recovery |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr and streaming encoder-output capture (32 MiB disk cap), output validation, temporary-directory cleanup, raw fallback | Existing production-Link encoding and exact raw-fallback regressions remain; the deterministic oversized fake-backend case checks prompt termination, reaping of both pipeline children, and removal of partial output. Pinned-Python Link regressions prove raw fallback when the forced backend is unavailable and when media temp-directory creation fails because `TMPDIR` resolves to a regular file. A pinned-Python Link regression also forces recognized-but-unavailable `magick` while an `ffmpeg` sentinel is available, proving no encoder fallthrough; local validation passed at PR commit `e7563fca`, and Verify runs that regression. ImageMagick 7 `magick` now also passes locally through the checksum-pinned AppImage and pinned-Python production-Link fixture; `avconv` and visual parity remain unverified. |
@@ -843,9 +843,13 @@ cargo test -p rns-tools --test rngit_python_interop \
   filesystem-failure paths, and the complete media lifecycle remain open. The
   timeout regression establishes only that both conversion subprocesses are
   terminated and reaped.
-- The Rust page rendering is intentionally a compact service implementation;
-  full Markdown highlighting, pagination, diff rendering, signed work-document
-  presentation, and every reference template detail remain open.
+- The Rust page rendering is intentionally a compact service implementation.
+  Local source-contract regressions now cover 1,000-entry tree pages, 100-entry
+  commit pages, directory-first sorting, child tree/blob links, path retention,
+  and file-scoped commit history. They do not compare complete rendered output
+  against a live Python server. Full Markdown highlighting, diff rendering,
+  signed work-document presentation, visual conformance, and remaining
+  reference-template details remain open.
 - Live encoder-success fixtures cover `ffmpeg`, ImageMagick `convert`,
   GraphicsMagick `gm`, and ImageMagick 7 `magick` via its checksum-pinned
   AppImage; `avconv`, visual-rendering parity, and the full image corpus remain
@@ -1219,3 +1223,31 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --exact --nocapture --test-threads=1
   PASS (1 test; exact pinned source guard and real TCP Reticulum Link to Rust service)
 ```
+
+### Tree and commit pagination
+
+The frozen `pages.py` defines 1,000 tree entries and 100 commits per page,
+sorts directories/submodules before files by lowercase name, links tree entries
+to child tree/blob requests, and passes `var_path` to commit history lookup.
+Rust now mirrors those page sizes/order, emits child navigation links, retains
+the tree path in pagination requests, and filters commit history with a
+pathspec. The local tests exercise first and later pages, a nested path
+containing a space, directory-before-file order, malformed, negative, and
+oversized page values, and a path-scoped history that excludes unrelated
+commits.
+
+```text
+cargo test -p rns-tools --bin rngit
+PASS (77 passed, 4 ignored)
+cargo clippy -p rns-tools --bin rngit --no-deps -- -D warnings
+PASS
+cargo fmt --all -- --check
+PASS
+bash tools/scripts/check-module-size.sh
+PASS
+```
+
+These are deterministic Rust tests checked against the pinned Python source
+contract; they are not a live Python-server differential or visual rendering
+comparison. Markdown highlighting, diff rendering, signed work-document
+presentation, and remaining template details stay open.

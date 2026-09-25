@@ -266,61 +266,6 @@ impl ReticulumGitNode {
         self.page_render("repo", content, Some(&group), Some(&repository))
     }
 
-    fn serve_tree(
-        &mut self,
-        map: &[(rmpv::Value, rmpv::Value)],
-        remote: [u8; 16],
-    ) -> PageResponse {
-        let Some(group) = page_param(map, "g") else {
-            return self.not_found("", "Invalid tree request");
-        };
-        let Some(repository) = page_param(map, "r") else {
-            return self.not_found("", "Invalid tree request");
-        };
-        let reference = page_param(map, "ref").unwrap_or_else(|| "HEAD".to_string());
-        let tree_path = page_param(map, "path")
-            .and_then(|value| percent_decode_plus(&value))
-            .unwrap_or_default();
-        let Some(record) = self.accessible_repository(&remote, &group, &repository) else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "The requested repository was not found",
-            );
-        };
-        let Some(resolved) = Self::resolve_page_ref(&record.path, &reference) else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "The requested reference was not found",
-            );
-        };
-        let spec = if tree_path.is_empty() {
-            resolved.clone()
-        } else if Self::valid_page_path(&tree_path) {
-            format!("{resolved}:{tree_path}")
-        } else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "Invalid tree path",
-            );
-        };
-        let Some(listing) = Self::page_git_text(
-            &record.path,
-            &["ls-tree".into(), "-z".into(), "--name-only".into(), spec],
-            256 * 1024,
-        ) else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "The requested tree was not found",
-            );
-        };
-        let mut content = String::from("> Tree\n\n");
-        for entry in listing.split('\0').filter(|entry| !entry.is_empty()) {
-            let _ = writeln!(content, "- `{entry}`");
-        }
-        self.view_succeeded(Some(&group), Some(&repository), false);
-        self.page_render("tree", content, Some(&group), Some(&repository))
-    }
-
     fn serve_blob(
         &mut self,
         map: &[(rmpv::Value, rmpv::Value)],
@@ -378,41 +323,6 @@ impl ReticulumGitNode {
         }
         self.view_succeeded(Some(&group), Some(&repository), false);
         self.page_render("blob", content, Some(&group), Some(&repository))
-    }
-
-    fn serve_commits(
-        &mut self,
-        map: &[(rmpv::Value, rmpv::Value)],
-        remote: [u8; 16],
-    ) -> PageResponse {
-        let Some((group, repository, reference, _, record)) = self.page_repository(map, &remote) else {
-            return self.not_found("", "The requested repository was not found");
-        };
-        let Some(resolved) = Self::resolve_page_ref(&record.path, &reference) else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "The requested reference was not found",
-            );
-        };
-        let log = Self::page_git_text(
-            &record.path,
-            &[
-                "log".into(),
-                "-n".into(),
-                "100".into(),
-                "--format=%h%x09%s".into(),
-                resolved,
-            ],
-            256 * 1024,
-        )
-        .unwrap_or_default();
-        self.view_succeeded(Some(&group), Some(&repository), false);
-        self.page_render(
-            "commits",
-            format!("> Commits\n\n{log}"),
-            Some(&group),
-            Some(&repository),
-        )
     }
 
     fn serve_commit(

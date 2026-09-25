@@ -192,6 +192,7 @@ include!("compat_node.rs");
 include!("media.rs");
 include!("pages.rs");
 include!("page_git.rs");
+include!("page_git_pagination.rs");
 include!("page_git_work.rs");
 include!("page_media.rs");
 
