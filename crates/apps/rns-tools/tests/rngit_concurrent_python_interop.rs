@@ -496,7 +496,7 @@ fn pinned_python_rngit_work_cli_round_trips_production_service_lifecycle() -> io
             String::from_utf8_lossy(&denied_edit.stdout),
             String::from_utf8_lossy(&denied_edit.stderr)
         );
-        if denied_edit.status.success() || !denied_output.contains("Not allowed") {
+        if denied_edit.status.success() || !denied_output.contains("No access, not author") {
             return Err(io::Error::other(format!(
                 "pinned Python CLI did not report the denied edit: {}\n{denied_output}",
                 denied_edit.status
