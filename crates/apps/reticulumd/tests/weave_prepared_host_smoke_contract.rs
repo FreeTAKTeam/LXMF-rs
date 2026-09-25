@@ -106,6 +106,28 @@ fn weave_fake_pty_smoke_preserves_software_evidence_contract() {
 }
 
 #[test]
+fn ci_runs_weave_fake_pty_smoke_and_uploads_software_evidence() {
+    let root = repo_root();
+    let workflow_path = root.join(".github/workflows/ci.yml");
+    let workflow = fs::read_to_string(&workflow_path).expect("read CI workflow");
+
+    for required in [
+        "linux-weave-runtime:",
+        "Linux configured Weave runtime software smoke",
+        "python3-cryptography",
+        "TIMEOUT_SECS=60 ./tools/scripts/weave-fake-pty-smoke.sh",
+        "actions/upload-artifact@v4",
+        "target/weave-fake-pty-smoke/",
+        "if-no-files-found: error",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "CI workflow should include Weave software evidence token {required:?}"
+        );
+    }
+}
+
+#[test]
 fn nightly_hil_workflow_exposes_weave_prepared_host_job() {
     let root = repo_root();
     let workflow_path = root.join(".github/workflows/hil-nightly.yml");

@@ -128,6 +128,32 @@ jobs:
           if-no-files-found: error
 
 
+  linux-weave-runtime:
+    name: Linux configured Weave runtime software smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Weave fake-peer signing dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-cryptography
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Verify configured Weave runtime, display, status, and remote control
+        run: TIMEOUT_SECS=60 ./tools/scripts/weave-fake-pty-smoke.sh
+      - name: Upload Weave software evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weave-fake-pty-smoke-${{ github.run_id }}
+          path: target/weave-fake-pty-smoke/
+          if-no-files-found: error
+
+
   test-nextest-unit:
     runs-on: ubuntu-latest
     steps:

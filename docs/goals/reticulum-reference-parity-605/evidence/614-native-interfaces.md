@@ -108,6 +108,14 @@ This trace does not open an OS serial device or interact with a Weave switch; it
 is not hardware, mobile, or cross-platform acceptance. The broader #614 family
 and platform matrix remains partial, and #616 remains excluded.
 
+On PR #634 head `785597d8eea37db75c3413bb5844c165291a5c63`, the production
+fake-PTY daemon smoke passed locally and recorded
+`evidence_scope = "software_fake_pty_weave"`. CI now runs this bounded Linux
+trace on pull requests and uploads the report and run logs; the hosted result
+for this workflow change is pending. This makes the existing software Weave
+trace repeatable in the PR gate, but does not add native serial, cross-platform,
+or physical evidence.
+
 On the exact existing PR #634 head `6c6cecd8551fb471a58fb4fa9c123535b12cdccc`,
 the pinned-Python process regression passed with reference revision
 `99de23c040d507e3fefca19e87b182302902725d`. Its JSON report recorded both
