@@ -185,7 +185,7 @@ option family; it is not a callable-surface completion claim.
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
 | `rnodeconf` | Serial RNode information, firmware/bootstrap/update, EEPROM, Wi-Fi/Bluetooth/display/radio management, signing/trust operations | Rust `rnodeconf-rs` exposes daemon-backed management commands and mock-RPC coverage; physical serial/firmware rows are separate | partial / software management evidenced; hardware-unverified |
 | `rnpkg` | Package-manager configuration and package workflow entry point | Rust exposes global/example-config options only, matching the currently shipped no-subcommand surface | partial / configuration-only |
-| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; PTY, controlling terminal, initial dimensions and resize; timeout and mirrored exit status | `f24e0038` adds the native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family. `a32b6d71` adds channel backpressure, bounded queue failure, and large-output coverage. `e57afb99` and `662dcdbe` cover both pinned-Python roles and immediate non-TTY EOF. The listener-side PTY slice now spawns terminal requests with a controlling PTY, applies initial rows/columns/pixel dimensions, forwards `WindowSize` updates, and ties child and I/O tasks to Link cancellation; local PTY child-observation and loopback Rust-client-under-PTY resize tests cover the behavior. All-pipe requests retain pipe-backed stdio. | partial / bounded native, both pinned-Python roles, and end-to-end PTY resize evidenced; broader rnsh matrix remains open |
+| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; PTY, controlling terminal, initial dimensions and resize; timeout and mirrored exit status | `f24e0038` adds the native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family. `a32b6d71` adds channel backpressure, bounded queue failure, and large-output coverage. `e57afb99` and `662dcdbe` cover both pinned-Python roles and immediate non-TTY EOF. The listener-side PTY slice applies initial rows/columns/pixel dimensions, forwards `WindowSize` updates, and ties child and I/O tasks to Link cancellation; local PTY child-observation and loopback Rust-client-under-PTY resize tests cover the behavior. Two production-path mixed-mode process tests cover PTY-stdin/piped-outputs and piped-stdin/shared-PTY-outputs. | partial / bounded native, both pinned-Python roles, PTY resize, and two mixed descriptor combinations evidenced; wider rnsh matrix remains open |
 | `rnx` | Authenticated Reticulum remote execution, listener/initiator, interactive and stream options, identity and timeout controls | Rust `rnx` is a production interop/diagnostic harness with mesh, resource, BLE, TCP, and path scenarios; its scenarios are not a drop-in `rnsh` endpoint | partial / harness workflows evidenced, reference remote shell remains open |
 | `rngit` | Reticulum Git client/server, repository and work operations, bundles, pages/media, permissions, signatures, and network failure/restart behavior | Rust local CLI plus daemon-side service handlers; #611 adds a production Rust `rngit fetch` CLI workflow against the pinned Python service, importing a verified bundle into a local ref and checking the exact binary Git blob; #612/#613 separately record service, work, and page/media seams | partial / split across #611–#613 |
 
@@ -668,9 +668,15 @@ dimensions are checked through the PTY-reported size. No physical testing is
 included.
 
 The implementation uses `portable-pty` 0.8.1 for controlling-terminal spawn
-and cross-platform PTY support. The bounded tests cover the common all-terminal
-mode; mixed per-stream pipe/PTY combinations, the wider rnsh fault/restart
-matrix, and public/multi-hop evidence remain open.
+and cross-platform PTY support. The all-terminal mode covers controlling-terminal
+setup and resize. Separate production-process tests cover PTY stdin with piped
+stdout/stderr, and piped stdin with stdout/stderr sharing a PTY. The latter
+regression exposed command-builder-held slave descriptors and Linux PTY-master
+`EIO` handling; dropping the builder after spawn and treating final PTY `EIO` as
+stream EOF now lets the command exit envelope arrive. These two combinations do
+not establish Python's controlling-terminal, foreground process-group, or
+terminal-mode behavior for mixed descriptors. Other combinations, the wider
+rnsh fault/restart matrix, and public/multi-hop evidence remain open.
 
 Commits `f24e0038` and `a32b6d71` replace the former local-only `rnsh` implementation with a
 bounded native network workflow while preserving local mode when no network
@@ -811,21 +817,34 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
 PASS: 1 passed
 ```
 
-## Mixed rnsh stdin-PTY/stdout-stderr-pipe process behavior
+## Mixed rnsh per-stream pipe/PTY process behavior
 
 The pinned Python initiator at Reticulum
 `99de23c040d507e3fefca19e87b182302902725d` derives stdin, stdout, and stderr
-pipe flags independently from `isatty(0/1/2)`, and its child launcher assigns
-each stream independently. The Rust production-process regression now covers
-the supported combination of PTY stdin with piped stdout and stderr. Its
-remote command verifies `isatty(0/1/2)`, emits distinct stdout/stderr markers,
-and exits 7; the test confirms both local stream routing and the reported exit
-code. The local PTY harness sends canonical Ctrl-D after launch so Tokio's
-blocking stdin reader can terminate, matching the explicit EOF cleanup used by
-the all-PTY process test. This proves descriptor selection, stream routing, and
-exit status for one mixed software combination only. It does not prove Python's
-`setsid`/controlling-terminal, foreground process-group, or terminal-mode setup;
-other mixed combinations and those terminal-control behaviors remain open.
+pipe flags independently from `isatty(0/1/2)`. Its `CallbackSubprocess` creates
+a PTY if any stream is terminal-backed, substitutes a pipe only for each stream
+whose flag is set, and maps each child descriptor independently before exec.
+This source supports mixed modes; it does not require all three descriptors to
+share one mode.
+
+Two separate-process Rust CLI/listener tests exercise the production
+TCP/Link/Channel path. `rnsh_mixed_stdin_pty_and_stdout_stderr_pipes_preserve_streams_and_exit`
+checks PTY stdin with independently routed stdout/stderr pipes and exit 7.
+`rnsh_mixed_stdin_pipe_and_stdout_stderr_pty_preserve_streams_and_exit` checks
+piped stdin delivery with stdout/stderr sharing the PTY and exit 9. Verify runs
+both filters. The reverse combination initially hung after the child exited:
+the command builder retained cloned PTY slave descriptors, preventing EOF;
+after releasing those handles, Linux master `EIO` surfaced as an error. The
+listener now drops the builder immediately after spawn and treats that final
+PTY read error as EOF, allowing buffered output and the exit envelope to drain.
+
+This establishes descriptor selection, stream routing, input delivery, and
+exit status for two mixed software combinations. The local Python harness only
+constructs terminal descriptors; it is not a pinned-Python rnsh peer. The
+frozen-source comparison does not establish Python-equivalent
+`setsid`/controlling-terminal, foreground process-group, or terminal-mode setup
+for mixed descriptors. Other combinations, wider rnsh fault/restart behavior,
+and public/multi-hop evidence remain open.
 
 ## Unresolved requirements
 
@@ -839,9 +858,10 @@ classified as complete:
   channel workflow with both pinned-Python initiator/listener roles, including
   the bounded immediate-EOF trace and a software loopback client-timeout Link
   teardown with a synchronized live-child-before-timeout and post-close reaping
-  check. A software PTY case now proves controlling-terminal setup, initial
-  dimensions, and SIGWINCH resize in the all-terminal mode; other mixed
-  per-stream combinations and the remaining `rnsh` fault/restart matrix,
+  check. Software PTY cases prove controlling-terminal setup, initial
+  dimensions, and SIGWINCH resize in all-terminal mode, plus two mixed
+  per-stream descriptor combinations; other combinations and the remaining
+  `rnsh` fault/restart matrix,
   public/multi-hop behavior, or network workflows to `rnsd` and the
   radio/interactive utilities remain open.
 - Prove the full `rngit` fetch/push/bundle workflows and configured initial-branch

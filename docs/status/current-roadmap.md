@@ -1094,9 +1094,12 @@ direction.
   command with a controlling PTY, applies initial rows/columns/pixel dimensions,
   and applies later `WindowSize` updates. A real loopback client-under-PTY test
   observes the remote child at both initial and SIGWINCH-updated dimensions;
-  existing all-pipe process tests remain green. The remaining rnsh fault/restart
-  matrix, mixed per-stream pipe/PTY combinations, and public/multi-hop evidence
-  remain open; this does not promote the broader `RNS/Utilities/*` row.
+  all-pipe and two complementary mixed per-stream process cases are covered.
+  The mixed-mode EOF regression also ensures command-builder slave descriptors
+  are released and Linux PTY-master EIO is treated as final stream EOF. Mixed
+  controlling-terminal parity, other flag combinations, the remaining rnsh
+  fault/restart matrix, and public/multi-hop evidence remain open; this does not
+  promote the broader `RNS/Utilities/*` row.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through

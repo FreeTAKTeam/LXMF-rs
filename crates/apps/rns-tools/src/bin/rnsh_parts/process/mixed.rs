@@ -6,7 +6,7 @@ use crate::rnsh_parts::pty::window_size;
 use rns_transport::transport::TransportChannel;
 use std::io;
 use std::process::Stdio;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
 
@@ -61,6 +61,9 @@ pub(super) async fn run_mixed_command(
     let mut child = process
         .spawn()
         .map_err(|error| io::Error::other(format!("unable to start remote command: {error}")))?;
+    // Command retains the Stdio handles; release its PTY slave copies so the
+    // master can observe EOF after the child closes its terminal descriptors.
+    drop(process);
     drop(slave);
 
     let stdin_task = if spec.pipe_stdin {
@@ -97,7 +100,7 @@ pub(super) async fn run_mixed_command(
     if !spec.pipe_stdout || !spec.pipe_stderr {
         let pty_stream = if !spec.pipe_stdout { STREAM_STDOUT } else { STREAM_STDERR };
         let reader = tokio::fs::File::from_std(std::fs::File::from(clone_fd(&master)?));
-        output_tasks.push(tokio::spawn(stream_output(channel.clone(), pty_stream, reader)));
+        output_tasks.push(tokio::spawn(stream_pty_output(channel.clone(), pty_stream, reader)));
     }
 
     let (status, cancelled) = loop {
@@ -137,6 +140,26 @@ pub(super) async fn run_mixed_command(
     }
     let return_code = status.code().map(i64::from).unwrap_or(-1);
     send_typed_with_retry(&channel, &CommandExitedMessage { return_code }).await
+}
+
+async fn stream_pty_output<R: AsyncRead + Unpin>(
+    channel: TransportChannel,
+    stream_id: u16,
+    mut input: R,
+) -> io::Result<()> {
+    let mut writer =
+        super::RnshChannelWriter::new(stream_id, channel).map_err(super::channel_error)?;
+    let mut buffer = [0u8; 16 * 1024];
+    loop {
+        match input.read(&mut buffer).await {
+            Ok(0) => break,
+            Ok(read) => super::write_all_with_retry(&mut writer, &buffer[..read]).await?,
+            // Linux PTY masters report EIO after the final slave descriptor closes.
+            Err(error) if error.raw_os_error() == Some(5) => break,
+            Err(error) => return Err(error),
+        }
+    }
+    writer.close().await.map_err(super::channel_error)
 }
 
 fn clone_fd(fd: &impl std::os::fd::AsFd) -> io::Result<std::os::fd::OwnedFd> {

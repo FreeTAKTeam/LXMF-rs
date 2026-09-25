@@ -187,6 +187,15 @@ jobs:
           rncp_python_fetch_client_save_error_is_reported_but_never_resolved
           -- --ignored --exact --nocapture
 
+      - name: Verify rnsh mixed per-stream PTY and pipe modes
+        run: |
+          cargo test -p rns-tools --test rnsh_process \
+            rnsh_mixed_stdin_pty_and_stdout_stderr_pipes_preserve_streams_and_exit \
+            -- --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnsh_process \
+            rnsh_mixed_stdin_pipe_and_stdout_stderr_pty_preserve_streams_and_exit \
+            -- --exact --nocapture --test-threads=1
+
       - name: Verify rnpath, rnprobe, rncp and rnsd against pinned Python
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
