@@ -401,7 +401,13 @@ completion of #612. A follow-up work-storage regression rejects malformed
 MessagePack roots and trailing bytes; over a production Reticulum Link, the
 pinned Python `rngit work view` command receives the reference-compatible
 `REMOTE_FAIL` response `Error loading document`. Other malformed-document
-shapes and operations remain unverified.
+shapes and operations remain unverified. A separate local follow-up now tests
+Python-shaped missing/malformed metadata defaults and errors (including a
+missing `edited` timestamp default), malformed top-level request error bodies
+without filesystem changes, corrupt-root work
+completion failure handling, and case-sensitive special permission aliases.
+These additional regressions are unit-level only; their hosted result and
+mixed-peer behavior remain pending, and #612 remains partial.
 
 Commits `3dcd5259`, `869b8c84`, `02b75605`, and `f9c5b81e` also add a native Rust-client
 request adapter and a production compatibility bridge. Its pinned-Python trace

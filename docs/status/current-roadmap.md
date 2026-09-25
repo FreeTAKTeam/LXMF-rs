@@ -322,13 +322,212 @@ concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted
 result is pending on the implementing PR. Local tests now also verify that a
 failed configured-permission refresh, resolver execution, or atomic sidecar
-replacement leaves the cached policy unchanged. Storage regressions also reject
+replacement leaves the cached policy unchanged. A missing work operation now
+returns `Invalid request` before repository read authorization, matching the
+pinned Python handler; a denied-read regression verifies the ordering and no
+state mutation. Storage regressions also reject
 malformed MessagePack roots and trailing bytes; an exact-reference Python CLI
 request over a production Link observes `Remote error: Error loading document`
 for a corrupt persisted root. The process-restart trace now also writes a
 Python-shaped numbered comment before shutdown and verifies its ID/content from
 the pinned Python view response after restart. Broader disk-fault, restart, and
 non-work CLI workflows remain open.
+
+A focused pinned-Python permission regression now compares configured group
+`read` access merged with a group `.allowed` administrator grant against the
+Rust group loader. Both configured and sidecar grants remain effective, so this
+slice required no code change; remaining permission combinations stay open.
+
+A production `gperms` refresh differential now also updates the group sidecar
+through Rust's production handler and frozen Python `handle_perms`, then checks
+that configured read access and sidecar administrator inheritance both remain
+effective immediately after the update. This covers one update transition;
+broader group/repository/document permission combinations remain open.
+
+The pinned-Python #612 delete-handler differential confirms that `scope` is
+validated but ignored for document selection: deletion searches active,
+completed, then proposed. Rust now matches that behavior for delete only. The
+regression covers an active item requested as completed, both author success
+and non-author denial; remaining work-operation and storage cases stay open.
+
+The pinned-Python #612 completion differential also covers MessagePack float
+document IDs: `complete` with `doc_id=7.9` is coerced by Python to document `7`.
+Rust now applies the same shared ID coercion and matches the successful response
+and directory transition. This is one request-shape edge only; the broad work
+operation matrix and #612 acceptance remain open.
+
+The pinned-Python #612 view differential now also verifies malformed document
+ID handling for an authorized request: a nonnumeric string returns the exact
+`INVALID_REQ / Invalid request` response in Rust and Python, while finite float
+IDs retain Python integer-coercion behavior. Other malformed types,
+authorization-precedence cases, and the broad work-operation matrix remain
+open.
+
+A focused #612 delete regression also matches Python's missing-permission-sidecar
+failure: `_work_delete` unconditionally unlinks the sidecar, and a missing file
+returns `REMOTE_FAIL` / `Remote error` without deleting the work directory.
+Rust's production request handler now preserves that ordering and generic
+error response. The local production-handler regression and frozen-source
+comparison cover this edge; the broad work-operation matrix remains open.
+
+A focused pinned-Python production-handler differential now confirms the same
+fixed active → completed → proposed lookup for #612 view, edit, and comment
+when an active-only document is requested as completed. The edit uses a valid
+identity signature; statuses, view/comment payloads, status-only edit success,
+and the active-directory read/write locations match Python. Rust continues to
+validate the allowed scope strings, and other operations retain their prior
+selection rules. This closes only that scope-selection seam; broad #612
+acceptance remains open.
+
+For #612 acceptance row 3, the pinned RNS 1.5.4 server dispatches each Link
+request on its own thread, while rngit's work ID selection is scan-then-use and
+document writes use a fixed `<path>.tmp` followed by `os.rename`, without a
+work-storage lock. This does not define atomic concurrent updates. The Rust
+server serializes requests within one process and reserves create directories;
+its existing concurrent-create tests cover that bounded guarantee. Multiple
+processes sharing a work root remain unsupported/undefined in both
+implementations. See the row-level evidence in
+[`reticulum-parity-matrix.md`](reticulum-parity-matrix.md) and the detailed
+source analysis in `docs/goals/reticulum-reference-parity-605/evidence/612-rngit.md`.
+
+A separate local #612 follow-up now covers Python-shaped work metadata
+defaults/errors (including the missing `edited` timestamp default), malformed
+top-level request responses without filesystem changes, corrupt-root
+completion failure, and special permission-alias casing. These are unit-level
+additions only; hosted checks and mixed-peer
+coverage for these specific cases remain pending, so #612 stays partial.
+
+A focused #612 production-handler differential also covers a `view` request
+without `doc_id`: pinned Python and Rust both return `INVALID_REQ` with
+`No document ID specified` and leave the work root absent. Rust now matches
+this operation-specific request error; the remaining work-operation matrix
+and hosted evidence are still open.
+
+A pinned-Python #612 production-handler differential now covers missing
+signatures for both `create` and `propose` when title/content are also empty.
+Python returns `INVALID_REQ / No signature provided` first; Rust now preserves
+that validation order, and neither handler creates work storage. This is one
+error-precedence seam only; other create/propose validation and the broad
+operation/permission matrix remain open.
+
+A focused pinned-Python `view` differential now verifies document-ID float
+coercion: Python's `int()` behavior maps `7.9` to document `7` and `-0.1` to
+document `0`, and Rust returns the same status and exact MessagePack response
+body for both requests. This evidence covers those two values only; non-finite
+and out-of-range floats, other fractional/negative boundaries, and other
+numeric representations remain unverified. The broader #612 operation,
+permission, storage, and mixed-peer acceptance remains partial.
+
+A focused #612 `complete` production-handler differential now compares pinned
+Python and Rust for denied write authorization, a missing document ID, and a
+malformed document ID. Exact status/body and active/completed directory state
+match in all three cases. This adds bounded denial and request-shape evidence;
+it does not complete the broader operation or permission matrix.
+
+A separate pinned-Python `complete` differential now covers the authorized
+success path: both production handlers return the exact same status/body and
+move the author-owned work item from `active/7` to `completed/7`. This adds one
+successful state transition; the complete #612 operation and permission
+matrix remains open.
+
+A separate pinned-RNS 1.5.4 `activate` differential covers an authorized
+proposed work item: both production handlers return `RES_OK` with the exact
+MessagePack body `{id: 9, scope: "active"}` and move `proposed/9` to `active/9`.
+Permission resolvers are stubbed to isolate the state transition. This adds
+one activation success case; the full #612 operation and permission matrix
+remains open.
+
+A new pinned-Python production-handler differential covers `list` with an
+unknown scope: Rust now returns `RES_OK` and the same empty `active`,
+`completed`, and `proposed` arrays as RNS 1.5.4. A separate local regression
+exercises document-admin completion through the Rust production handler after
+normal repository work rights authorize creation. These are two bounded
+request/authorization cases only; full operation and permission matrices
+remain open.
+
+A pinned-Python production-handler differential found and fixes one #612
+permission case: repository administrators can view a document with an
+explicit `read:none` document sidecar when repository-level read access is
+present. Rust now applies the same administrator fallback to `view`; this is
+one authorization case only, and the wider permission/work-operation matrix
+and hosted evidence remain open.
+
+A follow-up #612 pinned-Python matrix compares administrator `comment`, `edit`,
+`delete`, and `perms` requests against documents with `read:none`, while
+granting each operation's own required rights. It found one mismatch: comment
+authorization omitted the repository-admin fallback in Rust. That fallback is
+now applied without relaxing the required interaction permission. The edit,
+delete, and permission-get cases already match. For permission-get, repository
+admin is also the operation-specific permission, so it cannot be independently
+separated from the shared fallback. This four-case slice does not complete the
+broader permission or work-operation acceptance.
+
+A separate pinned-RNS 1.5.4 `handle_work` differential found that an item's
+explicit document `read:none` gate must precede its `edit` write/interact
+rights: Python returns `NOT_FOUND / Document not found` and leaves the item
+unchanged, even when its author has document write and interact grants. Rust
+previously edited it. The Rust production work dispatcher now applies the
+shared document-read-or-repository-admin gate before those operation handlers;
+the focused differential matches status, body, and persisted content. This is
+one authorization-order case, not completion of #612's broader operation,
+permission, network, and fault matrix.
+
+A #612 permissions differential now verifies Python's layered repository and
+document authorization: repository admin plus repository write/interact are
+required before the document-level author/admin gate. An explicit document
+`admin:none` denies a non-author repository administrator for both `perms/get`
+and `perms/set`; an author with repository manage access and an explicit
+document admin remain allowed. Rust now applies that document gate before
+reading or changing the sidecar, with denied SET preserving the existing
+content. Eight focused pinned-Python handler scenarios pass; the broader
+permission, request-ordering, and #612 operation matrix remain open.
+
+A focused #612 production-handler regression now checks the blocked-identity
+gate with a broad group `read:all` grant. The Rust `list` handler returns the
+same exact `Not found` response as pinned Python; this closes only that handler
+coverage gap and does not complete the blocked-identity or operation matrix.
+
+A pinned-Python #612 edit differential now covers an identified non-author
+requester with repository and document read/write/interact access. Rust and
+Python both deny the edit without changing the document, and Rust now returns
+Python's exact `No access, not author` response body. This is one denial branch;
+other edit conditions and the broader #612 operation/permission matrix remain
+open. Verify coverage was added for the ignored differential.
+
+A pinned-Python #612 differential also records an ID-zero authorization
+divergence: Python's truthiness-based `doc_id` gate returns an item despite an
+explicit document `read:none` restriction, while Rust returns `NOT_FOUND`.
+Rust deliberately retains the stricter fail-closed behavior; this remains a
+documented security divergence, and the broader work/permission matrix stays
+open.
+
+The new bidirectional MessagePack work-record regression verifies exact binary
+author/identity/signature values and integer document IDs/timestamps across
+Python↔Rust storage and production Link response boundaries. It also corrected
+Rust's newly generated timestamps to integer seconds, matching frozen Python;
+legacy float-valued records remain readable and no data migration is applied.
+This closes only that typed-value compatibility seam; #612 and #605 remain
+partial.
+
+A focused #612 malformed-comment differential now confirms that an authorized
+array-valued `content` raises in pinned Python's `_work_comment` and returns
+`REMOTE_FAIL` / `Remote error`. Rust maps this malformed shape to the same
+response; both production handlers leave the document root unchanged and
+create no comment file. Only this request shape is covered, so the broader
+#612 operation/error matrix remains open.
+
+A separate pinned-Python #612 differential found that `comment` accepts
+MessagePack binary `content`, trims Python byte whitespace, and persists the
+remaining bytes. Rust now preserves that binary value instead of converting it
+to an empty string. The exact production-handler response and persisted bytes
+match the frozen reference; other comment shapes and the broader #612 matrix
+remain open.
+
+A third focused #612 comment differential omits the `content` field entirely.
+The Rust and pinned-Python production handlers both return `INVALID_REQ / Content
+is required` without mutating the work root or creating a comment file, and the
+Verify workflow now runs this request shape. This does not complete the broader
+#612 operation/error matrix.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,

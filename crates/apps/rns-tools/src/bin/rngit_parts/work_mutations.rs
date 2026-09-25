@@ -1,10 +1,10 @@
 impl ReticulumGitNode {
     fn work_delete(&self, root: &Path, request: &[(rmpv::Value, rmpv::Value)]) -> Vec<u8> {
-        let Some((_, id, directory, _)) = self.work_request_document(root, request) else {
-            return response(Self::RES_NOT_FOUND, "Document not found", None);
+        let Some((_, id, directory, _)) = self.work_request_document_for_delete(root, request) else {
+            return response(Self::RES_REMOTE_FAIL, "Remote error", None);
         };
-        if let Err(error) = Self::work_remove_permissions(root, id) {
-            return response(Self::RES_REMOTE_FAIL, error, None);
+        if Self::work_remove_permissions(root, id).is_err() {
+            return response(Self::RES_REMOTE_FAIL, "Remote error", None);
         }
         match fs::remove_dir_all(directory) {
             Ok(()) => vec![Self::RES_OK],
@@ -18,17 +18,34 @@ impl ReticulumGitNode {
         request: &[(rmpv::Value, rmpv::Value)],
         remote: [u8; 16],
     ) -> Vec<u8> {
-        let Some((_, _, directory, _)) = self.work_request_document(root, request) else {
+        let Some((_, _, directory, _)) = self.work_request_document_ignoring_scope(root, request) else {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
         };
-        let content = map_string(request, &rmpv::Value::String("content".into()))
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        if content.is_empty() {
+        if !directory.join("root").is_file() {
+            return response(Self::RES_NOT_FOUND, "Document not found", None);
+        }
+        let content_value = map_value(request, &rmpv::Value::String("content".into()));
+        if content_value.is_some_and(|value| value.as_str().is_none() && !value.is_bin()) {
+            return response(Self::RES_REMOTE_FAIL, "Remote error", None);
+        }
+        let content = match content_value {
+            Some(rmpv::Value::Binary(content)) => {
+                rmpv::Value::Binary(content.trim_ascii().to_vec())
+            }
+            Some(rmpv::Value::String(content)) => {
+                rmpv::Value::from(content.as_str().unwrap_or_default().trim())
+            }
+            _ => rmpv::Value::String(String::new().into()),
+        };
+        let content_len = match &content {
+            rmpv::Value::Binary(content) => content.len(),
+            rmpv::Value::String(content) => content.as_str().map(str::len).unwrap_or(0),
+            _ => 0,
+        };
+        if content_len == 0 {
             return response(Self::RES_INVALID_REQ, "Content is required", None);
         }
-        if content.len() > Self::WORK_DOC_LIMIT {
+        if content_len > Self::WORK_DOC_LIMIT {
             return response(Self::RES_INVALID_REQ, "Content limit exceeded", None);
         }
         let comment_id = self.work_get_next_comment_id(&directory);
@@ -36,7 +53,7 @@ impl ReticulumGitNode {
         let comment = rmpv::Value::Map(vec![
             (
                 rmpv::Value::String("content".into()),
-                rmpv::Value::String(content.into()),
+                content,
             ),
             (
                 rmpv::Value::String("meta".into()),
@@ -86,13 +103,10 @@ impl ReticulumGitNode {
         {
             return response(Self::RES_DISALLOWED, "Not allowed", None);
         }
-        let Some(value) = map_value(request, &rmpv::Value::String("doc_id".into())) else {
+        if map_value(request, &rmpv::Value::String("doc_id".into())).is_none() {
             return response(Self::RES_INVALID_REQ, "No document ID specified", None);
-        };
-        let Some(id) = value
-            .as_u64()
-            .or_else(|| value.as_str()?.parse::<u64>().ok())
-        else {
+        }
+        let Some(id) = Self::work_request_document_id(request) else {
             return response(Self::RES_INVALID_REQ, "Invalid document ID", None);
         };
         let source_scopes: &[&str] = if activate {
@@ -100,12 +114,15 @@ impl ReticulumGitNode {
         } else {
             &["active"]
         };
-        let Some((source, document)) = source_scopes.iter().find_map(|scope| {
-            let directory = root.join(scope).join(id.to_string());
-            let document = self.work_load_document(&directory.join("root"))?;
-            Some((directory, document))
-        }) else {
+        let Some(source) = source_scopes
+            .iter()
+            .map(|scope| root.join(scope).join(id.to_string()))
+            .find(|directory| directory.is_dir())
+        else {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
+        };
+        let Some(document) = self.work_load_document(&source.join("root")) else {
+            return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
         };
         let is_author = Self::work_author_matches(&document, &remote);
         let admin = self.resolve_doc_permission(
@@ -145,18 +162,35 @@ impl ReticulumGitNode {
         &self,
         root: &Path,
         request: &[(rmpv::Value, rmpv::Value)],
+        remote: [u8; 16],
+        group: &str,
+        repository: &str,
     ) -> Vec<u8> {
         let Some(id) = map_value(request, &rmpv::Value::String("doc_id".into()))
             .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()))
         else {
             return response(Self::RES_INVALID_REQ, "No document ID specified", None);
         };
-        let Some((_, _, _, _)) = self.work_request_document(root, request) else {
-            return response(Self::RES_NOT_FOUND, "Document not found", None);
-        };
         let Some(step) = map_string(request, &rmpv::Value::String("step".into())) else {
             return response(Self::RES_INVALID_REQ, "Invalid step", None);
         };
+        if !matches!(step.as_str(), "get" | "set") {
+            return response(Self::RES_INVALID_REQ, "Invalid step", None);
+        }
+        let Some((_, _, _, document)) = self.work_request_document(root, request) else {
+            return response(Self::RES_NOT_FOUND, "Document not found", None);
+        };
+        if !Self::work_author_matches(&document, &remote)
+            && !self.resolve_doc_permission(
+                &remote,
+                group,
+                repository,
+                id,
+                Self::PERM_ADMIN,
+            )
+        {
+            return response(Self::RES_DISALLOWED, "Not allowed", None);
+        }
         let path = Self::work_permission_path(root, id);
         match step.as_str() {
             "get" => {
@@ -225,3 +259,6 @@ fn set_map_value(map: &mut Vec<(rmpv::Value, rmpv::Value)>, key: &str, value: rm
         map.push((rmpv::Value::String(key.into()), value));
     }
 }
+
+#[cfg(test)]
+include!("issue_612_work_mutation_compat_tests.rs");

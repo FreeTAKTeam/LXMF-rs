@@ -373,10 +373,26 @@ mod tests {
 
     include!("rngit_parts/issue_612_tests.rs");
     include!("rngit_parts/issue_612_executable_python_differential_tests.rs");
+    include!("rngit_parts/issue_612_delete_missing_sidecar_differential_tests.rs");
+    include!("rngit_parts/issue_612_comment_malformed_content_differential_tests.rs");
+    include!("rngit_parts/issue_612_comment_binary_content_differential_tests.rs");
+    include!("rngit_parts/issue_612_comment_missing_content_differential_tests.rs");
+    include!("rngit_parts/issue_612_blocked_admin_permission_differential_tests.rs");
+    include!("rngit_parts/issue_612_scope_selection_differential_tests.rs");
+    include!("rngit_parts/issue_612_list_unknown_scope_differential_tests.rs");
     include!("rngit_parts/issue_612_companion_collision_tests.rs");
     include!("rngit_parts/issue_612_permission_failure_tests.rs");
+    include!("rngit_parts/issue_612_document_admin_differential_tests.rs");
+    include!("rngit_parts/issue_612_document_admin_operations_differential_tests.rs");
+    include!("rngit_parts/issue_612_permissions_get_set_differential_tests.rs");
+    include!("rngit_parts/issue_612_complete_authorization_differential_tests.rs");
+    include!("rngit_parts/issue_612_complete_success_differential_tests.rs");
+    include!("rngit_parts/issue_612_activate_success_differential_tests.rs");
+    include!("rngit_parts/issue_612_blocked_work_handler_tests.rs");
     include!("rngit_parts/issue_612_work_storage_failure_tests.rs");
+    include!("rngit_parts/issue_612_request_validation_tests.rs");
     include!("rngit_parts/issue_612_concurrency_tests.rs");
+    include!("rngit_parts/issue_612_wire_schema_tests.rs");
     include!("rngit_parts/issue_613_tests.rs");
 
     #[test]

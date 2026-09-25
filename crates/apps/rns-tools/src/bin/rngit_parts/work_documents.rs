@@ -7,12 +7,19 @@ impl ReticulumGitNode {
         group: &str,
         repository: &str,
     ) -> Vec<u8> {
-        let requested_scope = map_string(request, &rmpv::Value::String("scope".into()));
-        let scopes: Vec<&str> = match requested_scope.as_deref() {
-            None | Some("active") => vec!["active"],
+        let requested_scope = map_value(request, &rmpv::Value::String("scope".into()));
+        let scopes: Vec<&str> = match requested_scope.and_then(rmpv::Value::as_str) {
+            None => {
+                if map_value(request, &rmpv::Value::String("scope".into())).is_none() {
+                    vec!["active"]
+                } else {
+                    Vec::new()
+                }
+            }
+            Some("active") => vec!["active"],
             Some("all") => vec!["active", "completed", "proposed"],
             Some(scope @ ("completed" | "proposed")) => vec![scope],
-            Some(_) => return response(Self::RES_INVALID_REQ, "Invalid scope", None),
+            Some(_) => Vec::new(),
         };
         let mut result = BTreeMap::from([
             ("active", Vec::new()),
@@ -47,10 +54,15 @@ impl ReticulumGitNode {
                 let Some(document) = self.work_load_document(&document_dir.join("root")) else {
                     continue;
                 };
+                if document.as_map().is_none_or(|map| map.is_empty())
+                    || !Self::work_metadata_shape_is_valid(&document)
+                {
+                    continue;
+                }
                 let created = Self::work_meta_value(&document, "created")
                     .unwrap_or_else(|| rmpv::Value::from(0_u64));
                 let edited = Self::work_meta_value(&document, "edited")
-                    .unwrap_or_else(|| created.clone());
+                    .unwrap_or_else(|| rmpv::Value::from(0_u64));
                 let comments = fs::read_dir(&document_dir)
                     .into_iter()
                     .flatten()
@@ -66,7 +78,11 @@ impl ReticulumGitNode {
                     (rmpv::Value::String("id".into()), rmpv::Value::from(id)),
                     (
                         rmpv::Value::String("title".into()),
-                        rmpv::Value::String(Self::work_meta_string(&document, "title").into()),
+                        Self::work_meta_value_or_default(
+                            &document,
+                            "title",
+                            rmpv::Value::String("Untitled".into()),
+                        ),
                     ),
                     (rmpv::Value::String("created".into()), created),
                     (rmpv::Value::String("edited".into()), edited),
@@ -76,7 +92,11 @@ impl ReticulumGitNode {
                     ),
                     (
                         rmpv::Value::String("format".into()),
-                        rmpv::Value::String(Self::work_meta_string(&document, "format").into()),
+                        Self::work_meta_value_or_default(
+                            &document,
+                            "format",
+                            rmpv::Value::String("markdown".into()),
+                        ),
                     ),
                     (
                         rmpv::Value::String("comments".into()),
@@ -128,6 +148,12 @@ impl ReticulumGitNode {
         let Some(document) = self.work_load_document(&root_path) else {
             return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
         };
+        if document.as_map().is_none_or(|map| map.is_empty()) {
+            return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
+        }
+        if !Self::work_metadata_shape_is_valid(&document) {
+            return response(Self::RES_REMOTE_FAIL, "Remote error", None);
+        }
         let payload = self.work_view_payload(&scope, id, &directory, &document);
         response(Self::RES_OK, "", Some(&payload))
     }
@@ -149,14 +175,14 @@ impl ReticulumGitNode {
             .trim()
             .to_string();
         let format = Self::work_format(request);
+        if let Err(error) = Self::validate_work_signature(request, peer_identity) {
+            return response(Self::RES_INVALID_REQ, error, None);
+        }
         if title.is_empty() || content.is_empty() {
             return response(Self::RES_INVALID_REQ, "Title and content are required", None);
         }
         if title.len() + content.len() + format.len() > Self::WORK_DOC_LIMIT {
             return response(Self::RES_INVALID_REQ, "Content limit exceeded", None);
-        }
-        if let Err(error) = Self::validate_work_signature(request, peer_identity) {
-            return response(Self::RES_INVALID_REQ, error, None);
         }
         let scope = if proposed { "proposed" } else { "active" };
         let scope_root = root.join(scope);
@@ -255,7 +281,8 @@ impl ReticulumGitNode {
         request: &[(rmpv::Value, rmpv::Value)],
         peer_identity: Option<Identity>,
     ) -> Vec<u8> {
-        let Some((scope, id, directory, mut document)) = self.work_request_document(root, request)
+        let Some((_, _, directory, mut document)) =
+            self.work_request_document_ignoring_scope(root, request)
         else {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
         };
@@ -300,17 +327,7 @@ impl ReticulumGitNode {
             }
         }
         match self.work_save_document(&directory.join("root"), &document) {
-            Ok(()) => response(
-                Self::RES_OK,
-                "",
-                Some(&rmpv::Value::Map(vec![
-                    (rmpv::Value::String("id".into()), rmpv::Value::from(id)),
-                    (
-                        rmpv::Value::String("scope".into()),
-                        rmpv::Value::String(scope.into()),
-                    ),
-                ])),
-            ),
+            Ok(()) => vec![Self::RES_OK],
             Err(error) => response(Self::RES_REMOTE_FAIL, error, None),
         }
     }

@@ -16,9 +16,7 @@ impl ReticulumGitNode {
         let sidecar = permission_sidecar(path).map_err(|error| error.to_string())?;
         let metadata = match fs::metadata(&sidecar) {
             Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(String::new())
-            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
             Err(error) => return Err(error.to_string()),
         };
         if is_executable_file(&metadata) {
@@ -32,10 +30,14 @@ impl ReticulumGitNode {
             Ok(content) => content,
             Err(error) => return response(Self::RES_REMOTE_FAIL, error, None),
         };
-        response(Self::RES_OK, "", Some(&rmpv::Value::Map(vec![(
-            rmpv::Value::String("content".into()),
-            rmpv::Value::String(content.into()),
-        )])))
+        response(
+            Self::RES_OK,
+            "",
+            Some(&rmpv::Value::Map(vec![(
+                rmpv::Value::String("content".into()),
+                rmpv::Value::String(content.into()),
+            )])),
+        )
     }
 
     pub fn handle_permission_request(
@@ -43,7 +45,8 @@ impl ReticulumGitNode {
         request: &[(rmpv::Value, rmpv::Value)],
         remote: [u8; 16],
     ) -> Vec<u8> {
-        let operation = map_string(request, &rmpv::Value::String("operation".into())).unwrap_or_default();
+        let operation =
+            map_string(request, &rmpv::Value::String("operation".into())).unwrap_or_default();
         let step = map_string(request, &rmpv::Value::String("step".into())).unwrap_or_default();
         match operation.as_str() {
             "gperms" => {
@@ -67,13 +70,20 @@ impl ReticulumGitNode {
                 let Some(repository_path) = map_string(request, &repository_key()) else {
                     return response(Self::RES_INVALID_REQ, "No repository specified", None);
                 };
-                let Some((group, repository)) = self.parse_request_repository_path(&repository_path) else {
+                let Some((group, repository)) =
+                    self.parse_request_repository_path(&repository_path)
+                else {
                     return response(Self::RES_INVALID_REQ, "Invalid repository path", None);
                 };
-                let Some(state) = self.groups.get(&group).and_then(|group| group.repositories.get(&repository)) else {
+                let Some(state) =
+                    self.groups.get(&group).and_then(|group| group.repositories.get(&repository))
+                else {
                     return response(Self::RES_NOT_FOUND, "Not found", None);
                 };
                 if !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN) {
+                    if !self.resolve_permission(&remote, &group, &repository, Self::PERM_READ) {
+                        return response(Self::RES_NOT_FOUND, "Not found", None);
+                    }
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
                 let allowed_path = state.path.clone();
@@ -92,7 +102,8 @@ impl ReticulumGitNode {
         path: &Path,
         request: &[(rmpv::Value, rmpv::Value)],
     ) -> Vec<u8> {
-        let content = map_string(request, &rmpv::Value::String("content".into())).unwrap_or_default();
+        let content =
+            map_string(request, &rmpv::Value::String("content".into())).unwrap_or_default();
         if let Err(error) = self.validate_allowed_content(&content) {
             return response(Self::RES_INVALID_REQ, error, None);
         }
@@ -150,3 +161,6 @@ impl ReticulumGitNode {
         vec![Self::RES_OK]
     }
 }
+
+#[cfg(test)]
+include!("issue_612_permission_service_compat_tests.rs");
