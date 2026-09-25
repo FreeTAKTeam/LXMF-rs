@@ -40,8 +40,9 @@ fn pipe_runtime_status_handle_records_respawn_errors() {
 
 #[cfg(target_os = "linux")]
 #[tokio::test]
-async fn pipe_child_exit_respawns_and_interface_cancellation_reaps_child() {
-    use crate::iface::{IfaceRole, InterfaceManager};
+async fn pipe_child_exit_respawns_packet_io_and_interface_cancellation_reaps_child() {
+    use crate::iface::{IfaceRole, InterfaceManager, TxMessage, TxMessageType};
+    use crate::packet::{Packet, PacketDataBuffer};
     use std::fs;
     use std::time::Instant;
 
@@ -66,7 +67,9 @@ async fn pipe_child_exit_respawns_and_interface_cancellation_reaps_child() {
     let status = adapter.runtime_status_handle();
     let mut manager = InterfaceManager::new(8);
     let context = manager.new_context_with_role(adapter, IfaceRole::Unicast);
+    let iface_address = context.channel.address;
     let stop = context.channel.stop.clone();
+    let receiver = manager.receiver();
     let worker = tokio::spawn(PipeInterface::spawn(context));
 
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -80,6 +83,21 @@ async fn pipe_child_exit_respawns_and_interface_cancellation_reaps_child() {
         assert!(Instant::now() < deadline, "PipeInterface did not respawn: {snapshot}");
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
+
+    let packet = Packet {
+        data: PacketDataBuffer::new_from_slice(b"pipe-respawn-packet-roundtrip"),
+        ..Packet::default()
+    };
+    manager
+        .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() })
+        .await;
+    let received = tokio::time::timeout(Duration::from_secs(2), async {
+        receiver.lock().await.recv().await.expect("Pipe receive channel")
+    })
+    .await
+    .expect("restarted Pipe child packet echo deadline");
+    assert_eq!(received.packet, packet);
+    assert_eq!(received.address, iface_address);
 
     stop.cancel();
     tokio::time::timeout(Duration::from_secs(2), worker)

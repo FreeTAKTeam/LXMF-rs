@@ -20,12 +20,28 @@ temporary script and marker reside in shared memory.
 
 ```text
 cargo test -p reticulum-rs-transport \
-  pipe_child_exit_respawns_and_interface_cancellation_reaps_child \
+  pipe_child_exit_respawns_packet_io_and_interface_cancellation_reaps_child \
   --lib -- --nocapture                                           PASS (1 test)
 ```
 
 This proves only the Linux software child-exit/restart and cancellation/reap
 path.
+
+The same production-worker regression also verifies data-plane recovery after
+the respawn: once the replacement `cat` child is reported running, the test
+sends a Reticulum packet through `InterfaceManager`, observes the HDLC-echoed
+packet on the manager receive channel, and checks that it is attributed to the
+same Pipe interface. This matches the frozen Python
+`PipeInterface.readLoop()` → `reconnect_pipe()` → `configure_pipe()` cycle at
+`99de23c040d507e3fefca19e87b182302902725d`. It adds software-path evidence
+only; it does not establish cross-platform subprocess behavior or independent
+remote-peer interoperability.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  pipe_child_exit_respawns_packet_io_and_interface_cancellation_reaps_child \
+  -- --nocapture PASS (1 test; Linux subprocess only)
+```
 
 The regression `pipe_child_is_terminated_when_worker_task_is_aborted` covers
 the abnormal shutdown path exposed by the hosted smoke: it starts a child that

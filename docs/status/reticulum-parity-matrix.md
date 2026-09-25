@@ -344,6 +344,9 @@ placeholders:
   status reporting through daemon/RPC `_runtime.pipe.status`. A software
   fake-subprocess smoke now proves strict daemon startup and `rnstatus-rs`
   JSON/human reporting for a running `cat` subprocess without external devices.
+  The Linux production-worker regression additionally verifies a valid packet
+  roundtrip through the replacement child after respawn; cross-platform
+  subprocess and independent remote-peer behavior remain unverified.
 - UDP unicast and multicast with peer routing, multicast proof fallback,
   Python-style `device` broadcast-address defaults via host interface lookup,
   IPv4 broadcast socket sends, and Python `UDPInterface` alias semantics where
