@@ -300,6 +300,7 @@ pub struct TcpServer {
     fast_flap_policy: FastFlapPolicy,
     fast_flap_tracker: FastFlapTracker,
     runtime_status: Arc<std::sync::Mutex<TcpListenerRuntimeStatus>>,
+    startup_result: Option<tokio::sync::oneshot::Sender<Result<(), String>>>,
 }
 
 impl TcpServer {
@@ -328,7 +329,17 @@ impl TcpServer {
             prefer_ipv6: false,
             fast_flap_policy,
             fast_flap_tracker,
+            startup_result: None,
         }
+    }
+
+    /// Request the result of the listener's first bind attempt.
+    pub fn with_startup_result(
+        mut self,
+    ) -> (Self, tokio::sync::oneshot::Receiver<Result<(), String>>) {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.startup_result = Some(sender);
+        (self, receiver)
     }
 
     #[must_use]
@@ -467,6 +478,7 @@ impl TcpServer {
         };
 
         let iface_manager = { context.inner.lock().unwrap().iface_manager.clone() };
+        let mut startup_result = context.inner.lock().unwrap().startup_result.take();
 
         let (_, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
@@ -477,7 +489,12 @@ impl TcpServer {
             }
 
             runtime_status.lock().expect("tcp server runtime status mutex poisoned").mark_binding();
-            let listener = bind_tcp_listener(addr.clone(), prefer_ipv6).await.map_err(|err| {
+            let listener = bind_tcp_listener(addr.clone(), prefer_ipv6).await;
+            if let Some(sender) = startup_result.take() {
+                let result = listener.as_ref().map(|_| ()).map_err(ToString::to_string);
+                let _ = sender.send(result);
+            }
+            let listener = listener.map_err(|err| {
                 runtime_status
                     .lock()
                     .expect("tcp server runtime status mutex poisoned")
@@ -568,9 +585,19 @@ impl TcpServer {
                                     },
                                 );
                                 let child_status = accepted_client.runtime_status_handle();
-                                let child_iface =
-                                    iface_manager.spawn(accepted_client, TcpClient::spawn);
-                                iface_manager.inherit_runtime_config(parent_iface, child_iface);
+                                let Some(child_iface) = iface_manager.spawn_inheriting(
+                                    parent_iface,
+                                    accepted_client,
+                                    TcpClient::spawn,
+                                ) else {
+                                    runtime_status
+                                        .lock()
+                                        .expect("tcp server runtime status mutex poisoned")
+                                        .mark_accept_error(
+                                            "accepted client runtime policy inheritance failed".to_string(),
+                                        );
+                                    continue;
+                                };
                                 runtime_status
                                     .lock()
                                     .expect("tcp server runtime status mutex poisoned")

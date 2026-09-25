@@ -457,6 +457,10 @@ pub(crate) fn apply_record_runtime_config(
     address: AddressHash,
     record: &InterfaceRecord,
 ) {
+    manager.set_tcp_client_path_table_metadata(
+        address,
+        crate::tcp_client_path_table::from_record(record),
+    );
     manager.set_mode(address, interface_record_mode(record));
     manager.set_gravity(address, setting_i64(record, "gravity").unwrap_or(0));
     manager.set_outgoing(address, setting_bool(record, "outgoing").unwrap_or(true));

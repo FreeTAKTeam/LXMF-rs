@@ -31,7 +31,7 @@ pub(crate) async fn send(runtime: &Runtime, source: &Path, destination: &str) ->
     wait_for_outbound(&mut events, resource_hash, network::operation_timeout(runtime).await)
         .await?;
     if !runtime.silent {
-        println!("{} copied to {}", source_name.display(), target.to_hex_string());
+        println!("{} sent to {}", source_name.display(), target.to_hex_string());
     }
     close_link(&runtime.transport, &link).await;
     Ok(())

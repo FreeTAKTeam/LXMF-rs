@@ -29,6 +29,16 @@ struct PythonChannelClientConfig<'a> {
 }
 
 impl PythonChannelInteropPaths {
+    pub(super) fn resource_boundary_probe(&self) -> std::process::Output {
+        Command::new(&self.python_bin)
+            .arg("-u")
+            .arg(&self.helper)
+            .arg("--resource-boundary-probe")
+            .env("PYTHONPATH", &self.reticulum_py_repo)
+            .output()
+            .expect("run pinned Python Resource boundary probe")
+    }
+
     pub(super) fn spawn_endpoint(&self, config_dir: &Path, payload_kind: &str) -> Child {
         spawn_python_endpoint(
             &self.python_bin,
@@ -148,6 +158,7 @@ impl PythonChannelInteropPaths {
         destination_hash: &str,
         resource_size: usize,
         timeout: f64,
+        payload_kind: &str,
     ) -> Child {
         spawn_python_channel_client(
             &self.python_bin,
@@ -156,7 +167,7 @@ impl PythonChannelInteropPaths {
             PythonChannelClientConfig {
                 config_dir,
                 destination_hash,
-                payload_kind: "cancel-resource",
+                payload_kind,
                 resource_size: Some(resource_size),
                 timeout,
                 response_envelope_delta: None,
@@ -429,6 +440,24 @@ pub(super) fn write_python_client_config(dir: &Path, port: u16) {
 
 pub(super) fn write_python_client_config_with_ifac(dir: &Path, port: u16) {
     write_python_client_config_for_kind_with_ifac(dir, port, PythonInteropInterfaceKind::Tcp);
+}
+
+// The standalone TCP IFAC lifecycle harness is the only consumer; the shared
+// helper module is also compiled by the broader Channel integration target.
+#[allow(dead_code)]
+pub(super) fn write_python_client_config_with_ifac_credentials(
+    dir: &Path,
+    port: u16,
+    network_name: &str,
+    passphrase: &str,
+) {
+    let mut config = PythonInteropInterfaceKind::Tcp.client_config(port);
+    config.push_str(&format!(
+        "                     networkname = {network_name}\n\
+                     passphrase = {passphrase}\n\
+                     ifac_size = {IFAC_SIZE_BITS}\n"
+    ));
+    fs::write(dir.join("config"), config).expect("write Python IFAC client config");
 }
 
 pub(super) fn write_python_client_config_for_kind(

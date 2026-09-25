@@ -943,6 +943,40 @@
           }
         }
       },
+      "BehavioralParityCheckpoint": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "level",
+          "coverage_status",
+          "complete_ratio",
+          "inventory",
+          "evidence_verified",
+          "reference"
+        ],
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/ParityLevel"
+          },
+          "coverage_status": {
+            "type": "string",
+            "enum": ["complete", "incomplete", "blocked", "hardware-unverified"]
+          },
+          "complete_ratio": {
+            "$ref": "#/components/schemas/ParityRatio"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/ParityInventory"
+          },
+          "evidence_verified": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reference": {
+            "$ref": "#/components/schemas/ReferenceRevision"
+          }
+        }
+      },
       "ReferenceRevision": {
         "type": "object",
         "additionalProperties": false,
@@ -1002,6 +1036,9 @@
           },
           "lxmf": {
             "$ref": "#/components/schemas/ParityCheckpoint"
+          },
+          "forward_behavioral": {
+            "$ref": "#/components/schemas/BehavioralParityCheckpoint"
           }
         }
       },

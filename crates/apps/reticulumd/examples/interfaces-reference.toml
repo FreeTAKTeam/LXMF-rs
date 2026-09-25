@@ -53,8 +53,10 @@
 # bootstrap_only = false
 # ignore_config_warnings = false
 # Reticulum IFAC authentication is applied at each carrier boundary. The size
-# is configured in bits (8..=512, divisible by 8) and requires network_name or
-# passphrase. The network_name/passphrase aliases are accepted as well.
+# is configured in bits: values from 8 through 519 are floored to whole bytes
+# (at most 64 bytes), while smaller values use the carrier default. A network
+# name or passphrase is required. The network_name/passphrase aliases are also
+# accepted.
 # ifac_size = 128
 # network_name = "field-net"
 # passphrase = "shared-secret"

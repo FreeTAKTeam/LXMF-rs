@@ -149,6 +149,15 @@ jobs:
           cargo test -p rns-tools --test rngit_concurrent_python_interop
           -- --ignored --nocapture
 
+      - name: Verify Rust rngit fetch and push CLI against pinned Python
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --test rngit_cli_python_fetch
+          rngit_cli_fetches_and_pushes_with_python_service
+          -- --ignored --exact --nocapture --test-threads=1
+
       - name: Record pinned revisions
         run: |
           git -C reticulum-conformance rev-parse HEAD
@@ -176,6 +185,25 @@ jobs:
             --python-lxmf-path LXMF \
             --output target/interop/python-rust-wire-conformance/verify-${{ github.run_id }}/report.json
           cargo test -p test-support --test wire_conformance -- --nocapture
+
+      - name: Run Python and Rust IFAC UDP channel interoperability
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_channel_interop
+          ifac_udp -- --ignored --nocapture
+          --test-threads=1
+
+      - name: Run Python and Rust IFAC daemon interoperability
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p lxmf-cli --test python_lxmd_remote_relay
+          ifac -- --ignored --nocapture
+          --test-threads=1
 
       - name: Run repository-native PR HIL controller
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
@@ -347,6 +375,85 @@ jobs:
             issue_613_media_options::rngit_failed_webp_encoder_returns_raw_media_and_cleans_conversion_directory \
             -- --ignored --exact --nocapture --test-threads=1
 
+      - name: Verify pinned Python rncp compression advertisements
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --test rncp_python_interop
+          rncp_mixed_runtime_compression_matrix_roundtrips_binary_files
+          -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python rncp receiver disk-failure callback
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --test rncp_python_interop
+          rncp_python_listener_reports_received_file_disk_error
+          -- --ignored --exact --nocapture
+
+      - name: Verify pinned Python rncp fetch-client save-failure callback
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --test rncp_python_fetch_failure
+          rncp_python_fetch_client_save_error_is_reported_but_never_resolved
+          -- --ignored --exact --nocapture
+
+      - name: Verify rnsh mixed per-stream PTY and pipe modes
+        run: |
+          cargo test -p rns-tools --test rnsh_process \
+            rnsh_mixed_stdin_pty_and_stdout_stderr_pipes_preserve_streams_and_exit \
+            -- --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnsh_process \
+            rnsh_mixed_stdin_pipe_and_stdout_stderr_pty_preserve_streams_and_exit \
+            -- --exact --nocapture --test-threads=1
+
+      - name: Verify rnpath, rnprobe, rncp and rnsd against pinned Python
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo build -p reticulumd --bin reticulumd
+          cargo build -p rns-tools --bin rnprobe
+          cargo test -p rns-tools --test rnpath_python_interop \
+            rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnpath_python_missing_destination \
+            rnpath_missing_destination_matches_pinned_python_failure_over_live_tcp \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnprobe_python_interop \
+            native_rnprobe_discovers_late_pinned_python_announce \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnprobe_python_interop \
+            native_rnprobe_succeeds_after_rust_daemon_restart \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnprobe_python_interop \
+            rnprobe_invalid_probe_count_matches_pinned_python_process_failure \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnprobe_python_interop \
+            rnprobe_missing_destination_prints_help_without_network_startup \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnprobe_python_interop \
+            rnprobe_invalid_destination_identity_matches_pinned_python_failure \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnsd_python_example_config \
+            rnsd_example_config_matches_pinned_python_without_starting_daemon \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnid_python_validate \
+            rnid_validates_pinned_python_signed_files_and_rejects_tampering \
+            -- --ignored --exact --nocapture --test-threads=1
+          RETICULUM_PY_REPO="$GITHUB_WORKSPACE/Reticulum-parity" \
+            cargo test -p rns-tools --test rncp_python_missing_source \
+            rncp_missing_source_records_python_and_rust_cli_transcripts \
+            -- --ignored --exact --nocapture --test-threads=1
+          RETICULUM_PY_REPO="$GITHUB_WORKSPACE/Reticulum-parity" \
+            cargo test -p rns-tools --test rncp_python_unknown_destination \
+            rncp_unknown_destination_records_python_and_rust_cli_transcripts \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
@@ -357,7 +464,7 @@ jobs:
           tests::image_markup_matches_pinned_python_quote_plus_for_utf8_and_reserved_path_bytes
           -- --exact
 
-      - name: Verify bidirectional Resource timeout and recovery
+      - name: Verify frozen 1.5.4 missing-part Resource retry exhaustion
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -368,6 +475,18 @@ jobs:
           cargo test -p reticulumd --test python_channel_interop \
             pinned_python_initiated_link_timeout_fails_then_recovers_inbound_resource \
             -- --ignored --nocapture --test-threads=1
+          cargo test -p reticulumd --test python_channel_interop \
+            pinned_python_resource_cancels_after_missing_part_retry_budget \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify frozen 1.5.4 first-segment Resource metadata wire placement
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_channel_interop
+          rust_to_python_split_resource_first_segment_metadata_wire_matches_reference
+          -- --ignored --exact --nocapture --test-threads=1
 
       - name: Upload PR HIL evidence
         if: always()

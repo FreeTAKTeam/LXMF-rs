@@ -167,6 +167,12 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
         enabled: Option<bool>,
         host: Option<String>,
         port: Option<u16>,
+        target_host: Option<String>,
+        target_port: Option<u16>,
+        listen_host: Option<String>,
+        listen_port: Option<u16>,
+        forward_host: Option<String>,
+        forward_port: Option<u16>,
         ifac_size: Option<u64>,
         network_name: Option<String>,
         passphrase: Option<String>,
@@ -182,17 +188,48 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
         let mapped_type = match raw_type.to_ascii_lowercase().as_str() {
             "tcpserverinterface" | "tcp_server" => "tcp_server",
             "tcpclientinterface" | "tcp_client" => "tcp_client",
+            "udpinterface" | "udp" => "udp",
             _ => return,
         };
-        let Some(port) = current.port else {
-            return;
+        let (host, port, target_host, target_port) = match mapped_type {
+            "tcp_server" => (
+                current.listen_host.or(current.host),
+                current.listen_port.or(current.port),
+                None,
+                None,
+            ),
+            "tcp_client" => (
+                current.target_host.or(current.host),
+                current.target_port.or(current.port),
+                None,
+                None,
+            ),
+            "udp" => {
+                let target_host = current.target_host.or(current.forward_host);
+                let target_port = current
+                    .target_port
+                    .or(current.forward_port)
+                    .or_else(|| target_host.as_ref().and(current.port));
+                (
+                    current.host.or(current.listen_host),
+                    current.port.or(current.listen_port),
+                    target_host,
+                    target_port,
+                )
+            }
+            _ => return,
         };
+        if port.is_none() {
+            return;
+        }
         out.push(crate::SingleTomlInterface {
             interface_type: mapped_type.to_string(),
             enabled: current.enabled.unwrap_or(true),
             name: current.name,
-            host: current.host,
-            port: Some(port),
+            host,
+            port,
+            target_host,
+            target_port,
             shared_instance_type: None,
             instance_name: None,
             socket_path: None,
@@ -248,13 +285,14 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
         match key.as_str() {
             "type" => current.iface_type = Some(value.to_string()),
             "enabled" => current.enabled = parse_python_bool(value).ok().flatten(),
-            "target_host" | "host" => current.host = Some(value.to_string()),
-            "target_port" | "listen_port" | "port" => {
-                current.port = value.parse::<u16>().ok();
-            }
-            "listen_ip" if !value.is_empty() => {
-                current.host = Some(value.to_string());
-            }
+            "host" => current.host = Some(value.to_string()),
+            "port" => current.port = value.parse::<u16>().ok(),
+            "target_host" if !value.is_empty() => current.target_host = Some(value.to_string()),
+            "target_port" => current.target_port = value.parse::<u16>().ok(),
+            "listen_ip" if !value.is_empty() => current.listen_host = Some(value.to_string()),
+            "listen_port" => current.listen_port = value.parse::<u16>().ok(),
+            "forward_ip" if !value.is_empty() => current.forward_host = Some(value.to_string()),
+            "forward_port" => current.forward_port = value.parse::<u16>().ok(),
             "ifac_size" => current.ifac_size = value.parse::<u64>().ok(),
             "networkname" | "network_name" => {
                 current.network_name = Some(value.to_string());

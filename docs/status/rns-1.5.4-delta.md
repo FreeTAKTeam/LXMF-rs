@@ -68,27 +68,30 @@ The machine-checked contract is stored in
 in the generated [`python-surface-parity.json`](python-surface-parity.json).
 It requires every forward requirement to name its Python reference path, exact
 reference commit, Rust owner surface, implementation status, evidence status,
-test command, evidence artifact, and owning issue. It contains ten tracked
-requirements; the scoped #615 software gate is verified, while overall
-behavioral coverage remains incomplete:
+test command, evidence artifact, and owning issue. The #615 software gate is
+closed; eight other tracked requirements remain open, with physical acceptance
+separately tracked under #616:
 
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
-| #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
+| #607 | Review and integrate the initial PR increment | closed; merged PR #604 and its acceptance checks are recorded |
+| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, KISS/AX.25 stream wrong-key rejection plus authenticated ingress/egress with runtime-counter assertions, outbound I2P fake-SAM stream and incoming accepted-stream worker regressions, Meshtastic tunnel and Weave stream regressions, and AutoInterface peer-data, LoRa, RNode bearer, and RNodeMulti KISS-vport wrong-key rejection/authenticated ingress/egress; broader carrier and lifecycle matrices remain pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
-| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are now regression-tested; broader timeout/reconnect and consumer callback/status evidence remains open |
+| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are regression-tested; a pinned-Python sender cancellation after data in split segment 2 produces Rust `InboundFailed(remote_cancelled)` through production TCP/Link/Resource; broader timeout/reconnect and consumer callback/status evidence remains open |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
 | #613 | Match rngit NomadNet pages, media, and link cleanup | partial / unverified |
 | #614 | Validate native interface runtimes and Windows BLE behavior | partial / hardware-unverified |
-| #615 | Run differential conformance and exact-candidate software release acceptance | complete / verified (scoped software gate; #616 excluded) |
+| #615 | Run differential conformance and exact-candidate software release acceptance | closed; scoped software acceptance completed, with physical/platform/public-network/soak work tracked separately |
 | #616 | Maintain separate physical, platform, client, network-soak, and operational evidence | not-applicable to software / hardware-unverified |
 
-The generated Rust constants expose the forward behavioral level and target
-revision for runtime consumers without changing the existing advisory SDK/RPC
-schema before the contract is proven. No row is promoted by a local parser,
-mock, attached-node-only check, or old release artifact.
+The SDK/RPC parity advisory now exposes an optional `forward_behavioral`
+checkpoint generated from this contract, including the exact target revision,
+partial/incomplete level, requirement counts, and verified-evidence count. The
+existing overall, Reticulum, and LXMF fields retain their active-baseline
+callable-inventory values and do not prove forward behavioral completion. No
+row is promoted by a local parser, mock, attached-node-only check, or old
+release artifact.
 
 The bounded contract-fixture evidence is recorded in
 [`evidence/606-behavioral-contract.md`](../goals/reticulum-reference-parity-605/evidence/606-behavioral-contract.md),
@@ -99,10 +102,52 @@ Both remain partial and do not promote the forward behavioral rows.
 The #608 implementation slice now has committed local software evidence in
 [`evidence/608-ifac.md`](../goals/reticulum-reference-parity-605/evidence/608-ifac.md):
 configured carrier ingress/egress, live reconfiguration, child inheritance,
-fail-closed malformed-frame handling, and feature-gated carrier builds are
-covered. The row remains unverified until pinned Python↔Rust daemon traffic
-proves bidirectional behavior through real carriers; hardware and public-network
-evidence remain separate acceptance axes.
+fail-closed malformed- and wrong-key-frame handling, and feature-gated carrier
+builds are covered. Pinned Python↔Rust TCP Channel/Resource and UDP
+Channel/Resource software traffic is evidenced; UDP Resources transfer in both
+directions on the same Rust-initiated Link. PR #628 additionally verifies
+bidirectional authenticated UDP direct-message delivery through separate
+`lxmd`/`reticulumd` and Python processes, with an active Python link and zero
+live IFAC violations. Its later regressions also reject a valid authenticated
+UDP frame tampered in transit before routing, rotate credentials through live
+interface reconfiguration, reject the old key, and preserve identity plus
+authenticated delivery across daemon restart. Another pinned-Python trace
+exercises an IFAC-protected UDP shared-instance owner, an attached Rust local
+client, and a separate Python peer, with bidirectional delivery and zero IFAC
+violations; a focused ingress regression verifies inherited policy on a
+virtual child. Invalid live IFAC reconfiguration now returns a static,
+structured `CONFIG_INVALID_IFAC` RPC error without displacing the active
+authenticated configuration; after restart a plaintext peer remains rejected.
+The focused RPC regression also verifies that failed interface application
+does not replace stored interfaces. The packet decoder now derives authentication and verified-wire
+provenance from one IFAC-state snapshot across hot reconfiguration. A Unix
+subprocess regression also exercises the production PipeInterface worker with
+the reference 8-byte default IFAC tag and authenticated HDLC echo; this is
+loopback carrier evidence, not a Python-peer trace. A separate deterministic
+serial-stream test rejects a wrong-key frame before admission and verifies
+authenticated ingress and egress through the production serial stream worker;
+it does not claim physical serial evidence. The KISS/AX.25 stream worker also
+has a deterministic duplex regression for wrong-key rejection, authenticated
+ingress/egress, the 8-byte default tag, and runtime counters; it is not modem,
+radio, or Python-peer KISS evidence. The outbound I2P peer loop now also has
+fake-SAM regressions for wrong-key rejection before packet admission,
+authenticated ingress/egress, and shared parent IFAC rotation on an established
+virtual peer. These are software stream tests, not public I2P evidence, and do
+not cover broader tunnel lifecycle behavior. Other carrier families remain
+open; hardware and public-network evidence remain separate acceptance gates.
+The transport ingress suite also verifies that an already-attached accepted
+child decoder rejects the old parent IFAC key and admits the newly configured
+key after a live parent update. The existing config propagation was sufficient,
+so this increment adds regression evidence without a production behavior
+change; #608 remains partial.
+Commit `49b7999f` adds software-only production-worker regressions for
+Meshtastic tunnel reassembly, Weave streams, and the incoming I2P accepted
+stream. Each rejects wrong-key traffic before admission and verifies
+authenticated ingress/egress; the I2P case uses a local TCP pair rather than a
+SAM router, so the SAM accept-loop integration remains unverified. The transport library passes 823 unit tests, including 394 tests
+matching the `ifac` filter, with all-feature Clippy, architecture boundaries,
+module-size, and formatting checks passing. These new adapter cases narrow but
+do not close the remaining carrier-family or physical acceptance gaps.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):
@@ -193,9 +238,27 @@ assertion also exercises the completed Python fetch resource-conclusion/save
 callback. Commit `3c6757ba` additionally covers default and explicit
 no-compression send modes in both Python↔Rust directions, a bzip2-compressed
 payload, and Python listener default/no-compression fetch responses into a Rust
-client. The row remains partial and unverified because direct callback
-telemetry, the complete utility option/behavior matrix, rngit network workflows,
-and slow-interface/remote fault transcripts remain open or owned by #612/#613.
+client. The issue-specific `rncp_listener_reports_received_file_disk_error`
+process regression forces the Rust listener's post-delivery file save to fail
+and asserts its diagnostic, keeping transport receipt distinct from app-level
+save status. The ignored exact-target `rncp_python_listener_reports_received_file_disk_error`
+trace also verifies that a pinned Python receiver logs its save callback error
+after a Rust sender reports successful Resource delivery. PR #631 adds
+exact-target process assertions for packed and received Resource advertisement
+transfer/data sizes and compression flags across Python→Rust sends, Rust→Python
+sends, and Python default/`-C` fetch responses. Verify now runs that focused
+compression matrix automatically. The new exact-target
+`rncp_python_fetch_client_save_error_is_reported_but_never_resolved` trace
+forces the Python fetch save directory to fail after preflight and observes the
+callback's save-error output. The pinned callback returns without resolving the
+transfer, leaving the client running; this is recorded as a reference defect,
+not accepted terminal failure handling. The row remains partial and unverified
+because accurate Python fetch-client terminal failure status, the
+complete utility option/behavior matrix, rngit network workflows, and
+pinned-Python receive-side cancellation remain open or owned by #612/#613. A slow-proxy
+`rncp` regression now proves one delayed/rate-limited TCP send completes under
+the adaptive timeout; this is software-path evidence only and makes no
+carrier-specific or physical timing claim.
 Commit
 `2b281b87` also adds process-level assertions for a missing fetch and a denied
 sender, including nonzero exit status and preserved failure categories.
@@ -207,7 +270,13 @@ listener restart check on the same TCP endpoint with a second binary transfer.
 Commit `9b8e4ed6` adds a fetch save-directory disk-error check with nonzero
 status and preserved `Is a directory` output. Commit `397a9525` adds explicit
 client Ctrl-C cancellation handling with a nonzero status and preserved
-`operation cancelled by user` output. Commit `e668ae60` adds three concurrent
+`operation cancelled by user` output during path discovery. The new
+`rncp_ctrl_c_during_resource_transfer_reports_cancellation` process test sends
+SIGINT after the CLI announces the active Resource-transfer phase, requires
+the same explicit cancellation error and nonzero status, and verifies the
+receiver did not expose a completed file. It covers the native Rust-to-Rust
+workflow; pinned-Python receiver cancellation remains open. Commit `e668ae60`
+adds three concurrent
 client processes with exact listener-side byte verification. Commit `a5f57dba`
 adds flushed non-silent client phase output and an interrupted-Resource process
 check with nonzero status and no partial saved file. Commit `27bb3fac` gates
@@ -222,6 +291,14 @@ exchange: a Python `rnprobe` reaches the Rust daemon's opt-in
 `PROVE_ALL` responder. Both isolated TCP roles deliver two probes with zero
 loss. Public/multi-hop, physical-carrier, and probe fault/restart evidence
 remain open.
+
+The #631 `rnpath` follow-up adds one software network trace beyond the existing
+mock-RPC tests: a separate pinned-Python Reticulum process waits to announce
+until after the Rust `rnpath-rs` client process is launched, using a separate
+`reticulumd` process's live TCP RPC. The CLI returns the announced destination
+and one-hop result. Verify runs the exact-target trace against the frozen
+1.5.4 development checkout; path-table, remote-management, and broader utility
+acceptance remain partial.
 
 Commits `f24e0038` and `a32b6d71` add a bounded native `rnsh` TCP/Link/Channel workflow with
 the frozen Python message family, exact no-aspect destination hashing,

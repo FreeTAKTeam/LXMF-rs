@@ -1,6 +1,6 @@
 use super::{
     decode_page_request, log_page_media_cleanup_failure, page_paths, rngit_paths, Cli,
-    PageLinkCleanup, PageResponse, ReticulumGitNode,
+    GitCommand, PageLinkCleanup, PageResponse, ReticulumGitNode,
 };
 use super::media_config::media_conversion_enabled;
 use rns_transport::destination::link::{LinkEvent, LinkStatus};
@@ -23,6 +23,8 @@ use tokio::time::interval;
 
 const NULL_IDENTITY: [u8; 16] = [0; 16];
 
+include!("network_fetch.rs");
+
 struct Runtime {
     transport: Arc<Transport>,
     destination: Arc<Mutex<rns_transport::destination::SingleInputDestination>>,
@@ -35,6 +37,12 @@ struct Runtime {
 }
 
 pub(crate) fn run(cli: &Cli) -> io::Result<()> {
+    if let Some(GitCommand::Fetch { remote, reference, destination_ref }) = &cli.command {
+        return run_git_fetch(cli, remote, reference, destination_ref);
+    }
+    if let Some(GitCommand::Push { remote, local_ref, remote_ref, force }) = &cli.command {
+        return run_git_push(cli, remote, local_ref, remote_ref, *force);
+    }
     tokio::runtime::Runtime::new()?.block_on(run_async(cli))
 }
 

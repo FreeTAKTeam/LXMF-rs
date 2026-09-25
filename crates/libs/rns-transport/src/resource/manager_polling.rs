@@ -18,20 +18,22 @@ impl ResourceManager {
                 }
             }
             if receiver.retry_count >= self.retry_limit {
-                failed.push((*hash, receiver.link_id, receiver.progress()));
+                failed.push((*hash, receiver.original_hash, receiver.link_id, receiver.progress()));
             }
         }
-        for (hash, link_id, progress) in failed {
+        for (hash, original_hash, link_id, progress) in failed {
             log::warn!("resource transfer failed link={link_id} hash={hash} reason=retry_limit_exhausted");
             self.incoming.remove(&hash);
-            self.events.push(ResourceEvent {
-                hash,
-                link_id,
-                kind: ResourceEventKind::InboundFailed(ResourceFailure {
-                    reason: "retry_limit_exhausted".to_string(),
-                    progress,
-                }),
-            });
+            if !self.fail_inbound_segments(original_hash, "retry_limit_exhausted") {
+                self.events.push(ResourceEvent {
+                    hash: original_hash,
+                    link_id,
+                    kind: ResourceEventKind::InboundFailed(ResourceFailure {
+                        reason: "retry_limit_exhausted".to_string(),
+                        progress,
+                    }),
+                });
+            }
         }
         requests
     }

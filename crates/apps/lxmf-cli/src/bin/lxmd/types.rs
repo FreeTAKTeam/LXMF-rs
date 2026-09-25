@@ -134,6 +134,8 @@ pub(crate) struct SingleTomlInterface {
     pub(crate) name: Option<String>,
     pub(crate) host: Option<String>,
     pub(crate) port: Option<u16>,
+    pub(crate) target_host: Option<String>,
+    pub(crate) target_port: Option<u16>,
     pub(crate) shared_instance_type: Option<String>,
     pub(crate) instance_name: Option<String>,
     pub(crate) socket_path: Option<String>,

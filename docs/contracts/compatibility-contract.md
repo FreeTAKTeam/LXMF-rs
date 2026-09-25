@@ -18,10 +18,19 @@
 - SDK negotiation exposes an optional typed `software_parity` orientation, and
   daemon `status`, `daemon_status_ex`, and the typed `rns.runtime.status`
   operation expose the same structure at `reticulum.parity`.
-- The structure separately reports overall, Reticulum, and LXMF checkpoints.
-  Each ratio is exact complete/applicable, where applicable is complete plus
-  partial and not-applicable entries are excluded. The inventory generator
-  emits and checks the grouped Rust metadata used by these API surfaces.
+- The structure reports active-baseline overall, Reticulum, and LXMF callable
+  inventory checkpoints, plus an optional `forward_behavioral` checkpoint
+  when the frozen forward contract is available. `overall` remains the RNS
+  1.5.2/LXMF callable inventory and is not evidence of behavioral parity.
+  Ratios are exact complete/applicable, with not-applicable entries excluded.
+  The inventory generator emits and checks the grouped Rust metadata used by
+  these API surfaces.
+- `forward_behavioral` carries the contract coverage status, requirement
+  inventory, verified-evidence count, and exact forward reference revision.
+  Older payloads without this member deserialize as absent and re-serialize
+  without a fabricated checkpoint. The current OpenRPC schema permits the
+  optional member; clients using a strict older schema must update to the
+  schema matching the negotiated contract release.
 - `software_parity.advisory` is always `true`. This is consumer orientation,
   not a substitute for capability negotiation, runtime feature checks, or the
   separate hardware-evidence axis.

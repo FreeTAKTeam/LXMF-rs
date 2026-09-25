@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -14,16 +15,16 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "tools/interop/independent-implementations.toml"
 
 
-def manifest_data() -> dict[str, object]:
-    with MANIFEST.open("rb") as handle:
+def manifest_data(manifest_path: Path = MANIFEST) -> dict[str, object]:
+    with manifest_path.open("rb") as handle:
         data = tomllib.load(handle)
     if not isinstance(data, dict):
         raise ValueError("canonical manifest must be a TOML object")
     return data
 
 
-def canonical_pin() -> tuple[str, str]:
-    data = manifest_data()
+def canonical_pin(manifest_path: Path = MANIFEST) -> tuple[str, str]:
+    data = manifest_data(manifest_path)
     version = data["rns_reference_version"]
     revision = data["rns_reference_revision"]
     python_reference = data["python_reference"]
@@ -32,8 +33,8 @@ def canonical_pin() -> tuple[str, str]:
     return version, revision
 
 
-def parity_target_pin() -> tuple[str, str]:
-    target = manifest_data().get("parity_target")
+def parity_target_pin(manifest_path: Path = MANIFEST) -> tuple[str, str]:
+    target = manifest_data(manifest_path).get("parity_target")
     if not isinstance(target, dict):
         raise ValueError("canonical manifest is missing parity_target")
     version = target.get("version")
@@ -126,10 +127,10 @@ def parity_target_mirrors() -> dict[str, tuple[str, ...]]:
     }
 
 
-def verify() -> list[str]:
+def verify(root: Path = ROOT, manifest_path: Path = MANIFEST) -> list[str]:
     try:
-        version, revision = canonical_pin()
-        target_version, target_revision = parity_target_pin()
+        version, revision = canonical_pin(manifest_path)
+        target_version, target_revision = parity_target_pin(manifest_path)
     except (KeyError, OSError, ValueError, tomllib.TOMLDecodeError) as error:
         return [f"cannot read canonical pin: {error}"]
 
@@ -142,7 +143,7 @@ def verify() -> list[str]:
         errors.append("parity target must remain distinct from the active release baseline")
 
     for relative, needles in active_mirrors().items():
-        path = ROOT / relative
+        path = root / relative
         try:
             content = path.read_text(encoding="utf-8")
         except OSError as error:
@@ -153,7 +154,7 @@ def verify() -> list[str]:
             if needle not in content:
                 errors.append(f"{relative}: missing canonical mirror {needle!r}")
     for relative, needles in parity_target_mirrors().items():
-        path = ROOT / relative
+        path = root / relative
         try:
             content = path.read_text(encoding="utf-8")
         except OSError as error:
@@ -171,6 +172,64 @@ def self_test() -> None:
     assert "{revision}" in parity_target_mirrors()[".github/workflows/verify.yml"][0]
     assert "{revision}" in parity_target_mirrors()["docs/status/rns-1.5.4-delta.md"][0]
     assert ROOT.name == "LXMF-rs-rns-1.5-alignment" or (ROOT / "Cargo.toml").is_file()
+
+    version, revision = canonical_pin()
+    target_version, target_revision = parity_target_pin()
+    active = active_mirrors()
+    target = parity_target_mirrors()
+    with tempfile.TemporaryDirectory(prefix="python-reference-pin-self-test-") as temp_dir:
+        fixture_root = Path(temp_dir)
+        fixture_manifest = fixture_root / "tools/interop/independent-implementations.toml"
+        fixture_manifest.parent.mkdir(parents=True)
+        fixture_manifest.write_bytes(MANIFEST.read_bytes())
+
+        for relative in active.keys() | target.keys():
+            lines = [
+                template.format(version=version, revision=revision)
+                for template in active.get(relative, ())
+            ]
+            lines.extend(
+                template.format(version=target_version, revision=target_revision)
+                for template in target.get(relative, ())
+            )
+            path = fixture_root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        assert not verify(fixture_root, fixture_manifest), "valid pin fixture must pass"
+
+        target_mirror = fixture_root / ".github/workflows/verify.yml"
+        target_content = target_mirror.read_text(encoding="utf-8")
+        target_marker = f"PYTHON_RETICULUM_PARITY_REF: {target_revision}"
+        target_mirror.write_text(
+            target_content.replace(
+                target_marker,
+                f"PYTHON_RETICULUM_PARITY_REF: {'0' * 40}",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        target_errors = verify(fixture_root, fixture_manifest)
+        assert any(target_marker in error for error in target_errors), (
+            "corrupt parity-target workflow pin must fail verification"
+        )
+
+        target_mirror.write_text(target_content, encoding="utf-8")
+        baseline_mirror = fixture_root / "crates/libs/lxmf-reference/src/lib.rs"
+        baseline_content = baseline_mirror.read_text(encoding="utf-8")
+        baseline_marker = f'PYTHON_RETICULUM_REFERENCE_REF: &str = "{revision}"'
+        baseline_mirror.write_text(
+            baseline_content.replace(
+                baseline_marker,
+                f'PYTHON_RETICULUM_REFERENCE_REF: &str = "{"0" * 40}"',
+                1,
+            ),
+            encoding="utf-8",
+        )
+        baseline_errors = verify(fixture_root, fixture_manifest)
+        assert any(baseline_marker in error for error in baseline_errors), (
+            "corrupt active-reference source pin must fail verification"
+        )
 
 
 def main() -> int:

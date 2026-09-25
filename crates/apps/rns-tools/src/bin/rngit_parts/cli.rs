@@ -1,5 +1,5 @@
 #[derive(Debug, Parser)]
-#[command(name = "rngit", about = "Run local Git workflows prepared for Reticulum file transport")]
+#[command(name = "rngit", about = "Run local Git workflows or a Reticulum Git network service/client")]
 struct Cli {
     #[arg(long)]
     root: PathBuf,
@@ -47,6 +47,18 @@ enum GitCommand {
         output: PathBuf,
         #[arg(default_value = "--all")]
         revision: String,
+    },
+    Fetch {
+        remote: String,
+        reference: String,
+        destination_ref: String,
+    },
+    Push {
+        remote: String,
+        local_ref: String,
+        remote_ref: String,
+        #[arg(long)]
+        force: bool,
     },
     Unbundle {
         path: PathBuf,

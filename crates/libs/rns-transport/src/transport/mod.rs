@@ -462,6 +462,8 @@ pub struct TransportPathStatus {
     pub hops: Option<u8>,
 }
 
+pub use path_table::TransportPathTableEntry;
+
 // Transport internals are decomposed by concern for testability and bounded change sets.
 // announce: announce handling and retransmit scheduling primitives.
 mod announce;
