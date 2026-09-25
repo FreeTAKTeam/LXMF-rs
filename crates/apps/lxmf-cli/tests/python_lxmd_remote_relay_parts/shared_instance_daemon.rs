@@ -522,17 +522,18 @@ fn python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e() {
             )?;
         }
 
-        if let Some(node) = rust_node.as_mut() {
-            terminate_child(&mut node.child);
-        }
-
+        python_control_call(
+            python_control_a_port,
+            "arm_outbound_packet_drop",
+            Some(json!({ "destination": &hash_b })),
+        )?;
         let queued_message = python_control_call(
             python_control_a_port,
             "send_message",
             Some(json!({
                 "destination": &hash_b,
                 "title": "",
-                "content": "queued-a-to-b-across-restart",
+                "content": "retried-a-to-b-across-restart",
                 "wait_for_path": false,
                 "method": "opportunistic"
             })),
@@ -540,18 +541,34 @@ fn python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e() {
         let queued_message_hash = queued_message
             .get("message_hash")
             .and_then(Value::as_str)
-            .ok_or_else(|| format!("Python peer A returned no queued message hash: {queued_message}"))?;
+            .ok_or_else(|| format!("Python peer A returned no retry-test message hash: {queued_message}"))?
+            .to_string();
+        let dropped = python_control_call(
+            python_control_a_port,
+            "wait_outbound_packet_drop",
+            Some(json!({ "timeout": 10.0 })),
+        )?;
+        if dropped.get("dropped_packets").and_then(Value::as_u64) != Some(1)
+            || dropped.get("destination").and_then(Value::as_str) != Some(hash_b.as_str())
+        {
+            return Err(format!("first LXMF packet was not deterministically dropped: {dropped}"));
+        }
         let queued_status = python_control_call(
             python_control_a_port,
             "outbound_status",
-            Some(json!({ "message_hash": queued_message_hash })),
+            Some(json!({ "message_hash": &queued_message_hash })),
         )?;
-        if is_terminal_outbound_status(&queued_status) {
+        if is_terminal_outbound_status(&queued_status)
+            || queued_status.get("delivery_attempts").and_then(Value::as_u64) != Some(1)
+        {
             return Err(format!(
-                "LXMF message did not remain queued while the Rust relay was stopped: {queued_status}"
+                "faulted LXMF send did not remain retryable after exactly one attempt: {queued_status}"
             ));
         }
 
+        if let Some(node) = rust_node.as_mut() {
+            terminate_child(&mut node.child);
+        }
         rust_node = Some(spawn_lxmd(
             &lxmd_bin,
             &reticulumd_bin,
@@ -571,24 +588,62 @@ fn python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e() {
         for destination in [&hash_a, &hash_b] {
             require_known_path(rust_rpc_port, destination, "Rust relay relearned")?;
         }
+        python_control_call(python_control_a_port, "mark_outbound_retry_window", None)?;
+        let retry_packet = python_control_call(
+            python_control_a_port,
+            "wait_outbound_retry_packet",
+            Some(json!({ "timeout": 30.0 })),
+        )?;
+        if retry_packet.get("transmitted_packets").and_then(Value::as_u64).unwrap_or(0) == 0
+            || retry_packet.get("destination").and_then(Value::as_str) != Some(hash_b.as_str())
+        {
+            return Err(format!(
+                "LXMF retry did not traverse the replacement Rust relay: {retry_packet}"
+            ));
+        }
 
         python_control_call(
             python_control_b_port,
             "wait_message",
             Some(json!({
-                "content": "queued-a-to-b-across-restart",
+                "content": "retried-a-to-b-across-restart",
                 "timeout": 45.0
             })),
         )?;
-        python_control_call(
+        let delivered = python_control_call(
             python_control_a_port,
             "wait_outbound_state",
             Some(json!({
-                "message_hash": queued_message_hash,
+                "message_hash": &queued_message_hash,
                 "state": "delivered",
                 "timeout": 45.0
             })),
         )?;
+        let attempts = delivered.get("delivery_attempts").and_then(Value::as_u64).unwrap_or(0);
+        if attempts < 2 {
+            return Err(format!(
+                "LXMF delivery completed without retrying the faulted first attempt: {delivered}"
+            ));
+        }
+        let inbox = python_control_call(python_control_b_port, "list_messages", None)?;
+        let matching = inbox
+            .get("messages")
+            .and_then(Value::as_array)
+            .map(|messages| {
+                messages
+                    .iter()
+                    .filter(|message| {
+                        message.get("content").and_then(Value::as_str)
+                            == Some("retried-a-to-b-across-restart")
+                    })
+                    .count()
+            })
+            .unwrap_or_default();
+        if matching != 1 {
+            return Err(format!(
+                "retried LXMF message was delivered {matching} times instead of exactly once: {inbox}"
+            ));
+        }
 
         for (sender, receiver, destination, content) in [
             (

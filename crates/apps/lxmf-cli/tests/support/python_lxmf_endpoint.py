@@ -67,6 +67,12 @@ class EndpointState:
         self.resource_gate_installed = False
         self.preserve_router_resource_callback = False
         self.resource_request_original = RNS.Resource.request
+        self.outbound_packet_drop_target = None
+        self.outbound_packet_drop_count = 0
+        self.outbound_packet_drop_event = threading.Event()
+        self.outbound_retry_window_open = False
+        self.outbound_retry_packet_count = 0
+        self.outbound_retry_packet_event = threading.Event()
 
     def start(self, config_dir: str) -> None:
         print("python_lxmf_endpoint: starting Reticulum", file=sys.stderr, flush=True)
@@ -192,6 +198,72 @@ class EndpointState:
         with self.lock:
             self.preserve_router_resource_callback = enabled
         return {"enabled": enabled}
+
+    def arm_outbound_packet_drop(self, destination: str) -> dict:
+        destination_hash = bytes.fromhex(destination)
+        if len(destination_hash) != RNS.Reticulum.TRUNCATED_HASHLENGTH // 8:
+            raise ValueError("outbound packet-drop destination has an invalid hash length")
+        original_outbound = RNS.Transport._outbound
+        with self.lock:
+            self.outbound_packet_drop_target = destination_hash
+            self.outbound_packet_drop_count = 0
+            self.outbound_packet_drop_event.clear()
+            self.outbound_retry_window_open = False
+            self.outbound_retry_packet_count = 0
+            self.outbound_retry_packet_event.clear()
+
+        def drop_first_lxmf_packet(packet):
+            should_drop = False
+            with self.lock:
+                if (
+                    self.outbound_packet_drop_target == packet.destination_hash
+                    and packet.packet_type == RNS.Packet.DATA
+                    and packet.context == RNS.Packet.NONE
+                    and self.outbound_packet_drop_count == 0
+                ):
+                    self.outbound_packet_drop_count = 1
+                    should_drop = True
+                    self.outbound_packet_drop_event.set()
+            if should_drop:
+                return False
+            sent = original_outbound(packet)
+            if (
+                sent
+                and packet.destination_hash == self.outbound_packet_drop_target
+                and packet.packet_type == RNS.Packet.DATA
+                and packet.context == RNS.Packet.NONE
+            ):
+                with self.lock:
+                    if self.outbound_retry_window_open:
+                        self.outbound_retry_packet_count += 1
+                        self.outbound_retry_packet_event.set()
+            return sent
+
+        RNS.Transport._outbound = staticmethod(drop_first_lxmf_packet)
+        return {"armed": True, "destination": destination_hash.hex()}
+
+    def wait_outbound_packet_drop(self, timeout: float = 10.0) -> dict:
+        if not self.outbound_packet_drop_event.wait(timeout):
+            raise RuntimeError("timed out waiting for the selected outbound LXMF packet drop")
+        with self.lock:
+            return {
+                "dropped_packets": self.outbound_packet_drop_count,
+                "destination": self.outbound_packet_drop_target.hex(),
+            }
+
+    def mark_outbound_retry_window(self) -> dict:
+        with self.lock:
+            self.outbound_retry_window_open = True
+        return {"opened": True}
+
+    def wait_outbound_retry_packet(self, timeout: float = 30.0) -> dict:
+        if not self.outbound_retry_packet_event.wait(timeout):
+            raise RuntimeError("timed out waiting for a post-replacement LXMF retry packet")
+        with self.lock:
+            return {
+                "transmitted_packets": self.outbound_retry_packet_count,
+                "destination": self.outbound_packet_drop_target.hex(),
+            }
 
     def _on_raw_link_established(self, link) -> None:
         link.set_resource_strategy(RNS.Link.ACCEPT_ALL)
@@ -794,6 +866,18 @@ class ControlHandler(socketserver.StreamRequestHandler):
             elif method == "set_router_resource_callback_chaining":
                 result = self.server.state.set_router_resource_callback_chaining(
                     bool(params.get("enabled", False))
+                )
+            elif method == "arm_outbound_packet_drop":
+                result = self.server.state.arm_outbound_packet_drop(params["destination"])
+            elif method == "wait_outbound_packet_drop":
+                result = self.server.state.wait_outbound_packet_drop(
+                    float(params.get("timeout", 10.0)),
+                )
+            elif method == "mark_outbound_retry_window":
+                result = self.server.state.mark_outbound_retry_window()
+            elif method == "wait_outbound_retry_packet":
+                result = self.server.state.wait_outbound_retry_packet(
+                    float(params.get("timeout", 30.0)),
                 )
             elif method == "outbound_status":
                 result = self.server.state.outbound_status(params["message_hash"])

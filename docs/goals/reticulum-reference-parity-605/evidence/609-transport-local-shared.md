@@ -258,39 +258,46 @@ The timeout pair covers both dropped link establishment requests and dropped
 keepalives reaching terminal `Closed` state. A separate transport restart test
 covers a newer cached path response superseding scheduled announce state.
 The real-socket carrier reconnect regression below verifies packet resumption.
-The two-peer shared-instance daemon-replacement trace below was added afterward;
-broader packet/proof duplicate handling and LXMF queue recovery across daemon
-replacement remain unverified.
+The two-peer shared-instance daemon-replacement trace now also proves one
+faulted opportunistic LXMF attempt is retried through the replacement Rust
+relay and delivered exactly once. Broader packet/proof duplicate handling,
+Python `LXMRouter` process-restart persistence, and direct/resource retry modes
+remain outside that result.
 
 ## Two-peer shared-instance recovery after Rust daemon replacement
 
 `python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e`
 starts two independent pinned-Python shared-instance peers and attaches both as
 local clients to one transport-enabled Rust relay. LXMF messages pass in both
-directions before restart. The Rust daemon is stopped while both Python peers
-remain alive; peer A then queues a short opportunistic LXMF message without
-waiting for a path, and the test confirms it has not reached a terminal state
-while the relay is down. The Rust daemon is replaced using the same
-configuration and state. After both peers re-announce and the relay relearns
-their paths, peer B receives that same queued message and peer A observes the
-message reach `DELIVERED`. Fresh Python RNS links and raw link packets then pass
+directions before the fault. The Python sender arms a one-shot software fault
+that drops the next LXMF DATA/NONE packet for peer B and submits an
+opportunistic message through its real pinned `LXMRouter` queue. The test waits
+until the packet has been dropped and verifies the message remains nonterminal
+after exactly one delivery attempt. It then replaces the Rust daemon while the
+Python endpoints and queued message remain alive. After both peers re-announce
+and the replacement relay relearns their paths, the fault harness observes an
+LXMF packet for that destination pass the sender's normal Reticulum outbound
+path; peer B receives exactly one copy and peer A observes terminal
+`DELIVERED` with at least two attempts. The normal pinned retry code and
+schedule are unchanged. Fresh Python RNS links and raw link packets then pass
 in both directions.
 
 ```text
-RETICULUM_PY_REPO=Reticulum-target-99de23c0 LXMF_PY_REPO=LXMF LXMF_PYTHON_BIN=python3 \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/LXMF LXMF_PYTHON_BIN=python3 \
   cargo test -p lxmf-cli --test python_lxmd_remote_relay \
   python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e \
   -- --ignored --nocapture --test-threads=1
-# 2 consecutive passes; each passed with 0 failures; under 5s per run
+# 2 consecutive passes; each passed with 0 failures (5.79s and 5.80s)
 ```
 
-Verified on Rust source commit `f99165ccf3542d343646165aaf9697f6e906fc40`,
+Verified on Rust test base `77edf207627909f416783efb41eca6039d46f9ab`,
 Reticulum `99de23c040d507e3fefca19e87b182302902725d`, and LXMF
-`727830cefda83d9c6e3982b48675425f3f988f9c`. This is bounded shared-instance
-path/link/packet recovery through one Rust relay and one short opportunistic
-LXMF queue item. It does not prove persistence across a Python LXMRouter
-process restart, direct/resource retry modes, deeper multi-relay replacement,
-or broader packet/proof duplicate classes; the #609 row stays partial.
+`727830cefda83d9c6e3982b48675425f3f988f9c`. This proves a bounded
+shared-instance opportunistic LXMF retry through one replaced Rust relay. It
+does not prove persistence across a Python LXMRouter process restart,
+direct/resource retry modes, deeper multi-relay replacement, or broader
+packet/proof duplicate classes; the #609 row stays partial.
 
 ## Caller-visible close-reason parity
 

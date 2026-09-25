@@ -26,9 +26,10 @@ not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
 open. The #609 software slice now additionally proves that attached shared-
 instance clients defer duplicate filtering to their owner and that standalone
-transports suppress identical LinkRequests. A two-peer pinned-Python test queues
-one opportunistic LXMF message while the Rust relay is down, then verifies it is
-delivered and acknowledged after restart. A pinned-Python
+transports suppress identical LinkRequests. A two-peer pinned-Python test drops
+the first queued opportunistic LXMF packet, replaces the Rust relay while the
+Python queue remains live, and verifies a retry traverses the replacement relay
+and is delivered exactly once. A pinned-Python
 clean-close trace over TCP verifies that Python `Link.teardown()` reaches the
 Rust caller as `INITIATOR_CLOSED`. Channel retry exhaustion also has a
 pinned-Python localhost TCP trace: the test drops delivery proofs, observes all
@@ -638,10 +639,12 @@ now verifies a newer cached path response supersedes scheduled announce state
 without being requeued after restore. A real-socket TCP carrier regression
 also proves redial preserves interface identity and resumes bidirectional
 HDLC packet traffic. A two-peer pinned-Python shared-instance test also
-exchanges LXMF in both directions before Rust daemon replacement, then verifies
-both paths are relearned, one queued opportunistic LXMF message is delivered
-and acknowledged after relay recovery, and fresh RNS links and raw packets
-pass in both directions. The original two-relay post-restart trace passed
+exchanges LXMF in both directions, injects a one-shot drop on the first
+opportunistic LXMF data packet, replaces the Rust daemon while that message
+remains queued, and verifies a matching retry packet traverses the replacement
+relay and is delivered exactly once; fresh RNS links and raw packets then pass
+in both directions. This does not test persistence across Python
+`LXMRouter` process restart. The original two-relay post-restart trace passed
 three consecutive local runs after the relay records the shared-owner handoff
 and forwards its `LinkRequestProof` only on that exact interface when the
 destination identity is unavailable; ordinary transit proofs still require
