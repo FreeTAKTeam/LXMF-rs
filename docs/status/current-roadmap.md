@@ -133,8 +133,11 @@ five-second `ble_detect_timeout`; it is not physical BLE support or device
 evidence, and #614/#605 remain partial.
 Strict I2P startup now also has one negative fake-SAM daemon-path regression:
 a rejected SAM HELLO prevents interface registration and leaves a contextual
-startup failure. This does not replace destination-creation/session coverage
-or real-router/public-network evidence; #614/#605 remain partial.
+startup failure. Two fake-SAM regressions separately cancel outbound setup via
+the daemon and interface tokens while the SAM HELLO reply is stalled; both verify
+the worker exits and closes its socket. These do not replace destination-
+creation/session coverage or real-router/public-network evidence; #614/#605
+remain partial.
 The Linux PipeInterface lifecycle now has deterministic production-worker and
 configured-daemon process evidence: child EOF causes one respawn; a local peer
 process echoes a scheduled, HDLC-framed announce with nonzero daemon RX/TX

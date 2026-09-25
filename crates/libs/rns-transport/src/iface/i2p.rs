@@ -2187,6 +2187,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn i2p_outbound_setup_interface_stop_closes_stalled_sam_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("local addr").to_string();
+        let (hello_tx, hello_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.expect("accept SAM connection");
+            let mut reader = BufReader::new(socket);
+            let mut hello = String::new();
+            reader.read_line(&mut hello).await.expect("read SAM HELLO");
+            assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+            let _ = hello_tx.send(());
+
+            let mut remainder = Vec::new();
+            tokio::time::timeout(Duration::from_secs(1), reader.read_to_end(&mut remainder))
+                .await
+                .expect("interface stop should close its SAM socket")
+                .expect("read until client closes");
+        });
+
+        let peer = "peer.b32.i2p".to_string();
+        let runtime_status = Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(
+            sam_addr.clone(),
+            false,
+            std::slice::from_ref(&peer),
+        )));
+        let daemon_cancel = CancellationToken::new();
+        let interface_stop = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let (_peer_tx, peer_rx) = tokio::sync::mpsc::channel(8);
+        let peer_loop = tokio::spawn(run_i2p_peer_loop(
+            peer,
+            crate::hash::AddressHash::new([0x45; 16]),
+            sam_addr,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            Duration::from_secs(30),
+            runtime_status,
+            daemon_cancel.clone(),
+            interface_stop.clone(),
+            rx_channel,
+            peer_rx,
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), hello_rx)
+            .await
+            .expect("outbound setup reached stalled SAM handshake")
+            .expect("fake SAM handshake signal");
+        interface_stop.cancel();
+        tokio::time::timeout(Duration::from_secs(1), peer_loop)
+            .await
+            .expect("outbound setup should honor interface stop")
+            .expect("peer loop task");
+        assert!(!daemon_cancel.is_cancelled(), "daemon cancellation remains live");
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("fake SAM observes socket cleanup")
+            .expect("fake SAM task");
+    }
+
+    #[tokio::test]
     async fn i2p_accept_loop_routes_direct_tx_to_incoming_peer_stream() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
         let sam_addr = listener.local_addr().expect("local addr").to_string();

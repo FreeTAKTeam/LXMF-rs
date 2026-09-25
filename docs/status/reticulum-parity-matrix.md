@@ -742,7 +742,9 @@ and connectable sessions can run through SAM, and transport-side tunnel
 watchdog/status bookkeeping is refreshed into daemon/RPC interface status, with
 fake-SAM coverage for outbound peer-loop writes, connectable accept-loop HDLC
 ingress, accepted-stream direct egress, cleanup, and runtime counter/status
-updates.
+updates. Separate fake-SAM tests cancel outbound setup via daemon and interface
+tokens while HELLO is stalled; each confirms worker exit and socket closure.
+This is software coverage, not real-router or public-network evidence.
 Private destination keys now follow Python's default daemon-storage injection
 and hashed key-file naming, including old-format fallback when an existing
 Python key is present. Missing explicit SAM host/port config now uses Python's
