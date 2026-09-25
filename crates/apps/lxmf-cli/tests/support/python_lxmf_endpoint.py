@@ -614,6 +614,23 @@ class EndpointState:
             f"{self.outbound_status(message_hash)}"
         )
 
+    def wait_backchannel(self, destination_hex: str, timeout: float = 10.0) -> dict:
+        destination_hash = bytes.fromhex(destination_hex)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            link = self.router.backchannel_links.get(destination_hash)
+            if link is not None and link.status == RNS.Link.ACTIVE:
+                return {
+                    "destination": destination_hex,
+                    "link_id": link.link_id.hex(),
+                    "status_name": LINK_STATUS_NAMES.get(link.status, str(link.status)),
+                }
+            time.sleep(0.05)
+
+        raise RuntimeError(
+            f"timed out waiting for active LXMF backchannel to {destination_hex}"
+        )
+
     def open_link(self, destination_hex: str, timeout: float = 60.0) -> dict:
         destination_hash = bytes.fromhex(destination_hex)
 
@@ -905,6 +922,11 @@ class ControlHandler(socketserver.StreamRequestHandler):
                     params["message_hash"],
                     params["state"],
                     float(params.get("timeout", 60.0)),
+                )
+            elif method == "wait_backchannel":
+                result = self.server.state.wait_backchannel(
+                    params["destination"],
+                    float(params.get("timeout", 10.0)),
                 )
             elif method == "open_link":
                 result = self.server.state.open_link(

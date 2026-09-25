@@ -67,10 +67,15 @@ rejecting the shared-owner `LinkRequestProof` because it lacked the
 destination's identity. The relay now records this exact owner handoff and
 accepts the identity-less proof only from the recorded shared-owner interface;
 ordinary transit still fails closed. The original two-relay test passed three
-consecutive local runs after the fix. An earlier combined shape with queued
-DIRECT delivery and fresh Resources in both directions passed once in 42.42
-seconds, but later broad reruns intermittently timed out on B-to-A delivery
-before reaching the retry scenario. The current broad test covers queued
+consecutive local runs after the fix. The combined reverse-DIRECT test's
+intermittent timeouts were then traced to test ordering: the reverse send could
+start before the forward delivery proof and backchannel were ready. After
+adding a bounded readiness barrier, seven isolated runs passed, but a later
+replay still timed out after the receiver observed a message and the sender
+remained at 50% progress. The final barrier waits for B's backchannel to A
+after A-to-B and before B-to-A, without requiring an unused backchannel after
+the final send; three consecutive exact-reference runs then passed (22.40s,
+50.42s, 22.41s). Hosted HIL confirmation is pending. The current broad test covers queued
 OPPORTUNISTIC delivery and fresh bidirectional Resources. A separate pinned-
 Python test gates a large DIRECT Resource mid-transfer, restarts the upstream
 relay with an empty route table, then verifies exactly-once delivery on a new
@@ -670,8 +675,11 @@ reference persistence contract. The original two-relay post-restart trace passed
 three consecutive local runs after the relay records the shared-owner handoff
 and forwards its `LinkRequestProof` only on that exact interface when the
 destination identity is unavailable; ordinary transit proofs still require
-destination-identity validation. Later broad reruns still intermittently time
-out on B-to-A delivery. The expanded recovery test also verifies fresh
+destination-identity validation. Initial readiness-barrier runs passed seven
+times, but a later replay still timed out at 50% after receipt. The final
+condition barrier is limited to establishing B-to-A readiness before reverse
+delivery; three consecutive exact-reference reruns pass, with hosted HIL
+confirmation pending. The expanded recovery test also verifies fresh
 Resource delivery with exact size/digest/metadata in both directions. A
 separate isolated pinned-Python test now verifies that an in-flight large
 DIRECT LXMF Resource is retried exactly once with a new Link and Resource after

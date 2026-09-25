@@ -989,11 +989,11 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
         }
         wait_for_known_path_without_announce(relay_a_rpc_port, &hash_b)?;
         wait_for_known_path_without_announce(relay_b_rpc_port, &hash_a)?;
-        let mut outbound_message_hashes = Vec::new();
-        for (sender, receiver, destination, content) in [
-            (python_control_a_port, python_control_b_port, &hash_b, "multi-hop-after-restart-a-to-b"),
-            (python_control_b_port, python_control_a_port, &hash_a, "multi-hop-after-restart-b-to-a"),
+        for (sender, receiver, destination, content, wait_for_reverse_backchannel) in [
+            (python_control_a_port, python_control_b_port, &hash_b, "multi-hop-after-restart-a-to-b", true),
+            (python_control_b_port, python_control_a_port, &hash_a, "multi-hop-after-restart-b-to-a", false),
         ] {
+            let sender_hash = if sender == python_control_a_port { &hash_a } else { &hash_b };
             python_control_call(
                 sender,
                 "wait_path",
@@ -1080,9 +1080,9 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
                      {python_b_diagnostics}"
                 ));
             }
-            outbound_message_hashes.push((sender, message_hash));
-        }
-        for (sender, message_hash) in outbound_message_hashes {
+            if wait_for_reverse_backchannel {
+                wait_for_python_backchannel(receiver, sender_hash, content)?;
+            }
             python_control_call(
                 sender,
                 "wait_outbound_state",
@@ -1092,7 +1092,7 @@ fn python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e() {
                     "timeout": 30.0
                 })),
             )
-            .map_err(|error| format!("outbound message {message_hash}: {error}"))?;
+            .map_err(|error| format!("{content} outbound message {message_hash}: {error}"))?;
         }
 
         for (sender, receiver, destination, content) in [

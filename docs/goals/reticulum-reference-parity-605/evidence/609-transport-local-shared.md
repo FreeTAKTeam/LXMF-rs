@@ -796,6 +796,44 @@ separate.
 
 ## Mixed Python/Rust multi-hop recovery after relay restart
 
+### HIL failure triage: reverse DIRECT message ordering
+
+GitHub Verify run `36098966770` was confirmed against PR #629 head
+`a4ebc8631922f9281f83376c623b156835c76511`; its artifact pins Reticulum
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6` and LXMF
+`727830cefda83d9c6e3982b48675425f3f988f9c`. Note: the GitHub run's `headSha`
+matches the PR head. Artifact `result.json` reports `commit_sha`
+`36cfb40b0d56e9ba13a86f8e8c0e688b2d4d23ce`, the expected synthetic merge
+commit with base `d404558...` and PR-head `a4ebc863...` parents; this is not a
+source-SHA mismatch. Its firmware manifest has no firmware commit because the
+case is software-only. The HIL case failed only while
+waiting for `multi-hop-after-restart-b-to-a`. Diagnostics showed the forward
+message had arrived, but Python B's reverse outbound remained `OUTBOUND` at
+50% after two attempts, with no message in A's inbox; the Rust relay paths and
+TCP client were connected. This did not by itself prove a transport regression.
+
+The test sent B-to-A immediately after B's inbound callback observed A-to-B.
+Pinned LXMF 0.9.6 only identifies the delivery Link for reverse backchannel
+use after A processes the delivery proof. The test previously deferred waiting
+for that sender-side `delivered` state until after both message directions,
+leaving a scheduling race in the test orchestration. Six exact isolated runs
+against the HIL-pinned references reproduced three failures and three passes.
+The first barrier form waited for delivery proof and receiver backchannel state
+before starting the next direction; seven isolated runs passed. A later replay
+still timed out with sender state `sending` at 50% after the receiver had
+observed the message, so those passes did not establish stability. A trial that
+also required a reverse backchannel after the final B-to-A send timed out on
+that unused condition. The final test waits for B's active backchannel to A
+after A-to-B and before starting B-to-A, then verifies the respective sender
+delivery states without requiring an unused A-to-B backchannel after the last
+send. This is bounded condition polling, not a fixed delay or timeout
+increase, and changes no production protocol behavior. Three consecutive
+isolated runs of this final form passed in 22.40s, 50.42s, and 22.41s against
+the HIL-pinned references. Six attempted launches during the host's full-disk
+window failed before test execution and are excluded from the earlier 7/7
+count. Hosted HIL confirmation and the broader #609 matrix remain outstanding;
+this finding does not close issue #609.
+
 `python_shared_instance_two_rust_relays_recover_after_upstream_restart_e2e`
 uses Python shared-instance endpoint A, two Rust transport relays in series,
 and a Python endpoint B behind the second relay. Both relays run with transport
