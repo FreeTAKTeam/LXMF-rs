@@ -140,9 +140,12 @@ print(json.dumps([{"status": response[0], "body": response[1:].hex(), "active": 
         );
         assert_eq!(hex::encode(&response[1..]), python_result["body"]);
     }
-    for id in [DOCUMENT_ID, INTEGER_DOCUMENT_ID] {
-        assert!(!rust_group.join("repo.work/active").join(id.to_string()).is_dir());
-        assert!(rust_group.join("repo.work/completed").join(id.to_string()).is_dir());
+    for (id, python_result) in [(DOCUMENT_ID, &python[0]), (INTEGER_DOCUMENT_ID, &python[1])] {
+        let rust_active = rust_group.join("repo.work/active").join(id.to_string()).is_dir();
+        let rust_completed =
+            rust_group.join("repo.work/completed").join(id.to_string()).is_dir();
+        assert_eq!(rust_active, python_result["active"]);
+        assert_eq!(rust_completed, python_result["completed"]);
     }
     assert_eq!(python[0]["status"], ReticulumGitNode::RES_OK);
     assert_eq!(python[1]["status"], ReticulumGitNode::RES_OK);
