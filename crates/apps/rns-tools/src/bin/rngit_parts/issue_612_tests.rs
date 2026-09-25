@@ -428,3 +428,4 @@ include!("issue_612_propose_success_differential_tests.rs");
 include!("issue_612_create_success_differential_tests.rs");
 include!("issue_612_create_signature_precedence_differential_tests.rs");
 include!("issue_612_list_success_differential_tests.rs");
+include!("issue_612_edit_non_author_differential_tests.rs");

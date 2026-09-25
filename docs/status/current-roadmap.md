@@ -195,6 +195,13 @@ gate with a broad group `read:all` grant. The Rust `list` handler returns the
 same exact `Not found` response as pinned Python; this closes only that handler
 coverage gap and does not complete the blocked-identity or operation matrix.
 
+A pinned-Python #612 edit differential now covers an identified non-author
+requester with repository and document read/write/interact access. Rust and
+Python both deny the edit without changing the document, and Rust now returns
+Python's exact `No access, not author` response body. This is one denial branch;
+other edit conditions and the broader #612 operation/permission matrix remain
+open. Verify coverage was added for the ignored differential.
+
 The new bidirectional MessagePack work-record regression verifies exact binary
 author/identity/signature values and integer document IDs/timestamps across
 Python↔Rust storage and production Link response boundaries. It also corrected

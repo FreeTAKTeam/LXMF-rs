@@ -277,7 +277,7 @@ impl ReticulumGitNode {
                 if !Self::work_author_matches(&document, &remote)
                     || !self.work_manage_allowed(&remote, &group, &repository, id)
                 {
-                    return response(Self::RES_DISALLOWED, "Not allowed", None);
+                    return response(Self::RES_DISALLOWED, "No access, not author", None);
                 }
                 self.work_edit(&root, request, peer_identity)
             }
