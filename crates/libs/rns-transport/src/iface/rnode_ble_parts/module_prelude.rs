@@ -199,6 +199,10 @@ pub trait RnodeBleBackend {
         Ok(())
     }
 
+    async fn cleanup(&mut self) -> Result<(), String> {
+        self.close().await
+    }
+
     fn negotiated_mtu(&self) -> Option<u16> {
         None
     }
@@ -581,6 +585,10 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
 
     async fn close(&mut self) -> Result<(), String> {
         self.cleanup().await
+    }
+
+    async fn cleanup(&mut self) -> Result<(), String> {
+        NativeRnodeBleBackend::cleanup(self).await
     }
 }
 

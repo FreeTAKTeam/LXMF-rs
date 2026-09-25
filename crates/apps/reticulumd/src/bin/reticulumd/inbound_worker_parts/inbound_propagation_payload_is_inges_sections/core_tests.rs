@@ -17,7 +17,7 @@
 
     use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
 
-    use rns_rpc::{RpcDaemon, RpcRequest};
+    use rns_rpc::{MessageRecord, MessagesStore, RpcDaemon, RpcRequest};
 
     use rns_transport::destination::{DestinationName, SingleInputDestination};
 
@@ -35,7 +35,7 @@
 
     use sha2::{Digest, Sha256};
 
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use std::sync::{Arc, Mutex};
 
@@ -134,7 +134,7 @@
     }
 
     #[test]
-    fn outbound_resource_failure_event_marks_tracking_failed() {
+    fn outbound_resource_failure_event_marks_tracking_failed_without_inventing_timeout() {
         let daemon = RpcDaemon::test_instance();
         daemon
             .handle_rpc(RpcRequest {
@@ -142,7 +142,7 @@
                 method: "propagation_enable".to_string(),
                 params: Some(json!({
                     "enabled": true,
-                    "static_peers": ["peer-resource-timeout"],
+                    "static_peers": ["peer-resource-failure"],
                 })),
             })
             .expect("enable static peer");
@@ -153,8 +153,8 @@
             &map,
             resource_hash_hex.clone(),
             super::super::outbound_resources::OutboundResourceTracking {
-                message_id: "resource-timeout-message".to_string(),
-                peer: "peer-resource-timeout".to_string(),
+                message_id: "resource-failure-message".to_string(),
+                peer: "peer-resource-failure".to_string(),
                 bytes: 512,
                 sent_status: "sent: link resource".to_string(),
             },
@@ -170,10 +170,10 @@
         )
         .is_err());
         let event = rx.try_recv().expect("failed receipt event");
-        assert_eq!(event.message_id, "resource-timeout-message");
-        assert_eq!(event.status, "failed: resource transfer timed out");
+        assert_eq!(event.message_id, "resource-failure-message");
+        assert_eq!(event.status, "failed: resource transfer failed");
         assert_eq!(event.resource_hash.as_deref(), Some(resource_hash_hex.as_str()));
-        assert_eq!(event.peer.as_deref(), Some("peer-resource-timeout"));
+        assert_eq!(event.peer.as_deref(), Some("peer-resource-failure"));
         assert_eq!(event.delivery_kind.as_deref(), Some("resource-failed"));
         assert_eq!(event.bytes, Some(512));
         assert!(matches!(

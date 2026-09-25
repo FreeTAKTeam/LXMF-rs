@@ -522,16 +522,8 @@ impl InterfaceConfig {
     }
 
     fn validate_ifac_configuration(&self, index: usize) -> Result<(), String> {
-        let has_network_name = self
-            .network_name
-            .as_deref()
-            .or(self.networkname.as_deref())
-            .is_some_and(|value| !value.trim().is_empty());
-        let has_passphrase = self
-            .passphrase
-            .as_deref()
-            .or(self.pass_phrase.as_deref())
-            .is_some_and(|value| !value.trim().is_empty());
+        let has_network_name = self.ifac_network_name().is_some();
+        let has_passphrase = self.ifac_passphrase().is_some();
         if self.ifac_size.is_some() && !has_network_name && !has_passphrase {
             return Err(format!(
                 "interfaces[{index}].ifac_size requires network_name or passphrase"
@@ -545,7 +537,7 @@ impl InterfaceConfig {
         };
         config.ifac_context().map_err(|_| {
             format!(
-                "interfaces[{index}] has invalid Reticulum IFAC configuration; ifac_size is in whole bits (8..=512, divisible by 8) and credentials must be non-empty"
+                "interfaces[{index}] has invalid Reticulum IFAC configuration; ifac_size must floor to 1..=64 bytes (or be below the one-byte minimum to use the carrier default) and credentials must be non-empty"
             )
         })?;
         Ok(())
@@ -685,15 +677,15 @@ impl InterfaceConfig {
     pub fn ifac_network_name(&self) -> Option<&String> {
         self.network_name
             .as_ref()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| self.networkname.as_ref().filter(|value| !value.trim().is_empty()))
+            .filter(|value| !value.is_empty())
+            .or_else(|| self.networkname.as_ref().filter(|value| !value.is_empty()))
     }
 
     pub fn ifac_passphrase(&self) -> Option<&String> {
-        self.passphrase
+        self.pass_phrase
             .as_ref()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| self.pass_phrase.as_ref().filter(|value| !value.trim().is_empty()))
+            .filter(|value| !value.is_empty())
+            .or_else(|| self.passphrase.as_ref().filter(|value| !value.is_empty()))
     }
 
     fn normalize_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {

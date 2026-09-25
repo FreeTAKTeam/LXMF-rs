@@ -48,6 +48,71 @@ impl Read for FailingReader {
     }
 }
 
+struct GeneratedReader {
+    remaining: u64,
+    byte: u8,
+    bytes_read: Arc<AtomicUsize>,
+}
+
+impl Read for GeneratedReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let length = buffer.len().min(self.remaining as usize);
+        buffer[..length].fill(self.byte);
+        self.remaining -= length as u64;
+        self.bytes_read.fetch_add(length, Ordering::SeqCst);
+        Ok(length)
+    }
+}
+
+#[test]
+fn reader_backed_send_admits_one_byte_above_compression_threshold_lazily() {
+    const COMPRESSION_THRESHOLD: u64 = 64 * 1024 * 1024;
+    let (sender_link, _) = resource_link_pair();
+    let data_size = COMPRESSION_THRESHOLD + 1;
+    let bytes_read = Arc::new(AtomicUsize::new(0));
+    let reader = GeneratedReader {
+        remaining: data_size,
+        byte: 0,
+        bytes_read: bytes_read.clone(),
+    };
+    let mut sender = ResourceManager::new_with_config(Duration::from_secs(30), 8);
+
+    let (original_hash, advertisement_packet) = sender
+        .start_send_from_reader(&sender_link, reader, data_size, None)
+        .expect("known-size source above the compression threshold is admitted");
+
+    let advertisement = decrypt_advertisement(&sender_link, &advertisement_packet);
+    assert_eq!(advertisement.data_size, data_size);
+    assert_eq!(advertisement.total_segments, 65);
+    assert!(!advertisement.compressed());
+    assert_eq!(bytes_read.load(Ordering::SeqCst), MAX_EFFICIENT_SIZE);
+    assert!(matches!(
+        sender.outgoing_segment_chains.get(&original_hash).map(|pending| &pending.source),
+        Some(PendingSegmentSource::Reader { remaining, .. })
+            if *remaining == data_size - MAX_EFFICIENT_SIZE as u64
+    ));
+}
+
+#[test]
+fn reader_backed_send_rejects_segment_counts_outside_supported_representation() {
+    let (sender_link, _) = resource_link_pair();
+    let too_many_segments = (u32::MAX as u64)
+        .checked_mul(MAX_EFFICIENT_SIZE as u64)
+        .and_then(|size| size.checked_add(1))
+        .expect("test size fits u64");
+    let result = ResourceManager::prepare_send_from_reader(
+        &sender_link,
+        io::empty(),
+        too_many_segments,
+        None,
+        None,
+        false,
+        DEFAULT_RESOURCE_INTERFACE_MTU,
+        true,
+    );
+    assert!(matches!(result, Err(crate::error::RnsError::InvalidArgument)));
+}
+
 /// Reader-backed split sends must read only the first segment before the
 /// advertisement is tracked, then read one segment at each proof boundary.
 #[test]

@@ -1,7 +1,19 @@
 #[cfg(test)]
 mod tests {
 include!("inbound_propagation_payload_is_inges_sections/core_tests.rs");
+include!("inbound_propagation_payload_is_inges_sections/resource_progress_status.rs");
 include!("inbound_propagation_payload_is_inges_sections/outbound_resource_rejection.rs");
+include!("inbound_propagation_payload_is_inges_sections/resource_terminal_consumer.rs");
+include!("inbound_propagation_payload_is_inges_sections/resource_link_close_consumer.rs");
+include!("inbound_propagation_payload_is_inges_sections/inbound_resource_retry_timeout.rs");
+mod partial_inbound_resource_teardown {
+    use super::*;
+    include!("inbound_propagation_payload_is_inges_sections/partial_inbound_resource_teardown.rs");
+}
+mod remote_inbound_resource_cancel {
+    use super::*;
+    include!("inbound_propagation_payload_is_inges_sections/remote_inbound_resource_cancel.rs");
+}
 include!("inbound_propagation_payload_is_inges_sections/inbound_propagation_accepts_stamp_wi.rs");
 include!("inbound_propagation_payload_is_inges_sections/local_propagated_delivery_processed_tr.rs");
 include!("inbound_propagation_payload_is_inges_sections/propagated_signature_metadata.rs");

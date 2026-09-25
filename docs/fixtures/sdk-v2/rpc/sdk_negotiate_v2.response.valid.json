@@ -30,7 +30,7 @@
         }
       },
       "overall": {
-          "level": "complete",
+        "level": "complete",
         "complete_ratio": {
           "numerator": 1857,
           "denominator": 1857
@@ -66,6 +66,25 @@
           "complete": 202,
           "partial": 0,
           "not_applicable": 0
+        }
+      },
+      "forward_behavioral": {
+        "level": "partial",
+        "coverage_status": "incomplete",
+        "complete_ratio": {
+          "numerator": 0,
+          "denominator": 9
+        },
+        "inventory": {
+          "total": 10,
+          "complete": 0,
+          "partial": 9,
+          "not_applicable": 1
+        },
+        "evidence_verified": 0,
+        "reference": {
+          "version": "1.5.4-dev",
+          "revision": "99de23c040d507e3fefca19e87b182302902725d"
         }
       }
     },

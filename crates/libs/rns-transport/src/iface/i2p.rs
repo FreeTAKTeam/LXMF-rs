@@ -1521,6 +1521,10 @@ mod tests {
     use tokio::sync::oneshot;
     use tokio_util::sync::CancellationToken;
 
+    mod ifac_runtime {
+        include!("i2p_tests_parts/ifac_runtime.rs");
+    }
+
     fn hdlc_frame_for_packet(packet: &Packet) -> Vec<u8> {
         let raw = packet.to_bytes().expect("serialize packet");
         let mut buffer = vec![0_u8; raw.len().saturating_mul(2).saturating_add(2)];

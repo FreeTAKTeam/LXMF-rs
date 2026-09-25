@@ -1,4 +1,4 @@
-use rns_rpc::{InterfaceMutationBridge, InterfaceRecord, RpcDaemon};
+use rns_rpc::{InterfaceMutationBridge, InterfaceMutationFailure, InterfaceRecord, RpcDaemon};
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::pipe::{PipeInterface, PipeRuntimeStatusHandle};
 use rns_transport::iface::tcp_client::TcpClient;
@@ -20,12 +20,13 @@ use interface_hot_apply_parts::pipe_runtime_refresh::{
     attach_hot_apply_pipe_runtime_status, spawn_hot_apply_pipe_runtime_status_refresher,
     HotApplyPipeRefresh,
 };
+pub(crate) use interface_hot_apply_parts::record_hot_apply::mark_tcp_server_record_runtime_status;
 use interface_hot_apply_parts::record_hot_apply::{
     apply_record_runtime_config, hot_apply_interface_key, hot_apply_interface_record_changed,
     hot_apply_interface_seed_key as record_hot_apply_interface_seed_key, interface_record_mode,
-    mark_pipe_record_runtime_status, mark_tcp_server_record_runtime_status,
-    mark_udp_record_runtime_status, pipe_adapter, tcp_endpoint, tcp_server_bind_addr,
-    tcp_server_client_mtu, udp_bind_and_forward_addr, validate_hot_apply_uniqueness,
+    mark_pipe_record_runtime_status, mark_udp_record_runtime_status, pipe_adapter, tcp_endpoint,
+    tcp_server_bind_addr, tcp_server_client_mtu, udp_bind_and_forward_addr,
+    validate_hot_apply_uniqueness,
 };
 #[cfg(test)]
 use interface_hot_apply_parts::record_hot_apply::{
@@ -187,7 +188,7 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
 }
 
 fn validate_hot_apply_ifac_configuration(interfaces: &[InterfaceRecord]) -> Result<(), io::Error> {
-    for (index, record) in interfaces.iter().enumerate() {
+    for record in interfaces {
         let config = InterfaceSharedConfig {
             ifac_size: setting_u64(record, "ifac_size"),
             network_name: setting_string(record, "network_name")
@@ -198,10 +199,10 @@ fn validate_hot_apply_ifac_configuration(interfaces: &[InterfaceRecord]) -> Resu
                 .or_else(|| setting_string(record, "ifac_netkey")),
             ..InterfaceSharedConfig::default()
         };
-        if let Err(error) = config.ifac_context() {
+        if config.ifac_context().is_err() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("interfaces[{index}] has invalid Reticulum IFAC configuration: {error}"),
+                InterfaceMutationFailure::InvalidIfacConfiguration,
             ));
         }
     }

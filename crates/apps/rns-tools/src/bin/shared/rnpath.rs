@@ -18,11 +18,25 @@ const DEFAULT_RPC_ADDR: &str = "127.0.0.1:4243";
 const REQUEST_PATH_METHOD: &str = "request_path";
 const RPC_READ_HEADROOM: Duration = Duration::from_secs(2);
 
+include!("rnpath_parts/path_table_sort.rs");
+
 #[derive(Debug, Parser)]
-#[command(name = "rnpath-rs", about = "Request Reticulum path discovery through daemon RPC.")]
+#[command(name = "rnpath-rs", about = "Request paths or inspect the daemon path table.")]
 struct Cli {
     #[arg(value_name = "DESTINATION_HASH", value_parser = parse_destination_hash)]
     destination_hash: Option<String>,
+
+    #[arg(short = 't', long, help = "Show all known paths")]
+    table: bool,
+
+    #[arg(
+        short = 'm',
+        long = "max",
+        alias = "max-hops",
+        value_name = "HOPS",
+        help = "Filter the path table by maximum hops"
+    )]
+    max_hops: Option<u64>,
 
     #[arg(long, value_name = "ADDR", help = "Daemon TCP RPC address (default: 127.0.0.1:4243)")]
     rpc: Option<String>,
@@ -85,7 +99,29 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
-    if let Some(action) = cli.management_action()? {
+    if cli.max_hops.is_some() && !cli.table {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--max requires --table",
+        ));
+    }
+    let management_action = cli.management_action()?;
+    if cli.table {
+        if management_action.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--table cannot be combined with path management options",
+            ));
+        }
+        if cli.on_iface.is_some() || cli.tag_hex.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path scope cannot be combined with --table",
+            ));
+        }
+        return run_path_table(cli, output);
+    }
+    if let Some(action) = management_action {
         return run_management(cli, output, action);
     }
 
@@ -130,6 +166,62 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
         writeln!(output, "{}", serde_json::to_string_pretty(&result)?)?;
     } else {
         write_human_path_result(output, destination_hash, &result)?;
+    }
+    Ok(())
+}
+
+fn run_path_table(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
+    let response = rpc_call(
+        cli,
+        1,
+        "get_path_table",
+        Some(json!({ "max_hops": cli.max_hops })),
+    )?;
+    let result = ensure_rpc_ok(response, "get_path_table")?.ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidData, "missing path table result")
+    })?;
+    let mut rows = result
+        .as_array()
+        .cloned()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "path table result is not an array"))?;
+    sort_path_rows(&mut rows);
+    if !filter_path_rows(&mut rows, cli.destination_hash.as_deref(), cli.json) {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "no path known"));
+    }
+    if cli.json {
+        writeln!(output, "{}", serde_json::to_string_pretty(&rows)?)?;
+    } else {
+        write_human_path_table(output, &rows)?;
+    }
+    Ok(())
+}
+
+fn write_human_path_table(output: &mut dyn Write, rows: &[Value]) -> io::Result<()> {
+    for row in rows {
+        let destination = value_str(row, "hash")
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "path table row has no hash"))?;
+        let next_hop = value_str(row, "via")
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "path table row has no via"))?;
+        let hops = row
+            .get("hops")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "path table row has no hop count"))?;
+        let expires_secs = row
+            .get("expires")
+            .and_then(Value::as_f64)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "path table row has no expiration"))?;
+        let interface = value_str(row, "interface")
+            .map(str::to_owned)
+            .or_else(|| value_str(row, "interface_hash").map(|hash| format!("interface hash {hash}")))
+            .unwrap_or_else(|| "unknown interface".to_owned());
+        let destination = format!("<{destination}>");
+        let next_hop = format!("<{next_hop}>");
+        let expires = format_path_timestamp(expires_secs);
+        let plural = if hops == 1 { "" } else { "s" };
+        writeln!(
+            output,
+            "{destination} is {hops} hop{plural} away via {next_hop} on {interface} expires {expires}"
+        )?;
     }
     Ok(())
 }
@@ -347,6 +439,39 @@ mod tests {
         assert_eq!(cli.rpc_timeout(), Duration::from_secs(1));
         assert_eq!(cli.rpc_timeout() + RPC_READ_HEADROOM, Duration::from_secs(3));
     }
+
+    #[test]
+    fn cli_accepts_path_table_without_destination_and_hop_filter() {
+        let cli = Cli::parse_from(["rnpath-rs", "--table", "--max", "3", "--json"]);
+
+        assert!(cli.table);
+        assert_eq!(cli.max_hops, Some(3));
+        assert!(cli.destination_hash.is_none());
+    }
+
+    #[test]
+    fn human_path_table_reports_interface_hash_when_name_is_unavailable() {
+        let rows = vec![json!({
+            "hash": DESTINATION_HASH,
+            "via": "8899aabbccddeeff0011223344556677",
+            "hops": 1,
+            "expires": 1234.5,
+            "interface": null,
+            "interface_hash": "fedcba98765432100123456789abcdef",
+        })];
+        let mut output = Vec::new();
+
+        write_human_path_table(&mut output, &rows).expect("render path table");
+        let rendered = String::from_utf8(output).expect("UTF-8 output");
+
+        assert!(rendered.contains(&format!("<{DESTINATION_HASH}>")));
+        assert!(rendered.contains("<8899aabbccddeeff0011223344556677>"));
+        assert!(rendered.contains("is 1 hop away"));
+        assert!(rendered.contains("interface hash fedcba98765432100123456789abcdef"));
+        assert!(rendered.contains(&format!("expires {}", format_path_timestamp(1234.5))));
+    }
+
+    include!("rnpath_parts/path_table_tests.rs");
 
     #[test]
     fn rns_1_5_adaptive_timeout_uses_medium_timeout_as_a_lower_bound() {

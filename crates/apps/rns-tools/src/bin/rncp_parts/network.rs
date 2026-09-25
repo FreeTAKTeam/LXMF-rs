@@ -120,10 +120,7 @@ fn validate(cli: &Cli) -> io::Result<()> {
     }
     if let Some(save) = cli.save.as_deref() {
         if !save.is_dir() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "save directory is not a directory",
-            ));
+            return Err(io::Error::new(io::ErrorKind::NotADirectory, "Output directory not found"));
         }
     }
     Ok(())

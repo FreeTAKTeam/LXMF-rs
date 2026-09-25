@@ -364,7 +364,7 @@ async fn pinned_python_link_establishment_timeout_after_dropped_request() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child = paths.spawn_endpoint(&py_config_dir, "channel");
+    let mut child = paths.spawn_endpoint(&py_config_dir, "resource-shutdown");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -376,6 +376,7 @@ async fn pinned_python_link_establishment_timeout_after_dropped_request() {
     let rust_identity = to_transport_private_identity(&rust_identity);
     let mut config = TransportConfig::new("python-link-establishment-timeout-rust", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
     let transport = Transport::new(config);
     transport
         .iface_manager()
@@ -402,6 +403,55 @@ async fn pinned_python_link_establishment_timeout_after_dropped_request() {
     .await
     .expect("timed out waiting for Rust link establishment timeout");
     assert_eq!(link.lock().await.status(), LinkStatus::Closed);
+
+    // The first Link never completed because its request was dropped. Reusing
+    // the same carrier after the fault is removed must replace that terminal
+    // Link and permit an actual Resource exchange with the pinned peer.
+    proxy.resume_traffic();
+    let recovered_link = transport.link(destination).await;
+    let recovered_id = wait_for_out_link_active(
+        &mut link_events,
+        &recovered_link,
+        Duration::from_secs(12),
+    )
+    .await;
+    assert_ne!(recovered_id, *link.lock().await.id(), "timeout recovery must create a fresh Link");
+
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    transport
+        .channel(recovered_id)
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register acknowledgement handler on recovered Link");
+    let payload = rust_resource_fixture(256);
+    let expected_digest = digest_hex(&payload);
+    let mut resource_events = transport.resource_events();
+    let resource_hash = transport
+        .send_resource(&recovered_id, payload, None)
+        .await
+        .expect("send Resource over recovered Link");
+    wait_for_resource_started(&seen, Duration::from_secs(15)).await;
+    wait_for_outbound_resource_complete(
+        &mut resource_events,
+        resource_hash,
+        Duration::from_secs(30),
+    )
+    .await;
+    wait_for_resource_digest_ack(
+        &seen,
+        256,
+        &expected_digest,
+        Duration::from_secs(30),
+    )
+    .await;
 
     drop(proxy);
     drop(transport);

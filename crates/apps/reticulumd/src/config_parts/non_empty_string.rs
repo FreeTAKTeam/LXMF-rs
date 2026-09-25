@@ -49,6 +49,18 @@ where
     }
 }
 
+fn deserialize_ifac_size<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // Python Reticulum ignores every configured bit count below its one-byte
+    // minimum. Preserve a present value as zero so validation still requires
+    // credentials; the transport then selects the carrier-specific default.
+    Option::<i64>::deserialize(deserializer)?
+        .map(|bits| u64::try_from(bits.max(0)).map_err(D::Error::custom))
+        .transpose()
+}
+
 fn split_string_list(value: &str) -> Vec<String> {
     value.split(',').map(str::trim).filter(|value| !value.is_empty()).map(str::to_string).collect()
 }

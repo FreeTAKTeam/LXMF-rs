@@ -219,6 +219,15 @@ impl PathLookupBridge for RuntimeManagementBridge {
         }]))
     }
 
+    fn path_table(&self, max_hops: Option<u64>) -> Result<JsonValue, std::io::Error> {
+        Ok(json!([{
+            "hash": "00112233445566778899aabbccddeeff",
+            "hops": 2,
+            "interface": "uplink",
+            "max_hops_seen": max_hops,
+        }]))
+    }
+
     fn packet_signal(&self, _packet_hash: &str) -> Result<JsonValue, std::io::Error> {
         Ok(json!({ "rssi": -61.0, "snr": 7.5, "q": 88.0 }))
     }
@@ -404,6 +413,13 @@ fn runtime_management_rpc_matches_python_result_shapes() {
     let rows = rate_table.result.expect("rate table");
     assert_eq!(rows[0]["rate_violations"].as_u64(), Some(2));
     assert_eq!(rows[0]["timestamps"].as_array().map(Vec::len), Some(2));
+
+    let path_table = daemon
+        .handle_rpc(rpc_request(20, "get_path_table", json!({ "max_hops": 2 })))
+        .expect("path table response");
+    let rows = path_table.result.expect("path table");
+    assert_eq!(rows[0]["interface"].as_str(), Some("uplink"));
+    assert_eq!(rows[0]["max_hops_seen"].as_u64(), Some(2));
 
     let discovered = daemon
         .handle_rpc(rpc_request(19, "discovered_interfaces", json!({})))

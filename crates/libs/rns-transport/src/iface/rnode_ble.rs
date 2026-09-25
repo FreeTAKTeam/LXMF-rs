@@ -14,6 +14,8 @@ include!("rnode_ble_parts/runtime_startup_notification_drain.rs");
 
 include!("rnode_ble_parts/rnodeblecommandmonitor.rs");
 
+include!("rnode_ble_parts/runtime_status_handle.rs");
+
 #[cfg(all(test, feature = "rnode-ble"))]
 include!("rnode_ble_parts/runtime_tests.rs");
 
@@ -28,3 +30,6 @@ include!("rnode_ble_parts/issue_614_discovery_cancel_tests.rs");
 
 #[cfg(all(test, feature = "rnode-ble"))]
 include!("rnode_ble_parts/issue_614_startup_cancel_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/ifac_worker_tests.rs");

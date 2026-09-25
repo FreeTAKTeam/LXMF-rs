@@ -399,7 +399,7 @@
     }
 
     #[tokio::test]
-    async fn auto_peer_data_transport_bridge_registers_virtual_iface_and_routes_direct_tx() {
+    async fn auto_peer_data_transport_bridge_rejects_wrong_ifac_and_authenticates_ingress_egress() {
         // The peer both sends from and listens on this socket, so it stands in
         // for a real peer's data port, which is where a reply belongs.
         let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
@@ -420,6 +420,24 @@
         let rx_recv = iface_manager.lock().await.receiver();
         let channel = iface_manager.lock().await.new_channel_with_role(8, IfaceRole::Multicast);
         let host_iface = channel.address;
+        let ifac_state = channel.ifac_state.clone();
+        *ifac_state.write().expect("AutoInterface IFAC state") = Some(
+            crate::transport::IfacContext::from_network_credentials(
+                16,
+                Some("auto-ifac-test"),
+                Some("auto-ifac-secret"),
+            )
+            .expect("derive AutoInterface IFAC context"),
+        );
+        let wrong_ifac_state: crate::iface::IfacState = Arc::new(std::sync::RwLock::new(Some(
+            crate::transport::IfacContext::from_network_credentials(
+                16,
+                Some("auto-ifac-test"),
+                Some("wrong-auto-ifac-secret"),
+            )
+            .expect("derive wrong AutoInterface IFAC context"),
+        )));
+        let ifac_violations = Arc::clone(&channel.ifac_violations);
         let runtime =
             AutoInterfaceTransportRuntime::from_channel(channel, Arc::clone(&iface_manager));
         let (bridge, tx_channel) = runtime.split();
@@ -444,6 +462,31 @@
             "lo",
             core::time::Duration::ZERO,
         );
+        let rejected_packet = Packet {
+            destination: AddressHash::new_from_slice(
+                &[0x43; crate::hash::ADDRESS_HASH_SIZE],
+            ),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"wrong AutoInterface IFAC key"),
+            ..Default::default()
+        };
+        let rejected_payload =
+            crate::iface::encode_packet_ifac(&wrong_ifac_state, &rejected_packet)
+                .expect("encode wrong-key AutoInterface packet");
+        sender.send_to(&rejected_payload, bind_addr).await.expect("send wrong-key peer datagram");
+        let rejected = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("wrong-key processed event timeout")
+            .expect("wrong-key processed event");
+        assert!(matches!(
+            rejected,
+            AutoPeerDataLoopEvent::Processed(AutoProcessedPeerDataDatagram {
+                decision: AutoPeerInboundDecision::Accepted { .. },
+                ..
+            })
+        ));
+        assert_eq!(ifac_violations.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert!(rx_recv.lock().await.try_recv().is_err(), "wrong-key packet is not admitted");
+
         let inbound_packet = Packet {
             destination: AddressHash::new_from_slice(
                 &[0x44; crate::hash::ADDRESS_HASH_SIZE],
@@ -451,7 +494,9 @@
             data: crate::packet::PacketDataBuffer::new_from_slice(b"inbound"),
             ..Default::default()
         };
-        let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
+        let inbound_payload =
+            crate::iface::encode_packet_ifac(&ifac_state, &inbound_packet)
+                .expect("encode authenticated inbound packet");
 
         sender.send_to(&inbound_payload, bind_addr).await.expect("send peer data datagram");
         let processed = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
@@ -472,7 +517,9 @@
                 .expect("rx message timeout")
                 .expect("rx message");
         assert_ne!(rx_message.address, host_iface);
-        assert_eq!(rx_message.packet, inbound_packet);
+        assert_eq!(rx_message.packet.destination, inbound_packet.destination);
+        assert_eq!(rx_message.packet.data, inbound_packet.data);
+        assert_eq!(rx_message.packet.ifac.map(|ifac| ifac.length), Some(0));
         assert_eq!(rx_message.source, IfaceSource::Udp(sender.local_addr().expect("sender addr")));
         assert_eq!(
             iface_manager.lock().await.role(&rx_message.address),
@@ -502,9 +549,14 @@
         .await
         .expect("outbound receive timeout")
         .expect("outbound receive");
-        let decoded = Packet::deserialize(&mut InputBuffer::new(&outbound_payload[..received]))
-            .expect("decode outbound packet");
-        assert_eq!(decoded, outbound_packet);
+        let decoded = crate::iface::decode_packet_ifac(&ifac_state, &outbound_payload[..received])
+            .expect("decode authenticated outbound packet");
+        assert_eq!(decoded.destination, outbound_packet.destination);
+        assert_eq!(decoded.data, outbound_packet.data);
+        assert!(decoded.ifac.is_some());
+        assert!(crate::iface::decode_packet_ifac(&wrong_ifac_state, &outbound_payload[..received])
+            .is_err());
+        assert_eq!(ifac_violations.load(std::sync::atomic::Ordering::Relaxed), 1);
 
         shutdown_tx.send(true).expect("send shutdown");
         for handle in data_handles {

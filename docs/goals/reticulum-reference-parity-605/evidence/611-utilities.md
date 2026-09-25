@@ -1,5 +1,12 @@
 # #611 utility/network evidence
 
+The `rnsd --exampleconfig` process option now prints the frozen Python
+configuration example without launching the daemon. An ignored exact-target
+differential compares byte-for-byte output with Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`; the focused test passed locally.
+This restores one documented utility option and does not complete the broader
+#611 utility matrix.
+
 Status: **partial / unverified**. This record covers the bounded native `rncp`,
 `rnprobe`, and `rnsh` slices on the forward parity branch, including
 authenticated pinned-Python and Rust sender/listener roles. The mixed-runtime compression increment is
@@ -7,7 +14,13 @@ implemented by `3c6757ba`, and process-level missing-file/denied-identity
 failure assertions are implemented by `2b281b87`; these increments do not
 close #611 or #605. Malformed identity and unusable-save-path failures are
 covered by `053ef246`, and path-discovery timeout status is covered by
-`9dc9bd62`. Listener identity persistence and a post-restart transfer are
+`9dc9bd62`. The non-ignored `rncp_reports_path_discovery_timeout` process
+regression additionally pins the requested-destination progress line on
+stdout, `rncp: path discovery timed out` on stderr, and exit status 1; this is
+Rust CLI evidence distinct from the pinned-Python transcript comparison below.
+The `rncp_process` suite passed all 14 tests serially with
+`TMPDIR=/dev/shm cargo test -p rns-tools --test rncp_process -- --test-threads=1`.
+Listener identity persistence and a post-restart transfer are
 covered by `d66b19d1`; local destination disk-error status is covered by
 `9b8e4ed6`, and client Ctrl-C cancellation status is covered by
 `397a9525`. Concurrent clients are covered by `e668ae60`.
@@ -22,9 +35,141 @@ output regression added by `a32b6d71`. Its Rust process tests cover command
 output, mirrored exit status, allow-list rejection, and flow-control output,
 while both pinned-Python initiator/listener roles are covered by the ignored
 interop fixture at `e57afb99`, with the command-before-stdin and bounded EOF
-grace fix at `662dcdbe`.
+grace fix at `662dcdbe`. The authenticated-listener process test also verifies
+the denied-identity failure boundary end-to-end: after a separate Rust `rnsh`
+client identifies over TCP/Link, the listener sends the frozen Python protocol
+error `Identity not allowed` before closing the Link; the shipped client exits
+1, reports that reason on stderr, and does not run the requested command. This
+matches the deny branch in pinned `RNS/Utilities/rnsh/session.py` while proving
+only this software loopback authorization failure case.
 The two-direction pinned-Python/native `rnprobe` process exchange is covered
-by `f86ecc1c`.
+by `f86ecc1c`. A separate late-announce process test starts the pinned Python
+peer without announcing its `rnstransport.probe` destination, starts native
+`rnprobe` through the live Rust daemon RPC, and only then releases the Python
+announce. It pins the checkout to
+`99de23c040d507e3fefca19e87b182302902725d`, asserts the destination, two sent
+probes, two delivered replies and both per-probe delivered statuses, and uses
+isolated TCP/state plus bounded process waits and cleanup. Verify runs this
+exact regression. A second exact-target regression runs two separate native
+`rnprobe` client processes sequentially against the same live Rust daemon and
+pinned-Python responder. The first invocation discovers the late announce;
+the second reuses the learned route. Both assert two sent and two delivered
+probes with per-probe `delivered` results. This verifies sequential utility
+reuse through one shared daemon/transport instance, not restart or concurrent
+client behavior. A separate exact-target process regression runs native
+`rnprobe` before and after a graceful Rust daemon restart against the same state
+database and TCP RPC endpoint. The pinned-Python destination remains live and
+sends a fresh announce after restart; both Rust client invocations assert two
+sent and two delivered probes. The test uses a distinct Unix RPC socket path
+for each daemon process and bounded process waits/cleanup. Verify runs this
+case against Reticulum `99de23c040d507e3fefca19e87b182302902725d`. This proves
+one software-loopback restart path only; crash recovery, concurrent clients,
+multi-hop, public-network, and physical behavior remain outside this evidence.
+This does not complete the broader `rnprobe` option and failure matrix. A new
+exact-target process regression covers the distinct known-path/no-proof
+production flow: the pinned Python peer announces its destination with
+`PROVE_NONE`, so native `rnprobe` sends a probe through daemon RPC, times out
+waiting for a proof, and returns one `timeout`, zero replies, 100% packet loss,
+and exit status 2. The exit mapping itself already has CLI unit coverage; this
+regression adds the live transport-to-CLI failure path. The result matches
+frozen `RNS/Utilities/rnprobe.py`, which prints `Probe timed out`, computes loss
+from sent/replies, and exits 2 when loss is nonzero. The focused run passed
+against Reticulum `99de23c040d507e3fefca19e87b182302902725d`; no production
+change was needed. This does not close the broader `rnprobe` failure/restart,
+multi-hop, public-network, or physical matrix. The focused
+`rnprobe_invalid_probe_count_matches_pinned_python_process_failure` regression
+also compares malformed `--probes` handling at the process boundary: Rust and
+the frozen Python utility both exit with status 2 and report their respective
+invalid-integer diagnostics. Verify runs this test against the exact pinned
+Reticulum checkout; it does not complete the broader `rnprobe` option matrix.
+The `rnprobe_missing_destination_prints_help_without_network_startup`
+process regression supplies only the full destination name. Frozen Python
+`argparse` prints usage/help and exits 0 for this incomplete invocation; Rust
+now treats the absent hash as incomplete usage too, prints CLI help, exits 0,
+and starts no network activity. The test checks both processes' success status,
+help output, and empty stderr; their exact help formatting remains
+implementation-specific. Verify runs this exact-target case. It is one
+missing-argument slice only and does not establish general `rnprobe` option
+parity.
+The `rnprobe_invalid_destination_identity_matches_pinned_python_failure`
+regression instead passes a 32-character non-hex destination identity hash to
+both production CLI processes. Frozen Python prints exactly
+`Invalid destination entered. Check your input.` to stdout and exits 0; Rust
+prints its destination-hash validation diagnostic to stderr and exits 2. The
+differing exit statuses are captured as reference behavior, not normalized.
+Verify runs this exact-target differential against the pinned checkout. This
+is narrow validation evidence, not broad `rnprobe` failure-path parity.
+The `rnprobe_rpc_rejection_reports_failure_without_probe_result` process
+regression injects an authorization rejection through a mock daemon RPC. The
+production CLI exits 1, emits `rnprobe: probe failed: destination is not
+authorized (probe_rejected)` on stderr, and leaves stdout empty. This pins the
+CLI-to-daemon error boundary only; it does not claim a live transport or
+pinned-Python authorization comparison, and no production change was needed.
+The `rnprobe_reports_interrupted_rpc_response_without_probe_result` process
+regression closes the daemon-RPC response after a short body despite a larger
+declared content length. The production CLI exits 1, reports `response body
+incomplete` on stderr, and leaves stdout empty rather than emitting a probe
+result. This covers an interrupted CLI-to-daemon response boundary, not a
+mid-probe transport-Link interruption.
+The `rnpath_daemon_unavailable` process regression runs the production Rust
+CLI against a reserved-then-closed local RPC endpoint. It asserts a failing
+exit status, empty stdout, and a connection-refused diagnostic, so an
+unavailable daemon cannot be mistaken for a successful path request. This is
+a CLI-to-daemon boundary check; no Python comparison applies
+because neither daemon transport nor a Reticulum peer is reached.
+The ignored `rncp_python_missing_source::rncp_missing_source_records_python_and_rust_cli_transcripts`
+regression compares both production CLI processes against frozen Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` for a nonexistent send source.
+Python exits 1 with exactly `File not found` on stdout and empty stderr; Rust
+exits 1 with empty stdout and its OS-specific missing-file diagnostic on
+stderr. Neither process creates files in its isolated home/config roots. This
+is an intentionally recorded stdout/stderr divergence, not transcript parity
+or proof of the broader missing-destination/network failure matrix. Verify runs
+this exact-target case.
+The ignored `rncp_python_unknown_destination::rncp_unknown_destination_records_python_and_rust_cli_transcripts`
+regression separately requests an unannounced destination from both production
+send CLIs. With pinned Reticulum, Python exits 1 after printing only the
+“Path to … requested” stdout line; its expected terminal “Path not found” line
+is absent from captured output and stderr is empty. Rust exits 1 with its
+“Path to … requested” line on stdout and `path discovery timed out` on stderr.
+The transcript and exit status are recorded as observable differences, not
+parity. Reticulum's generated identity/cache directories remain inside the
+isolated Python config root; neither process creates or changes the source
+payload, and the Rust home/config roots remain empty. Verify runs this exact
+pinned-target case. This is an unknown-destination CLI failure slice, not
+evidence for every timeout, cancellation, interface, or network failure mode.
+The non-ignored `rncp_missing_destination_reports_cli_failure` regression
+invokes the production Rust CLI with a real source file, an active local TCP
+interface, and no destination argument. The local acceptor is only an interface
+startup fixture; no Reticulum peer or path discovery is involved. The command
+exits 1, leaves stdout empty, reports exactly `rncp: missing destination hash`
+on stderr, and preserves the source file. This is a distinct argument-omission
+failure slice and does not complete the broader `rncp` failure/network matrix.
+At pinned RNS 1.5.4, `rncp.main` instead prints help to stdout and returns
+success when a source is supplied without its destination. Rust intentionally
+uses a nonzero status and concise stderr for this malformed invocation so it
+cannot appear successful; this is a documented CLI-safety difference, not an
+exact-output parity claim. The local TCP acceptor is bounded to five seconds
+so a startup regression fails rather than hanging the process test.
+The pinned Python fetch client receiving from the Rust listener and
+interrupted after partial Resource bytes arrive is covered by the ignored
+exact-target `rncp_python_fetch_cancel` transcript: Python exits 0, emits
+request/transfer progress without a terminal result, leaves no completed save
+file, and retains the partial Resource staging file; the Rust sender reports
+`rncp: outgoing Resource failed`.
+
+The ignored exact-target `rncp_python_fetch_failure` regression now forces the
+fetch client's validated save directory to become a regular file after the
+request starts. A test-local Python startup hook hashes the bytes passed to the
+pinned `shutil.move` call before the original move fails. The pinned client
+prints both `An error occurred while saving received resource` and
+`Transfer complete`, but never prints the terminal `fetched from` line and is
+still running when observed. The Rust listener independently reports its
+production `OutboundComplete` event, and its Resource hash matches the hash in
+the Python staging path. The payload digest, intact collision sentinel, absent
+destination file, and empty Python Resource staging directory distinguish
+complete transport delivery from failed local save. This captures the pinned
+behavior; it does not add or imply a negative-ack protocol.
 
 ## Reference and ownership
 
@@ -49,20 +194,48 @@ option family; it is not a callable-surface completion claim.
 | Frozen entry point | Reference behavior families | Rust implementation and evidence | Current classification |
 | --- | --- | --- | --- |
 | `rncp` | Local copy; authenticated listener/send/fetch; jail/save/overwrite; compression; identity allow-list; progress, timeout, cancellation, and file failure status | Native TCP/Link/Resource send/fetch plus isolated Rust processes and pinned-Python send/fetch roles in this record | partial / bounded network slice evidenced |
-| `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; `rnpath_cli` and daemon RPC tests | partial / local daemon management subset evidenced |
-| `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. `f86ecc1c` exercises pinned Python→Rust and native Rust→pinned Python probe roles over isolated TCP interfaces. | partial / bounded software workflow evidenced; physical/public-network and fault/restart evidence remain open |
+| `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; a new local `--table`/`--max` path-table RPC/CLI slice; `rnpath_cli` regressions; `rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc` exercises the Rust CLI, live daemon TCP RPC, and a separate pinned-Python Reticulum peer | partial / discovery has one live mixed-runtime trace and table listing has software unit/RPC coverage; remaining reference options open |
+| `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. `f86ecc1c` exercises pinned Python→Rust and native Rust→pinned Python probe roles over isolated TCP interfaces. The ignored `native_rnprobe_succeeds_after_rust_daemon_restart` process test verifies successful probe delivery after a graceful daemon restart. | partial / bounded software workflow evidenced; broader failure/restart, physical, and public-network evidence remain open |
+| `rnstatus -R` | Query remote transport status over an authenticated Reticulum Link, with optional link-count and profiling data | Frozen Python uses a distinct `rnstransport.remote.management` destination. Its service must be enabled and the identified management identity must pass `remote_management_allowed` before `/status` returns interface stats, optionally followed by link count and profiling results. Rust parses the enable flag but lacks the allow-list, destination registration, and `/status` request route. The existing propagation-control endpoint is a different protocol/policy; returning broad daemon status would not be parity and risks exposing fields outside this response contract. See the pinned sources below. | not implemented / explicit software parity gap; do not infer completion from local `rnstatus-rs` |
 | `rnsd` | Configured daemon launch, service/interactive modes, verbosity, example configuration | Rust compatibility shim resolves and delegates to `reticulumd`; delegation/help/status tests exist | partial / daemon delegation evidenced |
-| `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates and displays persisted private identities with overwrite protection | partial / local identity subset evidenced |
+| `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates/displays persisted identities, emits Python-compatible binary `.rsg` signatures, and validates pinned-Python signed `.rsg` envelopes; the process regression checks valid binary input and tampering against both implementations | partial / local identity, bounded file-signing, and signature-validation workflows evidenced; other reference modes open |
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
 | `rnodeconf` | Serial RNode information, firmware/bootstrap/update, EEPROM, Wi-Fi/Bluetooth/display/radio management, signing/trust operations | Rust `rnodeconf-rs` exposes daemon-backed management commands and mock-RPC coverage; physical serial/firmware rows are separate | partial / software management evidenced; hardware-unverified |
 | `rnpkg` | Package-manager configuration and package workflow entry point | Rust exposes global/example-config options only, matching the currently shipped no-subcommand surface | partial / configuration-only |
-| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; timeout and mirrored exit status | `f24e0038` adds a native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family, persisted identities, allow-list/no-auth modes, root-scoped command execution, remote-command policy, stream forwarding, timeout, and mirrored exit status. `a32b6d71` retries channel-window backpressure, fails closed on bounded inbound queue overflow, and exercises a 128 KiB output stream. `rnsh_process` covers Rust↔Rust command output and authenticated allow-list rejection; `rnsh_python_interop` covers both pinned-Python initiator→Rust listener and Rust initiator→pinned-Python listener output and exit status (`e57afb99`). `662dcdbe` orders the execute envelope before stdin EOF and adds bounded EOF grace for the pinned listener's short-command cleanup behavior. The existing local root-scoped executor remains the no-network mode. | partial / bounded native and both pinned-Python roles evidenced |
+| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; PTY, controlling terminal, initial dimensions and resize; timeout and mirrored exit status | `f24e0038` adds the native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family. `a32b6d71` adds channel backpressure, bounded queue failure, and large-output coverage. `e57afb99` and `662dcdbe` cover both pinned-Python roles and immediate non-TTY EOF. The listener-side PTY slice applies initial rows/columns/pixel dimensions, forwards `WindowSize` updates, and ties child and I/O tasks to Link cancellation; local PTY child-observation and loopback Rust-client-under-PTY resize tests cover the behavior. Two production-path mixed-mode process tests cover PTY-stdin/piped-outputs and piped-stdin/shared-PTY-outputs. | partial / bounded native, both pinned-Python roles, PTY resize, and two mixed descriptor combinations evidenced; wider rnsh matrix remains open |
 | `rnx` | Authenticated Reticulum remote execution, listener/initiator, interactive and stream options, identity and timeout controls | Rust `rnx` is a production interop/diagnostic harness with mesh, resource, BLE, TCP, and path scenarios; its scenarios are not a drop-in `rnsh` endpoint | partial / harness workflows evidenced, reference remote shell remains open |
-| `rngit` | Reticulum Git client/server, repository and work operations, bundles, pages/media, permissions, signatures, and network failure/restart behavior | Rust local CLI plus daemon-side service handlers; #612/#613 records pinned-Python request/bundle/page/media seams and the reciprocal native Rust-client `/git/list`/`/git/fetch`/`/git/push`/signed `/mgmt/work` plus bounded release request trace, with exact fetched-bundle and pushed-ref verification | partial / split across #611–#613 |
+| `rngit` | Reticulum Git client/server, repository and work operations, bundles, pages/media, permissions, signatures, and network failure/restart behavior | Rust local CLI plus daemon-side service handlers; #611 adds a production Rust `rngit fetch` CLI workflow against the pinned Python service, importing a verified bundle into a local ref and checking the exact binary Git blob; #612/#613 separately record service, work, and page/media seams | partial / split across #611–#613 |
 
 The matrix prevents parser-only or local-only commands from being promoted as
 reference-equivalent network utilities. Hardware-facing `rnodeconf` rows and
 physical/public-network evidence remain outside the software-only pass.
+
+### Frozen `rnstatus -R` remote-management contract and Rust gap
+
+The frozen Reticulum source is pinned here to
+[`99de23c040d507e3fefca19e87b182302902725d`](https://github.com/markqvist/Reticulum/tree/99de23c040d507e3fefca19e87b182302902725d):
+[`rnstatus.py`](https://github.com/markqvist/Reticulum/blob/99de23c040d507e3fefca19e87b182302902725d/RNS/Utilities/rnstatus.py#L66-L157)
+recalls the transport identity, opens a Link to the distinct
+`rnstransport.remote.management` destination, identifies with the supplied
+management identity, and requests `/status`. The service registration and
+handler in
+[`Transport.py`](https://github.com/markqvist/Reticulum/blob/99de23c040d507e3fefca19e87b182302902725d/RNS/Transport.py#L367-L373)
+and [the status handler](https://github.com/markqvist/Reticulum/blob/99de23c040d507e3fefca19e87b182302902725d/RNS/Transport.py#L3325-L3343)
+require remote management to be enabled, require an identified peer, and register
+`/status` with `Destination.ALLOW_LIST` and `Transport.remote_management_allowed`.
+The response is a list whose first element is interface statistics; when the
+request flags opt in, it may be followed by link count and profiling results.
+The [allow-list policy](https://github.com/markqvist/Reticulum/blob/99de23c040d507e3fefca19e87b182302902725d/RNS/Destination.py#L381-L398)
+specifies identified peers in the configured list.
+
+Rust currently parses `enable_remote_management`, but has no matching
+`remote_management_allowed` config field, does not register the distinct
+destination, and has no `/status` route. The existing daemon remote-control
+route serves propagation-specific operations and status, so reusing it would
+not match this destination or policy. The broad daemon status snapshot is also
+not a substitute for the Python interface-stats response contract. This is a
+documented gap only: no implementation, parity acceptance, or issue completion
+is claimed here.
 
 ## Implemented behavior matrix
 
@@ -73,18 +246,24 @@ physical/public-network evidence remain outside the software-only pass.
 | Send | TCP announce discovery, Link establishment, local identity identification, Resource send with `{"name": <binary filename>}` metadata, adaptive timeout and terminal failure status | Rust↔Rust process test; pinned Python client/service trace | verified for two independent processes and the bounded Python roles |
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
-| Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
-| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, and the Python fetch client's successful `Transfer complete` callback | unit/manual process runs, `rncp_process`, pinned Python interop | ten bounded process-level failure/status and callback outcomes are verified; genuinely slow-interface, listener-side callback logging, and remote receive-side cancellation/disk faults remain open |
-| Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Python fetch client emits `Transfer complete` on successful save | `rncp_process`, CLI phase transcript, pinned Python interop | verified for the native Rust client path and the bounded Python fetch-client path |
+| Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process tests, including network denial status and no output side effect | verified locally |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C during discovery and an active Resource transfer, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, delayed/rate-limited TCP-path transfer, Python fetch completion, save-failure callback and active-cancellation outcome, listener receive-save failure diagnostics, and known-path `rnprobe` no-proof production timeout | unit/process tests and pinned Python interop | The exact-target no-proof process regression exercises native probe dispatch through a live daemon and checks the timeout result, 100% loss JSON, and exit status 2; the CLI loss-to-exit mapping separately has unit coverage. Frozen Python has the same timeout/loss/exit behavior. Active-transfer cancellation is evidenced for native Rust and pinned-Python fetch clients; the Python client exits successfully without a terminal cancellation result and retains its partial staging Resource; after a completed fetch's local save error, pinned Python prints `Transfer complete` and the save error but remains unresolved; broader utility status parity remains open |
+| Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Rust fetch listener reports its production `OutboundComplete` event; pinned Python can print `Transfer complete` before its local save callback reports failure | `rncp_process`, CLI phase transcript, pinned Python interop and `rncp_python_fetch_failure` | verified for the native Rust client path and bounded Python fetch-client completion/cancellation transcripts; the save-failure trace correlates the listener's event hash with the Python staging hash and records transport completion separately from local save failure and the unresolved Python terminal state |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process`; ignored `rncp_python_interop` restart process | verified for the bounded Rust listener/client path and the Python-listener/Rust-client role |
-| Disk failure | Fetch save failure when the overwrite target is a directory | `rncp_process` | verified with nonzero status and preserved OS error output; remote receive-side save faults remain open |
+| Disk failure | Rust client/listener save failures; pinned Python listener receive-save failure; pinned Python fetch-client save callback failure after the save directory becomes unusable mid-transfer | `rncp_process::rncp_listener_reports_received_file_disk_error`; ignored `rncp_python_interop::rncp_python_listener_reports_received_file_disk_error`; ignored `rncp_python_fetch_failure::rncp_python_fetch_client_save_error_is_reported_but_never_resolved` | The pinned Python callback observes the exact 2 MiB payload and its digest, reports the failed local move, then remains unresolved; the Rust listener reports a matching-hash `OutboundComplete`, reflecting Resource delivery. The save-root collision sentinel remains intact and Python Resource staging is cleaned after callback. This records reference behavior, not successful terminal failure handling or an application-level negative acknowledgment |
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
-| Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound | `rncp_process::rncp_uses_medium_timeout_after_interface_activation` | verified for an active local TCP interface; genuinely slow-interface timing remains open |
-| Packet probe exchange | Probe packet delivery and proof correlation between the native daemon path and the pinned Python utility, in both initiator/responder directions | ignored `rnprobe_python_interop` (2 tests, commit `f86ecc1c`) | verified for isolated Rust daemon/Python TCP roles; public/multi-hop, carrier-fault, and physical timing remain open |
-| Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback is also asserted, while listener-side save/failure callback telemetry and the complete utility matrix remain open |
-| Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and now exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` mock-RPC and parser/process regressions | verified for the Rust client/daemon RPC boundary; pinned-Python utility roles and the remaining reference path-table/remote-management options remain open |
+| Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound; a slow proxy delays the first server response and rate-limits both directions during a real send | `rncp_process::rncp_uses_medium_timeout_after_interface_activation`; `rncp_process::rncp_completes_after_delayed_first_hop_on_a_rate_limited_tcp_path` | verified for active local TCP and a delayed/rate-limited software TCP path; carrier-specific and physical timing are not claimed |
+| Packet probe exchange | Probe packet delivery and proof correlation between the native daemon path and the pinned Python utility, in both initiator/responder directions, plus sequential utility reuse and post-restart operation | ignored `rnprobe_python_interop`, including `native_rnprobe_reuses_one_live_daemon_across_client_processes` and `native_rnprobe_succeeds_after_rust_daemon_restart`; pinned peer `99de23c040d507e3fefca19e87b182302902725d` | verified for isolated Rust daemon/Python TCP roles, sequential independent CLI clients sharing one live daemon, and one graceful daemon restart with successful post-restart probes; crash recovery, public/multi-hop, carrier-fault, and physical timing remain open |
+| Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback and native listener save-failure diagnostic are asserted, while Python-peer failure callbacks and the complete utility matrix remain open |
+| Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` regressions; ignored exact-target `rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc` | one Rust CLI-to-live-daemon discovery over TCP, resolved from a late announce by a separate pinned-Python process; table/rates, remote management, and remaining reference options remain open |
+| Path-table listing | `rnpath-rs --table [DESTINATION_HASH] --max HOPS` calls `get_path_table`, applies the hop limit, sorts for stable interface/hop display, and renders JSON or human rows; matching pinned Python, the positional destination filters human output but JSON output retains all rows. Human hashes use angle-bracket hex and expiry uses local `YYYY-MM-DD HH:MM:SS` formatting. The daemon bridge exposes route hashes, timestamps, next hop, hops, expiry, configured interface label, and interface hash; without a configured display label it returns `interface: null` and preserves the interface hash, which is not equivalent to Python's `str(interface)` | Existing path-table unit/RPC/bridge/CLI tests plus ignored `rnpath_python_table::rnpath_table_matches_frozen_python_route_fields_over_live_tcp` | verified at transport, RPC, bridge-serialization, CLI, and one non-empty live daemon/Python loopback trace. The live trace matches announced destination hash, via, and one-hop count; both expiry fields are numeric. Rust's configured interface label (`python-rnpath-table-peer`) differs from frozen Python's `str(interface)` (`TCPInterface[TCP Client Interface/127.0.0.1:<port>]`). This bounded trace does not complete the broader #611 utility matrix. |
+| Daemon RPC failure | `rnpath-rs` must distinguish an unavailable daemon from a completed path request | `rnpath_daemon_unavailable::rnpath_reports_daemon_unavailable_without_claiming_path_success` | production CLI reports nonzero status, no stdout success, and a connection-refused diagnostic; transport and Python-peer behavior are not exercised |
 | Remote shell | Native authenticated listener/initiator, frozen channel message numbers, root-scoped process launch, stdin/stdout/stderr stream framing, command policy, timeout, mirrored exit status, and allow-list rejection | `rnsh` unit tests; `rnsh_process`; ignored `rnsh_python_interop` (`e57afb99`, `662dcdbe`) | verified for the bounded software/TCP slice in both pinned-Python roles, including the immediate EOF case; PTY/resize and the full option/fault/restart matrix remain open |
 | Other shipped utilities | `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory; `rnprobe` is recorded in the row above | not promoted by this slice; network/reference gaps remain |
+
+### Focused `rnpath --table --max` parity (PR #631)
+
+The ignored production-path regression `rnpath_python_table::rnpath_max_hops_matches_frozen_python_over_a_live_two_hop_route` was run four times against the detached Reticulum fixture at exactly `99de23c040d507e3fefca19e87b182302902725d`. Each run created one Python destination behind a Python transport relay and connected both the Rust daemon and the pinned Python CLI observer before announcing it. In all four fresh topologies, both unbounded tables contained that same destination at exactly two hops; both `--max 1` tables excluded it, and both `--max 2` tables included it. No production code changed. This verifies only the exercised table hop-limit behavior; interface string formatting and the broader #611 utility/options matrix remain open.
 
 ## Commands and results
 
@@ -114,6 +293,29 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_python_listener_restart_preserves_identity_and_transfer \
   -- --ignored --nocapture                         1 passed (1.62s)
+RETICULUM_PY_REPO=Reticulum-parity LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_interop \
+  rncp_python_listener_reports_received_file_disk_error \
+  -- --ignored --exact --nocapture                  1 passed (0.82s)
+```
+
+The issue-specific receiver disk-failure increment was verified separately in
+its isolated branch:
+
+```text
+cargo fmt --all -- --check                         PASS
+cargo test -p rns-tools --test rncp_process \
+  rncp_listener_reports_received_file_disk_error \
+  -- --nocapture                                    1 passed
+cargo test -p rns-tools --test rncp_process \
+  rncp_fetch_jail_escape_reports_denial_without_creating_output \
+  -- --exact --nocapture                            1 passed
+cargo test -p rns-tools --test rncp_process \
+  -- --test-threads=1                              14 passed (29.54s)
+cargo clippy -p rns-tools --test rncp_process \
+  --all-features --no-deps -- -D warnings           PASS
+tools/scripts/check-module-size.sh                  PASS
+git diff --check                                    PASS
 ```
 
 The process tests start independent listener and client processes with isolated
@@ -130,7 +332,46 @@ The same process binary persists a listener identity, restarts the listener on
 the same TCP endpoint, verifies the destination hash is stable, and completes a
 second binary transfer. The same run attempts a fetch with an overwrite target
 that is a directory and asserts nonzero status plus the `Is a directory` OS
-error.
+error. The Rust receiver disk-failure regression sends a binary Resource whose
+basename collides with a directory while listener overwrite is enabled, then
+waits for and asserts the listener's save-failure diagnostic. The ignored
+pinned-Python counterpart sends a binary Resource to a Python listener whose
+configured save root is a regular file; it asserts the sender's Resource
+delivery succeeds while the Python callback logs the save error. Both
+distinguish transport delivery from application save, and neither claims an
+application-level negative acknowledgment to the sender. PR Verify runs the
+pinned-Python regression against the frozen 1.5.4 development checkout.
+The jail-escape process regression requests an existing file outside the
+listener's configured fetch root through the real Link request/response path;
+the client exits nonzero with `remote fetch was not allowed`, the outside file
+remains unchanged, and its isolated save root remains empty. This records the
+Rust CLI's denial/status and no-output behavior; it does not expand the pinned-
+Python interoperability matrix.
+The jailed-fetch interop probe was also run against Rust head
+`3711771434e8c6bd30c7e8fe1fcbf97f304b6456` and pinned Python Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`. The Rust listener returns the
+normal Link response envelope `[request_id, 0xF0]` for an out-of-jail path;
+the Python client recognizes that value as `fetch_not_allowed`. In the frozen
+client, that branch prints the denial and then calls `RNS.exit(0)`, whose
+`os._exit(0)` bypasses buffered stdout flushing. Thus a captured, normally
+buffered run exits successfully with the denial line missing; the same probe
+with `PYTHONUNBUFFERED=1` exposes the expected denial text but still exits 0.
+The denied fetch creates no saved file. This is a pinned-reference CLI
+diagnostic/exit-status limitation, not a Rust response-contract mismatch; Rust
+native `rncp` denial remains nonzero. Do not claim Python/Rust denial-status
+parity from this evidence.
+
+The temporary diagnostic probe reused the existing ignored interop test and was
+not retained as a repository test. Its exact invocations were:
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop rncp_exchanges_binary_files_with_pinned_python_in_both_directions -- --ignored --exact --nocapture
+PYTHONUNBUFFERED=1 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop rncp_exchanges_binary_files_with_pinned_python_in_both_directions -- --ignored --exact --nocapture
+```
+
+On the first invocation the temporary assertion observed child exit status 0
+but no denial line in captured stdout; with `PYTHONUNBUFFERED=1` the same
+probe observed the denial line, exit status 0, and an empty save directory.
 The Unix process regression also sends SIGINT during path discovery and asserts
 nonzero status plus `operation cancelled by user`. The concurrent-client case
 starts three independent senders and verifies every listener-side file byte for
@@ -141,6 +382,14 @@ case starts a real listener, waits for the client-side TCP interface to become
 connected, requests an unknown destination with `--timeout 1`, and observes
 the medium-path timeout lower bound: the run took 6.18 seconds and returned
 `path discovery timed out`.
+
+The delayed-path regression transfers an 8 KiB binary file through a TCP proxy
+that delays the first server response by two seconds and waits 25 ms per
+forwarded 256-byte chunk in both directions. The Rust client uses
+`--timeout 1`, yet completes with exact saved bytes and nonzero traffic in both
+directions; this exercises the adaptive timeout on a slow software path rather
+than only checking its lower bound during a path-discovery timeout. It does not
+claim carrier-specific or physical-link timing.
 
 The mixed-runtime restart regression starts the pinned Python listener with a
 persisted identity and an allow-listed Rust sender, sends a binary file, stops
@@ -179,6 +428,15 @@ listener-side save callback remains represented by the exact saved-byte
 assertion; its console logging is not treated as a stable contract because the
 pinned listener is run with quiet logging and terminated after the transfer.
 
+The ignored exact-target `rncp_python_fetch_failure` process regression makes
+the validated Python fetch save directory unusable after the CLI accepts it,
+then observes `An error occurred while saving received resource:` from the
+fetch-client callback. The pinned callback returns before setting
+`resource_resolved`, so the command remains alive; the test bounds and stops
+that process. This demonstrates the reference failure path but does not satisfy
+the accurate-terminal-status acceptance requirement or imply a sender-visible
+negative acknowledgment.
+
 The `3c6757ba` compression-matrix run adds a highly compressible payload and a
 payload pre-compressed with bzip2. It exercises Python sender default and
 `-C` modes into Rust, Rust sender default and `--no-compress` modes into
@@ -188,10 +446,55 @@ root; every received file matches the original bytes exactly. The Resource
 unit tests remain the direct wire-flag proof; this process trace proves the
 utility flags and mixed-runtime decompression/save behavior.
 
-The three ignored Python interop fixtures share a process-level lock
+PR #631 extends this process trace with test-only instrumentation of the pinned
+Python `ResourceAdvertisement.pack()` path and the Link's resource-advertised
+callback. It observes the actual packed or received advertisement fields and
+deduplicates outgoing retries by Resource hash and segment. The six roles now
+assert `compressed`, `transfer_size`, and `data_size`: Python→Rust sends in
+default/`-C` modes, Rust→Python sends in default/`--no-compress` modes, and
+Python fetch responses in default/`-C` modes. Compressed payloads advertise a
+smaller transfer than data size; uncompressed payloads preserve at least the
+data size (the Python reference's transfer size also includes metadata and
+random-hash overhead). The recorder is confined to the test's Python path and
+does not change production behavior.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop \
+  rncp_mixed_runtime_compression_matrix_roundtrips_binary_files \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; repeated 3 consecutive times
+
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_interop \
+  -- --ignored --nocapture --test-threads=1
+# 4 passed (38.16s)
+
+cargo test -p rns-tools --test rncp_process -- --nocapture --test-threads=1
+# 13 passed (29.34s)
+
+cargo test -p rns-tools --test rncp_process \
+  rncp_ctrl_c_during_resource_transfer_reports_cancellation \
+  -- --exact --nocapture --test-threads=1
+# 1 passed
+
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_fetch_cancel \
+  rncp_pinned_python_fetch_ctrl_c_records_active_resource_cancellation \
+  -- --ignored --exact --nocapture
+# 1 passed; Python exit 0 with no terminal result, no completed file, and a retained partial staging Resource
+```
+
+Verify now runs the focused compression command as an explicit exact-target
+gate. Its hosted result is required before treating this CI increment as
+complete.
+
+The ignored Python interop fixtures share a process-level lock
 (`a81f0cf6`) because an earlier parallel run allowed listener/announce
 contention to produce one compression-matrix path-discovery timeout. With the
-lock in place, the default three-test command completed all tests in 37.26
+lock in place, the four-test command completed all tests in 38.16
 seconds; the process isolation and exact file assertions are unchanged.
 
 The `2b281b87` process increment also proves two negative categories through
@@ -200,13 +503,33 @@ found`, and a sender rejected by the listener's identity policy exits nonzero
 with `Resource transfer failed` without creating a destination file. These
 checks, together with `053ef246`, `9dc9bd62`, and `9b8e4ed6`, also cover
 malformed identity, unusable save-path, path-discovery timeout, and local disk
-failures; `397a9525` covers client Ctrl-C cancellation; and `e668ae60` covers
+failures; `397a9525` covers Ctrl-C during path discovery. The new
+`rncp_ctrl_c_during_resource_transfer_reports_cancellation` process regression
+waits for the production CLI's transfer-phase output, sends SIGINT while the
+Resource is in flight, requires nonzero exit plus `operation cancelled by
+user`, and verifies the receiver has no completed file. This proves local
+Rust-to-Rust active-transfer cancellation; the pinned-Python receive-side
+transcript is now recorded by `rncp_python_fetch_cancel`: after partial staged
+bytes and transfer progress are observed, SIGINT produces Python exit status 0,
+no terminal failure/success text, no completed save file, and a retained
+partial staging Resource; the Rust sender reports `rncp: outgoing Resource
+failed`. This records frozen Python behavior, not a truthful nonzero CLI
+cancellation status. `e668ae60` covers
 the bounded multi-client path. Commit `27bb3fac` covers readiness-gated medium
 timeout selection after TCP interface activation. Slow-interface, interrupted-
 link follow-up behavior beyond the bounded local process, and remote
 receive-side cancellation/disk faults remain open; `d66b19d1` covers the
 bounded listener restart path. Commit `a5f57dba` covers interrupted Resource
 failure and native phase output.
+
+The Rust sender's success transcript now says `sent to`, not `copied to`,
+because outbound Resource completion does not acknowledge the peer's disk
+save. `rncp_listener_reports_received_file_disk_error` verifies this boundary:
+the sender exits successfully with delivery wording while the receiver emits
+its precise save error. A receiver-persistence acknowledgment is not part of
+the Python-compatible workflow, so end-to-end sender failure on receiver disk
+errors remains an open acceptance gap rather than being inferred from Resource
+completion.
 
 ## Current `rnpath` management increment
 
@@ -240,6 +563,59 @@ tools/scripts/check-module-size.sh
 These are implementation-backed daemon-RPC tests with a mock server; they do
 not claim a physical carrier or a Python utility process. `rnsh`, `rnir`, `rnpkg`,
 and hardware-facing `rnodeconf` remain separate parity rows.
+
+The live discovery follow-up is exercised by
+`rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc`.
+It starts an isolated pinned-Python TCP listener and responder, a separate
+Rust daemon with its own TCP client interface and RPC endpoint, then invokes
+the Rust `rnpath-rs --json` process before the Python destination announces.
+The CLI receives a successful path result for that destination with one hop.
+Verify runs this ignored exact-target test against the frozen 1.5.4 checkout;
+the broader path-table, remote-management, and failure matrix remains open.
+
+```text
+cargo build -p reticulumd --bin reticulumd
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \\
+  cargo test -p rns-tools --test rnpath_python_interop \\
+  rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc \\
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; separate Rust CLI, daemon, and pinned-Python peer
+```
+
+The missing-destination failure is covered separately by
+`rnpath_python_missing_destination::rnpath_missing_destination_matches_pinned_python_failure_over_live_tcp`.
+It starts an isolated pinned-Python TCP network, then runs the production Rust
+`rnpath-rs` CLI through a separately configured Rust daemon and the frozen
+Python `rnpath` utility with independent config/storage roots. Both request the
+same absent destination over live TCP; the test requires Python's exit status
+1 and `Path not found`, and requires Rust to exit nonzero with the destination
+and timeout failure on stderr and no stdout that could imply success. The
+existing `rnpath_cli::rnpath_times_out_when_daemon_does_not_find_path` is only
+a mock-RPC regression and does not cover this network/reference negative path.
+Verify runs this ignored exact-target differential alongside the successful
+discovery case.
+
+The current #631 worktree adds a local daemon-backed path-table slice. The
+transport exports path rows with an optional maximum-hop filter; `get_path_table`
+validates its RPC parameters, and `rnpath-rs --table` supports optional
+human-mode destination filtering, `--max`, JSON/human output, and Python's
+interface-then-hop ordering. As in the pinned Python CLI, destination is ignored
+in JSON table output. For configured TCP clients with explicit name and endpoint
+metadata, `reticulumd` now renders the path-table `interface` field as the pinned
+Python `TCPInterface[name/host:port]` representation while keeping the ordinary
+interface display name and path-status field unchanged; unsupported/incomplete
+interface metadata falls back to the prior display-name behavior.
+
+`rnpath_python_table::rnpath_table_matches_frozen_python_route_fields_over_live_tcp`
+connects a Rust daemon and pinned-Python observer to a Python announcing peer.
+The Rust and Python observers use TCP-client interfaces with the same configured
+name and endpoint, and the live `rnpath-rs --table --json` row now exactly matches
+the pinned Python `get_path_table()` value for `interface` as well as destination,
+next hop, and hop count. Focused formatter tests cover IPv4 output and Python's
+IPv6 bracket rule; a hot-apply regression verifies the metadata follows endpoint
+replacement without changing the ordinary display name. Other interface
+families, JSON/human behavior beyond this focused path-table case, and the wider
+`rnpath` management matrix remain open.
 
 ## Current `rnprobe` packet increment
 
@@ -287,6 +663,12 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   -- --ignored --nocapture
 # 2 passed; 0 failed (Python→Rust and native Rust→Python)
 
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rnprobe_python_interop \
+  rnprobe_invalid_destination_identity_matches_pinned_python_failure \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; 0 failed (malformed destination identity hash process differential)
+
 cargo clippy -p reticulumd -p reticulum-rs-rpc -p rns-tools --all-targets --all-features --no-deps -- -D warnings
 # passed
 
@@ -302,13 +684,43 @@ probe option envelope, human RTT formatting, JSON preservation, malformed
 destination rejection, and exit status `2` for partial loss. The focused
 daemon tests verify RPC defaults/aliases, the unavailable-bridge error, the
 receipt-registry handoff, and opt-in responder naming. The ignored process
-test starts a Rust daemon with an announced probe responder for pinned Python,
-then starts a pinned-Python `PROVE_ALL` responder for native `rnprobe`; both
-directions deliver two probes with zero loss over isolated TCP interfaces.
+tests start a Rust daemon with an announced probe responder for pinned Python,
+then start a pinned-Python `PROVE_ALL` responder for native `rnprobe`; both
+directions deliver two probes with zero loss over isolated TCP interfaces. The
+new native direction delays that responder's first announce until after
+`rnprobe` starts, so successful output demonstrates the path-discovery
+workflow as well.
 This is still software-only evidence: no carrier fault matrix, multi-hop/
 public-network run, hardware run, or performance claim is included.
 
 ## Current `rnsh` channel increment
+
+### Listener-side PTY and resize slice (2026-09-24)
+
+Compared with the frozen Python checkout at Reticulum commit
+`99de23c040d507e3fefca19e87b182302902725d`, the Rust initiator now marks
+terminal-backed stdio in `ExecuteCommand`, sends the selected initial
+rows/columns/pixel dimensions, and emits `WindowSize` messages after SIGWINCH.
+The Rust listener now allocates a PTY when terminal mode is requested, spawns
+the child with a controlling terminal, seeds its initial dimensions, applies
+later resize messages, and bridges input/output, exit, and cancellation through
+the Link-owned command task. All-pipe requests retain the previous pipe-backed
+path. A unit test verifies terminal-backed child stdio and both sizes; a
+loopback process test runs the Rust initiator under a local PTY and verifies
+the remote child observes initial `31x101` and resized `42x120` values. Pixel
+dimensions are checked through the PTY-reported size. No physical testing is
+included.
+
+The implementation uses `portable-pty` 0.8.1 for controlling-terminal spawn
+and cross-platform PTY support. The all-terminal mode covers controlling-terminal
+setup and resize. Separate production-process tests cover PTY stdin with piped
+stdout/stderr, and piped stdin with stdout/stderr sharing a PTY. The latter
+regression exposed command-builder-held slave descriptors and Linux PTY-master
+`EIO` handling; dropping the builder after spawn and treating final PTY `EIO` as
+stream EOF now lets the command exit envelope arrive. These two combinations do
+not establish Python's controlling-terminal, foreground process-group, or
+terminal-mode behavior for mixed descriptors. Other combinations, the wider
+rnsh fault/restart matrix, and public/multi-hop evidence remain open.
 
 Commits `f24e0038` and `a32b6d71` replace the former local-only `rnsh` implementation with a
 bounded native network workflow while preserving local mode when no network
@@ -331,14 +743,21 @@ continues to require a root and an explicit allow-list entry for the executable.
 cargo test -p rns-tools --bin rnsh -- --nocapture
 # 8 passed; 0 failed
 
-cargo test -p rns-tools --test rnsh_process -- --nocapture
-# 2 passed; 0 failed
+TMPDIR=/home/pgiuseppe/.cache/lxmf-rnsh-tmp cargo test -p rns-tools \
+  --test rnsh_process -- --nocapture --test-threads=1
+# 3 passed; 0 failed
 # includes a 128 KiB output stream through the negotiated Channel window
+# timeout regression observes the remote child alive before client timeout, then confirms PID reaping
 
-RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+cargo test -p rns-tools --test rnsh_python_interop
+# 2 ignored; requires local Python Reticulum checkout
+
+TMPDIR=/home/pgiuseppe/.cache/lxmf-rnsh-tmp \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rnsh_python_interop -- \
   --ignored --nocapture --test-threads=1
-# 2 passed; 0 failed (1.81s)
+# 2 passed; 0 failed (2.29s)
 
 cargo test -p rns-tools --tests
 # passed; ignored Python fixtures remain ignored by default
@@ -349,6 +768,18 @@ loopback TCP, resolves the listener destination from its persisted identity,
 executes `/bin/echo`, and verifies the forwarded output plus mirrored status.
 Its authenticated case allows one client identity, verifies a successful
 command, then verifies a different identity receives a nonzero failure. The
+timeout regression runs a long-lived remote child, lets the production Rust
+initiator hit its configured command timeout, and verifies the child PID is
+gone after the listener processes Link closure. The listener owns each session
+task and cancellation signal; Link closure or session exit cancels and awaits
+the command task, which kills/reaps the child and aborts/awaits its stdin
+writer and stdout/stderr readers. The regression now verifies the remote child
+is live while its client is still connected before waiting for timeout teardown.
+The earlier failing run only reported that `kill -0` succeeded after teardown;
+it did not capture process state or prove the PID was live before Link closure.
+With the synchronization tightened, the full process suite passed and twelve
+additional isolated runs of the earlier check also passed, so no lifecycle
+implementation defect was reproduced. The
 pinned-Python fixture starts the frozen Python initiator with an isolated TCP
 configuration and identity, and verifies its command output and exit status on
 the Rust listener. The reciprocal fixture starts the pinned Python listener
@@ -356,41 +787,201 @@ with a server-side TCP interface and an isolated identity, sends the execute
 envelope before stdin, and verifies Rust command output plus the Python
 `CommandExited(0)` response with an immediately closed non-TTY stdin. The Rust
 initiator's bounded EOF grace accommodates the pinned listener's short-command
-stdin-close cleanup path. This is a bounded software/TCP slice: PTY allocation
-and resize, native outbound compression, full restart/fault/cancellation
-coverage, and public or multi-hop transport remain unverified.
+stdin-close cleanup path. The earlier client-timeout failure was an
+under-synchronized test observation: it first read the remote PID after the
+client had exited and did not establish that this child was live before
+teardown. The corrected process regression establishes that precondition and
+the focused process suite now passes 3/3. The listener-side PTY increment is
+covered by `rnsh_parts::pty::tests::child_observes_controlling_terminal_and_initial_and_updated_window_size`
+and `rnsh_process::rnsh_listener_pty_observes_initial_and_sigwinch_window_sizes`;
+both tests use local PTYs and child-observed dimensions. Mixed per-stream
+pipe/PTY combinations are not yet separately evidenced.
+Native outbound compression, the remaining restart/fault matrix, and public or
+multi-hop transport also remain unverified. The #611 `rnsh` row stays partial.
+
+## Fetch-client save-failure process result
+
+The exact-target run used the already available frozen checkout at
+`/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum`
+(`99de23c040d507e3fefca19e87b182302902725d`) and kept the test's temporary
+configuration, identity, listener, hook, and output roots under `/dev/shm`:
+
+```text
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 \
+cargo test -p rns-tools --test rncp_python_fetch_failure \
+  rncp_python_fetch_client_save_error_is_reported_but_never_resolved \
+  -- --ignored --exact --nocapture --test-threads=1
+PASS: 1 passed (1.29s)
+```
+
+Observed callback Resource hash matched Rust listener's `OutboundComplete`
+event hash. Its payload was 2,097,152 bytes with SHA-256
+`ab1240e840358af7a53b92d95aeb9def8c19ab68436627ddac205e6e7e42c0da`.
+Python stdout contains the `Not a directory` save error followed by `Transfer
+complete` progress at 100%, but no `fetch-failure.bin fetched from` terminal
+line. Python stderr is empty; its status is still `None` before cleanup and
+test cleanup ends it with SIGKILL. Rust listener stdout is empty and stderr
+contains `rncp: outgoing Resource complete (<resource-hash>)`. The replacement
+save-root sentinel remains byte-for-byte intact, no fetched destination file
+exists, and pinned RNS removes its completed Resource staging file after the
+callback returns. These observations separate Resource transport completion
+from local save success and leave the reference's unresolved client state
+visible.
+
+## Rust `rngit fetch` and `push` CLI against the pinned Python service
+
+The ignored `rngit_cli_python_fetch::rngit_cli_fetches_and_pushes_with_python_service`
+process regression starts the frozen Python `ReticulumGitNode` service and the
+production Rust `rngit` CLI as separate processes, with independent Reticulum
+configuration, service storage, source Git repository, and destination Git
+repository under one temporary root. The Rust CLI requests the Python
+service's `refs/heads/main` bundle, verifies it with `git bundle verify`, and
+imports it using `git fetch` into `refs/remotes/rns/main`. The test compares
+the fetched ref's commit ID with the source and reads a binary blob from the
+fetched commit with `git cat-file`, asserting exact bytes including NUL and
+non-UTF-8 values. The same test then pushes a local branch to a new service
+ref and verifies its exact commit ID and binary blob bytes. Push uses the
+existing `/git/push` bundle request (`local_ref`, `remote_ref`, `force`, and
+`bundle`); deletion, batching, and remote-helper push remain out of scope. The
+same process regression now installs the production Rust `git-remote-rns`
+helper in a temporary executable search path, then runs real `git ls-remote`
+and `git fetch` commands against the separate pinned Python service over
+Reticulum. Git's helper protocol performs capability discovery and ref listing,
+then requests `refs/heads/main`; the fetched remote-tracking ref is checked
+against the exact Python service commit and its binary blob is compared byte
+for byte. This verifies the real helper-discovery/list/fetch read path, not just
+the direct `rngit fetch` subcommand. It was run against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` and passed; Verify runs this focused
+test against its pinned checkout. Remote-helper push/deletion, batching,
+initial-branch variation, and the broader #611 utility matrix remain open.
+The helper reads its TCP interface from `RNGIT_CONNECT`; `RNGIT_IDENTITY_SEED`
+can pin the helper's Reticulum identity, with a stable default otherwise.
+
+Validation against a checkout at the pinned revision:
+
+```text
+TMPDIR=/dev/shm RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
+  --test rngit_cli_python_fetch \
+  rngit_cli_fetches_and_pushes_with_python_service \
+  -- --ignored --exact --nocapture --test-threads=1
+PASS: 1 passed
+```
+
+The same test exercises helper discovery/list and fetch through Git itself:
+
+```text
+git ls-remote rns://<pinned-python-destination>/group/repo
+git fetch rns://<pinned-python-destination>/group/repo \
+  refs/heads/main:refs/remotes/rns/main
+PASS: exact advertised/fetched commit ID and exact binary blob bytes
+```
+
+## Mixed rnsh per-stream pipe/PTY process behavior
+
+The pinned Python initiator at Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` derives stdin, stdout, and stderr
+pipe flags independently from `isatty(0/1/2)`. Its `CallbackSubprocess` creates
+a PTY if any stream is terminal-backed, substitutes a pipe only for each stream
+whose flag is set, and maps each child descriptor independently before exec.
+This source supports mixed modes; it does not require all three descriptors to
+share one mode.
+
+Two separate-process Rust CLI/listener tests exercise the production
+TCP/Link/Channel path. `rnsh_mixed_stdin_pty_and_stdout_stderr_pipes_preserve_streams_and_exit`
+checks PTY stdin with independently routed stdout/stderr pipes and exit 7.
+`rnsh_mixed_stdin_pipe_and_stdout_stderr_pty_preserve_streams_and_exit` checks
+piped stdin delivery with stdout/stderr sharing the PTY and exit 9. Verify runs
+both filters. The reverse combination initially hung after the child exited:
+the command builder retained cloned PTY slave descriptors, preventing EOF;
+after releasing those handles, Linux master `EIO` surfaced as an error. The
+listener now drops the builder immediately after spawn and treats that final
+PTY read error as EOF, allowing buffered output and the exit envelope to drain.
+
+This establishes descriptor selection, stream routing, input delivery, and
+exit status for two mixed software combinations. The local Python harness only
+constructs terminal descriptors; it is not a pinned-Python rnsh peer. The
+frozen-source comparison does not establish Python-equivalent
+`setsid`/controlling-terminal, foreground process-group, or terminal-mode setup
+for mixed descriptors. Other combinations, wider rnsh fault/restart behavior,
+and public/multi-hop evidence remain open.
 
 ## Unresolved requirements
 
 The following #611 acceptance items remain open and are deliberately not
 classified as complete:
 
-- Add failure-side callback assertions and a stable listener-side save-status
-  callback trace around the completed Python fetch. `e6f71d21` now asserts the
-  successful Python fetch client's `Transfer complete` callback; the current
-  trace also proves the listener-side resource-conclusion/save side effect and
-  exact overwrite result through bytes on disk.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice now covers the daemon-backed
   `rnpath` management subset, a bounded native `rnprobe` packet workflow with
   both pinned-Python initiator/responder roles, and a bounded native `rnsh`
   channel workflow with both pinned-Python initiator/listener roles, including
-  the bounded immediate-EOF trace, but does not prove full `rnsh` PTY/resize/
-  fault/restart behavior, public/multi-hop behavior, or network workflows to `rnsd` and the
-  radio/interactive utilities.
-- Prove real `rngit` fetch/push/bundle workflows and configured initial-branch
-  behavior under #601; bounded pinned-Python `/git/list`, `/git/fetch`,
+  the bounded immediate-EOF trace and a software loopback client-timeout Link
+  teardown with a synchronized live-child-before-timeout and post-close reaping
+  check. Software PTY cases prove controlling-terminal setup, initial
+  dimensions, and SIGWINCH resize in all-terminal mode, plus two mixed
+  per-stream descriptor combinations; other combinations and the remaining
+  `rnsh` fault/restart matrix,
+  public/multi-hop behavior, or network workflows to `rnsd` and the
+  radio/interactive utilities remain open.
+- Prove the full `rngit` fetch/push/bundle workflows and configured initial-branch
+  behavior under #601. The new separate-process Rust CLI test proves one
+  pinned-Python `/git/list` + `/git/fetch` bundle import into a local Git ref;
+  bounded pinned-Python `/git/list`, `/git/fetch`,
   `/git/push`, `/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and
   `/git/mirror` requests now prove the `git.repositories`
   listing/bundle/mutation/clone seam, while the remaining Git/work network
   implementation belongs to #612/#613.
-- Add genuinely slow-interface and remote receive-side cancellation/disk-error
-  transcripts with exact failure/status assertions; the active-TCP
-  medium-timeout lower-bound case is covered, but it is not a slow-interface
-  or physical-link transcript.
-- Add process-level advertisement/transfer-size assertions for each remaining
-  compression role if the utility evidence must independently expose the wire
-  compression flag; the Resource unit tests already cover that direct flag.
+- Improve pinned-Python receive-side cancellation status if the reference
+  behavior changes: the current frozen client exits 0 without a terminal
+  result and leaves partial staging bytes, captured by the exact-target
+  `rncp_python_fetch_cancel` process regression. Native Rust-to-Rust
+  active-Resource cancellation has a process-level status and no-completed-file assertion. The
+  delayed/rate-limited TCP proxy exercises adaptive timeout on a slow software
+  path; carrier-specific and physical-link timing are not claimed. Rust and
+  pinned-Python disk-error callbacks are covered.
 
 These are evidence or implementation gaps, not claims that the local Rust
 process test represents Python interoperability or complete utility parity.
+
+## `rnid` binary file-signing slice
+
+The production Rust `rnid --identity <identity-file> --sign <path>...`
+workflow (also `-i`/`-s`) writes the frozen Python `.rsg` format to each
+`<path>.rsg`: a SHA-256 digest and signer metadata are MessagePack-encoded,
+signed with the identity key, and prefixed with the signature. The ignored
+process differential signs two binary inputs. With the second `.rsg` already
+present, both the frozen Python CLI and Rust no-force invocation sign the first
+input, preserve the second output, and exit `11` with the exact no-overwrite
+diagnostic on stdout and no stderr; Rust adds no prefix. A forced multi-file
+run replaces the existing output. Pinned Python `rnid --validate` accepts both
+Rust signatures, then rejects a changed payload byte with status `10`. The test
+uses the frozen Reticulum-Python revision
+`99de23c040d507e3fefca19e87b182302902725d`.
+
+This proves only the reference-style default binary file-signing contract and
+Python validation of its output. `--raw`, alternate encodings, imports/exports,
+legacy signature formats without a required signer, identity requests,
+encryption, metadata, and the broad #611 utility matrix remain open.
+
+## `rnid --validate` signed-file slice
+
+Rust now exposes the reference `--validate <path>` / `-V` operation. An ignored
+exact-target process regression generates an identity with the Rust CLI, signs
+a binary payload with frozen Python Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`, and confirms Rust validates the
+resulting `.rsg` signed envelope. It also confirms Python accepts the unchanged
+payload and that both implementations reject a changed byte with status 10.
+Rust accepts either the payload path or the `.rsg` path and derives the other.
+This covers one local signed-file workflow only; `--raw`, other identity
+operations, and the broader #611 matrix remain open.
+
+The `rncp_missing_save_directory_uses_reference_failure_status` production
+process test covers a separate startup failure. Frozen Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` has `rncp.listen` call
+`RNS.exit(3)` with `Output directory not found` when the configured save path
+is not a directory. Rust now returns status 3 with the same diagnostic for
+that validation case. This does not establish permission-denied parity or
+close the broader #611 matrix.

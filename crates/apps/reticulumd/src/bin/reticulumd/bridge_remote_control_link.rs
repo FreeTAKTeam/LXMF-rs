@@ -147,7 +147,7 @@ pub(super) async fn wait_for_link_request_response(
         expected_destination,
         expected_link_id,
         request_id,
-        false,
+        true,
         timeout,
     )
     .await

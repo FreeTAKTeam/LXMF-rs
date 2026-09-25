@@ -7,6 +7,10 @@ use super::{
 mod interface_startup;
 #[path = "bootstrap_transport_path_restore.rs"]
 mod path_restore;
+#[path = "bootstrap_transport_reconnect_synthesizer.rs"]
+mod reconnect_synthesizer;
+#[path = "bootstrap_transport_tcp_startup.rs"]
+mod tcp_startup;
 #[cfg(test)]
 #[path = "bootstrap_transport_tests.rs"]
 mod tests;
@@ -30,6 +34,7 @@ use path_restore::{
     mark_path_table_restore_status, mark_path_table_restore_status_on_enabled_interfaces,
     PathTableRestoreStatus,
 };
+use reconnect_synthesizer::spawn_stream_reconnect_tunnel_synthesizer;
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
@@ -106,21 +111,6 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
     pub(super) local_hops_delta: bool,
     pub(super) inbound_queue_limits: InboundQueueLimits,
-}
-
-fn spawn_stream_reconnect_tunnel_synthesizer(
-    transport: Arc<Transport>,
-    mut reconnect_rx: tokio::sync::mpsc::Receiver<AddressHash>,
-) {
-    tokio::spawn(async move {
-        while let Some(iface) = reconnect_rx.recv().await {
-            if transport.synthesize_tunnel_on_interface(iface).await {
-                log::info!("[daemon] stream reconnect synthesized tunnel iface={}", iface);
-            } else {
-                log::warn!("[daemon] stream reconnect could not synthesize tunnel iface={}", iface);
-            }
-        }
-    });
 }
 
 fn build_selected_tcp_server_adapter(
@@ -273,6 +263,12 @@ pub(super) async fn start_transport_and_interfaces(
                 iface_manager.clone(),
                 &selected_tcp_server,
             );
+            let (server, startup_result) = if tcp_startup::strict_startup(args, daemon_config) {
+                let (server, result) = server.with_startup_result();
+                (server, Some(result))
+            } else {
+                (server, None)
+            };
             let runtime_status = server.runtime_status_handle();
             let active_iface = iface_manager.lock().await.spawn(server, TcpServer::spawn);
             log::info!(
@@ -281,7 +277,26 @@ pub(super) async fn start_transport_and_interfaces(
                 active_iface,
                 addr
             );
-            startup_successes += 1;
+            if let Some(startup_result) = startup_result {
+                let label = selected_tcp_server
+                    .selected_index
+                    .and_then(|index| {
+                        daemon_config?
+                            .interfaces
+                            .get(index)
+                            .map(|iface| interface_label(iface, index))
+                    })
+                    .unwrap_or_else(|| selected_tcp_server.kind.clone());
+                tcp_startup::record_initial_bind_result(
+                    startup_result.await,
+                    label,
+                    selected_tcp_server.kind.clone(),
+                    &mut startup_successes,
+                    &mut startup_failures,
+                );
+            } else {
+                startup_successes += 1;
+            }
             server_iface = Some(active_iface);
             tcp_runtime_refreshes.push(TcpRuntimeRefresh {
                 runtime_iface: active_iface,

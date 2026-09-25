@@ -7,7 +7,7 @@ use super::{
     InterfaceRecord, ManagedHotApplyInterface,
 };
 use rand_core::OsRng;
-use rns_rpc::{RpcDaemon, RpcRequest};
+use rns_rpc::{InterfaceMutationFailure, RpcDaemon, RpcRequest};
 use rns_transport::identity::PrivateIdentity;
 use rns_transport::iface::{IfaceRole, InterfaceMode, InterfaceSharedConfig};
 use rns_transport::transport::{Transport, TransportConfig};
@@ -17,6 +17,9 @@ use std::io;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
+
+#[path = "interface_hot_apply/issue_608_udp_bind_retry.rs"]
+mod issue_608_udp_bind_retry;
 
 fn tcp_record(name: &str, host: &str, port: u16) -> InterfaceRecord {
     InterfaceRecord {
@@ -135,7 +138,10 @@ fn hot_apply_accepts_ifac_aliases_and_rejects_incomplete_configuration() {
         .apply_interfaces(vec![invalid])
         .expect_err("IFAC size without credentials must fail closed");
     assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
-    assert!(error.to_string().contains("invalid Reticulum IFAC configuration"));
+    assert_eq!(
+        error.get_ref().and_then(|source| source.downcast_ref::<InterfaceMutationFailure>()),
+        Some(&InterfaceMutationFailure::InvalidIfacConfiguration)
+    );
     assert!(rx.try_recv().is_err(), "rejected IFAC update must not be queued");
 }
 
@@ -369,6 +375,13 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
 
     let address = managed.get("loopback").expect("managed tcp client").address;
     let manager = iface_manager.lock().await;
+    let path_table_identity = manager
+        .tcp_client_path_table_metadata(&address)
+        .expect("hot-applied TCP client path-table identity");
+    assert_eq!(path_table_identity.name, "loopback");
+    assert_eq!(path_table_identity.target_host, "127.0.0.1");
+    assert_eq!(path_table_identity.target_port, 1);
+    assert_eq!(manager.display_name(&address), None);
     assert_eq!(manager.mode(&address), Some(InterfaceMode::Gateway));
     assert_eq!(manager.outgoing(&address), Some(false));
     assert_eq!(manager.announce_pacing(&address), Some((1200, 5)));
@@ -383,6 +396,28 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
             ..InterfaceSharedConfig::default()
         })
     );
+    drop(manager);
+
+    apply_hot_apply_interface_records(
+        &iface_manager,
+        &mut managed,
+        vec![tcp_record("loopback", "127.0.0.2", 2)],
+        None,
+        &refreshes,
+        None,
+    )
+    .await;
+
+    let updated_address = managed.get("loopback").expect("replaced TCP client").address;
+    assert_ne!(updated_address, address);
+    let manager = iface_manager.lock().await;
+    let updated_identity = manager
+        .tcp_client_path_table_metadata(&updated_address)
+        .expect("updated hot-applied TCP client path-table identity");
+    assert_eq!(updated_identity.name, "loopback");
+    assert_eq!(updated_identity.target_host, "127.0.0.2");
+    assert_eq!(updated_identity.target_port, 2);
+    assert_eq!(manager.display_name(&updated_address), None);
 }
 
 #[tokio::test(flavor = "current_thread")]
