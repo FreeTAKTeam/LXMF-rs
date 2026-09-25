@@ -7,7 +7,9 @@ use super::{InterfaceStartupFailure, TcpServerSelection};
 
 use crate::bridge_rnode_management::DaemonRNodeManagementHandle;
 
-use crate::interface_hot_apply::hot_apply_interface_seed_key;
+use crate::interface_hot_apply::{
+    hot_apply_interface_seed_key, mark_tcp_server_record_runtime_status,
+};
 
 use crate::interfaces::{
     auto, ble, common::interface_label, i2p, kiss, lora, meshtastic, pipe, reticulum_ble,
@@ -794,6 +796,7 @@ fn startup_tcp_server_record(
     }
     let runtime_iface = server_iface.map(ToString::to_string);
     mark_interface_startup_status(record, "active", None, runtime_iface.as_deref());
+    mark_tcp_server_record_runtime_status(record, server_iface.copied());
     server_iface.and_then(|active_iface| {
         hot_apply_interface_seed_key(record).map(|key| (key, record.clone(), *active_iface))
     })

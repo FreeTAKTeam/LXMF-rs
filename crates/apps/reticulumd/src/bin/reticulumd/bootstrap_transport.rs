@@ -7,6 +7,8 @@ use super::{
 mod interface_startup;
 #[path = "bootstrap_transport_path_restore.rs"]
 mod path_restore;
+#[path = "bootstrap_transport_tcp_startup.rs"]
+mod tcp_startup;
 #[cfg(test)]
 #[path = "bootstrap_transport_tests.rs"]
 mod tests;
@@ -270,6 +272,12 @@ pub(super) async fn start_transport_and_interfaces(
                 iface_manager.clone(),
                 &selected_tcp_server,
             );
+            let (server, startup_result) = if tcp_startup::strict_startup(args, daemon_config) {
+                let (server, result) = server.with_startup_result();
+                (server, Some(result))
+            } else {
+                (server, None)
+            };
             let runtime_status = server.runtime_status_handle();
             let active_iface = iface_manager.lock().await.spawn(server, TcpServer::spawn);
             log::info!(
@@ -278,7 +286,26 @@ pub(super) async fn start_transport_and_interfaces(
                 active_iface,
                 addr
             );
-            startup_successes += 1;
+            if let Some(startup_result) = startup_result {
+                let label = selected_tcp_server
+                    .selected_index
+                    .and_then(|index| {
+                        daemon_config?
+                            .interfaces
+                            .get(index)
+                            .map(|iface| interface_label(iface, index))
+                    })
+                    .unwrap_or_else(|| selected_tcp_server.kind.clone());
+                tcp_startup::record_initial_bind_result(
+                    startup_result.await,
+                    label,
+                    selected_tcp_server.kind.clone(),
+                    &mut startup_successes,
+                    &mut startup_failures,
+                );
+            } else {
+                startup_successes += 1;
+            }
             server_iface = Some(active_iface);
             tcp_runtime_refreshes.push(TcpRuntimeRefresh {
                 runtime_iface: active_iface,

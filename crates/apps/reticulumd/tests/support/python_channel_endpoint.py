@@ -86,6 +86,7 @@ class ChannelEndpoint:
         self.links = []
         self.received = []
         self.buffers = []
+        self.resources = []
         self.resource_wire_segments = []
 
     def _install_resource_wire_capture(self) -> None:
@@ -210,6 +211,7 @@ class ChannelEndpoint:
             "resource-wire",
             "resource-compression",
             "resource-multi-hop",
+            "resource-bidirectional",
             "cancel-resource",
             "resource-shutdown",
             "resource-reader-failure",
@@ -313,6 +315,22 @@ class ChannelEndpoint:
             link.set_resource_concluded_callback(on_resource_concluded)
             with self.lock:
                 self.links.append(link)
+            if self.payload_kind == "resource-bidirectional":
+                channel.register_message_type(MessageTest)
+
+                def on_control_message(message) -> bool:
+                    if message.id != "request-python-resource":
+                        return self._on_message(message)
+                    resource = RNS.Resource(
+                        b"python-resource-data",
+                        link,
+                        metadata="python-meta",
+                    )
+                    with self.lock:
+                        self.resources.append(resource)
+                    return True
+
+                channel.add_message_handler(on_control_message)
             return
 
         if self.payload_kind == "buffer":
@@ -827,6 +845,7 @@ def main() -> int:
             "resource-compression-incompressible",
             "resource-compression-disabled",
             "resource-multi-hop",
+            "resource-bidirectional",
             "cancel-resource",
             "cancel-resource-segment-two",
             "resource-shutdown",

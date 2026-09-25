@@ -82,9 +82,13 @@ impl InterfaceSharedConfig {
         }
 
         let ifac_size = match self.ifac_size {
-            Some(bits) if bits >= (IFAC_MIN_SIZE as u64) * 8 && bits % 8 == 0 => {
+            // Pinned Python Reticulum only overrides the carrier default when
+            // the configured bit count reaches IFAC_MIN_SIZE * 8; smaller
+            // values are ignored. For accepted values it floors to bytes.
+            Some(bits) if bits >= (IFAC_MIN_SIZE as u64) * 8 => {
                 usize::try_from(bits / 8).map_err(|_| RnsError::InvalidArgument)?
             }
+            Some(bits) if bits < (IFAC_MIN_SIZE as u64) * 8 => default_size_bytes,
             Some(_) => return Err(RnsError::InvalidArgument),
             None => default_size_bytes,
         };
@@ -113,17 +117,26 @@ pub fn encode_ifac(state: &IfacState, raw: &[u8]) -> Result<Vec<u8>, IfacWireErr
 
 /// Authenticate and remove IFAC before packet deserialization.
 pub fn decode_ifac(state: &IfacState, raw: &[u8]) -> Result<Vec<u8>, IfacWireError> {
-    let authenticated = raw.first().is_some_and(|byte| byte & 0x80 != 0);
     let guard = state.read().map_err(|_| RnsError::ConnectionError)?;
-    match guard.as_ref() {
+    decode_ifac_with_context(guard.as_ref(), raw)
+}
+
+fn decode_ifac_with_context(
+    context: Option<&IfacContext>,
+    raw: &[u8],
+) -> Result<Vec<u8>, IfacWireError> {
+    let authenticated = raw.first().is_some_and(|byte| byte & 0x80 != 0);
+    match context {
         Some(context) => {
             if !authenticated {
                 return Err(IfacWireError::MissingFlag);
             }
-            context
-                .decode(raw)
-                .map_err(IfacWireError::Codec)?
-                .ok_or(IfacWireError::InvalidTag)
+            let decoded = match context.decode(raw) {
+                Ok(decoded) => decoded,
+                Err(RnsError::InvalidArgument) => return Err(IfacWireError::InvalidTag),
+                Err(error) => return Err(IfacWireError::Codec(error)),
+            };
+            decoded.ok_or(IfacWireError::InvalidTag)
         }
         None => {
             if authenticated {
@@ -148,11 +161,13 @@ pub fn encode_packet_ifac(
 /// packet bytes. This is deliberately the only packet admission helper used
 /// by carrier receive loops.
 pub fn decode_packet_ifac(state: &IfacState, raw: &[u8]) -> Result<Packet, IfacWireError> {
-    let authenticated = state
-        .read()
-        .map_err(|_| RnsError::ConnectionError)?
-        .is_some();
-    let raw = decode_ifac(state, raw)?;
+    // Hold one policy snapshot across wire decoding and provenance marking.
+    // Reconfiguration must not change the context between those decisions.
+    let (raw, authenticated) = {
+        let context = state.read().map_err(|_| RnsError::ConnectionError)?;
+        let authenticated = context.is_some();
+        (decode_ifac_with_context(context.as_ref(), raw)?, authenticated)
+    };
     let mut packet = Packet::from_bytes(&raw).map_err(IfacWireError::Codec)?;
     if authenticated {
         // `Packet::header.ifac_flag` describes the packet bytes after IFAC has
@@ -167,7 +182,9 @@ pub fn decode_packet_ifac(state: &IfacState, raw: &[u8]) -> Result<Packet, IfacW
 pub fn is_ifac_violation(error: &IfacWireError) -> bool {
     matches!(
         error,
-        IfacWireError::MissingFlag | IfacWireError::UnexpectedFlag | IfacWireError::InvalidTag
+        IfacWireError::MissingFlag
+            | IfacWireError::UnexpectedFlag
+            | IfacWireError::InvalidTag
     )
 }
 
@@ -201,20 +218,26 @@ mod ifac_wire_tests {
     }
 
     #[test]
-    fn missing_credentials_or_non_byte_size_fails_closed() {
+    fn missing_credentials_fail_closed_and_python_size_coercion_is_preserved() {
         assert!(InterfaceSharedConfig {
             ifac_size: Some(16),
             ..InterfaceSharedConfig::default()
         }
         .ifac_context()
         .is_err());
-        assert!(InterfaceSharedConfig {
-            ifac_size: Some(9),
+        let below_minimum = InterfaceSharedConfig {
+            ifac_size: Some(7),
             network_name: Some("field-net".to_string()),
             ..InterfaceSharedConfig::default()
-        }
-        .ifac_context()
-        .is_err());
+        };
+        assert_eq!(
+            below_minimum
+                .ifac_context_with_default_size(16)
+                .expect("Python ignores below-minimum size")
+                .expect("credentials still enable IFAC")
+                .ifac_size(),
+            16
+        );
     }
 
     #[test]
@@ -240,15 +263,16 @@ mod ifac_wire_tests {
         let state = state(config);
         let framed = encode_ifac(&state, &[0x01_u8; 32]).expect("encode");
 
-        assert!(matches!(decode_ifac(&state, &framed[..1]), Err(IfacWireError::Codec(_))));
+        assert!(matches!(decode_ifac(&state, &framed[..1]), Err(IfacWireError::InvalidTag)));
         assert!(matches!(
             decode_ifac(&state, &framed[..framed.len() - 1]),
             Err(IfacWireError::InvalidTag)
         ));
         assert!(matches!(
             decode_ifac(&state, &[0x80, 0x01]),
-            Err(IfacWireError::Codec(_))
+            Err(IfacWireError::InvalidTag)
         ));
+        assert!(is_ifac_violation(&IfacWireError::InvalidTag));
     }
 
     #[test]
@@ -260,5 +284,68 @@ mod ifac_wire_tests {
         let plain = std::sync::Arc::new(std::sync::RwLock::new(None));
         let framed = encode_ifac(&authenticated, &[0x01_u8; 32]).expect("encode");
         assert!(matches!(decode_ifac(&plain, &framed), Err(IfacWireError::UnexpectedFlag)));
+    }
+
+    #[test]
+    fn unauthenticated_state_accepts_plaintext_frames() {
+        let plain = std::sync::Arc::new(std::sync::RwLock::new(None));
+        let raw = [0x01_u8; 32];
+        assert_eq!(decode_ifac(&plain, &raw).expect("plaintext frame"), raw);
+    }
+
+    #[test]
+    fn packet_decode_keeps_ifac_policy_and_authentication_provenance_together() {
+        let packet = Packet {
+            destination: crate::hash::AddressHash::new_from_slice(&[0x42; 16]),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"packet-ifac-test"),
+            ..Packet::default()
+        };
+        let raw = packet.to_bytes().expect("serialize packet");
+        let authenticated = state(InterfaceSharedConfig {
+            network_name: Some("field-net".to_string()),
+            ..InterfaceSharedConfig::default()
+        });
+        let framed = encode_packet_ifac(&authenticated, &packet).expect("encode IFAC packet");
+
+        assert!(matches!(
+            decode_packet_ifac(&authenticated, &raw),
+            Err(IfacWireError::MissingFlag)
+        ));
+        let decoded = decode_packet_ifac(&authenticated, &framed).expect("decode IFAC packet");
+        assert_eq!(decoded.data.as_slice(), b"packet-ifac-test");
+        assert_eq!(decoded.ifac.map(|ifac| ifac.length), Some(0));
+
+        let plaintext = std::sync::Arc::new(std::sync::RwLock::new(None));
+        assert!(matches!(
+            decode_packet_ifac(&plaintext, &framed),
+            Err(IfacWireError::UnexpectedFlag)
+        ));
+        let decoded_plaintext = decode_packet_ifac(&plaintext, &raw).expect("decode plaintext");
+        assert!(decoded_plaintext.ifac.is_none());
+    }
+
+    #[test]
+    fn python_non_byte_aligned_ifac_bits_floor_to_bytes() {
+        let config = InterfaceSharedConfig {
+            ifac_size: Some(9),
+            passphrase: Some("test-ifac-passphrase".to_string()),
+            ..InterfaceSharedConfig::default()
+        };
+
+        let context = config
+            .ifac_context_with_default_size(16)
+            .expect("pinned Python accepts 9 IFAC bits")
+            .expect("passphrase enables IFAC");
+
+        assert_eq!(context.ifac_size(), 1);
+
+        let largest = InterfaceSharedConfig { ifac_size: Some(519), ..config.clone() }
+            .ifac_context_with_default_size(16)
+            .expect("pinned Python floors 519 bits to the 64-byte maximum")
+            .expect("passphrase enables IFAC");
+        assert_eq!(largest.ifac_size(), 64);
+
+        let too_large = InterfaceSharedConfig { ifac_size: Some(520), ..config };
+        assert!(too_large.ifac_context_with_default_size(16).is_err());
     }
 }

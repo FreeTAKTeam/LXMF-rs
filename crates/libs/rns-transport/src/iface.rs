@@ -55,6 +55,8 @@ include!("iface_parts/interface_traffic.rs");
 include!("iface_runtime.rs");
 
 include!("iface_parts/interfacemanager.rs");
+include!("iface_parts/interfacemanager_inheritance.rs");
+include!("iface_parts/interfacemanager_spawning.rs");
 
 include!("iface_parts/interfacemanager_management.rs");
 

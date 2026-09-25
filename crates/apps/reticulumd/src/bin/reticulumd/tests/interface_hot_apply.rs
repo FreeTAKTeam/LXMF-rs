@@ -7,7 +7,7 @@ use super::{
     InterfaceRecord, ManagedHotApplyInterface,
 };
 use rand_core::OsRng;
-use rns_rpc::{RpcDaemon, RpcRequest};
+use rns_rpc::{InterfaceMutationFailure, RpcDaemon, RpcRequest};
 use rns_transport::identity::PrivateIdentity;
 use rns_transport::iface::{IfaceRole, InterfaceMode, InterfaceSharedConfig};
 use rns_transport::transport::{Transport, TransportConfig};
@@ -17,6 +17,9 @@ use std::io;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
+
+#[path = "interface_hot_apply/issue_608_udp_bind_retry.rs"]
+mod issue_608_udp_bind_retry;
 
 fn tcp_record(name: &str, host: &str, port: u16) -> InterfaceRecord {
     InterfaceRecord {
@@ -135,7 +138,10 @@ fn hot_apply_accepts_ifac_aliases_and_rejects_incomplete_configuration() {
         .apply_interfaces(vec![invalid])
         .expect_err("IFAC size without credentials must fail closed");
     assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
-    assert!(error.to_string().contains("invalid Reticulum IFAC configuration"));
+    assert_eq!(
+        error.get_ref().and_then(|source| source.downcast_ref::<InterfaceMutationFailure>()),
+        Some(&InterfaceMutationFailure::InvalidIfacConfiguration)
+    );
     assert!(rx.try_recv().is_err(), "rejected IFAC update must not be queued");
 }
 

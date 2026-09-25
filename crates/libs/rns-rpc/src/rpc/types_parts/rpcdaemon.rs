@@ -122,6 +122,27 @@ pub trait InterfaceMutationBridge: Send + Sync {
     ) -> Result<Vec<InterfaceRecord>, std::io::Error>;
 }
 
+/// Typed marker for IFAC configuration failures from an interface mutation.
+///
+/// This prevents RPC classification from depending on arbitrary error text or
+/// caller-controlled interface names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterfaceMutationFailure {
+    InvalidIfacConfiguration,
+}
+
+impl fmt::Display for InterfaceMutationFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidIfacConfiguration => {
+                formatter.write_str("IFAC interface configuration was rejected")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InterfaceMutationFailure {}
+
 include!("path_lookup_bridge.rs");
 
 pub trait RNodeManagementBridge: Send + Sync {

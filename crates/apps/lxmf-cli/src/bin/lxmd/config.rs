@@ -270,6 +270,12 @@ pub(crate) fn write_generated_reticulumd_config(
         if let Some(port) = interface.port {
             output.push_str(&format!("port = {port}\n"));
         }
+        if let Some(target_host) = interface.target_host.as_ref() {
+            output.push_str(&format!("target_host = {target_host:?}\n"));
+        }
+        if let Some(target_port) = interface.target_port {
+            output.push_str(&format!("target_port = {target_port}\n"));
+        }
         if let Some(shared_instance_type) = interface.shared_instance_type.as_ref() {
             output.push_str(&format!("shared_instance_type = {shared_instance_type:?}\n"));
         }

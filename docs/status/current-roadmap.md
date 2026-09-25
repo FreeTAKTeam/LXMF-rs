@@ -22,9 +22,84 @@ The 2026-09-21 behavior audit confirms that mapped surface coverage is **not
 full operational parity**. The implemented BLE/HDLC/rngit increment and explicit
 remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
-not the canonical release baseline. IFAC daemon wiring, remaining remote
-utility behavior, transport policy differences, and platform validation remain
-open; the focused #611 `rncp` compression/send/fetch matrix, bounded
+not the canonical release baseline. Pinned Python/Rust IFAC Channel and
+Resource interoperability is exercised over TCP and UDP; the `lxmd`/`reticulumd`
+UDP path also has bidirectional IFAC direct-message evidence, valid-frame tamper
+rejection, live credential rotation, fail-closed restart evidence, and an
+IFAC-protected shared-instance path with an attached Rust client. Invalid live
+IFAC reconfiguration now returns a structured RPC error while preserving the
+active authenticated configuration; a plaintext peer remains rejected after
+restart. Packet-level
+IFAC decoding now uses one locked context for frame authentication and
+verified-wire provenance across live reconfiguration. An active-carrier
+software regression also probes ingress during 2,000 live IFAC credential
+rotations and verifies plaintext remains rejected; it does not claim
+physical-carrier coverage. An invalid IFAC startup configuration remains
+fail-closed and now appears in `list_interfaces` as a sanitized failed startup
+diagnostic; raw config values and credentials are not included. The spawned
+IFAC-enabled UDP bind failure is also covered in both best-effort diagnostic
+mode and strict-startup rejection mode, with no passphrase disclosure; the
+IFAC-configured TCP listener bind failure now also appears in `list_interfaces`
+as a sanitized `bind_error` with zero accepted clients. Strict startup waits for
+that worker's initial bind result and rejects a failed bind; best-effort startup
+retains deferred retry and reporting. This is distinct from the UDP worker path
+and does not complete TCP accepted-stream or broad startup coverage. The broader
+startup/error and carrier matrices remain open. A live IFAC UDP replacement
+whose port is occupied now has a focused recovery regression: daemon status
+reports the failed bind without credentials, the replacement retains its IFAC
+configuration through worker retry, and plaintext is rejected and counted
+after the listener binds. Configured IFAC sizes below
+Reticulum's one-byte minimum now follow the pinned Python startup rule: they
+select the carrier's default tag size while retaining configured credentials.
+Software tests cover the production daemon UDP path and transport default-size
+selection; the pinned behavior was source-audited, not packet-differentially
+tested. Non-byte-aligned sizes at or above the one-byte minimum now follow the
+same frozen Python floor-to-byte rule: a production UDP daemon configured for
+9 IFAC bits binds with a one-byte tag, and its real ingress accepts a matching
+one-byte-authenticated packet without an IFAC violation. The upper bound is
+expressed as a resulting tag size of at most 64 bytes; 520 bits is rejected.
+This is a Rust production-path regression anchored to the pinned config
+semantics, not a Python-process differential, and it leaves the broader
+startup/error and carrier matrices open. IFAC startup now also matches the
+legacy-name fallback when `networkname` is populated and the newer
+`network_name` alias is empty; the resolved credential validates and a
+production UDP bootstrap regression observes the listener bound. This is one
+alias/startup case only. Startup now also preserves whitespace-only IFAC
+credentials literally, matching frozen Python's `value != ""` handling; a
+production UDP regression verifies the real listener binds with those values.
+This is one configuration-coercion edge and does not close the broader
+startup/error or carrier matrix. The spawned
+`PipeInterface` worker also has a Unix subprocess loopback regression for its
+8-byte IFAC default and authenticated HDLC packet admission. Other carrier
+families now include duplex-stream serial and KISS IFAC regressions for wrong-key
+rejection and authenticated ingress/egress, with the KISS test also checking
+runtime counters. A pinned-Python regression now also exchanges a Channel
+request/reply between the Python and Rust serial KISS interfaces over a raw
+two-PTY software relay, with bidirectional interface traffic and zero IFAC
+violations; it does not establish modem or physical-serial behavior. The
+outbound I2P peer loop now also has a fake-SAM stream
+regression for wrong-key rejection and authenticated ingress/egress; none of
+these tests is physical-carrier or public-I2P evidence. A second fake-SAM test
+verifies an established virtual I2P peer observes parent IFAC credential
+rotation, rejects stale credentials, and uses the rotated key for egress. An
+accepted-child IFAC regression verifies inbound rejection of the previous
+parent credential and admission under the rotated credential; it now also
+encodes child egress with the inherited state and confirms only the rotated
+parent key authenticates it. This covers both directions after live
+configuration change and required no production-code fix. TCP
+accepted clients now inherit their parent's IFAC policy before the child worker
+is scheduled, with a deterministic first-poll regression proving plaintext is
+rejected; a separate pinned-Python TCP process test now verifies first-frame
+admission, wrong-key rejection, live parent credential rotation, and stop/
+restart with the rotated credentials. This is focused TCP lifecycle evidence,
+and its wrong-key peer also increments the listener's aggregated IFAC
+violation counter without creating a Link, matching the pinned inbound
+authentication-before-admission path. This is not physical-carrier or full
+startup/error coverage. The
+broader software support matrix, remaining remote utility behavior,
+transport policy differences, and platform validation remain open; the
+focused #611 `rncp`
+compression/send/fetch matrix, bounded
 `rnprobe` packet/RPC workflow plus one exact-target invalid-option comparison,
 and bounded native `rnsh` channel workflow,
 negative
@@ -321,11 +396,31 @@ The project is best described by capability level:
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
-| Operationally substitutable | partial | IFAC daemon authentication, remaining remote utility workflows, and recorded transport-policy differences still prevent unconditional substitution. See the 1.5.4 delta acceptance gates. |
-| Python callable inventory coverage | mapped, not a full behavior guarantee | The active 1.5.2 inventory reports 1,857 complete and 1 provenance-backed not-applicable entry. SDK/RPC advisories preserve those callable counts separately from the forward 1.5.4-dev behavioral checkpoint, currently partial/incomplete with 0 verified of 9 applicable requirements. |
+| Operationally substitutable | partial | IFAC carrier-family/support-matrix acceptance, remaining remote utility workflows, and recorded transport-policy differences still prevent unconditional substitution. See the 1.5.4 delta acceptance gates. |
+| Python callable inventory coverage | mapped, not a full behavior guarantee | The active 1.5.2 inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry. SDK/RPC advisories preserve those callable counts separately from the forward 1.5.4-dev behavioral checkpoint, currently partial/incomplete with 0 verified of 9 applicable requirements; runtime exclusions and failed differential tests take precedence. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 | Independent implementation evidence | published for stable `v0.10.1` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
 | Performance evidence | published for stable `v0.10.1` | Tag workflow [`33254264175`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175) passed with the bounded checksummed JSON, HTML, raw evidence, and regression-gate result. The gate is `pass_with_warnings` for one documented 13.99% Rust resource-sized encode dispersion; throughput/CPU/RSS ratios are `1.013x`/`1.010x`/`1.084x`. |
+
+The #608 IFAC software follow-up now also tests wrong-key rejection and
+authenticated ingress/egress through Meshtastic tunnel, Weave stream, incoming
+I2P accepted-stream workers, AutoInterface peer-data, LoRa streams, RNode
+bearers, and RNodeMulti KISS vports. These deterministic tests use software
+seams only. A fake backend also drives the actual RNode BLE KISS worker to
+prove wrong-key rejection/countering, matching-key admission, and authenticated
+egress; this is software fault-injection evidence, not physical BLE
+verification. A focused TCP bootstrap regression also verifies that an
+out-of-range IFAC size remains visible as a sanitized failed-startup diagnostic
+with the accepted size range and without the configured credential marker.
+Uncovered carrier families and physical/public-network evidence remain open.
+See the [#608 evidence record](../goals/reticulum-reference-parity-605/evidence/608-ifac.md).
+
+The #608 startup diagnostics now retain an IFAC UDP interface when daemon
+deserialization rejects its out-of-range carrier port, even when its
+whitespace-only credential is valid under Python's non-empty-string rule; a
+fixed `list_interfaces` failure record avoids exposing the credential. This is
+one carrier-field parse regression only; other startup/configuration errors
+and uncovered carrier families remain open.
 
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,
