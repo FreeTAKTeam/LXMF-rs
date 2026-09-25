@@ -30,6 +30,9 @@ mod issue_613_media_source_open_failure;
 mod issue_613_media_traversal;
 #[path = "rngit_python_interop/issue_613_media_url.rs"]
 mod issue_613_media_url;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_media_zero_stat.rs"]
+mod issue_613_media_zero_stat;
 #[path = "rngit_python_interop/issue_613_no_ident.rs"]
 mod issue_613_no_ident;
 #[cfg(target_os = "linux")]

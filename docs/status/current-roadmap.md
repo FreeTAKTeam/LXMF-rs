@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-23
+Last reassessed: 2026-09-25
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -203,6 +203,14 @@ Rust source command from starting. The pinned Python Link receives no response,
 then recovers on the same Link after restoration, matching frozen `pages.py`
 `Popen` failure behavior; no Resource is constructed and no production change
 was needed. Metadata/stat races and the broader #613 matrix remain open.
+
+A pinned-Python-client production-Link regression now also checks zero-length
+and nonempty tracked media blobs. The pinned source confirms `/media` returns a
+`git show` pipe whose `stat` size is zero and `Resource.py` proxies the stream;
+Rust serves the expected filenames and bytes while keeping the Link active.
+This is a source-checked, reference-shaped case against the Rust server, not a
+Python-server differential. Metadata/stat races and broader #613 acceptance
+remain open.
 
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python

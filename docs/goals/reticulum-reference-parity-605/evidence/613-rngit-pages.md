@@ -1078,3 +1078,24 @@ cargo test -p rns-tools --test rngit_python_interop issue_613_media_compression 
   -- --ignored --nocapture --test-threads=1
   PASS (2 tests; pinned helper selection and production-Link configured raw-media behavior)
 ```
+
+### Zero-stat `/media` pipe behavior
+
+At the pinned Reticulum revision, `pages.py::serve_media` returns a
+`git show` stdout pipe with the response filename. `os.stat()` reports zero
+size for that pipe, so `Resource.py` copies the stream through its zero-size
+proxy branch before constructing the Resource. The regression source-checks
+those pinned branches, then sends both an empty blob and a nonempty tracked
+blob through a production Rust `rngit` Link to a pinned Python client. The
+client verifies the filename, exact payload size/content digest, and that the
+Link remains active. This is a narrow source-checked compatibility case, not a
+Python-server-vs-Rust-server differential; no production change was needed.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_zero_stat::rngit_media_zero_sized_pipe_preserves_resource_metadata_and_link \
+  -- --ignored --exact --nocapture --test-threads=1
+  PASS (1 test; empty and nonempty blobs, pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`)
+Strict integration-test Clippy, formatting, module-size, and diff checks passed.
+```
