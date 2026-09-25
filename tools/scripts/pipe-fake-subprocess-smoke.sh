@@ -214,8 +214,17 @@ PY
       kill -INT "$RET_PID" >/dev/null 2>&1 || fail "could not request daemon shutdown"
       wait "$RET_PID" || fail "daemon shutdown returned a failure status"
       RET_PID=""
-      if kill -0 "$PEER_PID" >/dev/null 2>&1; then
-        fail "Pipe peer process $PEER_PID survived daemon shutdown"
+      peer_gone=false
+      for _ in {1..20}; do
+        if ! kill -0 "$PEER_PID" >/dev/null 2>&1; then
+          peer_gone=true
+          break
+        fi
+        sleep 0.1
+      done
+      if [[ "$peer_gone" != true ]]; then
+        peer_state="$(ps -o stat= -p "$PEER_PID" 2>/dev/null | tr -d '[:space:]')"
+        fail "Pipe peer process $PEER_PID remained after 2s shutdown grace (state=${peer_state:-unknown})"
       fi
       write_report "pass"
       echo "[pipe-fake-subprocess-smoke] pass"

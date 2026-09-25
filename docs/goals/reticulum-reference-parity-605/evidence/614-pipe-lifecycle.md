@@ -27,6 +27,18 @@ cargo test -p reticulum-rs-transport \
 This proves only the Linux software child-exit/restart and cancellation/reap
 path.
 
+The regression `pipe_child_is_terminated_when_worker_task_is_aborted` covers
+the abnormal shutdown path exposed by the hosted smoke: it starts a child that
+ignores closed stdin, aborts the production worker task, and confirms the
+recorded child PID is no longer live. `kill_on_drop(true)` on the Tokio child
+handle supplies termination when task cancellation skips the normal explicit
+kill-and-reap path.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  pipe_child_is_terminated_when_worker_task_is_aborted -- --nocapture  PASS (1 test)
+```
+
 ## Configured daemon, peer packet loopback, and teardown
 
 `tools/scripts/pipe-fake-subprocess-smoke.sh` starts `reticulumd` with a
@@ -44,8 +56,10 @@ cargo test -p reticulumd --test pipe_fake_subprocess_smoke_contract -- --nocaptu
 ```
 
 The PR-level Verify workflow now runs this software smoke and uploads its
-report/logs as `pipe-fake-subprocess-<run-id>`; the hosted result for the
-workflow change is pending.
+report/logs as `pipe-fake-subprocess-<run-id>`. The pre-fix hosted run exposed
+the daemon-shutdown child leak. After adding child kill-on-drop and a bounded
+two-second process-exit poll, the updated local smoke passed three consecutive
+runs; the updated-head hosted rerun is pending.
 
 The daemon/peer loopback and clean teardown are Linux software evidence only.
 Windows/macOS Pipe subprocess behavior, independent remote-peer interoperability,

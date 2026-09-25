@@ -104,3 +104,55 @@ async fn pipe_child_exit_respawns_and_interface_cancellation_reaps_child() {
     assert_eq!(snapshot["pipe_is_open"], false);
     assert_eq!(snapshot["respawn_attempts"], 1);
 }
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn pipe_child_is_terminated_when_worker_task_is_aborted() {
+    use crate::iface::{IfaceRole, InterfaceManager};
+    use std::fs;
+    use std::time::Instant;
+
+    let temp = tempfile::tempdir_in("/dev/shm")
+        .expect("create temporary PipeInterface directory in shared memory");
+    let child_pid_path = temp.path().join("child.pid");
+    let script = temp.path().join("pipe-child.sh");
+    fs::write(&script, format!("echo $$ > '{}'; exec sleep 60\n", child_pid_path.display()))
+        .expect("write pipe child script");
+
+    let adapter = PipeInterface::new(format!("sh {}", script.display()));
+    let mut manager = InterfaceManager::new(8);
+    let context = manager.new_context_with_role(adapter, IfaceRole::Unicast);
+    let worker = tokio::spawn(PipeInterface::spawn(context));
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !child_pid_path.exists() {
+        assert!(Instant::now() < deadline, "PipeInterface child did not start");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let child_pid = fs::read_to_string(&child_pid_path)
+        .expect("read child process ID")
+        .trim()
+        .parse::<u32>()
+        .expect("parse child process ID");
+
+    worker.abort();
+    let _ = worker.await;
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        let still_running = std::process::Command::new("sh")
+            .args(["-c", &format!("kill -0 {child_pid} 2>/dev/null")])
+            .status()
+            .expect("check child process liveness")
+            .success();
+        if !still_running {
+            break;
+        }
+        if Instant::now() >= deadline {
+            let _ =
+                std::process::Command::new("kill").arg("-KILL").arg(child_pid.to_string()).status();
+            panic!("PipeInterface child {child_pid} survived worker task abort");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}

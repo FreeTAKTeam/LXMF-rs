@@ -138,10 +138,12 @@ or real-router/public-network evidence; #614/#605 remain partial.
 The Linux PipeInterface lifecycle now has deterministic production-worker and
 configured-daemon process evidence: child EOF causes one respawn; a local peer
 process echoes a scheduled, HDLC-framed announce with nonzero daemon RX/TX
-counters; SIGINT shutdown exits and reaps the peer. This remains Linux software
-evidence only; Windows/macOS behavior, independent remote-peer interoperability,
-and physical acceptance remain unverified. The PR-level Verify workflow now
-runs the smoke and uploads its report/logs; hosted validation is pending.
+counters; SIGINT shutdown exits and reaps the peer. A worker-abort regression
+also confirms Tokio child `kill_on_drop` terminates the peer when task
+cancellation bypasses normal cleanup. This remains Linux software evidence
+only; Windows/macOS behavior, independent remote-peer interoperability, and
+physical acceptance remain unverified. The PR-level Verify workflow now runs
+the smoke and uploads its report/logs; the updated-head rerun is pending.
 
 The Linux UDP runtime now also has a configured daemon loopback trace: a local
 peer receives a valid outbound datagram and returns the exact bytes, live daemon
