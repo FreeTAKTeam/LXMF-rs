@@ -740,6 +740,35 @@ TMPDIR=/dev/shm RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302
   -- --ignored --nocapture --test-threads=1                       PASS (1 test)
 ```
 
+### Verify coverage for media argv forwarding and encoder-failure cleanup
+
+At PR #633 base head `5b66d3b43c33fd18558017b70a6ab1e4975fce9a`, both
+existing Unix process tests passed locally against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`. The argv test starts the production
+`rngit` process with configured quality and maximum dimensions, then a pinned
+Python Link confirms the selected stub backend received those exact argument
+pairs. The failure test injects a nonzero encoder exit and checks byte-exact raw
+PNG fallback, filename metadata, diagnostic retention, and removal of the
+conversion directory. `.github/workflows/verify.yml` now invokes each test
+with its exact test filter, `--ignored --exact`, and the pinned
+`Reticulum-parity` checkout. Local exact-filter runs passed; hosted Verify for
+this workflow change is pending. These two software cases do not establish the
+remaining #613 lifecycle, filesystem, backend-family, or rendering acceptance.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 PYTHONPATH=<same checkout> \
+cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_options::rngit_passes_media_cli_options_to_the_selected_webp_backend \
+  -- --ignored --exact --nocapture --test-threads=1                  PASS (1 test)
+
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 PYTHONPATH=<same checkout> \
+cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_options::rngit_failed_webp_encoder_returns_raw_media_and_cleans_conversion_directory \
+  -- --ignored --exact --nocapture --test-threads=1                  PASS (1 test)
+```
+
 - Reticulum public-key work-document signature verification,
   restart/concurrent-writer/fault
   transcripts, and end-to-end rngit Git/work network workflows remain open

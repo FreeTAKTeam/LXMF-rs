@@ -133,6 +133,12 @@ focused filesystem unit regression covers the permission check. Hosted
 production-Link fixtures prove real `convert` and `gm` encoding; the local
 ImageMagick 7 `magick` result is recorded above, while `avconv` and visual
 parity remain unverified, and broader #613 acceptance remains partial.
+The current #633 increment also wires two existing ignored process regressions
+into Verify: exact media CLI argv forwarding and encoder-failure raw fallback
+plus conversion-directory cleanup. Both exact filters passed locally against
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`; hosted execution of the
+new steps is pending. This adds CI coverage only and does not close the wider
+#613 lifecycle/filesystem gaps.
 The #633 follow-up also verifies runtime WebP configuration forwarding: a
 production `rngit` process selects a deterministic stub `ffmpeg`, passes its
 configured quality and maximum-dimension options, and returns WebP metadata to

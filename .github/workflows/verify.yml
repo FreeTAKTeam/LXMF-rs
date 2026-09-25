@@ -295,6 +295,26 @@ jobs:
             issue_613_media_compression::pinned_python_media_backend_selection_reuses_available_automatic_winner \
             -- --ignored --exact --nocapture --test-threads=1
 
+      - name: Verify pinned Python rngit media CLI option forwarding
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_options::rngit_passes_media_cli_options_to_the_selected_webp_backend \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python rngit encoder failure fallback and cleanup
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_options::rngit_failed_webp_encoder_returns_raw_media_and_cleans_conversion_directory \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
