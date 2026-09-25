@@ -2159,6 +2159,13 @@ third-party-client claims remain separate deferred evidence tracks. They do not
 downgrade the completed software inventory and must not be described as
 validated without their own evidence.
 
+Rust also matches the pinned `pages.py::get_template` launch-failure fallback:
+an executable template with a missing interpreter is logged and treated as
+unavailable, leaving the built-in template in place. A focused Unix regression
+and pinned-Python client over a production TCP Link prove the behavior. This
+closes one narrow template-failure slice only; the broader #613 rendering and
+lifecycle acceptance remains partial.
+
 ## Active Execution Order
 
 1. Keep the generated RNS 1.5.2 inventory and both parity matrices at zero

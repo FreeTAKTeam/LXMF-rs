@@ -57,6 +57,10 @@ pub(crate) struct PageResponse {
     pub response_is_false: bool,
 }
 
+#[cfg(all(test, unix))]
+#[path = "issue_613_template_failure_tests.rs"]
+mod issue_613_template_failure_tests;
+
 #[derive(Debug, Clone)]
 pub(crate) struct DecodedPageRequest {
     pub path: &'static str,
@@ -194,7 +198,17 @@ impl ReticulumGitNode {
                 continue;
             };
             let content = match fs::metadata(&path) {
-                Ok(metadata) if is_executable_file(&metadata) => run_permission_resolver(&path)?,
+                Ok(metadata) if is_executable_file(&metadata) => match run_permission_resolver(&path) {
+                    Ok(content) => content,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                        eprintln!(
+                            "rngit: could not get dynamic template content from {}: {error}",
+                            path.display()
+                        );
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                },
                 Ok(_) => fs::read_to_string(&path)?,
                 Err(error) => return Err(error),
             };

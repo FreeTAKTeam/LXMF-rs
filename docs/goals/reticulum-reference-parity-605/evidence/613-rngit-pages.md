@@ -1175,3 +1175,27 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --exact --nocapture --test-threads=1
   PASS (1 test; pinned-source guards and injected stat-then-read failure)
 ```
+
+### Failed executable page template falls back to the built-in template
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d` handles an
+executable template failure in `pages.py::get_template` by logging and
+returning `None`; `render_template` then uses the built-in template. Rust
+previously propagated an executable-template launch failure from
+`load_page_templates`, aborting startup. It now logs an executable-template
+launch failure (`NotFound`) and skips that unavailable override, preserving
+the built-in fallback. The focused Unix regression uses an executable
+`base.mu` with a missing shebang interpreter. A pinned Python client at that
+exact revision requests `/page/index.mu` over a real TCP Reticulum Link from
+the Rust service, verifies the built-in footer and absence of override output,
+and confirms the service remains alive. This covers executable-template
+launch failure only; the remaining #613 rendering and lifecycle gates remain
+open.
+
+```text
+RETICULUM_PY_REPO=/path/to/Reticulum-at-99de23c \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_template_launch_failure::rngit_page_request_uses_builtin_template_when_executable_override_cannot_launch \
+  -- --ignored --exact --nocapture --test-threads=1
+  PASS (1 test; exact pinned source guard and real TCP Reticulum Link to Rust service)
+```
