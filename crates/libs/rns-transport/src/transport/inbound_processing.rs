@@ -11,24 +11,48 @@ use ifac_admission::violates_ifac_policy;
 mod traffic_class;
 use traffic_class::inbound_traffic_class;
 
-async fn filter_duplicate_packet(
+pub(super) async fn filter_duplicate_packet(
     packet_cache: Arc<Mutex<PacketCache>>,
     in_link: Option<Arc<Mutex<Link>>>,
     node_name: &str,
     packet: &Packet,
+    connected_to_shared_instance: bool,
+    transport_identity: AddressHash,
 ) -> (bool, bool) {
-    let mut allow_duplicate = false;
+    // The pinned Python packet_filter bypasses hash deduplication for these
+    // contexts before applying packet-type or destination-specific filtering.
+    let mut allow_duplicate = matches!(
+        packet.context,
+        PacketContext::KeepAlive
+            | PacketContext::ResourceRequest
+            | PacketContext::ResourceProof
+            | PacketContext::Resource
+            | PacketContext::CacheRequest
+            | PacketContext::Channel
+    );
+    if !connected_to_shared_instance
+        && packet.header.packet_type != PacketType::Announce
+        && matches!(packet.header.destination_type, DestinationType::Plain | DestinationType::Group)
+        && packet.transport.is_some_and(|transport| transport != transport_identity)
+    {
+        // Python rejects packets addressed to another transport before its
+        // Plain/Group duplicate-cache bypass.
+        return (false, false);
+    }
+    if packet.header.packet_type != PacketType::Announce
+        && matches!(packet.header.destination_type, DestinationType::Plain | DestinationType::Group)
+    {
+        // Python's packet_filter accepts local-hop Plain/Group packets before
+        // consulting its packet-hash generations. The ingress path has already
+        // rejected transported (>1 hop) packets and invalid announces.
+        allow_duplicate = true;
+    }
     match packet.header.packet_type {
         PacketType::Announce => return (true, false),
-        PacketType::LinkRequest => allow_duplicate = true,
+        PacketType::LinkRequest => {}
         PacketType::Data => {
-            allow_duplicate = matches!(
-                packet.context,
-                PacketContext::KeepAlive
-                    | PacketContext::LinkClose
-                    | PacketContext::ResourceRequest
-                    | PacketContext::Channel
-            );
+            allow_duplicate |=
+                matches!(packet.context, PacketContext::LinkClose | PacketContext::Channel);
         }
         PacketType::Proof => {
             if packet.context == PacketContext::LinkRequestProof {
@@ -60,7 +84,10 @@ async fn filter_duplicate_packet(
             packet.context as u8
         );
     }
-    (is_new || allow_duplicate, is_new)
+    // An attached client delegates packet deduplication to the shared-instance
+    // owner. Reticulum's packet_filter accepts these packets and add_packet_hash
+    // deliberately does not populate the local duplicate list in this mode.
+    (is_new || allow_duplicate || connected_to_shared_instance, is_new)
 }
 
 pub(super) async fn preprocess_inbound_message(
@@ -84,6 +111,7 @@ pub(super) async fn preprocess_inbound_message(
         packet_cache,
         in_link,
         node_name,
+        transport_identity,
     ) = {
         let handler = handler_arc.lock().await;
         (
@@ -94,6 +122,7 @@ pub(super) async fn preprocess_inbound_message(
             handler.packet_cache.clone(),
             handler.in_links.get(&message.packet.destination).cloned(),
             handler.config.name.clone(),
+            *handler.config.identity.address_hash(),
         )
     };
     if violates_ifac_policy(
@@ -254,7 +283,15 @@ pub(super) async fn preprocess_inbound_message(
     let (accepted, packet_cache_inserted) = if is_path_request {
         (true, false)
     } else {
-        filter_duplicate_packet(packet_cache, in_link, &node_name, &message.packet).await
+        filter_duplicate_packet(
+            packet_cache,
+            in_link,
+            &node_name,
+            &message.packet,
+            connected_to_shared_instance,
+            transport_identity,
+        )
+        .await
     };
     if !accepted {
         iface_manager.lock().await.record_packet_filter_hit(message.address);

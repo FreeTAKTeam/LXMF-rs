@@ -2,8 +2,10 @@
 mod tests {
     use super::*;
     use crate::packet::PacketType;
+    use std::process::Command;
 
     include!("iface_tests_parts/closed_tx_queue_cleanup.rs");
+    include!("iface_tests_parts/issue_609_announce_queue_limit.rs");
     include!("iface_tests_parts/inheritance_lock_poison.rs");
 
     #[test]
@@ -578,6 +580,63 @@ mod tests {
         assert!(mgr.set_shared_instance(parent, false));
         assert!(!mgr.is_local_client_interface(&child));
         assert!(mgr.local_client_interfaces().is_empty());
+    }
+
+    #[test]
+    #[ignore = "requires pinned Python Reticulum checkout at RETICULUM_PY_REPO"]
+    fn pinned_python_local_client_classification_matches_parent_relationship() {
+        const PINNED_RETICULUM: &str = "99de23c040d507e3fefca19e87b182302902725d";
+        let python_repo = std::env::var("RETICULUM_PY_REPO")
+            .expect("set RETICULUM_PY_REPO to the pinned Python Reticulum checkout");
+        let revision = Command::new("git")
+            .args(["-C", &python_repo, "rev-parse", "HEAD"])
+            .output()
+            .expect("read pinned Python Reticulum revision");
+        assert!(revision.status.success(), "git rev-parse failed for {python_repo}");
+        assert_eq!(
+            String::from_utf8_lossy(&revision.stdout).trim(),
+            PINNED_RETICULUM,
+            "classification differential must use the issue's pinned Python reference"
+        );
+
+        let python = std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
+        let script = r#"
+from types import SimpleNamespace
+from RNS.Transport import Transport
+shared_parent = SimpleNamespace(is_local_shared_instance=True)
+ordinary_parent = SimpleNamespace()
+attached_child = SimpleNamespace(parent_interface=shared_parent)
+ordinary_child = SimpleNamespace(parent_interface=ordinary_parent)
+print(",".join(str(Transport.is_local_client_interface(iface)).lower() for iface in (
+    shared_parent, attached_child, ordinary_parent, ordinary_child
+)))
+"#;
+        let reference = Command::new(python)
+            .args(["-c", script])
+            .env("PYTHONPATH", format!("{python_repo}:{}", std::env::var("PYTHONPATH").unwrap_or_default()))
+            .output()
+            .expect("run pinned Python local-client classification");
+        assert!(
+            reference.status.success(),
+            "pinned Python classification failed: {}",
+            String::from_utf8_lossy(&reference.stderr)
+        );
+        let expected = String::from_utf8_lossy(&reference.stdout).trim().to_string();
+
+        let mut manager = InterfaceManager::new(16);
+        let shared_parent = *manager.new_channel(16).address();
+        let attached_child = *manager.new_channel(16).address();
+        let ordinary_parent = *manager.new_channel(16).address();
+        let ordinary_child = *manager.new_channel(16).address();
+        assert!(manager.set_shared_instance(shared_parent, true));
+        assert!(manager.inherit_runtime_config(shared_parent, attached_child));
+        assert!(manager.inherit_runtime_config(ordinary_parent, ordinary_child));
+        let actual = [shared_parent, attached_child, ordinary_parent, ordinary_child]
+            .map(|address| manager.is_local_client_interface(&address))
+            .map(|is_client| is_client.to_string())
+            .join(",");
+
+        assert_eq!(actual, expected, "Rust and pinned Python classification differ");
     }
 
     #[test]

@@ -76,8 +76,8 @@ separately tracked under #616:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | closed; merged PR #604 and its acceptance checks are recorded |
 | #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, KISS/AX.25 stream wrong-key rejection plus authenticated ingress/egress with runtime-counter assertions, outbound I2P fake-SAM stream and incoming accepted-stream worker regressions, Meshtastic tunnel and Weave stream regressions, and AutoInterface peer-data, LoRa, RNode bearer, and RNodeMulti KISS-vport wrong-key rejection/authenticated ingress/egress; broader carrier and lifecycle matrices remain pending |
-| #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
-| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are regression-tested; a pinned-Python sender cancellation after data in split segment 2 produces Rust `InboundFailed(remote_cancelled)` through production TCP/Link/Resource; broader timeout/reconnect and consumer callback/status evidence remains open |
+| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery delivers one queued OPPORTUNISTIC LXMF message after relay replacement; the two-relay restart test transfers fresh raw Resources in both directions. An isolated pinned-Python test verifies in-flight large DIRECT LXMF Resource retry after upstream relay replacement, on a distinct Link and Resource, with exactly one message delivery. Other evidence includes attached-client duplicate delegation, standalone repeated-LinkRequest suppression, pinned-Python clean-close reason mapping, five-attempt Channel retry exhaustion over localhost TCP, transport-disabled local LinkRequest delivery from a virtual child, expired persisted-route rejection followed by fresh-announce recovery, and strict announce-job deadline equality with exactly one local-client retransmit. Deeper relay replacement and duplicate behavior remain open; the broad reverse-delivery scenario has an intermittent B-to-A timeout |
+| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are regression-tested; Python peers verify response packet selection at MDU-1 and MDU and Resource selection at MDU+1; a pinned-Python sender cancellation after data in split segment 2 produces Rust `InboundFailed(remote_cancelled)` through production TCP/Link/Resource; broader timeout/reconnect and consumer callback/status evidence remains open |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
 | #613 | Match rngit NomadNet pages, media, and link cleanup | partial / unverified |
@@ -160,10 +160,59 @@ owned by one forwarding Rust transport; its companion trace forwards a split
 Resource and waits for the remote endpoint's exact size and SHA-256 callback.
 The same topology now proves application-link close/reconnect, and a separate
 fault-injected pinned-Python trace proves Rust pending-link establishment
-cleanup after the path is available. The row remains unverified until broader
-shared-instance and multi-hop production traces compare packet/proof duplicate
-suppression, announce persistence, caller-visible close reasons, and underlying
-carrier-stream reconnect behavior.
+cleanup after the path is available. A pinned two-carrier Python trace now
+injects a duplicate link-request proof and asserts Rust forwards it exactly
+once before the Python client completes a single Channel delivery; this case
+runs in PR `Verify` CI. Another exact-target trace duplicates an ordinary
+LinkRequest on ingress and verifies the Rust forwarder emits one copy; focused
+ingress tests also verify attached clients accept duplicates for owner-side
+filtering. These cases do not close the remaining packet/proof classes. Rust
+link events now expose the pinned
+`TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
+role-aware and establishment-timeout regressions. A pinned-Python clean-close
+trace over TCP verifies that Python `Link.teardown()` reaches the Rust caller
+as `INITIATOR_CLOSED`; a second pinned-Python TCP trace drops Link delivery
+proofs, verifies all five Channel attempts, and observes the resulting
+caller-visible reason in Rust. This is localhost software-carrier evidence;
+physical and public-network evidence remains separate. The row remains
+partial; broader shared-instance
+and multi-hop production traces comparing other packet/proof duplicate classes
+remain unverified. A new two-peer pinned-Python shared-instance
+trace verifies path relearning, fresh links, and raw packet exchange in both
+directions after replacing the transport-enabled Rust daemon. It queues an
+OPPORTUNISTIC LXMF message while the relay is down and verifies receipt and
+acknowledgement after restart; this does not establish queued DIRECT delivery.
+The two-relay restart test also transfers fresh raw Resources in both directions
+after recovery. A separate isolated pinned-Python test pauses a large DIRECT
+LXMF Resource transfer in flight, restarts and replaces its upstream relay,
+then verifies retry on a distinct Link and Resource and exactly one message
+delivery. These are bounded acceptance cells: deeper multi-relay replacement
+and duplicate behavior remain open, and the broad reverse-delivery scenario
+still has an intermittent B-to-A timeout. #609 therefore remains partial; none
+of this evidence completes #609 or parent issue #605. Physical/HIL evidence is
+excluded. A focused
+transport save/restart regression proves a newer cached `PATH_RESPONSE`
+announce supersedes scheduled state without becoming retransmission work after
+restore. A real-socket `TcpClient` regression also proves redial preserves the
+interface identity and resumes bidirectional HDLC packet traffic; it is
+carrier-level evidence, not the broader duplicate or queue-recovery cases.
+An additional focused regression verifies that a locally hosted destination's
+valid announce, when received through a shared-instance child, does not become
+a remote route or fan out to a sibling client. This proves one software matrix
+cell only and does not promote the #609 row. Path-table startup restore also
+rejects a cached announce whose recovered identity is already blackholed,
+matching the pinned `Transport.py` startup predicate; the save/blackhole/restore
+test verifies the route and recovered destination identity are both absent.
+This closes one cached-route validity cell only and leaves #609 partial.
+
+A disjoint transport-disabled regression now covers a different local/shared
+matrix cell: a LinkRequest arriving from one shared-instance virtual child for
+a locally hosted destination produces exactly one `LinkRequestProof` routed to
+that child; the sibling receives no transit copy. This matches the frozen
+Python source path in `Transport._inbound`, `Destination.receive`, and
+`Link.validate_request` at Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
+It is a source-level comparison plus production Rust packet-processing test,
+not a live Python/Rust socket trace, and does not promote #609.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):

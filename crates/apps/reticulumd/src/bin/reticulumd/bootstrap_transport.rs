@@ -9,6 +9,8 @@ mod interface_startup;
 mod path_restore;
 #[path = "bootstrap_transport_reconnect_synthesizer.rs"]
 mod reconnect_synthesizer;
+#[path = "bootstrap_transport_tcp_server_adapter.rs"]
+mod tcp_server_adapter;
 #[path = "bootstrap_transport_tcp_startup.rs"]
 mod tcp_startup;
 #[cfg(test)]
@@ -42,13 +44,15 @@ use rns_core::identity::PrivateIdentity;
 use rns_rpc::{InterfaceRecord, ProbeReceiptRegistry};
 use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
-use rns_transport::iface::tcp_client::TcpSocketTuning;
-use rns_transport::iface::tcp_server::{FastFlapPolicy, TcpServer};
+use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::transport::{
     InboundQueueLimits, RestoredReticulumPathIdentity, Transport, TransportConfig,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use tcp_server_adapter::build_selected_tcp_server_adapter;
+#[cfg(test)]
+use tcp_server_adapter::selected_fast_flap_policy;
 
 const STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY: usize = 32;
 
@@ -111,49 +115,6 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
     pub(super) local_hops_delta: bool,
     pub(super) inbound_queue_limits: InboundQueueLimits,
-}
-
-fn build_selected_tcp_server_adapter(
-    addr: String,
-    iface_manager: Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    selected_tcp_server: &TcpServerSelection,
-) -> TcpServer {
-    let mut server = selected_tcp_server
-        .client_mtu
-        .map(|mtu| TcpServer::new(addr.clone(), iface_manager.clone()).with_client_mtu(mtu))
-        .unwrap_or_else(|| TcpServer::new(addr, iface_manager));
-    server = server.with_prefer_ipv6(selected_tcp_server.prefer_ipv6);
-    if let Some(bitrate_bps) = selected_tcp_server.client_forced_bitrate_bps {
-        server = server.with_client_forced_bitrate(bitrate_bps);
-    }
-    if selected_tcp_server.kind == "backbone" {
-        let fast_flap_policy = selected_fast_flap_policy(selected_tcp_server);
-        server = server
-            .with_client_socket_tuning(TcpSocketTuning::backbone())
-            .with_backbone_client_liveness()
-            .with_fast_flapping(
-                fast_flap_policy.enabled,
-                fast_flap_policy.threshold,
-                fast_flap_policy.grace,
-                fast_flap_policy.expiry,
-            );
-    } else if selected_tcp_server.kind == "tcp_server" && selected_tcp_server.i2p_tunneled {
-        server = server.with_client_socket_tuning(TcpSocketTuning::i2p_tunneled());
-    }
-    server
-}
-
-fn selected_fast_flap_policy(selected_tcp_server: &TcpServerSelection) -> FastFlapPolicy {
-    FastFlapPolicy {
-        enabled: selected_tcp_server.block_fast_flapping.unwrap_or(true),
-        threshold: std::time::Duration::from_secs_f64(
-            selected_tcp_server.fast_flapping_threshold.unwrap_or(20.0).max(0.0),
-        ),
-        grace: selected_tcp_server.fast_flapping_grace.unwrap_or(5),
-        expiry: std::time::Duration::from_secs_f64(
-            selected_tcp_server.fast_flapping_block_time.unwrap_or(12.0 * 60.0).max(0.0) * 60.0,
-        ),
-    }
 }
 
 pub(super) async fn start_transport_and_interfaces(
@@ -246,6 +207,15 @@ pub(super) async fn start_transport_and_interfaces(
             .set_inbound_queue_limits(inbound_queue_limits)
             .expect("runtime policy validates inbound queue limits");
         let mut transport_instance = Transport::new(config);
+        match transport_instance.restore_packet_hashlist(reticulum_storage_path).await {
+            Ok(restored) if restored > 0 => {
+                log::info!("[daemon] restored {} Reticulum packet hashes", restored);
+            }
+            Ok(_) => {}
+            Err(err) => {
+                log::error!("[daemon] failed to restore Reticulum packet hashlist: {}", err);
+            }
+        }
         transport_instance
             .set_receipt_handler(Box::new(ReceiptBridge::with_probe_registry(
                 receipt_map,

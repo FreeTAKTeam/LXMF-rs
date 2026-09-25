@@ -95,11 +95,88 @@ restart with the rotated credentials. This is focused TCP lifecycle evidence,
 and its wrong-key peer also increments the listener's aggregated IFAC
 violation counter without creating a Link, matching the pinned inbound
 authentication-before-admission path. This is not physical-carrier or full
-startup/error coverage. The
-broader software support matrix, remaining remote utility behavior,
-transport policy differences, and platform validation remain open; the
-focused #611 `rncp`
-compression/send/fetch matrix, bounded
+startup/error coverage. The broader software support matrix, remaining remote utility behavior,
+transport policy differences, and platform validation remain open.
+
+The #609 software slice now additionally proves that attached shared-
+instance clients defer duplicate filtering to their owner and that standalone
+transports suppress identical LinkRequests. A two-peer pinned-Python test drops
+the first queued opportunistic LXMF packet, replaces the Rust relay while the
+Python queue remains live, and verifies a retry traverses the replacement relay
+and is delivered exactly once. A pinned-Python
+clean-close trace over TCP verifies that Python `Link.teardown()` reaches the
+Rust caller as `INITIATOR_CLOSED`. Channel retry exhaustion also has a
+pinned-Python localhost TCP trace: the test drops delivery proofs, observes all
+five default Python attempts, and verifies Rust receives the initiator close
+reason. This does not cover physical carriers or public-network recovery. A
+focused shared-instance regression also proves that an announce for a locally
+hosted destination is neither learned as a remote route nor fanned out to
+sibling clients; the broader #609 matrix remains open. Mixed Python/Rust
+recovery evidence now covers two Rust relays in series: after the upstream
+relay restarts with an empty route table, both Python endpoints rediscover
+paths, exchange fresh LXMF messages in both directions, and complete fresh
+RNS Resources in both directions with receiver-verified size/digest/metadata
+and sender-visible completion.
+
+The standalone transport restart path now restores and persists exact packet
+hashes in the pinned-Python-compatible `packet_hashlist.raw`. A production
+ingress regression additionally starts `reticulumd` as a subprocess, admits a
+proof and counts its duplicate, gracefully stops it, then restarts on the same
+storage and confirms the exact proof is filtered again. This is separate from
+the LXMF `LXMRouter` delivered-ID cache. A deterministic failure-injection
+regression also confirms a failed hashlist save does not suppress path-table
+writes, while persistence errors remain surfaced. This applies only to
+transport-enabled nodes not attached to a shared instance. Pinned Python
+comparison also found that `RESOURCE_PRF` retransmissions bypass its duplicate
+hash filter; Rust now admits repeated ResourceProof packets to the resource
+state machine with a focused production-filter regression. A further source
+comparison found the same pinned exception for `RESOURCE`; Rust now also admits
+repeated Link Resource packets through the production filter, covered by a
+regression that failed before the fix. Other Python-exempt contexts,
+retransmission classes, cache rotation/size parity, and the broader #609
+recovery matrix remain open.
+
+The previously intermittent B-to-A LXMF delivery was traced to relay A
+rejecting the shared-owner `LinkRequestProof` because it lacked the
+destination's identity. The relay now records this exact owner handoff and
+accepts the identity-less proof only from the recorded shared-owner interface;
+ordinary transit still fails closed. The original two-relay test passed three
+consecutive local runs after the fix. The combined reverse-DIRECT test's
+intermittent timeouts were then traced to test ordering: the reverse send could
+start before the forward delivery proof and backchannel were ready. After
+adding a bounded readiness barrier, seven isolated runs passed, but a later
+replay still timed out after the receiver observed a message and the sender
+remained at 50% progress. The final barrier waits for B's backchannel to A
+after A-to-B and before B-to-A, without requiring an unused backchannel after
+the final send; three consecutive exact-reference runs then passed (22.40s,
+50.42s, 22.41s). Hosted HIL confirmation is pending. The current broad test covers queued
+OPPORTUNISTIC delivery and fresh bidirectional Resources. A separate pinned-
+Python test gates a large DIRECT Resource mid-transfer, restarts the upstream
+relay with an empty route table, then verifies exactly-once delivery on a new
+Link and Resource; it passed twice locally (32.87s and 32.91s). Broad reverse-
+delivery stability, deeper relay replacement, and broader packet/proof classes
+remain unverified. A
+production inbound regression now proves the same locally
+hosted announce behavior with transport disabled and a virtual shared child,
+matching pinned RNS 1.5.4 without a production correction. Separate
+transport-disabled and transport-enabled shared-daemon
+regressions deliver a locally hosted LinkRequest from one virtual child and
+emit exactly one LinkRequestProof back to that child, with no sibling/transit
+packet. These cover both forwarding-policy settings for this single local-
+destination scenario, not full shared-routing acceptance. The focused
+local-client announce differential now executes Python's announce-job branch
+at deadline equality and just after it; Rust matches Python's strict
+`now > deadline` comparison and emits only one immediate retransmit. This
+closes one timing-boundary gap, not the broader #609 matrix. For unknown
+destinations, a focused handler regression now forwards an inbound LinkRequest
+from a connected shared-instance client to exactly one outgoing shared-owner
+interface, clamps its advertised MTU, and records the LinkRequestProof return
+route; ordinary unknown requests remain dropped and the request is not
+reflected to a shared ingress. This is handler-level evidence only, not proof
+of stable delivery through a live Python owner.
+
+The focused
+#611 `rncp` compression/send/fetch matrix, bounded
 `rnprobe` packet/RPC workflow plus one exact-target invalid-option comparison,
 and bounded native `rnsh` channel workflow,
 negative
@@ -815,6 +892,11 @@ Scoped release evidence is split as follows:
   queued announces or an active announce cap block the request, while a
   recursive request admitted by the gate advances the next allowed
   announce/path slot.
+- Per-interface paced announce queues now use the pinned Python 1.5.4 limit of
+  4,096 entries. A pinned-source differential and production interface test
+  verify the 4,096th queued announce is accepted and the next unique announce
+  is rejected; this establishes queue capacity only, not all announce
+  deduplication or pacing behavior.
 - Path-request duplicate/throttle state now has bounded software coverage:
   inbound duplicate request suppression is scoped by destination, requesting
   transport, request tag, and ingress interface and expires after the request
@@ -918,20 +1000,78 @@ Scoped release evidence is split as follows:
   14 -> 317 and never decremented; it now stays at 0 while the bounded cache
 holds the same routes. The local-client implementation now applies Python's
 immediate single-retransmit timing (`retransmit_timeout = now`,
-`retries = PATHFINDER_R`) and parent-interface classification under focused
-regression tests. Pinned shared-instance evidence currently covers TCP/Unix
+`retries = PATHFINDER_R`). A pinned-Python differential through production
+announce ingress confirms the parent-interface predicate: ordinary, shared-
+owner, and ordinary-child announces are cached, while accepted and virtual
+children of a shared owner enter the local-client retry queue. The existing
+predicate required no production change; this focused classification evidence
+does not complete #609. A further production LinkRequest regression now matches
+the pinned `Transport._inbound` rule for shared local children targeting a
+known remote destination with transport policy both enabled and disabled: each
+packet is sent once as a direct next-hop frame and is not fanned out to sibling
+clients. This does not establish the remaining packet-class or recovery matrix.
+Pinned shared-instance evidence currently covers TCP/Unix
 attachment and announce fan-out, plus a pinned Python TCP application trace
 that exchanges LXMF messages in both directions before and after Rust daemon
 restart while preserving the delivery identity. A two-carrier Python Channel
 trace now also duplicates a real application frame and observes one endpoint
 delivery through the forwarding path. A companion trace closes that
 application link, establishes a fresh Python link over the same two carriers,
-and observes one delivery on each link. Broader multi-hop packet/proof/link
-duplicate handling, announce-persistence, caller-visible close reasons, and
-underlying carrier-stream reconnect traces remain open. A mixed pinned-Python
+and observes one delivery on each link. Another fault-injected pinned-Python
+trace duplicates the first link-request proof at the endpoint carrier and
+asserts the Rust forwarding path emits it only once to the client; PR Verify
+runs this regression against the frozen target. A transport save/restart regression
+now verifies a newer cached path response supersedes scheduled announce state
+without being requeued after restore. A real-socket TCP carrier regression
+also proves redial preserves interface identity and resumes bidirectional
+HDLC packet traffic. A two-peer pinned-Python shared-instance test also
+exchanges LXMF in both directions, injects a one-shot drop on the first
+opportunistic LXMF data packet, replaces the Rust daemon while that message
+remains queued, and verifies a matching retry packet traverses the replacement
+relay and is delivered exactly once; fresh RNS links and raw packets then pass
+in both directions. A focused Python/Rust process regression now verifies the
+pinned `LXMRouter` delivered-ID cache remains a `has_message()` hit after a
+graceful Python process restart with stable identity/storage, while new
+messages complete in both directions and the Rust sender reaches `delivered`.
+It does not replay the old packet, and Python `pending_outbound` is not a
+reference persistence contract. The original two-relay post-restart trace passed
+three consecutive local runs after the relay records the shared-owner handoff
+and forwards its `LinkRequestProof` only on that exact interface when the
+destination identity is unavailable; ordinary transit proofs still require
+destination-identity validation. Initial readiness-barrier runs passed seven
+times, but a later replay still timed out at 50% after receipt. The final
+condition barrier is limited to establishing B-to-A readiness before reverse
+delivery; three consecutive exact-reference reruns pass, with hosted HIL
+confirmation pending. The expanded recovery test also verifies fresh
+Resource delivery with exact size/digest/metadata in both directions. A
+separate isolated pinned-Python test now verifies that an in-flight large
+DIRECT LXMF Resource is retried exactly once with a new Link and Resource after
+upstream restart. A new isolated pinned-Python production-path test also queues
+one DIRECT LXMF message while the upstream Rust relay is stopped, clears route
+state, restarts the relay, and verifies one exact-payload receipt plus terminal
+`delivered` status. Deeper relay replacement and broader multi-hop
+packet/proof/link duplicate cases remain open.
+Cached path-table restore now also checks the identity recovered from the
+cached announce against transport blackhole policy before installing the route;
+a production save/blackhole/restore regression reports one skipped row and no
+restored path, matching the pinned Python startup predicate. A mixed pinned-Python
 link-establishment timeout trace now proves pending cleanup after the path is
 available; the two-carrier split Resource trace covers the multi-hop Resource
 direction.
+- The ordinary single-destination `Proof` duplicate class is now covered via
+  production ingress: first copy admitted, exact replay rejected, matching the
+  pinned Python generic hash-list filter. The ignored differential passed at
+  exact Reticulum `99de23c040d507e3fefca19e87b182302902725d`; this is one
+  narrow class only and the broader #609 matrix remains open. See
+  `evidence/609-transport-local-shared.md`.
+- Local-hop non-announce Plain and Group packets now bypass packet-hash
+  duplicate suppression, matching the pinned `Transport.packet_filter()` early
+  return after wrong-transport identity rejection (except on shared-instance
+  attachments). Production-ingress regressions and pinned-Python differential
+  cover repeated copies and mismatched transport IDs for both classes.
+  Transported packets and invalid announces remain rejected earlier; other
+  duplicate classes, cache rotation/size behavior, and broad #609 acceptance
+  remain open. See `evidence/609-transport-local-shared.md`.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.

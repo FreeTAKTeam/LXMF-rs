@@ -1,3 +1,5 @@
+use super::announce::announce_retransmit_tick;
+
 async fn feed_announce(transport: &Transport, iface: crate::hash::AddressHash, aspect: &str) -> Packet {
     let mut destination = SingleInputDestination::new(
         PrivateIdentity::new_from_rand(OsRng),
@@ -17,6 +19,10 @@ async fn feed_announce(transport: &Transport, iface: crate::hash::AddressHash, a
 async fn tier_sizes(transport: &Transport) -> (usize, usize) {
     transport.get_handler().lock().await.announce_table.tier_sizes()
 }
+
+// Pinned Python: 1.0 s announce check + one 0.25 s jobs-loop poll. The
+// ignored differential below executes the pinned announce-processing branch.
+const PYTHON_LOCAL_ANNOUNCE_POLL_BOUND: Duration = Duration::from_millis(1_250);
 
 /// A node that will never retransmit must not accumulate a retransmission
 /// queue. `map` is pruned only by `drain_retransmissions`, and the retransmit
@@ -87,6 +93,203 @@ async fn a_shared_instance_iface_still_queues_on_a_passive_node() {
     assert_eq!(cached, 0);
 }
 
+async fn production_announce_ingress_client_classification() -> Vec<bool> {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("classification", &identity, false));
+    let (shared_host, _attached_channel, _ordinary_parent_channel, _ordinary_child_channel, cases) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let shared_host = manager.new_channel(16);
+        let shared_owner = *shared_host.address();
+        assert!(manager.set_shared_instance(shared_owner, true));
+
+        let attached_channel = manager.new_channel(16);
+        let attached_child = *attached_channel.address();
+        assert!(manager.inherit_runtime_config(shared_owner, attached_child));
+        let virtual_child = manager
+            .register_virtual_iface(shared_owner, crate::iface::IfaceRole::Unicast)
+            .expect("register virtual child of shared owner");
+
+        let ordinary = *manager.new_channel(16).address();
+        let ordinary_parent_channel = manager.new_channel(16);
+        let ordinary_parent = *ordinary_parent_channel.address();
+        let ordinary_child_channel = manager.new_channel(16);
+        let ordinary_child = *ordinary_child_channel.address();
+        assert!(manager.inherit_runtime_config(ordinary_parent, ordinary_child));
+
+        assert!(manager.is_local_client_interface(&attached_child));
+        assert!(manager.is_local_client_interface(&virtual_child));
+        (
+            shared_host,
+            attached_channel,
+            ordinary_parent_channel,
+            ordinary_child_channel,
+            [ordinary, shared_owner, attached_child, virtual_child, ordinary_child],
+        )
+    };
+
+    let mut observed = Vec::with_capacity(cases.len());
+    let mut queued = 0;
+    let mut cached = 0;
+    for (index, iface) in cases.into_iter().enumerate() {
+        feed_announce(&transport, iface, &format!("classification-{index}")).await;
+        let (next_queued, next_cached) = tier_sizes(&transport).await;
+        let entered_queue = next_queued == queued + 1;
+        let entered_cache = next_cached == cached + 1;
+        assert_ne!(
+            entered_queue, entered_cache,
+            "each unique ingress announce must be either queued as local-client traffic or cached as ordinary traffic"
+        );
+        observed.push(entered_queue);
+        queued = next_queued;
+        cached = next_cached;
+    }
+
+    drop(shared_host);
+    observed
+}
+
+#[tokio::test]
+async fn announce_ingress_uses_parent_classification_for_ordinary_owner_and_children() {
+    assert_eq!(
+        production_announce_ingress_client_classification().await,
+        [false, false, true, true, false],
+        "ordinary and shared-owner ingress are not local clients; attached/virtual children of a shared owner are"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires pinned Python Reticulum checkout at RETICULUM_PY_REPO"]
+async fn pinned_python_parent_predicate_matches_production_announce_ingress() {
+    const PINNED_RETICULUM: &str = "99de23c040d507e3fefca19e87b182302902725d";
+    let python_repo = std::env::var("RETICULUM_PY_REPO")
+        .expect("set RETICULUM_PY_REPO to the pinned Python Reticulum checkout");
+    let revision = std::process::Command::new("git")
+        .args(["-C", &python_repo, "rev-parse", "HEAD"])
+        .output()
+        .expect("read pinned Python Reticulum revision");
+    assert!(revision.status.success(), "git rev-parse failed for {python_repo}");
+    assert_eq!(
+        String::from_utf8_lossy(&revision.stdout).trim(),
+        PINNED_RETICULUM,
+        "production ingress differential must use the pinned reference"
+    );
+
+    let script = r#"
+from types import SimpleNamespace
+from RNS.Transport import Transport
+shared_owner = SimpleNamespace(is_local_shared_instance=True)
+ordinary_parent = SimpleNamespace()
+ordinary = SimpleNamespace()
+attached_child = SimpleNamespace(parent_interface=shared_owner)
+virtual_child = SimpleNamespace(parent_interface=shared_owner)
+ordinary_child = SimpleNamespace(parent_interface=ordinary_parent)
+interfaces = (ordinary, shared_owner, attached_child, virtual_child, ordinary_child)
+print(",".join(str(Transport.is_local_client_interface(iface)).lower() for iface in interfaces))
+"#;
+    let python = std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
+    let reference = std::process::Command::new(python)
+        .args(["-c", script])
+        .env(
+            "PYTHONPATH",
+            format!("{python_repo}:{}", std::env::var("PYTHONPATH").unwrap_or_default()),
+        )
+        .output()
+        .expect("run pinned Python local-client classification");
+    assert!(
+        reference.status.success(),
+        "pinned Python classification failed: {}",
+        String::from_utf8_lossy(&reference.stderr)
+    );
+    let expected: Vec<bool> = String::from_utf8_lossy(&reference.stdout)
+        .trim()
+        .split(',')
+        .map(|value| value == "true")
+        .collect();
+
+    assert_eq!(expected, [false, false, true, true, false]);
+    assert_eq!(production_announce_ingress_client_classification().await, expected);
+}
+
+async fn rust_local_client_announce_schedule() -> [usize; 4] {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("passive-worker-tick", &identity, false));
+    let (mut host_channel, local_client) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let host_channel = manager.new_channel(16);
+        let parent = *host_channel.address();
+        assert!(manager.set_shared_instance(parent, true));
+        let local_client = manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("local client iface");
+        (host_channel, local_client)
+    };
+
+    let announce = feed_announce(&transport, local_client, "local-client-worker-tick").await;
+    let handler = transport.get_handler();
+    let due = handler
+        .lock()
+        .await
+        .announce_table
+        .timeout_for_destination(&announce.destination)
+        .expect("local-client announce is queued immediately");
+    let prior_tick = due - Duration::from_nanos(1);
+    let first_tick_after_due = prior_tick + INTERVAL_ANNOUNCES_RETRANSMIT;
+
+    assert!(prior_tick < due);
+    assert!(first_tick_after_due > due);
+    assert!(
+        first_tick_after_due - due < INTERVAL_ANNOUNCES_RETRANSMIT,
+        "the first worker tick after an immediate deadline is within one worker interval"
+    );
+    assert!(
+        first_tick_after_due - due < PYTHON_LOCAL_ANNOUNCE_POLL_BOUND,
+        "the deterministic Rust tick is strictly inside Python's source-derived polling bound"
+    );
+
+    announce_retransmit_tick(&handler, prior_tick).await;
+    let before_deadline = usize::from(host_channel.tx_channel.try_recv().is_ok());
+    assert_eq!(before_deadline, 0, "no rebroadcast before deadline");
+    assert_eq!(tier_sizes(&transport).await, (1, 0));
+
+    announce_retransmit_tick(&handler, due).await;
+    let at_deadline = usize::from(host_channel.tx_channel.try_recv().is_ok());
+    assert_eq!(at_deadline, 0, "deadline equality is not due");
+    assert_eq!(tier_sizes(&transport).await, (1, 0));
+
+    announce_retransmit_tick(&handler, first_tick_after_due).await;
+    let message = host_channel
+        .tx_channel
+        .try_recv()
+        .expect("the first worker tick after the deadline emits the local-client rebroadcast");
+    assert!(matches!(
+        message.tx_type,
+        TxMessageType::Broadcast(Some(iface)) if iface == local_client
+    ));
+    assert_eq!(message.packet.destination, announce.destination);
+    assert_eq!(message.packet.data, announce.data);
+    assert_eq!(message.packet.transport, Some(*identity.address_hash()));
+    assert_eq!(message.packet.header.propagation_type, crate::packet::PropagationType::Transport);
+    assert_eq!(tier_sizes(&transport).await, (0, 1));
+    let after_deadline = 1;
+
+    announce_retransmit_tick(
+        &handler,
+        first_tick_after_due + INTERVAL_ANNOUNCES_RETRANSMIT,
+    )
+    .await;
+    let later_tick = usize::from(host_channel.tx_channel.try_recv().is_ok());
+    assert_eq!(later_tick, 0, "the retry is not emitted a second time");
+    assert_eq!(tier_sizes(&transport).await, (0, 1));
+    [before_deadline, at_deadline, after_deadline, later_tick]
+}
+
+#[tokio::test]
+async fn local_client_announce_retransmits_on_first_worker_tick_once() {
+    assert_eq!(rust_local_client_announce_schedule().await, [0, 0, 1, 0]);
+}
+
 #[tokio::test]
 async fn accepted_announce_fans_out_directly_to_other_local_clients() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
@@ -129,9 +332,59 @@ async fn accepted_announce_fans_out_directly_to_other_local_clients() {
     assert!(timeout(Duration::from_millis(25), host_channel.tx_channel.recv()).await.is_err());
 }
 
-/// The third clause of the same reference condition. A path response is a
-/// directed reply, not something to rebroadcast, so it is cached rather than
-/// queued even on a transport node.
+/// A locally hosted destination is not a remote route, even when its valid
+/// announce re-enters through one shared-instance child. It must not be
+/// retransmitted or fanned out to sibling local clients.
+#[tokio::test]
+async fn locally_hosted_announce_is_not_learned_or_fanned_out() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("local-destination-no-transit", &identity, false);
+    config.set_transport_enabled(true);
+    let transport = Transport::new(config);
+    let (mut host_channel, local_client, other_local_client) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let host_channel = manager.new_channel(16);
+        let parent = *host_channel.address();
+        assert!(manager.set_shared_instance(parent, true));
+        let local_client = manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("first local client iface");
+        let other_local_client = manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("second local client iface");
+        (host_channel, local_client, other_local_client)
+    };
+
+    let destination = transport
+        .add_destination(identity, DestinationName::new("lxmf", "locally-hosted"))
+        .await;
+    let announce = destination.lock().await.announce(OsRng, None).expect("local announce");
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        local_client,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let handler = transport.get_handler();
+    let handler = handler.lock().await;
+    assert!(
+        handler.path_table.get(&announce.destination).is_none(),
+        "a local destination must not acquire a remote route from its own announce"
+    );
+    assert_eq!(handler.announce_table.tier_sizes(), (0, 0));
+    drop(handler);
+    assert!(
+        timeout(Duration::from_millis(25), host_channel.tx_channel.recv()).await.is_err(),
+        "a local destination announce must not transit to sibling clients"
+    );
+    assert_ne!(local_client, other_local_client);
+}
+
+/// A path response is a directed reply, not something to rebroadcast, so it is
+/// cached rather than queued even on a transport node.
 #[tokio::test]
 async fn a_path_response_announce_is_never_queued_for_retransmission() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
@@ -178,5 +431,68 @@ async fn a_cached_announce_is_still_findable_for_path_table_persistence() {
     assert!(
         found.is_some(),
         "save_reticulum_path_table drops any path entry whose announce packet it cannot find"
+    );
+}
+
+#[tokio::test]
+async fn newer_cached_path_announce_survives_scheduled_queue_restart() {
+    let temp = tempfile::tempdir().expect("path-table storage");
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("announce-persistence", &identity, false);
+    config.set_transport_enabled(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+    let mut destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "cached-scheduled-restart"),
+    );
+
+    let scheduled = destination.announce(OsRng, None).expect("scheduled announce");
+    handle_announce(
+        &scheduled,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    let mut cached = destination.announce(OsRng, None).expect("cached announce");
+    cached.context = PacketContext::PathResponse;
+    handle_announce(
+        &cached,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(tier_sizes(&transport).await, (1, 0));
+    let destination_hash = cached.destination;
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+
+    let mut restored_config = TransportConfig::new("announce-persistence", &identity, false);
+    restored_config.set_transport_enabled(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    assert_eq!(restored_iface, iface, "test relies on deterministic interface hashes");
+    let report = restored
+        .restore_reticulum_path_table_report(temp.path())
+        .await
+        .expect("restore");
+
+    assert_eq!(report.restored_active_paths, 1);
+    assert!(restored.has_path(&destination_hash).await);
+    assert_eq!(tier_sizes(&restored).await, (0, 1));
+    let handler = restored.get_handler();
+    let handler = handler.lock().await;
+    let persisted = handler
+        .announce_table
+        .cached_packet_for_destination(&destination_hash)
+        .expect("restored announce cache entry");
+    assert_eq!(persisted.data, cached.data, "restart must retain the latest accepted announce");
+    assert_eq!(
+        persisted.context,
+        PacketContext::None,
+        "a restored cache entry must not become scheduled retransmission work"
     );
 }

@@ -125,8 +125,7 @@ impl Link {
             for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
                 self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
             }
-            self.close();
-            return Vec::new();
+            return self.teardown().into_iter().collect();
         }
 
         resend_packets

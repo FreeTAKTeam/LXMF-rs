@@ -54,7 +54,12 @@ impl Link {
                 );
                 if let Some(stale_since) = self.stale_since {
                     if now.duration_since(stale_since) >= stale_timeout {
-                        if let Some(packet) = self.teardown() {
+                        let packet = self.teardown_packet().ok();
+                        if packet.is_some() {
+                            self.note_outbound(PacketContext::LinkClose);
+                        }
+                        self.finalize_local_close(LinkCloseReason::Timeout);
+                        if let Some(packet) = packet {
                             return LinkWatchdogAction::SendTeardown(packet);
                         }
                     }
@@ -92,12 +97,14 @@ impl Link {
             LinkEvent::PeerIdentified(_) => "peer_identified",
             LinkEvent::Closed => "closed",
         };
+        let close_reason = if matches!(&event, LinkEvent::Closed) { self.close_reason } else { None };
         if self
             .event_tx
             .send(LinkEventData {
                 id: self.id,
                 address_hash: self.destination.address_hash,
                 event,
+                close_reason,
             })
             .is_err()
         {
@@ -108,13 +115,18 @@ impl Link {
         }
     }
 
-    fn finalize_local_close(&mut self) {
+    fn finalize_local_close(&mut self, reason: LinkCloseReason) {
+        if self.status == LinkStatus::Closed {
+            return;
+        }
+
         for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
             self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
         }
         self.channel_rx_ring.clear();
         self.channel_open = false;
         self.status = LinkStatus::Closed;
+        self.close_reason = Some(reason);
         self.peer_identity = Identity::default();
         self.identified_peer_identity = None;
         self.derived_key = DerivedKey::new_empty();
@@ -142,12 +154,38 @@ impl Link {
         if packet.is_some() {
             self.note_outbound(PacketContext::LinkClose);
         }
-        self.finalize_local_close();
+        let reason = self.local_close_reason();
+        self.finalize_local_close(reason);
         packet
     }
 
     pub fn close(&mut self) {
-        self.finalize_local_close();
+        let reason = self.local_close_reason();
+        self.finalize_local_close(reason);
+    }
+
+    pub(crate) fn close_with_reason(&mut self, reason: LinkCloseReason) {
+        self.finalize_local_close(reason);
+    }
+
+    fn local_close_reason(&self) -> LinkCloseReason {
+        if self.is_initiator {
+            LinkCloseReason::InitiatorClosed
+        } else {
+            LinkCloseReason::DestinationClosed
+        }
+    }
+
+    fn remote_close_reason(&self) -> LinkCloseReason {
+        if self.is_initiator {
+            LinkCloseReason::DestinationClosed
+        } else {
+            LinkCloseReason::InitiatorClosed
+        }
+    }
+
+    pub fn close_reason(&self) -> Option<LinkCloseReason> {
+        self.close_reason
     }
 
     pub fn restart(&mut self) {
@@ -158,6 +196,7 @@ impl Link {
         }
         self.channel_rx_ring.clear();
         self.status = LinkStatus::Pending;
+        self.close_reason = None;
         self.start_establishment();
         self.peer_identity = Identity::default();
         self.identified_peer_identity = None;
