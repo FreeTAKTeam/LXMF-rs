@@ -186,7 +186,7 @@ fn rnprobe_invalid_probe_count_matches_pinned_python_process_failure() -> io::Re
 
 #[test]
 #[ignore = "requires the pinned Python Reticulum checkout"]
-fn rnprobe_missing_destination_reports_failure_without_network_startup() -> io::Result<()> {
+fn rnprobe_missing_destination_prints_help_without_network_startup() -> io::Result<()> {
     let repo = python_repo();
     let script = repo.join("RNS/Utilities/rnprobe.py");
     if !script.is_file() {
@@ -207,11 +207,9 @@ fn rnprobe_missing_destination_reports_failure_without_network_startup() -> io::
     assert!(String::from_utf8_lossy(&python.stdout).contains("positional arguments:"));
     assert!(python.stderr.is_empty());
 
-    // Rust deliberately reports the absent destination as a failure instead
-    // of treating the incomplete invocation as successful.
-    assert_eq!(rust.status.code(), Some(1));
-    assert!(rust.stdout.is_empty());
-    assert_eq!(String::from_utf8_lossy(&rust.stderr), "rnprobe: destination hash is required\n");
+    assert_eq!(rust.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&rust.stdout).contains("Usage: rnprobe"));
+    assert!(rust.stderr.is_empty());
     Ok(())
 }
 

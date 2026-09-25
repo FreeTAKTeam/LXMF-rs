@@ -93,11 +93,11 @@ The #631 `rnprobe` follow-up compares `--probes not-an-integer` across the Rust
 and frozen Python processes. Both return exit status 2 with their corresponding
 invalid-integer diagnostics, and Verify runs the focused ignored test against
 the exact reference checkout. A further process differential supplies only
-`rnstransport.probe`: frozen Python prints argparse help and exits 0, while
-Rust exits 1 with a missing-destination diagnostic and empty stdout, without
-starting network activity. This records the Rust fail-closed behavior and the
-reference's apparent-success difference; broader `rnprobe` parity remains
-partial. Its successful-path counterpart now withholds a
+`rnstransport.probe`: frozen Python and Rust now both print CLI help and exit
+0 without starting network activity when the destination hash is omitted.
+The regression checks help output and empty stderr; exact formatting differs
+by parser. Broader `rnprobe` parity remains partial. Its successful-path
+counterpart now withholds a
 pinned Python probe destination announce until native `rnprobe` starts through
 the Rust daemon, then asserts two discovered-path deliveries and structured
 probe results against the exact `99de23c...` peer in Verify. These bounded
