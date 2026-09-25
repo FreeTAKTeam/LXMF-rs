@@ -45,6 +45,42 @@ fn peer_data_addr(heard_on: SocketAddr, data_port: u16) -> SocketAddr {
 }
 
 impl AutoInterfaceTransportBridge {
+    async fn remove_expired_peer_routes(&self, expired_peers: &[String]) {
+        if expired_peers.is_empty() {
+            return;
+        }
+        let expired_addresses = expired_peers
+            .iter()
+            .filter_map(|address| address.parse::<IpAddr>().ok())
+            .collect::<std::collections::BTreeSet<_>>();
+        if expired_addresses.is_empty() {
+            return;
+        }
+        let expired_ifaces = {
+            let mut peers = self.peer_ifaces.lock().await;
+            let expired = peers
+                .iter()
+                .filter_map(|(address, iface)| {
+                    expired_addresses.contains(&address.ip()).then_some((*address, *iface))
+                })
+                .collect::<Vec<_>>();
+            for (address, _) in &expired {
+                peers.remove(address);
+            }
+            expired.into_iter().map(|(_, iface)| iface).collect::<Vec<_>>()
+        };
+        {
+            let mut routes = self.outbound_routes.lock().await;
+            for iface in &expired_ifaces {
+                routes.remove(iface);
+            }
+        }
+        let mut manager = self.iface_manager.lock().await;
+        for iface in expired_ifaces {
+            manager.stop_interface(iface);
+        }
+    }
+
     async fn ensure_peer_iface(
         &self,
         peer: SocketAddr,

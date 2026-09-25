@@ -190,7 +190,7 @@ def local_python_shared_check():
     reasons = []
     if payload.get("status") != "pass":
         reasons.append(f"status is {payload.get('status')!r}")
-    if payload.get("evidence_scope") != "python_shared_instance_tcp_unix_attach_and_announce_forward":
+    if payload.get("evidence_scope") != "python_shared_instance_tcp_unix_attach_announce_payload_and_lifecycle":
         reasons.append(f"evidence_scope is {payload.get('evidence_scope')!r}")
     if not payload.get("python_rns_revision"):
         reasons.append("python_rns_revision missing")

@@ -165,6 +165,28 @@ jobs:
           git -C Reticulum-parity rev-parse HEAD
           git -C LXMF rev-parse HEAD
 
+      - name: Verify pinned-Python shared-interface teardown and restart
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
+          LXMF_PYTHON_BIN: python
+          LOG_DIR: target/interop/local-interface-python-shared/verify-${{ github.run_id }}
+          REPORT_PATH: target/interop/local-interface-python-shared/verify-${{ github.run_id }}/report.json
+          TIMEOUT_SECS: "120"
+        run: ./tools/scripts/local-interface-python-shared-smoke.sh
+
+      - name: Verify Linux PipeInterface subprocess lifecycle
+        env:
+          LOG_DIR: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}
+          REPORT_PATH: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}/report.json
+          TIMEOUT_SECS: "60"
+        run: ./tools/scripts/pipe-fake-subprocess-smoke.sh
+
+      - name: Verify I2P outbound reconnect backoff after stream expiry
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          i2p_outbound_reconnect_waits_after_established_stream_expires
+          -- --nocapture
+
       - name: Validate exact-target behavioral inventory
         run: |
           python3 tools/scripts/python_surface_inventory.py --self-test
@@ -566,3 +588,15 @@ jobs:
           name: python-rust-wire-conformance-${{ github.run_id }}
           path: target/interop/python-rust-wire-conformance/verify-${{ github.run_id }}/**
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-interface-python-shared-${{ github.run_id }}
+          path: target/interop/local-interface-python-shared/verify-${{ github.run_id }}/**
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pipe-fake-subprocess-${{ github.run_id }}
+          path: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}/**
+          if-no-files-found: warn

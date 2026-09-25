@@ -106,6 +106,54 @@ fn weave_fake_pty_smoke_preserves_software_evidence_contract() {
 }
 
 #[test]
+fn ci_runs_weave_fake_pty_smoke_and_uploads_software_evidence() {
+    let root = repo_root();
+    let workflow_path = root.join(".github/workflows/ci.yml");
+    let workflow = fs::read_to_string(&workflow_path).expect("read CI workflow");
+
+    for required in [
+        "linux-weave-runtime:",
+        "Linux configured Weave runtime software smoke",
+        "python3-cryptography",
+        "TIMEOUT_SECS=60 ./tools/scripts/weave-fake-pty-smoke.sh",
+        "actions/upload-artifact@v4",
+        "target/weave-fake-pty-smoke/report.json",
+        "target/weave-fake-pty-smoke/run.*/reticulumd.log",
+        "target/weave-fake-pty-smoke/run.*/fake-weave.log",
+        "if-no-files-found: error",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "CI workflow should include Weave software evidence token {required:?}"
+        );
+    }
+
+    assert!(
+        !workflow.contains("path: target/weave-fake-pty-smoke/"),
+        "CI should not upload private runtime identity, database, or socket files"
+    );
+}
+
+#[test]
+fn weave_fake_pty_smoke_starts_runtime_timeout_after_build() {
+    let root = repo_root();
+    let script_path = root.join("tools/scripts/weave-fake-pty-smoke.sh");
+    let script = fs::read_to_string(&script_path).expect("read Weave fake PTY smoke script");
+    let runtime_start = script.find("RET_PID=$!").expect("start daemon process");
+    let runtime_script = &script[runtime_start..];
+    let health_deadline = runtime_script
+        .find("deadline=$((SECONDS + TIMEOUT_SECS))")
+        .expect("runtime health deadline");
+    let health_loop =
+        runtime_script.find("while (( SECONDS < deadline ));").expect("runtime health loop");
+
+    assert!(
+        health_deadline < health_loop,
+        "runtime timeout should begin after build and daemon launch"
+    );
+}
+
+#[test]
 fn nightly_hil_workflow_exposes_weave_prepared_host_job() {
     let root = repo_root();
     let workflow_path = root.join(".github/workflows/hil-nightly.yml");

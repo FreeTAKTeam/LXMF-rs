@@ -73,6 +73,52 @@ mod tests {
         assert!(socket.broadcast().expect("read broadcast flag"));
     }
 
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn udp_interface_cancellation_closes_worker_and_releases_bound_port() {
+        use crate::iface::{IfaceRole, InterfaceManager};
+        use std::time::Instant;
+
+        let reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .expect("reserve UDP loopback port");
+        let port = reservation.local_addr().expect("read reserved UDP address").port();
+        drop(reservation);
+
+        let bind_addr = format!("127.0.0.1:{port}");
+        let iface = UdpInterface::new(bind_addr, None::<String>);
+        let status = iface.runtime_status_handle();
+        let mut manager = InterfaceManager::new(4);
+        let context = manager.new_context_with_role(iface, IfaceRole::Unicast);
+        let stop = context.channel.stop.clone();
+        let worker = tokio::spawn(UdpInterface::spawn(context));
+
+        let deadline = Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            let snapshot = status.snapshot();
+            if snapshot.link_state == "bound" {
+                break;
+            }
+            assert!(Instant::now() < deadline, "UDP interface did not bind: {snapshot:?}");
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+
+        assert!(
+            std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port)).is_err(),
+            "a non-reuse UDP socket must not bind while the interface owns the port"
+        );
+
+        stop.cancel();
+        tokio::time::timeout(std::time::Duration::from_secs(2), worker)
+            .await
+            .expect("UDP worker exits after interface cancellation")
+            .expect("UDP worker task joins");
+
+        assert_eq!(status.snapshot().link_state, "closed");
+        let rebound = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port))
+            .expect("UDP interface cancellation releases its bound port");
+        drop(rebound);
+    }
+
     fn fake_hash(byte: u8) -> AddressHash {
         AddressHash::new_from_hash(&crate::hash::Hash::new_from_slice(&[byte; 32]))
     }

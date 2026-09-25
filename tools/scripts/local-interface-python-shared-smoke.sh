@@ -41,6 +41,8 @@ PY_TCP_TRAFFIC_STATE="${RUN_DIR}/python-traffic-tcp-state.json"
 PY_UNIX_TRAFFIC_STATE="${RUN_DIR}/python-traffic-unix-state.json"
 PY_TCP_PORT_FILE="${RUN_DIR}/python-shared-tcp.port"
 PY_UNIX_INSTANCE="codex-py-shared-$$"
+UNIX_TEARDOWN_RESTART_VERIFIED=false
+TCP_TEARDOWN_RESTART_VERIFIED=false
 mkdir -p "$PY_TCP_CONFIG_DIR" "$PY_UNIX_CONFIG_DIR" "$PY_TCP_TRAFFIC_CONFIG_DIR" "$PY_UNIX_TRAFFIC_CONFIG_DIR"
 : >"$RETICULUMD_LOG"
 : >"$PY_TCP_LOG"
@@ -125,7 +127,7 @@ EOF
 write_report() {
   local status="$1"
   local reason="${2:-}"
-  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$RPC_ADDR" "$RUN_DIR" "$RUST_CONFIG_PATH" "$RETICULUMD_LOG" "$RNSTATUS_JSON" "$RNSTATUS_HUMAN" "$RETICULUM_PY_REPO" "$PY_TCP_CONFIG_DIR" "$PY_UNIX_CONFIG_DIR" "$PY_TCP_TRAFFIC_CONFIG_DIR" "$PY_UNIX_TRAFFIC_CONFIG_DIR" "$PY_TCP_LOG" "$PY_UNIX_LOG" "$PY_TCP_TRAFFIC_LOG" "$PY_UNIX_TRAFFIC_LOG" "$PY_TCP_STATE" "$PY_UNIX_STATE" "$PY_TCP_TRAFFIC_STATE" "$PY_UNIX_TRAFFIC_STATE" "$PY_TCP_PORT" "$PY_UNIX_INSTANCE"
+  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$RPC_ADDR" "$RUN_DIR" "$RUST_CONFIG_PATH" "$RETICULUMD_LOG" "$RNSTATUS_JSON" "$RNSTATUS_HUMAN" "$RETICULUM_PY_REPO" "$PY_TCP_CONFIG_DIR" "$PY_UNIX_CONFIG_DIR" "$PY_TCP_TRAFFIC_CONFIG_DIR" "$PY_UNIX_TRAFFIC_CONFIG_DIR" "$PY_TCP_LOG" "$PY_UNIX_LOG" "$PY_TCP_TRAFFIC_LOG" "$PY_UNIX_TRAFFIC_LOG" "$PY_TCP_STATE" "$PY_UNIX_STATE" "$PY_TCP_TRAFFIC_STATE" "$PY_UNIX_TRAFFIC_STATE" "$PY_TCP_PORT" "$PY_UNIX_INSTANCE" "$UNIX_TEARDOWN_RESTART_VERIFIED" "$TCP_TEARDOWN_RESTART_VERIFIED"
 import json
 import pathlib
 import subprocess
@@ -156,7 +158,9 @@ import sys
     py_unix_traffic_state,
     py_tcp_port,
     py_unix_instance,
-) = sys.argv[1:25]
+    unix_teardown_restart_verified,
+    tcp_teardown_restart_verified,
+) = sys.argv[1:27]
 
 def read_json(path):
     value_path = pathlib.Path(path)
@@ -206,13 +210,17 @@ except Exception:
 
 report = {
     "status": status,
-    "evidence_scope": "python_shared_instance_tcp_unix_attach_and_announce_forward",
+    "evidence_scope": "python_shared_instance_tcp_unix_attach_announce_payload_and_lifecycle",
     "product_boundary": (
         "This proves reticulumd LocalClientInterface attaches to real pinned "
         "Python Reticulum shared instances over TCP and Linux abstract Unix "
         "sockets, and that Python-origin announces move across the shared "
-        "instance fanout toward attached local clients; it does not prove broad "
-        "application-level shared-instance traffic parity."
+        "instance fanout toward attached local clients with exact payloads "
+        "observed between Python peers. Both transports observe graceful "
+        "reticulumd client teardown and reattachment after daemon restart; "
+        "this does not prove daemon application-level packet consumption or broad "
+        "shared-instance "
+        "traffic parity."
     ),
     "reason": reason or None,
     "rpc_addr": rpc_addr,
@@ -237,6 +245,8 @@ report = {
     "python_unix_traffic_state": read_json(py_unix_traffic_state),
     "python_tcp_port": int(py_tcp_port),
     "python_unix_socket_path": f"@rns/{py_unix_instance}",
+    "unix_teardown_restart_verified": unix_teardown_restart_verified == "true",
+    "tcp_teardown_restart_verified": tcp_teardown_restart_verified == "true",
     "interfaces": read_interfaces(rnstatus_json),
 }
 human_path = pathlib.Path(rnstatus_human)
@@ -305,6 +315,27 @@ def write_state(payload):
 try:
     import RNS
     reticulum = RNS.Reticulum(configdir=config_dir, loglevel=7)
+    class TrafficHandler:
+        aspect_filter = "codex.local.shared.traffic"
+
+        def received_announce(self, destination_hash, announced_identity, app_data):
+            if app_data is not None and app_data.startswith(b"codex-local-python-shared-payload:"):
+                received_payloads.append(app_data.decode("utf-8"))
+
+    received_payloads = []
+    RNS.Transport.register_announce_handler(TrafficHandler())
+    identity = RNS.Identity()
+    destination = RNS.Destination(
+        identity,
+        RNS.Destination.IN,
+        RNS.Destination.SINGLE,
+        "codex",
+        "local",
+        "shared",
+        "traffic",
+    )
+    reverse_payload = b"codex-local-python-shared-payload:shared-to-python"
+    last_announce = 0.0
     while True:
         local_clients = getattr(RNS.Transport, "local_client_interfaces", [])
         local_client_stats = []
@@ -319,6 +350,9 @@ try:
                 }
             )
         shared = reticulum.shared_instance_interface
+        if time.monotonic() - last_announce >= 1.0:
+            destination.announce(app_data=reverse_payload)
+            last_announce = time.monotonic()
         write_state(
             {
                 "ready": True,
@@ -334,6 +368,8 @@ try:
                 "local_client_stats": local_client_stats,
                 "local_client_rxb_total": sum((getattr(item, "rxb", 0) or 0) for item in local_clients),
                 "local_client_txb_total": sum((getattr(item, "txb", 0) or 0) for item in local_clients),
+                "received_payloads": received_payloads,
+                "reverse_payload": reverse_payload.decode("utf-8"),
             }
         )
         time.sleep(0.25)
@@ -366,6 +402,15 @@ def write_state(payload):
 try:
     import RNS
     reticulum = RNS.Reticulum(configdir=config_dir, loglevel=7, require_shared_instance=True)
+    received_payloads = []
+    class TrafficHandler:
+        aspect_filter = "codex.local.shared.traffic"
+
+        def received_announce(self, destination_hash, announced_identity, app_data):
+            if app_data is not None and app_data.startswith(b"codex-local-python-shared-payload:"):
+                received_payloads.append(app_data.decode("utf-8"))
+
+    RNS.Transport.register_announce_handler(TrafficHandler())
     identity = RNS.Identity()
     destination = RNS.Destination(
         identity,
@@ -376,17 +421,23 @@ try:
         "shared",
         "traffic",
     )
-    app_data = f"codex-local-python-shared-traffic:{label}".encode("utf-8")
+    app_data = f"codex-local-python-shared-payload:python-to-shared:{label}".encode("utf-8")
+    reverse_app_data = f"codex-local-python-shared-payload:shared-to-python:{label}".encode("utf-8")
     announced = 0
+    reverse_announced = 0
     for _ in range(3):
         destination.announce(app_data=app_data)
         announced += 1
+        destination.announce(app_data=reverse_app_data)
+        reverse_announced += 1
         write_state(
             {
                 "ready": True,
                 "label": label,
                 "is_connected_to_shared_instance": reticulum.is_connected_to_shared_instance,
                 "announced_count": announced,
+                "reverse_announced_count": reverse_announced,
+                "received_payloads": received_payloads,
                 "destination_hash": RNS.hexrep(destination.hash, delimit=False),
             }
         )
@@ -398,6 +449,8 @@ try:
                 "label": label,
                 "is_connected_to_shared_instance": reticulum.is_connected_to_shared_instance,
                 "announced_count": announced,
+                "reverse_announced_count": reverse_announced,
+                "received_payloads": received_payloads,
                 "destination_hash": RNS.hexrep(destination.hash, delimit=False),
             }
         )
@@ -472,6 +525,126 @@ cargo build -p rns-tools --bin rnstatus-rs --quiet
   --strict-interface-startup >"$RETICULUMD_LOG" 2>&1 &
 RET_PID=$!
 TRAFFIC_STARTED=false
+
+start_reticulumd() {
+  "${ROOT_DIR}/target/debug/reticulumd" \
+    --rpc "$RPC_ADDR" \
+    --rpc-unix "$RPC_UNIX" \
+    --db "$DB_PATH" \
+    --config "$RUST_CONFIG_PATH" \
+    --strict-interface-startup >>"$RETICULUMD_LOG" 2>&1 &
+  RET_PID=$!
+}
+
+verify_unix_detach_and_restart() {
+  kill -INT "$RET_PID"
+  wait "$RET_PID"
+  RET_PID=""
+
+  local teardown_deadline=$((SECONDS + 15))
+  while (( SECONDS < teardown_deadline )); do
+    if python3 - <<'PY' "$PY_UNIX_STATE"
+import json
+import sys
+state = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+raise SystemExit(0 if state.get("local_client_count") == 1 else 1)
+PY
+    then
+      break
+    fi
+    sleep 0.2
+  done
+  if ! python3 - <<'PY' "$PY_UNIX_STATE"
+import json
+import sys
+state = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+raise SystemExit(0 if state.get("local_client_count") == 1 else 1)
+PY
+  then
+    fail "Python Unix shared instance did not observe reticulumd client teardown"
+  fi
+
+  start_reticulumd
+  local restart_deadline=$((SECONDS + TIMEOUT_SECS))
+  while (( SECONDS < restart_deadline )); do
+    if ! kill -0 "$RET_PID" >/dev/null 2>&1; then
+      fail "reticulumd exited during Unix shared-instance restart"
+    fi
+    if "${ROOT_DIR}/target/debug/rnstatus-rs" --rpc "$RPC_ADDR" --json >"$RNSTATUS_JSON" 2>>"$RETICULUMD_LOG" \
+      && python3 - <<'PY' "$RNSTATUS_JSON" "$PY_UNIX_STATE"
+import json
+import sys
+status_path, state_path = sys.argv[1:3]
+status = json.load(open(status_path, "r", encoding="utf-8"))
+state = json.load(open(state_path, "r", encoding="utf-8"))
+row = next((item for item in status.get("interfaces", []) if item.get("name") == "local-python-unix-attach"), None)
+runtime = ((row or {}).get("settings") or {}).get("_runtime") or {}
+raise SystemExit(0 if state.get("local_client_count", 0) >= 2 and runtime.get("startup_status") == "attached" else 1)
+PY
+    then
+      UNIX_TEARDOWN_RESTART_VERIFIED=true
+      deadline=$((SECONDS + TIMEOUT_SECS))
+      return 0
+    fi
+    sleep 0.2
+  done
+  fail "Python Unix shared instance did not reattach after reticulumd restart"
+}
+
+verify_tcp_detach_and_restart() {
+  kill -INT "$RET_PID"
+  wait "$RET_PID"
+  RET_PID=""
+
+  local teardown_deadline=$((SECONDS + 15))
+  while (( SECONDS < teardown_deadline )); do
+    if python3 - <<'PY' "$PY_TCP_STATE"
+import json
+import sys
+state = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+raise SystemExit(0 if state.get("local_client_count") == 1 else 1)
+PY
+    then
+      break
+    fi
+    sleep 0.2
+  done
+  if ! python3 - <<'PY' "$PY_TCP_STATE"
+import json
+import sys
+state = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+raise SystemExit(0 if state.get("local_client_count") == 1 else 1)
+PY
+  then
+    fail "Python TCP shared instance did not observe reticulumd client teardown"
+  fi
+
+  start_reticulumd
+  local restart_deadline=$((SECONDS + TIMEOUT_SECS))
+  while (( SECONDS < restart_deadline )); do
+    if ! kill -0 "$RET_PID" >/dev/null 2>&1; then
+      fail "reticulumd exited during TCP shared-instance restart"
+    fi
+    if "${ROOT_DIR}/target/debug/rnstatus-rs" --rpc "$RPC_ADDR" --json >"$RNSTATUS_JSON" 2>>"$RETICULUMD_LOG" \
+      && python3 - <<'PY' "$RNSTATUS_JSON" "$PY_TCP_STATE"
+import json
+import sys
+status_path, state_path = sys.argv[1:3]
+status = json.load(open(status_path, "r", encoding="utf-8"))
+state = json.load(open(state_path, "r", encoding="utf-8"))
+row = next((item for item in status.get("interfaces", []) if item.get("name") == "local-python-tcp-attach"), None)
+runtime = ((row or {}).get("settings") or {}).get("_runtime") or {}
+raise SystemExit(0 if state.get("local_client_count", 0) >= 2 and runtime.get("startup_status") == "attached" else 1)
+PY
+    then
+      TCP_TEARDOWN_RESTART_VERIFIED=true
+      deadline=$((SECONDS + TIMEOUT_SECS))
+      return 0
+    fi
+    sleep 0.2
+  done
+  fail "Python TCP shared instance did not reattach after reticulumd restart"
+}
 
 while (( SECONDS < deadline )); do
   if ! kill -0 "$RET_PID" >/dev/null 2>&1; then
@@ -587,12 +760,21 @@ for state in [tcp_state, unix_state]:
         raise SystemExit(1)
     if (state.get("local_client_txb_total") or 0) <= 0:
         raise SystemExit(1)
-for state in [tcp_traffic_state, unix_traffic_state]:
+for label, state, shared_state in [
+    ("tcp", tcp_traffic_state, tcp_state),
+    ("unix", unix_traffic_state, unix_state),
+]:
     if state.get("ready") is not True:
         raise SystemExit(1)
     if state.get("is_connected_to_shared_instance") is not True:
         raise SystemExit(1)
     if (state.get("announced_count") or 0) < 3:
+        raise SystemExit(1)
+    if (state.get("reverse_announced_count") or 0) < 3:
+        raise SystemExit(1)
+    if f"codex-local-python-shared-payload:python-to-shared:{label}" not in shared_state.get("received_payloads", []):
+        raise SystemExit(1)
+    if "codex-local-python-shared-payload:shared-to-python" not in state.get("received_payloads", []):
         raise SystemExit(1)
 for token in [
     "local-python-tcp-attach",
@@ -604,6 +786,14 @@ for token in [
         raise SystemExit(1)
 PY
     then
+      if [[ "$UNIX_TEARDOWN_RESTART_VERIFIED" == false ]]; then
+        verify_unix_detach_and_restart
+        continue
+      fi
+      if [[ "$TCP_TEARDOWN_RESTART_VERIFIED" == false ]]; then
+        verify_tcp_detach_and_restart
+        continue
+      fi
       write_report "pass"
       echo "[local-interface-python-shared-smoke] pass"
       echo "[local-interface-python-shared-smoke] report=${REPORT_PATH}"
