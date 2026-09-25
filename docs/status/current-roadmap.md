@@ -192,6 +192,13 @@ Local pinned-Python production-Link conversion with checksum-pinned ImageMagick
 `avconv` conversion and broader visual parity remain unverified, so #613 stays
 partial.
 
+The #633 follow-up adds one filesystem-failure acceptance slice: with the Rust
+service's `TMPDIR` set to a regular file, a pinned Python production Link still
+receives the exact raw `/media` Resource when conversion temp-directory
+creation fails. The behavior was already correct, so this is regression and
+evidence only; output-file write/open faults, metadata/stat races, Resource
+stream-open failure, and the broader #613 matrix remain open.
+
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted
