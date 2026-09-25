@@ -157,6 +157,10 @@ soak axis remains explicitly excluded under #616.
 | `RNS/Channel.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Channel packet handling, retry scheduling, negotiated full-link MDU, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
 | `RNS/Buffer.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | complete | unit, pinned-python | Packet buffers and stream readers/writers use the negotiated Channel MDU minus the two-byte stream header while retaining compression bounds. | No confirmed parity blocker. |
 | `RNS/Interfaces/*` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | unit, simulated, prepared-host, pinned-python, hardware-unverified | Configuration, framing, startup, reconnect, runtime status/mutation, management, teardown, interface gravity, live IFAC flag-policy accounting, packet decoding from one locked IFAC context for both authentication and verified-wire provenance across reconfiguration, configured TCP carrier ingress/egress with pinned Python Channel/Resource and daemon LXMF bidirectional evidence, plus Backbone listener IFAC ingress/egress with pinned-Python daemon LXMF bidirectional evidence, accepted-client IFAC inheritance, and wrong-credential rejection before peer admission after restart; authenticated Python/Rust UDP Channel traffic and Resource transfers in both directions on a Rust-initiated Link, separate-process `lxmd`/`reticulumd` UDP IFAC traces for bidirectional direct LXMF delivery with an active Python link and zero violations, wrong-credential rejection before peer/message admission, plaintext, invalid-tag, truncated, and valid-authenticated-but-tampered frame rejection before route/message admission, plus live UDP credential rotation, old-key rejection, daemon restart, identity continuity, and a Python-owned IFAC UDP shared instance with an attached Rust client and separate Python peer; invalid IFAC hot-apply returns a static `CONFIG_INVALID_IFAC` RPC response without displacing the active authenticated configuration, while plaintext remains rejected after restart; malformed IFAC startup credentials and invalid tag size are rejected without starting the interface and expose safe `list_interfaces` diagnostics; IFAC-enabled UDP bind failure is reported safely in best-effort startup and rejects strict startup before a daemon context is returned; IFAC-configured TCP listener bind failure is exposed as a sanitized `tcp.listener_status.bind_error` with zero accepted clients; focused virtual-child ingress policy, Pipe worker authenticated HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, and KISS/AX.25 stream wrong-key rejection, authenticated ingress/egress, and runtime-counter regressions. Backbone child traffic/limiter aggregation and blocked-IP statistics, loopback carriers, fake-SAM, PTY/fake-TCP, deterministic Meshtastic faults, BLE mocks, device-management state machines, per-interface `announces_from_internal`/`announces_to_internal` policy carried through startup and hot-apply onto virtual children, and pinned-Python interface probes. | TCP/UDP, Backbone, Pipe, serial and KISS streams, and the tested shared-instance/virtual-child software paths are evidenced; IFAC invalid-credential/size configuration and hot-apply rejection now have focused safe-diagnostic/error/rollback evidence; other carrier-family/support-matrix acceptance remains open, as do general configuration-parse reporting, physical-device and public-network rows (`hardware-unverified`). |
+| `#614 Pipe subprocess lifecycle` | `crates/libs/rns-transport/src/iface/pipe_tests.rs`; `tools/scripts/pipe-fake-subprocess-smoke.sh`; `.github/workflows/verify.yml` | verified | unit, process smoke, PR Verify automation | The Linux production Pipe worker observes child exit, respawns once, and reaps on normal cancellation. A worker-abort regression verifies Tokio child `kill_on_drop` terminates the subprocess when task cancellation bypasses explicit cleanup. Configured `reticulumd` startup reports running status; a local peer echoes an actual scheduled HDLC-framed announce with nonzero daemon RX/TX counters; SIGINT shutdown exits and reaps the peer. The PR-level Verify workflow runs the smoke and uploads its report/logs. | Linux software evidence only; the updated-head hosted rerun is pending, and Windows/macOS Pipe behavior, independent remote-peer interoperability, and physical acceptance remain unverified. See `docs/goals/reticulum-reference-parity-605/evidence/614-pipe-lifecycle.md`. |
+| `#614 UDP worker cancellation teardown` | `crates/libs/rns-transport/src/iface/udp_tests.rs` | verified | unit, simulated | `udp_interface_cancellation_closes_worker_and_releases_bound_port` starts the production UDP worker on loopback, observes `bound`, cancels it, verifies `closed`, and immediately rebinds the released port. | This row covers worker cancellation only; configured daemon packet flow and restart are recorded in the adjacent #614 UDP loopback row. Other platforms and the wider #614 interface-family matrix remain partial. |
+| `#614 configured UDP packet loopback and restart` | `tools/scripts/udp-configured-packet-smoke.sh`; `.github/workflows/ci.yml` | verified | daemon process smoke, loopback | Strict configured `UDPInterface` startup sends a valid packet to a local peer, returns the exact datagram bytes to the daemon, observes positive live RX/TX counters, shuts down cleanly, and restarts on the same configured ports. The focused Linux CI job runs this smoke and uploads its JSON report. | Linux software evidence for one unicast loopback trace only; multicast, multi-host, cross-platform, mobile, physical, and wider #614 interface-family acceptance remain open. See `docs/goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md`. |
+| `#614 TCP client carrier reconnect ingress` | `crates/libs/rns-transport/src/iface/tcp_client/tests/issue_614_reconnected_stream.rs` | verified | unit, loopback | A stable loopback TCP client stream is closed, the production worker reconnects and emits its reconnect event, and a valid HDLC packet sent on the replacement stream reaches the interface receive channel with exact payload and positive runtime RX bytes; cancellation reports `closed`. | Focused software data-plane recovery only; no Python socket-pair trace, cross-platform, public-network, physical, or full #614 acceptance claim. See `docs/goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md`. |
 | `RNS/Discovery.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Python-shaped interface-discovery persistence, filtering, age status, expiry and ordering; announce MessagePack encoding/decoding, the RNS 1.5 default stamp value, 20-round LXStamper workblocks with a pinned-Python vector, source/endpoint/operator validation, TCP-client publication, live daemon publication and ingestion of authorized plain or shared-network-identity encrypted discovery announces, deterministic announce scheduling, autoconnect/monitor/teardown planning, blackhole-update scheduling/merge/atomic persistence, and live AutoInterface discovery and peer runtime. Rust maps Python thread-owned side effects to deterministic lifecycle plans consumed at daemon/transport boundaries. | No generated public-callable software gap remains in `Discovery.py`; physical carrier and public-network evidence stay outside this implementation axis. |
 | `RNS/Resolver.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, pinned-python | The pinned Python surface contains only the intentionally no-op `resolve_identity`; the active Python-reference workflow probes that behavior. Rust additionally provides cache lookup, restored path-table identity lookup from cached announces, cacheless path save filtering, Python-format stale path-table row suppression, missing/malformed/mismatched cached-announce tolerance for active and tunnel restore, persisted announce-identity lookup, daemon `path_status`/already-known `request_path` visibility, and `_runtime.reticulum.path_table_restore` status. | No confirmed parity blocker. |
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | complete | unit, pinned-python | Required Reticulum primitives used by identities, packets, links, and receipts. | No confirmed parity blocker. |
@@ -466,13 +470,16 @@ extend the physical or public-network evidence boundary.
   `evidence_scope = "software_unix_shared_instance_local"` so it is not
   mistaken for multi-process Python shared-instance interop evidence. A pinned
   Python shared-instance smoke now records
-  `evidence_scope = "python_shared_instance_tcp_unix_attach_and_announce_forward"` after
+  `evidence_scope = "python_shared_instance_tcp_unix_attach_announce_payload_and_lifecycle"` after
   `reticulumd` attaches to real Python Reticulum shared instances over TCP and
-  Linux abstract Unix sockets, then observes Python-origin announce fanout
-  through those shared instances with traffic-client `announced_count` and
-  shared-server `local_client_rxb_total`/`local_client_txb_total` counters; that
-  report remains scoped to attach plus announce fanout and not broad
-  application-level shared-instance traffic parity. Independent rns-rs evidence
+  Linux abstract Unix sockets. Pinned Python peers assert exact UTF-8 announce
+  `app_data` in both directions on both transports, alongside traffic-client
+  `announced_count` and shared-server `local_client_rxb_total`/`local_client_txb_total` counters; that
+  process smoke now also SIGINT-stops `reticulumd`, observes its AF_UNIX client
+  disappear from the Python shared instance, restarts the daemon, and checks
+  the configured interface returns to `attached`. This remains selected Linux
+  software evidence, not daemon application-level packet consumption, broad
+  application-level shared-instance traffic, physical-interface, or cross-platform parity. Independent rns-rs evidence
   separately attaches a real local client to an LXMF-rs `reticulumd`, discovers
   an LXMF-rs endpoint across the daemon, exchanges encrypted packets and proofs
   in both directions, replaces the daemon, verifies client identity continuity
@@ -490,6 +497,9 @@ extend the physical or public-network evidence boundary.
   status reporting through daemon/RPC `_runtime.pipe.status`. A software
   fake-subprocess smoke now proves strict daemon startup and `rnstatus-rs`
   JSON/human reporting for a running `cat` subprocess without external devices.
+  The Linux production-worker regression additionally verifies a valid packet
+  roundtrip through the replacement child after respawn; cross-platform
+  subprocess and independent remote-peer behavior remain unverified.
 - UDP unicast and multicast with peer routing, multicast proof fallback,
   Python-style `device` broadcast-address defaults via host interface lookup,
   IPv4 broadcast socket sends, and Python `UDPInterface` alias semantics where
@@ -526,7 +536,11 @@ extend the physical or public-network evidence boundary.
   fake-PTY smoke now proves Python-style serial `KISSInterface` and
   `AX25KISSInterface` configs, strict startup, KISS startup command emission,
   fake READY handling, and refreshed daemon/operator status without attached
-  modem hardware. Python
+  modem hardware. The same smoke now sends Ctrl-C after capturing running
+  status and requires both fake serial PTY slaves to close; its report is
+  tagged `software_fake_pty_serial_kiss`. This proves software teardown of
+  these two configured serial KISS runtimes only, not device-family coverage or
+  physical serial behavior. Python
   `TCPClientInterface` configs with `kiss_framing = true` now have focused
   daemon parse-to-bootstrap/status coverage as `kiss_tcp_client` with
   `_runtime.kiss_tcp.status`, plus a software fake-TCP smoke proving strict
@@ -549,6 +563,18 @@ extend the physical or public-network evidence boundary.
   added at runtime, stale outbound route pruning after restart/removal, dynamic
   multicast/reverse announce source refresh after replacement, and Python-style
   fallback from unknown `multicast_address_type` values to `temporary`.
+  Timed-out peer jobs now also stop the matching virtual interface and prune
+  its outbound route, matching Python `peer_jobs()` teardown while retaining
+  active peer routes.
+- A daemon-binary loopback regression calls the same activation helper used by
+  native startup, registers the daemon's multicast `InterfaceManager` channel
+  and transport adapter, waits for runtime task/socket teardown and channel
+  removal, then restarts on the same test-owned discovery/data ports. Native
+  plan discovery and device filtering are unchanged. This is one software
+  lifecycle slice. A failed activation after discovery bind also removes the
+  host channel and releases that socket, as covered by a daemon-binary rollback
+  regression. Full daemon process shutdown, native carrier loss, platform
+  coverage, and the broader #614 interface-family matrix remain open.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,
   telemetry, flow control, teardown, display-capable BLE external-framebuffer
@@ -566,6 +592,13 @@ extend the physical or public-network evidence boundary.
   close-failure status during aborted startup. Native Android callback/resource
   behavior, physical RNode BLE/SPP lifecycle cycling, and long-running hardware
   soak evidence remain `hardware-unverified` external mobile/HIL work.
+- A private factory at the native BLE worker boundary supports deterministic
+  software fault injection of missing `CMD_DETECT`: the actual worker reaches
+  its configured bounded fallback, sends deferred configuration, and verifies
+  cleanup followed by fresh-backend restart after an injected disconnect. This
+  does not exercise native GATT or a
+  physical BLE device; pinned Python `ble_detect_timeout` behavior is five
+  seconds at Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - Meshtastic tunnel support includes the reference `RETICULUM_TUNNEL_APP`
   framing/reassembly layer, modem-preset pacing, missing-chunk requests,
   node/destination route learning, an injectable bearer handle, daemon config
@@ -633,10 +666,19 @@ extend the physical or public-network evidence boundary.
   connect, HDLC writes, connectable accept-loop incoming `STREAM ACCEPT`,
   virtual child registration, HDLC ingress, direct outbound egress over accepted
   streams, cleanup, and daemon/RPC status refresh for connected outbound and
-  incoming peer rows without requiring a prepared I2P router. SAM session IDs
-  now include the daemon transport identity when available to avoid
-  cross-process ID collisions on a shared router, and expired accept-session IDs
-  recreate the connectable session instead of retrying a dead ID indefinitely.
+  incoming peer rows without requiring a prepared I2P router. A production
+  accept-loop fake-SAM regression now drives an expired STREAM session through
+  session recreation and successful incoming-peer registration. This is local
+  software evidence only; SAM session IDs now include the daemon transport
+  identity when available to avoid cross-process ID collisions on a shared
+  router, and expired accept-session IDs recreate the connectable session
+  instead of retrying a dead ID indefinitely. A pinned-Python comparison also
+  found the outbound peer waits `RECONNECT_WAIT` (15 seconds) after an
+  established stream ends; Rust now waits its configured reconnect delay after
+  stream teardown. A production-loop fake-SAM regression verifies the delay
+  with a shortened test duration, and Verify runs that focused test. Local
+  software only; real-router behavior and the broad #614 family/platform matrix
+  remain unverified.
   The config parser recognises I2P-local IFAC aliases `ifac_netname` and
   `ifac_netkey`, but rejects them until Reticulum IFAC authentication is
   implemented.
@@ -683,6 +725,16 @@ transport, request tag, and egress interface; recursive request caps and queue
 limits are scoped per source interface; and expired recursive requests release
 that interface capacity. This does not claim full transport parity; live mesh
 and public-network behavior remain deferred.
+For #614 BLE runtime evidence, the deterministic worker regression now covers
+recovery after native-style notification EOF: it verifies session cleanup
+before fresh-backend reconnect and cleanup of the recovered session on stop.
+This is simulated software evidence only; native GATT, platform-specific
+cleanup, and physical recovery remain open, so the broader native-interface row
+remains partial and hardware-unverified.
+The BLE worker also now selects interface cancellation while startup is
+pending; a deterministic backend that blocks in `connect()` verifies the
+startup future is dropped, the backend is closed, and the worker exits. This
+does not cover forced task abortion or native GATT cancellation.
 Unknown recursive path discovery now also respects Python's
 `DISCOVER_PATHS_FOR` interface-mode gate, forwarding only from access-point,
 gateway, and roaming interfaces and suppressing waiting discovery requester
@@ -871,7 +923,9 @@ and connectable sessions can run through SAM, and transport-side tunnel
 watchdog/status bookkeeping is refreshed into daemon/RPC interface status, with
 fake-SAM coverage for outbound peer-loop writes, connectable accept-loop HDLC
 ingress, accepted-stream direct egress, cleanup, and runtime counter/status
-updates.
+updates. Separate fake-SAM tests cancel outbound setup via daemon and interface
+tokens while HELLO is stalled; each confirms worker exit and socket closure.
+This is software coverage, not real-router or public-network evidence.
 Private destination keys now follow Python's default daemon-storage injection
 and hashed key-file naming, including old-format fallback when an existing
 Python key is present. Missing explicit SAM host/port config now uses Python's
@@ -950,6 +1004,10 @@ streams now expose a transport-local management dispatch handle that writes
 pre-encoded KISS command frames through the live KISS runtime; feature-gated
 BLE RNode streams expose the same management dispatch through the Nordic UART
 write path with BLE chunking.
+The regular PR workflow now includes a native Windows `rnode-ble` test lane,
+so target-gated WinRT compilation and deterministic pairing/runtime tests are
+checked on `windows-latest`; that software gate is distinct from physical
+paired-radio operation and remains pending until its hosted result is green.
 Radio-state query and blink dispatch are covered by local duplex/mock tests,
 daemon `rnode_management` RPC dispatch, `rnodeconf-rs` query/blink CLI tests,
 and prepared-host safe-management artifacts when the serial/TCP/BLE HIL gate is

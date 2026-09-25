@@ -7,6 +7,8 @@ use super::{
 mod interface_startup;
 #[path = "bootstrap_transport_path_restore.rs"]
 mod path_restore;
+#[path = "bootstrap_transport_reconnect_synthesizer.rs"]
+mod reconnect_synthesizer;
 #[path = "bootstrap_transport_tcp_server_adapter.rs"]
 mod tcp_server_adapter;
 #[path = "bootstrap_transport_tcp_startup.rs"]
@@ -24,15 +26,17 @@ pub(super) use interface_startup::LoraRuntimeStatusSource;
 #[cfg(feature = "vrn76-kiss-ble")]
 pub(super) use interface_startup::Vrn76RuntimeRefresh;
 pub(super) use interface_startup::{
-    AutoRuntimeRefresh, BleGattRuntimeRefresh, I2pRuntimeRefresh, KissRuntimeRefresh,
-    LoraRuntimeRefresh, MeshtasticRuntimeRefresh, PipeRuntimeRefresh, RNodeManagementBinding,
-    RNodeMultiRuntimeRefresh, ReticulumBleRuntimeRefresh, SerialRuntimeRefresh, TcpRuntimeRefresh,
-    TcpRuntimeStatusSource, UdpRuntimeRefresh, WeaveControlBinding, WeaveRuntimeRefresh,
+    AutoRuntimeRefresh, AutoRuntimeShutdown, BleGattRuntimeRefresh, I2pRuntimeRefresh,
+    KissRuntimeRefresh, LoraRuntimeRefresh, MeshtasticRuntimeRefresh, PipeRuntimeRefresh,
+    RNodeManagementBinding, RNodeMultiRuntimeRefresh, ReticulumBleRuntimeRefresh,
+    SerialRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource, UdpRuntimeRefresh,
+    WeaveControlBinding, WeaveRuntimeRefresh,
 };
 use path_restore::{
     mark_path_table_restore_status, mark_path_table_restore_status_on_enabled_interfaces,
     PathTableRestoreStatus,
 };
+use reconnect_synthesizer::spawn_stream_reconnect_tunnel_synthesizer;
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
@@ -74,6 +78,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
     pub(super) seeded_hot_apply_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
+    pub(super) auto_runtime_shutdowns: Vec<AutoRuntimeShutdown>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
     pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
@@ -110,21 +115,6 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
     pub(super) local_hops_delta: bool,
     pub(super) inbound_queue_limits: InboundQueueLimits,
-}
-
-fn spawn_stream_reconnect_tunnel_synthesizer(
-    transport: Arc<Transport>,
-    mut reconnect_rx: tokio::sync::mpsc::Receiver<AddressHash>,
-) {
-    tokio::spawn(async move {
-        while let Some(iface) = reconnect_rx.recv().await {
-            if transport.synthesize_tunnel_on_interface(iface).await {
-                log::info!("[daemon] stream reconnect synthesized tunnel iface={}", iface);
-            } else {
-                log::warn!("[daemon] stream reconnect could not synthesize tunnel iface={}", iface);
-            }
-        }
-    });
 }
 
 pub(super) async fn start_transport_and_interfaces(
@@ -179,6 +169,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut startup_failures = Vec::new();
     let mut seeded_hot_apply_interfaces = Vec::new();
     let mut auto_runtime_refreshes = Vec::new();
+    let mut auto_runtime_shutdowns = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
     let mut udp_runtime_refreshes = Vec::new();
     let mut serial_runtime_refreshes = Vec::new();
@@ -309,6 +300,7 @@ pub(super) async fn start_transport_and_interfaces(
             }
             seeded_hot_apply_interfaces.extend(startup.seeded_hot_apply_interfaces);
             auto_runtime_refreshes.extend(startup.auto_runtime_refreshes);
+            auto_runtime_shutdowns.extend(startup.auto_runtime_shutdowns);
             pipe_runtime_refreshes.extend(startup.pipe_runtime_refreshes);
             udp_runtime_refreshes.extend(startup.udp_runtime_refreshes);
             serial_runtime_refreshes.extend(startup.serial_runtime_refreshes);
@@ -449,6 +441,7 @@ pub(super) async fn start_transport_and_interfaces(
         startup_failures,
         seeded_hot_apply_interfaces,
         auto_runtime_refreshes,
+        auto_runtime_shutdowns,
         pipe_runtime_refreshes,
         udp_runtime_refreshes,
         serial_runtime_refreshes,

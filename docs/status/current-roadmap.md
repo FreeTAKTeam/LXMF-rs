@@ -644,6 +644,77 @@ open while its forward behavioral contract remains incomplete, and physical,
 platform, third-party-client, public-network, and long-soak evidence remains
 explicitly excluded under #616.
 
+The #614 Windows BLE software increment adds a dedicated `windows-latest` CI
+lane for the WinRT-backed resolver and deterministic BLE pairing/runtime tests;
+the pairing filter regression also proves that a listed stale address cannot
+authorize a different currently scanned device. The lane passed on PR #634 head
+`2ded2636`; the hosted HIL and standard checks passed on that head (publish and
+peer-lifecycle checks skipped).
+A new daemon-binary loopback regression also exercises the production
+AutoInterface activation helper, manager channel registration/removal, runtime
+task/socket teardown, and restart on the same test-owned ports. It does not
+replace the remaining native-interface, broader #614 lifecycle, platform, or
+paired-device/hardware evidence and does not promote #614/#605 to complete. A
+second regression now covers failed activation after the discovery socket is
+bound, asserting daemon-channel rollback and immediate discovery-port reuse.
+Pinned Python AutoInterface peer timeout also detaches and tears down each
+expired peer interface; Rust's corresponding peer job now removes the peer's
+virtual interface and outbound route. A focused regression confirms that
+cleanup leaves an unexpired peer intact.
+The worker-level BLE EOF recovery slice is also covered in software: the
+worker closes the EOF session before reconnecting through a fresh backend and
+closes that session on cancellation. Native GATT EOF and physical recovery
+remain unverified.
+The BLE worker now also observes interface cancellation during startup: a
+blocked fake backend verifies the pending setup is dropped, cleanup runs,
+and the worker exits; forced task abortion and native GATT cancellation remain
+unverified.
+A private, worker-scoped backend factory now enables software-only fault
+injection through the actual BLE worker loop: withholding `CMD_DETECT` triggers
+the configured bounded fallback, a scripted disconnect exercises cleanup and
+fresh-backend restart, and cancellation closes the restarted backend. This was
+compared with pinned Python `99de23c040d507e3fefca19e87b182302902725d`'s
+five-second `ble_detect_timeout`; it is not physical BLE support or device
+evidence, and #614/#605 remain partial.
+Strict I2P startup now also has one negative fake-SAM daemon-path regression:
+a rejected SAM HELLO prevents interface registration and leaves a contextual
+startup failure. Two fake-SAM regressions separately cancel outbound setup via
+the daemon and interface tokens while the SAM HELLO reply is stalled; both verify
+the worker exits and closes its socket. These do not replace destination-
+creation/session coverage or real-router/public-network evidence; #614/#605
+remain partial.
+The Linux PipeInterface lifecycle now has deterministic production-worker and
+configured-daemon process evidence: child EOF causes one respawn; a local peer
+process echoes a scheduled, HDLC-framed announce with nonzero daemon RX/TX
+counters; SIGINT shutdown exits and reaps the peer. A worker-abort regression
+also confirms Tokio child `kill_on_drop` terminates the peer when task
+cancellation bypasses normal cleanup. This remains Linux software evidence
+only; Windows/macOS behavior, independent remote-peer interoperability, and
+physical acceptance remain unverified. The PR-level Verify workflow now runs
+the smoke and uploads its report/logs; the updated-head rerun is pending.
+
+The Linux UDP runtime now also has a configured daemon loopback trace: a local
+peer receives a valid outbound datagram and returns the exact bytes, live daemon
+status reports RX/TX counters, and clean shutdown permits a same-port restart.
+A focused Linux CI job runs the trace and uploads its report. Along with the
+worker cancellation/rebind regression, this covers software packet flow and
+restart for the configured UDP unicast path; multicast, multi-host,
+cross-platform, mobile, physical, and wider #614/#605 interface evidence remain
+open.
+The ordinary TCP client now also has a focused loopback regression for packet
+ingress after an established carrier stream closes and reconnects: the test
+observes the reconnect event, delivers an exact HDLC packet on the replacement
+stream, checks live RX-byte status, and verifies clean cancellation. This
+closes the software evidence gap for data-plane recovery on a replaced TCP
+stream, without claiming Python socket-pair parity, cross-platform behavior,
+or completion of the broader #614 family/platform matrix.
+The production TCP server now also has a loopback accepted-child regression:
+two clients each deliver HDLC packets through the listener, the first child
+reports closed after peer EOF, and the listener remains able to accept and
+route the second client. This fills a distinct accepted-server software
+evidence gap; it does not establish Backbone-specific or cross-platform parity,
+and #614/#605 remain partial.
+
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The 1.5 alignment adds bounded
@@ -1272,8 +1343,12 @@ direction.
   strict startup, TCP listener/attach status, filesystem Unix listener startup,
   Linux abstract Unix listener/client attach, Python local MTU, bitrate alias
   reporting, and `rnstatus-rs` JSON/human output, plus pinned Python Reticulum
-  shared-instance attach and Python-origin announce-fanout evidence over TCP
-  and Linux abstract Unix sockets. The Reticulum interface parity audit records
+  shared-instance attach and exact bidirectional Python announce-payload
+  evidence over TCP and Linux abstract Unix sockets; the process smoke observes TCP and Unix
+  client teardown on daemon SIGINT and successful status/client-count recovery
+  after restart for both transports. This is one Linux software lifecycle
+  increment, not daemon application-level packet consumption, broad application-traffic, physical-interface, or platform evidence. The Reticulum interface parity
+  audit records
   LocalInterface #384 evidence under
   `target/reticulum-interface-parity-audit/report.json` with
   `evidence_scope = "reticulum_interfaces_384_385_parity_audit"` and optional
@@ -1300,9 +1375,13 @@ direction.
   feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
   in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
   children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an
-  outbound I2P SAM peer baseline. Enabled unknown interface kinds remain
-  parseable for operator visibility but are covered as explicit failed startup
-  records with `unsupported interface kind` runtime metadata.
+  outbound I2P SAM peer baseline, plus a deterministic fake-SAM regression for
+  connectable-listener recovery after the router reports an expired STREAM
+  session. This exercises the production accept loop through session
+  recreation and incoming-peer registration only; the broader I2P and #614
+  interface-family matrix remains partial. Enabled unknown interface kinds
+  remain parseable for operator visibility but are covered as explicit failed
+  startup records with `unsupported interface kind` runtime metadata.
 - Meshtastic tunnel support includes the reference `RETICULUM_TUNNEL_APP`
   chunk metadata, modem-preset pacing, missing-chunk requests,
   node/destination route learning, an injectable bearer handle, daemon TOML
@@ -1493,7 +1572,10 @@ direction.
   cleanup. SAM session IDs now include the daemon transport identity when
   available to avoid cross-process collisions on a shared router, and expired
   accept-loop session IDs recreate the connectable session instead of retrying
-  a dead ID indefinitely.
+  a dead ID indefinitely. Pinned-Python comparison found outbound reconnects
+  wait 15 seconds after an established stream ends; Rust now applies the
+  configured reconnect delay after stream teardown, with a fake-SAM regression
+  using a bounded shortened delay.
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
   peer-data sockets, transport ingress, outbound routing, multicast proof
   fallback, supervised discovery/data receive loops, transport-side
@@ -1579,7 +1661,10 @@ direction.
   software fake-PTY smoke now proves Python-style `KISSInterface` and
   `AX25KISSInterface` alias parsing, strict daemon startup, KISS startup command
   emission, fake READY handling, refreshed `_runtime.kiss.status`, and
-  `rnstatus-rs` JSON/human output without attached modem hardware.
+  `rnstatus-rs` JSON/human output without attached modem hardware. It now also
+  sends Ctrl-C after capturing running status and requires both fake serial PTY
+  slaves to close, with report scope `software_fake_pty_serial_kiss`; this is
+  software teardown evidence for these two serial KISS configs only.
   A software fake-TCP smoke now proves Python-style `TCPClientInterface`
   `kiss_framing = true` alias parsing, strict daemon startup, KISS startup
   command emission, fake READY handling, refreshed `_runtime.kiss_tcp.status`,

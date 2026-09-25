@@ -15,8 +15,10 @@ fn pipe_fake_subprocess_smoke_preserves_software_evidence_contract() {
         "target/pipe-fake-subprocess-smoke",
         "PipeInterface",
         "pipe-fake-subprocess",
-        "command = \"cat\"",
+        "pipe-peer.sh",
+        "exec cat",
         "respawn_delay = 0.1",
+        "--announce-interval-secs 1",
         "--strict-interface-startup",
         "rnstatus-rs",
         "rnstatus_json",
@@ -29,6 +31,10 @@ fn pipe_fake_subprocess_smoke_preserves_software_evidence_contract() {
         "respawn_attempts",
         "last_error",
         "pipe state=running open=true respawns=0",
+        "traffic_rx_bytes",
+        "traffic_tx_bytes",
+        "PEER_PID_FILE",
+        "survived daemon shutdown",
         "report.json",
     ] {
         assert!(

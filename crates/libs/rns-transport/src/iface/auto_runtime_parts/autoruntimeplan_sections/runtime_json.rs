@@ -148,7 +148,7 @@ impl AutoRuntimePlan {
         now: core::time::Duration,
         mut send: impl FnMut(&AutoPeerAnnounceDatagram) -> Result<(), String>,
     ) -> Result<AutoPeerJobRuntimeSummary, String> {
-        let (summary, datagrams) = self.run_peer_job_datagrams(state, now);
+        let (summary, datagrams, _) = self.run_peer_job_datagrams(state, now);
         Self::send_peer_announce_datagrams(&datagrams, "auto reverse peer announce", &mut send)?;
         Ok(summary)
     }
@@ -157,7 +157,7 @@ impl AutoRuntimePlan {
         &self,
         state: &mut AutoDiscoveryState,
         now: core::time::Duration,
-    ) -> (AutoPeerJobRuntimeSummary, Vec<AutoPeerAnnounceDatagram>) {
+    ) -> (AutoPeerJobRuntimeSummary, Vec<AutoPeerAnnounceDatagram>, Vec<String>) {
         let timing = AutoInterfaceTiming::for_platform(self.platform);
         let adopted_devices = state.adopted_devices();
         let run = state.run_peer_job(
@@ -171,6 +171,7 @@ impl AutoRuntimePlan {
             .iter()
             .map(AutoPeerAnnounceDatagram::from)
             .collect::<Vec<_>>();
+        let expired_peers = run.expired_peers.iter().map(|peer| peer.address.clone()).collect();
         (
             AutoPeerJobRuntimeSummary {
                 expired_peer_count: run.expired_peers.len(),
@@ -182,6 +183,7 @@ impl AutoRuntimePlan {
                 peer_count_after: state.peer_count(),
             },
             datagrams,
+            expired_peers,
         )
     }
 
@@ -374,7 +376,7 @@ impl AutoRuntimePlan {
         drop(data_events_tx);
         let transport_tx_handle = transport_tx_channel.map(|tx_channel| {
             self.spawn_peer_data_transport_tx_loop(
-                transport_bridge.expect("transport bridge exists with tx channel"),
+                transport_bridge.clone().expect("transport bridge exists with tx channel"),
                 tx_channel,
                 shutdown_rx.clone(),
             )
@@ -388,6 +390,7 @@ impl AutoRuntimePlan {
         let peer_job_scheduler_handle = self.spawn_peer_job_scheduler(
             Arc::clone(&state),
             Arc::clone(&announce_socket),
+            transport_bridge.clone(),
             runtime_status.clone(),
             shutdown_rx.clone(),
         );

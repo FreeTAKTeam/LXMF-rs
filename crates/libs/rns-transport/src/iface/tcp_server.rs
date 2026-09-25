@@ -850,4 +850,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }
+
+    #[path = "issue_614_accepted_client_lifecycle.rs"]
+    mod issue_614_accepted_client_lifecycle;
 }

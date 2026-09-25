@@ -44,6 +44,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) tunnel_synth_ifaces: Vec<AddressHash>,
     pub(super) connected_to_shared_instance: bool,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
+    pub(super) auto_runtime_shutdowns: Vec<AutoRuntimeShutdown>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
     pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
@@ -62,10 +63,22 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) weave_control_bindings: Vec<WeaveControlBinding>,
 }
 
-#[derive(Clone)]
 pub(crate) struct AutoRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: auto::AutoRuntimeStatusHandle,
+}
+
+pub(crate) struct AutoRuntimeShutdown {
+    pub(crate) host_iface: AddressHash,
+    pub(crate) runtime: rns_transport::iface::auto_runtime::AutoDiscoveryRuntime,
+    pub(crate) iface_manager: Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+}
+
+impl AutoRuntimeShutdown {
+    pub(crate) async fn stop(self) -> bool {
+        self.runtime.stop().await;
+        self.iface_manager.lock().await.stop_interface(self.host_iface)
+    }
 }
 
 #[derive(Clone)]
@@ -224,12 +237,46 @@ pub(super) async fn startup_configured_interfaces(
     shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
     transport_identity_hash: Option<[u8; 16]>,
 ) -> InterfaceStartupBatch {
+    startup_configured_interfaces_with_auto_plan_builder(
+        args,
+        config,
+        selected_tcp_server,
+        transport,
+        iface_manager,
+        server_iface,
+        configured_interfaces,
+        reticulum_storage_path,
+        shared_reconnect_events,
+        transport_identity_hash,
+        auto::build_native_startup_plan,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn startup_configured_interfaces_with_auto_plan_builder<F>(
+    args: &Args,
+    config: &DaemonConfig,
+    selected_tcp_server: &TcpServerSelection,
+    transport: &Transport,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    server_iface: Option<&AddressHash>,
+    configured_interfaces: &mut [InterfaceRecord],
+    reticulum_storage_path: &std::path::Path,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
+    transport_identity_hash: Option<[u8; 16]>,
+    mut auto_plan_builder: F,
+) -> InterfaceStartupBatch
+where
+    F: FnMut(&InterfaceConfig) -> Result<auto::AutoRuntimePlan, String>,
+{
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
     let mut seeded_hot_apply_interfaces = Vec::new();
     let mut tunnel_synth_ifaces = Vec::new();
     let mut connected_to_shared_instance = false;
     let mut auto_runtime_refreshes = Vec::new();
+    let mut auto_runtime_shutdowns = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
     let mut udp_runtime_refreshes = Vec::new();
     let mut serial_runtime_refreshes = Vec::new();
@@ -443,17 +490,19 @@ pub(super) async fn startup_configured_interfaces(
                 }
             }
             "auto" => {
-                if let Some(refresh) = startup_auto(
+                if let Some((refresh, shutdown)) = startup_auto(
                     iface,
                     &label,
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut auto_plan_builder,
                 )
                 .await
                 {
                     startup_successes += 1;
                     auto_runtime_refreshes.push(refresh);
+                    auto_runtime_shutdowns.push(shutdown);
                 }
             }
             "serial" => {
@@ -665,6 +714,7 @@ pub(super) async fn startup_configured_interfaces(
         tunnel_synth_ifaces,
         connected_to_shared_instance,
         auto_runtime_refreshes,
+        auto_runtime_shutdowns,
         pipe_runtime_refreshes,
         udp_runtime_refreshes,
         serial_runtime_refreshes,
@@ -3268,6 +3318,54 @@ interfaces = [
         assert_eq!(lines[0], "HELLO VERSION MIN=3.0 MAX=3.3");
         assert_eq!(lines[1], "DEST GENERATE SIGNATURE_TYPE=7");
         let _ = std::fs::remove_dir_all(root.as_path());
+    }
+
+    #[tokio::test]
+    async fn strict_i2p_startup_records_fake_sam_handshake_rejection_without_spawning() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("fake SAM address");
+        let server = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.expect("accept preflight");
+            let mut reader = BufReader::new(socket);
+            let mut command = String::new();
+            reader.read_line(&mut command).await.expect("read HELLO");
+            reader
+                .get_mut()
+                .write_all(b"HELLO REPLY RESULT=I2P_ERROR MESSAGE=disabled\n")
+                .await
+                .expect("reject HELLO");
+            command
+        });
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(&format!(
+            r#"interfaces = [{{ type = "I2PInterface", enabled = true, name = "i2p-rejected", sam_ip = "{}", sam_port = {} }}]"#,
+            sam_addr.ip(), sam_addr.port()
+        ))
+        .expect("parse I2P config");
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(), enabled: true, host: None, port: None,
+            name: iface.name.clone(), settings: iface.settings_json(),
+        };
+        let mut failures = Vec::new();
+        let mut args = test_args();
+        args.strict_interface_startup = true;
+
+        let started = startup_i2p(
+            &args, iface, "i2p-rejected", &manager, &mut record, &mut failures,
+            std::path::Path::new("."), None,
+        ).await;
+
+        let command = server.await.expect("fake SAM task");
+        assert_eq!(command.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+        assert!(started.is_none());
+        assert!(manager.lock().await.interface_hashes().is_empty());
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].error.contains("preflight hello failed"));
+        assert!(failures[0].error.contains("disabled"));
     }
 
     fn fake_i2p_private_key() -> String {

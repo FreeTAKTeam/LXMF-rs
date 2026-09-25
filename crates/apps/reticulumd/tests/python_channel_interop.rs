@@ -16,6 +16,7 @@ include!("python_channel_interop_parts/rust_to_python_raw_resource_roundtri.rs")
 
 include!("python_channel_interop_parts/ifac_python_interop.rs");
 
+include!("python_channel_interop_parts/ax25_kiss_pty.rs");
 include!("python_channel_interop_parts/ifac_kiss_pty.rs");
 
 include!("python_channel_interop_parts/resource_size_matrix.rs");

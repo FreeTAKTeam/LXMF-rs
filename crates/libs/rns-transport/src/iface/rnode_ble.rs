@@ -20,4 +20,16 @@ include!("rnode_ble_parts/runtime_status_handle.rs");
 include!("rnode_ble_parts/runtime_tests.rs");
 
 #[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/issue_614_eof_idle_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/issue_614_detection_fallback_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/issue_614_discovery_cancel_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/issue_614_startup_cancel_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
 include!("rnode_ble_parts/ifac_worker_tests.rs");

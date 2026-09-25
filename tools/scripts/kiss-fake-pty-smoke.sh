@@ -18,6 +18,7 @@ RNSTATUS_JSON="${RUN_DIR}/rnstatus.json"
 RNSTATUS_HUMAN="${RUN_DIR}/rnstatus.txt"
 FAKE_LOG="${RUN_DIR}/fake-kiss.log"
 FAKE_STATE="${RUN_DIR}/fake-kiss-state.json"
+SHUTDOWN_REQUEST="${RUN_DIR}/shutdown-requested"
 
 : >"$RETICULUMD_LOG"
 : >"$FAKE_LOG"
@@ -56,6 +57,7 @@ import sys
 ) = sys.argv[1:12]
 report = {
     "status": status,
+    "evidence_scope": "software_fake_pty_serial_kiss",
     "reason": reason or None,
     "rpc_addr": rpc_addr,
     "run_dir": run_dir,
@@ -132,8 +134,9 @@ fail() {
   exit 1
 }
 
-python3 - "$FAKE_LOG" "$FAKE_STATE" <<'PY' &
+python3 - "$FAKE_LOG" "$FAKE_STATE" "$SHUTDOWN_REQUEST" <<'PY' &
 import json
+import errno
 import os
 import pathlib
 import pty
@@ -142,7 +145,7 @@ import sys
 import time
 import tty
 
-log_path, state_path = sys.argv[1:3]
+log_path, state_path, shutdown_request = sys.argv[1:4]
 
 FEND = 0xC0
 FESC = 0xDB
@@ -233,8 +236,12 @@ for label in PEERS:
         "frames": [],
         "init_commands_seen": [],
         "ready_response_sent": False,
+        "active_seen": False,
+        "slave_closed": False,
+        "eio_logged": False,
         "pty_raw_mode": True,
     }
+    os.close(slave_fd)
     log(f"fake {label} KISS PTY slave={port}")
 
 save_state()
@@ -250,10 +257,28 @@ while time.monotonic() < deadline:
         try:
             chunk = os.read(fd, 4096)
         except OSError as exc:
-            log(f"{label}: read error: {exc}")
+            peer = state["peers"][label]
+            if (
+                exc.errno == errno.EIO
+                and os.path.exists(shutdown_request)
+                and peer["active_seen"]
+                and peer["ready_response_sent"]
+                and not peer["slave_closed"]
+            ):
+                peer["slave_closed"] = True
+                log(f"{label}: PTY slave closed")
+                save_state()
+            if exc.errno == errno.EIO:
+                if not peer["eio_logged"]:
+                    log(f"{label}: PTY master waiting for slave")
+                    peer["eio_logged"] = True
+                time.sleep(0.1)
+            else:
+                log(f"{label}: read error: {exc}")
             continue
         if not chunk:
             continue
+        state["peers"][label]["active_seen"] = True
         buffers[fd].extend(chunk)
         for command, payload in pop_frames(buffers[fd]):
             peer = state["peers"][label]
@@ -446,11 +471,65 @@ if "ax25=true" not in human:
     raise SystemExit(1)
 PY
     then
-      write_report "pass"
-      echo "[kiss-fake-pty-smoke] pass"
-      echo "[kiss-fake-pty-smoke] report=${REPORT_PATH}"
-      echo "[kiss-fake-pty-smoke] logs=${RUN_DIR}"
-      exit 0
+      : >"$SHUTDOWN_REQUEST"
+      kill -INT "$RET_PID" || fail "failed to request graceful daemon shutdown"
+      python3 - "$RET_PID" "$TIMEOUT_SECS" <<'PY' &
+import os
+import signal
+import sys
+import time
+
+pid = int(sys.argv[1])
+deadline = time.monotonic() + float(sys.argv[2])
+while True:
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as handle:
+            stat = handle.read()
+        process_state = stat[stat.rfind(")") + 2 :].split()[0]
+    except FileNotFoundError:
+        break
+    if process_state == "Z":
+        break
+    if time.monotonic() >= deadline:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        break
+    time.sleep(0.1)
+PY
+      SHUTDOWN_WATCHDOG=$!
+      if ! wait "$RET_PID"; then
+        kill "$SHUTDOWN_WATCHDOG" >/dev/null 2>&1 || true
+        wait "$SHUTDOWN_WATCHDOG" >/dev/null 2>&1 || true
+        RET_PID=""
+        fail "reticulumd failed during graceful shutdown"
+      fi
+      kill "$SHUTDOWN_WATCHDOG" >/dev/null 2>&1 || true
+      wait "$SHUTDOWN_WATCHDOG" >/dev/null 2>&1 || true
+      RET_PID=""
+
+      shutdown_deadline=$((SECONDS + TIMEOUT_SECS))
+      while (( SECONDS < shutdown_deadline )); do
+        if python3 - <<'PY' "$FAKE_STATE"
+import json
+import sys
+state = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+peers = state.get("peers") or {}
+if all((peers.get(label) or {}).get("slave_closed") is True for label in ["kiss", "ax25"]):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+        then
+          write_report "pass"
+          echo "[kiss-fake-pty-smoke] pass"
+          echo "[kiss-fake-pty-smoke] report=${REPORT_PATH}"
+          echo "[kiss-fake-pty-smoke] logs=${RUN_DIR}"
+          exit 0
+        fi
+        sleep 0.1
+      done
+      fail "serial KISS PTY slaves remained open after daemon shutdown"
     fi
   fi
   sleep 1

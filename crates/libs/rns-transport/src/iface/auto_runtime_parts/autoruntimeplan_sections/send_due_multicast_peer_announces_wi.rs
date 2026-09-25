@@ -80,13 +80,17 @@ impl AutoRuntimePlan {
         &self,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         socket: Arc<tokio::net::UdpSocket>,
+        transport_bridge: Option<AutoInterfaceTransportBridge>,
         runtime_status: Option<&AutoRuntimeStatusHandle>,
         now: core::time::Duration,
     ) -> Result<AutoPeerJobRuntimeSummary, String> {
-        let (summary, datagrams) = {
+        let (summary, datagrams, expired_peers) = {
             let mut state = state.lock().await;
             self.run_peer_job_datagrams(&mut state, now)
         };
+        if let Some(bridge) = transport_bridge {
+            bridge.remove_expired_peer_routes(&expired_peers).await;
+        }
         if datagrams.is_empty() {
             if let Some(runtime_status) = runtime_status {
                 runtime_status.record_peer_job_summary(&summary);
@@ -111,6 +115,7 @@ impl AutoRuntimePlan {
         &self,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         socket: Arc<tokio::net::UdpSocket>,
+        transport_bridge: Option<AutoInterfaceTransportBridge>,
         runtime_status: Option<AutoRuntimeStatusHandle>,
         mut shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
@@ -135,6 +140,7 @@ impl AutoRuntimePlan {
                             .send_due_peer_job_with_runtime_socket(
                                 Arc::clone(&state),
                                 Arc::clone(&socket),
+                                transport_bridge.clone(),
                                 runtime_status.as_ref(),
                                 started_at.elapsed(),
                             )

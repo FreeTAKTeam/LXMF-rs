@@ -242,8 +242,9 @@ The script starts two raw pseudo-terminal fake peers, keeps their PTY slave
 devices available across strict-startup preflight and runtime serial opens, and
 starts `reticulumd` with Python-style `KISSInterface` and `AX25KISSInterface`
 configs. The fake peers decode KISS frames, record the startup command
-sequence, and send a `CMD_READY` frame back to the daemon. A passing run
-requires:
+sequence, and send a `CMD_READY` frame back to the daemon. After checking live
+JSON/human status, the smoke sends Ctrl-C to `reticulumd` and requires both PTY
+masters to observe their serial slave close. A passing run requires:
 
 - `_runtime.startup_status = "spawned"`
 - `_runtime.kiss.status.link_state = "running"`
@@ -258,13 +259,16 @@ requires:
 - human `rnstatus-rs` output to summarize the running serial KISS rows
 - the fake peer recording all KISS startup command frames:
   `CMD_TXDELAY`, `CMD_TXTAIL`, `CMD_P`, `CMD_SLOTTIME`, and `CMD_READY`
+- graceful daemon shutdown followed by `slave_closed = true` for both PTYs
 
 The smoke writes structured evidence under `target/kiss-fake-pty-smoke/`,
 including `report.json`, fake-peer frame state, daemon logs, and `rnstatus-rs`
 JSON/human output. This proves Python-style serial KISS and AX.25 KISS config,
 strict daemon startup, KISS startup frame emission, READY command handling, and
-refreshed operator status through the real daemon path. It is local-only
-evidence, not a substitute for real TNC or modem hardware evidence.
+refreshed operator status through the real daemon path. Its report is tagged
+with `evidence_scope = "software_fake_pty_serial_kiss"` and includes the
+post-shutdown PTY-close observations. This is local-only evidence, not a
+substitute for real TNC or modem hardware evidence.
 
 ## Software Fake-TCP Smoke
 

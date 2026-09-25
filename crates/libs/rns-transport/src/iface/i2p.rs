@@ -752,29 +752,33 @@ async fn run_i2p_peer_loop_with_ifac(
             .lock()
             .expect("i2p runtime status mutex poisoned")
             .mark_outbound_connecting(&peer, iface_address);
-        let (_session_stream, stream) =
-            match open_sam_stream(sam_addr.as_str(), session_id.as_str(), peer.as_str()).await {
-                Ok(streams) => streams,
-                Err(err) => {
-                    runtime_status
-                        .lock()
-                        .expect("i2p runtime status mutex poisoned")
-                        .mark_outbound_reconnecting(&peer, iface_address, err.to_string());
-                    log::warn!(
-                        "failed to open I2P SAM stream peer={} sam={} iface={} err={}",
-                        peer,
-                        sam_addr,
-                        iface_address,
-                        err
-                    );
-                    tokio::select! {
-                        _ = cancel.cancelled() => break,
-                        _ = iface_stop.cancelled() => break,
-                        _ = tokio::time::sleep(reconnect_wait) => {}
-                    }
-                    continue;
+        let open_result = tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = iface_stop.cancelled() => break,
+            result = open_sam_stream(sam_addr.as_str(), session_id.as_str(), peer.as_str()) => result,
+        };
+        let (_session_stream, stream) = match open_result {
+            Ok(streams) => streams,
+            Err(err) => {
+                runtime_status
+                    .lock()
+                    .expect("i2p runtime status mutex poisoned")
+                    .mark_outbound_reconnecting(&peer, iface_address, err.to_string());
+                log::warn!(
+                    "failed to open I2P SAM stream peer={} sam={} iface={} err={}",
+                    peer,
+                    sam_addr,
+                    iface_address,
+                    err
+                );
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = iface_stop.cancelled() => break,
+                    _ = tokio::time::sleep(reconnect_wait) => {}
                 }
-            };
+                continue;
+            }
+        };
 
         runtime_status
             .lock()
@@ -808,6 +812,11 @@ async fn run_i2p_peer_loop_with_ifac(
             );
         }
         log::info!("I2P SAM stream disconnected peer={} iface={}", peer, iface_address);
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = iface_stop.cancelled() => break,
+            _ = tokio::time::sleep(reconnect_wait) => {}
+        }
     }
 }
 
@@ -1644,6 +1653,135 @@ mod tests {
         assert!(!accept_error_requires_session_recreate(&timeout));
     }
 
+    #[tokio::test]
+    async fn i2p_accept_loop_recreates_expired_sam_session_before_accepting_peer() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("fake SAM address").to_string();
+        let (release_peer_tx, release_peer_rx) = oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            let mut release_peer_rx = Some(release_peer_rx);
+            for session_number in 1..=2 {
+                let (session_socket, _) =
+                    listener.accept().await.expect("accept SAM session connection");
+                let mut session_reader = BufReader::new(session_socket);
+                let mut hello = String::new();
+                session_reader.read_line(&mut hello).await.expect("read session HELLO");
+                assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+                session_reader
+                    .get_mut()
+                    .write_all(b"HELLO REPLY RESULT=OK VERSION=3.3\n")
+                    .await
+                    .expect("reply to session HELLO");
+                let mut create = String::new();
+                session_reader.read_line(&mut create).await.expect("read SESSION CREATE");
+                assert!(create.starts_with("SESSION CREATE STYLE=STREAM ID="));
+                session_reader
+                    .get_mut()
+                    .write_all(
+                        format!(
+                            "SESSION STATUS RESULT=OK DESTINATION=fake-{session_number}.b32.i2p\n"
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .expect("reply to SESSION CREATE");
+
+                let (accept_socket, _) =
+                    listener.accept().await.expect("accept SAM stream request");
+                let mut accept_reader = BufReader::new(accept_socket);
+                let mut hello = String::new();
+                accept_reader.read_line(&mut hello).await.expect("read accept HELLO");
+                assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+                accept_reader
+                    .get_mut()
+                    .write_all(b"HELLO REPLY RESULT=OK VERSION=3.3\n")
+                    .await
+                    .expect("reply to accept HELLO");
+                let mut accept = String::new();
+                accept_reader.read_line(&mut accept).await.expect("read STREAM ACCEPT");
+                assert!(accept.starts_with("STREAM ACCEPT ID="));
+
+                if session_number == 1 {
+                    accept_reader
+                        .get_mut()
+                        .write_all(
+                            b"STREAM STATUS RESULT=OK\nSTREAM STATUS RESULT=I2P_ERROR MESSAGE=\"specified ID lxmf-rs-accept is not a STREAM session\"\n",
+                        )
+                        .await
+                        .expect("report expired SAM session");
+                } else {
+                    accept_reader
+                        .get_mut()
+                        .write_all(b"STREAM STATUS RESULT=OK\nfake-incoming-peer\n")
+                        .await
+                        .expect("accept peer on recreated SAM session");
+                    if let Some(release_peer_rx) = release_peer_rx.take() {
+                        let _ = release_peer_rx.await;
+                    }
+                }
+            }
+        });
+
+        let mut interface_manager = crate::iface::InterfaceManager::new(8);
+        let parent_channel = interface_manager.new_channel_with_role(8, IfaceRole::Multicast);
+        let parent_iface = parent_channel.address;
+        let iface_stop = parent_channel.stop.clone();
+        let interface_manager = Arc::new(tokio::sync::Mutex::new(interface_manager));
+        let runtime_status =
+            Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(sam_addr.clone(), true, &[])));
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let peer_routes = Arc::new(tokio::sync::Mutex::new(BTreeMap::new()));
+        let accept_loop = tokio::spawn(run_i2p_accept_loop(
+            parent_iface,
+            "i2p-recreate-session".to_string(),
+            sam_addr,
+            None,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            Duration::from_millis(1),
+            runtime_status.clone(),
+            cancel.clone(),
+            iface_stop.clone(),
+            rx_channel,
+            interface_manager,
+            peer_routes.clone(),
+        ));
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let status = runtime_status.lock().expect("I2P runtime status").to_json();
+                let accepted_peer = status["peers"].as_array().is_some_and(|peers| {
+                    peers.iter().any(|peer| {
+                        peer["peer"].as_str() == Some("fake-incoming-peer")
+                            && peer["direction"].as_str() == Some("incoming")
+                    })
+                });
+                if status["accept_reconnect_attempts"].as_u64() == Some(1)
+                    && status["accept_state"].as_str() == Some("listening")
+                    && accepted_peer
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("expired SAM session should be recreated and accept a peer");
+
+        cancel.cancel();
+        iface_stop.cancel();
+        let _ = release_peer_tx.send(());
+        tokio::time::timeout(Duration::from_secs(2), accept_loop)
+            .await
+            .expect("I2P accept loop shutdown timeout")
+            .expect("I2P accept loop task");
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .expect("fake SAM shutdown timeout")
+            .expect("fake SAM server task");
+    }
+
     #[test]
     fn i2p_sam_session_id_includes_transport_identity_when_available() {
         let iface_address = crate::hash::AddressHash::new([0x33; 16]);
@@ -1906,6 +2044,210 @@ mod tests {
             .await
             .expect("peer loop shutdown timeout")
             .expect("peer loop task");
+    }
+
+    #[tokio::test]
+    async fn i2p_outbound_reconnect_waits_after_established_stream_expires() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("local addr").to_string();
+        let reconnect_wait = Duration::from_millis(120);
+        let (elapsed_tx, elapsed_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (session_socket, _) = listener.accept().await.expect("accept first session");
+            let mut session = BufReader::new(session_socket);
+            for response in [
+                "HELLO REPLY RESULT=OK VERSION=3.3\n",
+                "SESSION STATUS RESULT=OK DESTINATION=fake.b32.i2p\n",
+            ] {
+                let mut command = String::new();
+                session.read_line(&mut command).await.expect("read session command");
+                session.get_mut().write_all(response.as_bytes()).await.expect("reply session");
+            }
+            let (lookup_socket, _) = listener.accept().await.expect("accept first lookup");
+            let mut lookup = BufReader::new(lookup_socket);
+            for response in [
+                "HELLO REPLY RESULT=OK VERSION=3.3\n",
+                "NAMING REPLY RESULT=OK NAME=peer.b32.i2p VALUE=resolved-destination\n",
+            ] {
+                let mut command = String::new();
+                lookup.read_line(&mut command).await.expect("read lookup command");
+                lookup.get_mut().write_all(response.as_bytes()).await.expect("reply lookup");
+            }
+            let (stream_socket, _) = listener.accept().await.expect("accept first stream");
+            let mut stream = BufReader::new(stream_socket);
+            for response in ["HELLO REPLY RESULT=OK VERSION=3.3\n", "STREAM STATUS RESULT=OK\n"] {
+                let mut command = String::new();
+                stream.read_line(&mut command).await.expect("read stream command");
+                stream.get_mut().write_all(response.as_bytes()).await.expect("reply stream");
+            }
+            drop(stream);
+            let disconnected_at = tokio::time::Instant::now();
+
+            let (reconnect_socket, _) = listener.accept().await.expect("accept reconnect session");
+            let elapsed = disconnected_at.elapsed();
+            let mut reconnect = BufReader::new(reconnect_socket);
+            let mut hello = String::new();
+            reconnect.read_line(&mut hello).await.expect("read reconnect HELLO");
+            reconnect
+                .get_mut()
+                .write_all(b"HELLO REPLY RESULT=OK VERSION=3.3\n")
+                .await
+                .expect("reply reconnect HELLO");
+            let _ = elapsed_tx.send(elapsed);
+        });
+
+        let peer = "peer.b32.i2p".to_string();
+        let runtime_status = Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(
+            sam_addr.clone(),
+            false,
+            std::slice::from_ref(&peer),
+        )));
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let (_peer_tx, peer_rx) = tokio::sync::mpsc::channel(8);
+        let peer_loop = tokio::spawn(run_i2p_peer_loop(
+            peer,
+            crate::hash::AddressHash::new([0x44; 16]),
+            sam_addr,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            reconnect_wait,
+            runtime_status,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_channel,
+            peer_rx,
+        ));
+
+        let elapsed = tokio::time::timeout(Duration::from_secs(2), elapsed_rx)
+            .await
+            .expect("reconnect within bound")
+            .expect("elapsed value");
+        assert!(elapsed >= reconnect_wait, "reconnected after only {elapsed:?}");
+        cancel.cancel();
+        peer_loop.abort();
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("fake SAM server exits")
+            .expect("fake SAM server task");
+    }
+
+    #[tokio::test]
+    async fn i2p_outbound_setup_cancellation_closes_stalled_sam_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("local addr").to_string();
+        let (hello_tx, hello_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.expect("accept SAM connection");
+            let mut reader = BufReader::new(socket);
+            let mut hello = String::new();
+            reader.read_line(&mut hello).await.expect("read SAM HELLO");
+            assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+            let _ = hello_tx.send(());
+
+            let mut remainder = Vec::new();
+            tokio::time::timeout(Duration::from_secs(1), reader.read_to_end(&mut remainder))
+                .await
+                .expect("cancelled setup should close its SAM socket")
+                .expect("read until client closes");
+        });
+
+        let peer = "peer.b32.i2p".to_string();
+        let runtime_status = Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(
+            sam_addr.clone(),
+            false,
+            std::slice::from_ref(&peer),
+        )));
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let (_peer_tx, peer_rx) = tokio::sync::mpsc::channel(8);
+        let peer_loop = tokio::spawn(run_i2p_peer_loop(
+            peer,
+            crate::hash::AddressHash::new([0x45; 16]),
+            sam_addr,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            Duration::from_secs(30),
+            runtime_status,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_channel,
+            peer_rx,
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), hello_rx)
+            .await
+            .expect("outbound setup reached stalled SAM handshake")
+            .expect("fake SAM handshake signal");
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), peer_loop)
+            .await
+            .expect("outbound setup should honor cancellation")
+            .expect("peer loop task");
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("fake SAM observes socket cleanup")
+            .expect("fake SAM task");
+    }
+
+    #[tokio::test]
+    async fn i2p_outbound_setup_interface_stop_closes_stalled_sam_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("local addr").to_string();
+        let (hello_tx, hello_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.expect("accept SAM connection");
+            let mut reader = BufReader::new(socket);
+            let mut hello = String::new();
+            reader.read_line(&mut hello).await.expect("read SAM HELLO");
+            assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
+            let _ = hello_tx.send(());
+
+            let mut remainder = Vec::new();
+            tokio::time::timeout(Duration::from_secs(1), reader.read_to_end(&mut remainder))
+                .await
+                .expect("interface stop should close its SAM socket")
+                .expect("read until client closes");
+        });
+
+        let peer = "peer.b32.i2p".to_string();
+        let runtime_status = Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(
+            sam_addr.clone(),
+            false,
+            std::slice::from_ref(&peer),
+        )));
+        let daemon_cancel = CancellationToken::new();
+        let interface_stop = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let (_peer_tx, peer_rx) = tokio::sync::mpsc::channel(8);
+        let peer_loop = tokio::spawn(run_i2p_peer_loop(
+            peer,
+            crate::hash::AddressHash::new([0x45; 16]),
+            sam_addr,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            Duration::from_secs(30),
+            runtime_status,
+            daemon_cancel.clone(),
+            interface_stop.clone(),
+            rx_channel,
+            peer_rx,
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), hello_rx)
+            .await
+            .expect("outbound setup reached stalled SAM handshake")
+            .expect("fake SAM handshake signal");
+        interface_stop.cancel();
+        tokio::time::timeout(Duration::from_secs(1), peer_loop)
+            .await
+            .expect("outbound setup should honor interface stop")
+            .expect("peer loop task");
+        assert!(!daemon_cancel.is_cancelled(), "daemon cancellation remains live");
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("fake SAM observes socket cleanup")
+            .expect("fake SAM task");
     }
 
     #[tokio::test]

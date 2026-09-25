@@ -90,3 +90,22 @@ loopback probe payload metadata. This proves local UDP bind/status and
 receive-side decode telemetry through the real daemon path. It is local-only
 evidence. It is not a substitute for multi-host multicast evidence or
 production broadcast-domain peer evidence.
+
+## Configured Packet Loopback and Restart Trace
+
+The focused production-path trace uses the frozen Python Reticulum reference
+at 99de23c040d507e3fefca19e87b182302902725d. Its UDPInterface binds a UDP
+server for incoming datagrams and sends outgoing packet bytes with
+sendto(data, (forward_ip, forward_port)). The local peer receives an actual
+daemon-generated packet at the configured forward endpoint and sends the same
+bytes back to the daemon bind endpoint. Passing requires configured strict
+startup, bound status and positive RX/TX packet counters, then clean daemon
+shutdown and a second successful bind/startup on the same UDP ports.
+
+Run: ./tools/scripts/udp-configured-packet-smoke.sh
+Evidence scope: configured_udp_valid_packet_loopback_status_and_restart
+
+The structured report records the observed packet length/hash and restart
+status under target/udp-configured-packet-smoke/report.json. This trace covers
+one valid software loopback exchange; it does not prove multicast, multi-host,
+or cross-platform acceptance.

@@ -94,8 +94,10 @@ async fn main() {
     #[cfg(not(feature = "zmq-pipeline-rpc"))]
     {
         let path_table_persistence = context.path_table_persistence;
+        let auto_runtime_shutdowns = context.auto_runtime_shutdowns;
         rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls, context.rpc_unix)
             .await;
+        bootstrap::shutdown_auto_interfaces(auto_runtime_shutdowns).await;
         announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence)
             .await;
     }
@@ -107,8 +109,14 @@ async fn run_daemon_loops(
     zmq_rpc_endpoint: Option<String>,
     zmq_rpc_command: Option<String>,
 ) {
-    let bootstrap::BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls, path_table_persistence } =
-        context;
+    let bootstrap::BootstrapContext {
+        rpc_addr,
+        rpc_unix,
+        daemon,
+        rpc_tls,
+        path_table_persistence,
+        auto_runtime_shutdowns,
+    } = context;
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
@@ -148,5 +156,6 @@ async fn run_daemon_loops(
     }
 
     rpc_loop::run_rpc_loop_until(rpc_addr, daemon, rpc_tls, rpc_unix, shutdown_rx).await;
+    bootstrap::shutdown_auto_interfaces(auto_runtime_shutdowns).await;
     announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence).await;
 }

@@ -1,5 +1,28 @@
 #[cfg(feature = "rnode-ble")]
 impl NativeRnodeBleBackend {
+    async fn bounded_disconnect<F, E>(
+        disconnect: F,
+        connect_timeout: Duration,
+    ) -> Result<(), String>
+    where
+        F: std::future::Future<Output = Result<(), E>>,
+        E: std::fmt::Display,
+    {
+        timeout(connect_timeout, disconnect)
+            .await
+            .map_err(|_| {
+                format!("disconnect timeout after {} ms", connect_timeout.as_millis())
+            })?
+            .map_err(|error| format!("disconnect peripheral: {error}"))
+    }
+
+    async fn disconnect_with_timeout(
+        peripheral: &Peripheral,
+        connect_timeout: Duration,
+    ) -> Result<(), String> {
+        Self::bounded_disconnect(peripheral.disconnect(), connect_timeout).await
+    }
+
     /// Bound platform cleanup so an unresponsive desktop GATT operation cannot
     /// indefinitely prevent a reconnect. Timed-out sessions retain their handles
     /// for a later cleanup attempt.
@@ -62,7 +85,10 @@ impl NativeRnodeBleBackend {
                             self.settings.peripheral_id,
                             configured_err
                         );
-                        if let Err(err) = peripheral.disconnect().await {
+                        if let Err(err) =
+                            Self::disconnect_with_timeout(&peripheral, self.settings.connect_timeout)
+                                .await
+                        {
                             log::debug!(
                                 "RNode BLE configured Android peripheral cleanup failed peripheral_id={} err={}",
                                 self.settings.peripheral_id,
@@ -123,4 +149,22 @@ impl NativeRnodeBleBackend {
         self.resolve_characteristics()
     }
 
+}
+
+#[cfg(all(test, feature = "rnode-ble"))]
+mod disconnect_timeout_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_stalled_configured_device_disconnect_is_bounded_before_scan_fallback() {
+        let started = TokioInstant::now();
+        let result = NativeRnodeBleBackend::bounded_disconnect(
+            std::future::pending::<Result<(), &'static str>>(),
+            Duration::from_millis(10),
+        )
+        .await;
+
+        assert_eq!(result, Err("disconnect timeout after 10 ms".to_string()));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
 }

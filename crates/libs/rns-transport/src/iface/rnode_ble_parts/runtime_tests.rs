@@ -422,3 +422,12 @@ async fn native_rnode_ble_management_handle_queues_frames() {
 
     assert_eq!(frames, vec![KissFrame::Command(KissCommand::Unknown(CMD_BLINK, vec![0x04]))]);
 }
+
+#[test]
+fn stale_windows_paired_address_does_not_authorize_a_different_scanned_device() {
+    let paired_addresses = vec!["AA:BB:CC:DD:EE:FF".to_string()];
+
+    assert!(!rnode_ble_paired_address_allows("11:22:33:44:55:66", Some(&paired_addresses)));
+    assert!(rnode_ble_paired_address_allows("aa-bb-cc-dd-ee-ff", Some(&paired_addresses)));
+    assert!(rnode_ble_paired_address_allows("11:22:33:44:55:66", None));
+}

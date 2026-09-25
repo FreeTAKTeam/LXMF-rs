@@ -439,6 +439,8 @@ cargo build -p rns-tools --bin rnstatus-rs --bin weaveconf-rs --quiet
   --strict-interface-startup >"$RETICULUMD_LOG" 2>&1 &
 RET_PID=$!
 
+# Keep runtime readiness independent of the cold Cargo build above.
+deadline=$((SECONDS + TIMEOUT_SECS))
 while (( SECONDS < deadline )); do
   if ! kill -0 "$RET_PID" >/dev/null 2>&1; then
     fail "reticulumd exited before fake Weave PTY status became healthy"

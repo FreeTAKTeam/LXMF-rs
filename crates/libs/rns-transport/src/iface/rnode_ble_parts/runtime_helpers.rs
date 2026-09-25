@@ -15,11 +15,7 @@ async fn rnode_peripheral_matches(
     {
         return Ok(false);
     }
-    if paired_addresses.is_some_and(|addresses| {
-        !addresses
-            .iter()
-            .any(|address| native_rnode_identifier_matches(address, &peripheral_id))
-    }) {
+    if !rnode_ble_paired_address_allows(peripheral_id.as_str(), paired_addresses) {
         return Ok(false);
     }
     if native_rnode_identifier_matches_any(&peripheral_id, configured_id, aliases) {
@@ -34,11 +30,7 @@ async fn rnode_peripheral_matches(
         if rnode_identifier_is_excluded(&address, exclude_exact_identifier, excluded_identifiers) {
             return Ok(false);
         }
-        if paired_addresses.is_some_and(|addresses| {
-            !addresses
-                .iter()
-                .any(|paired| native_rnode_identifier_matches(paired, &address))
-        }) {
+        if !rnode_ble_paired_address_allows(&address, paired_addresses) {
             return Ok(false);
         }
         if native_rnode_identifier_matches_any(&address, configured_id, aliases) {
@@ -64,6 +56,13 @@ async fn rnode_peripheral_matches(
         }
     }
     Ok(false)
+}
+
+#[cfg(feature = "rnode-ble")]
+fn rnode_ble_paired_address_allows(discovered: &str, paired_addresses: Option<&[String]>) -> bool {
+    paired_addresses.is_none_or(|addresses| {
+        addresses.iter().any(|paired| native_rnode_identifier_matches(paired, discovered))
+    })
 }
 
 #[cfg(feature = "rnode-ble")]

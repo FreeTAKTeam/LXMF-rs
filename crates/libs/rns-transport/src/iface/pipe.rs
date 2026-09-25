@@ -7,14 +7,13 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
+use super::{Interface, InterfaceContext, TxMessage};
 use crate::buffer::OutputBuffer;
 use crate::hash::AddressHash;
 use crate::iface::{
     decode_packet_ifac, encode_packet_ifac, hdlc::Hdlc, is_ifac_violation, record_ifac_violation,
     IfacState, IfaceRole, IfaceSource, InterfaceManager, RxMessage, MAX_IFAC_SIZE_BYTES,
 };
-
-use super::{Interface, InterfaceContext, TxMessage};
 
 #[path = "pipe_parts/process_cleanup.rs"]
 mod process_cleanup;
@@ -255,6 +254,7 @@ async fn run_pipe_process(
     let argv = PipeInterface::parse_command(command)?;
     let mut child = Command::new(&argv[0])
         .args(&argv[1..])
+        .kill_on_drop(true)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()

@@ -77,6 +77,86 @@ jobs:
         run: cargo xtask ci --stage build-matrix
 
 
+  windows-rnode-ble:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Build Windows RNode BLE and run pairing/runtime tests
+        run: cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble -- --nocapture
+
+
+  macos-interface-runtime:
+    name: macOS interface runtime software tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Compile BLE-enabled interface runtime and run software tests
+        run: cargo test -p reticulum-rs-transport --features rnode-ble --lib -- --nocapture
+
+
+  linux-udp-runtime:
+    name: Linux configured UDP runtime software smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Verify configured UDP packet loopback, status, teardown, and restart
+        run: ./tools/scripts/udp-configured-packet-smoke.sh
+      - name: Upload UDP runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: udp-configured-packet-smoke-${{ github.run_id }}
+          path: target/udp-configured-packet-smoke/report.json
+          if-no-files-found: error
+
+
+  linux-weave-runtime:
+    name: Linux configured Weave runtime software smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Weave fake-peer signing dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-cryptography
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Verify configured Weave runtime, display, status, and remote control
+        run: TIMEOUT_SECS=60 ./tools/scripts/weave-fake-pty-smoke.sh
+      - name: Upload Weave software evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weave-fake-pty-smoke-${{ github.run_id }}
+          path: |
+            target/weave-fake-pty-smoke/report.json
+            target/weave-fake-pty-smoke/run.*/reticulumd.log
+            target/weave-fake-pty-smoke/run.*/fake-weave.log
+          if-no-files-found: error
+
+
   test-nextest-unit:
     runs-on: ubuntu-latest
     steps:

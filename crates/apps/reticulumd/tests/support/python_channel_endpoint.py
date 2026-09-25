@@ -674,9 +674,9 @@ class ChannelClient:
                 return 1
             if result.get("status") == RNS.Resource.COMPLETE:
                 if self.payload_kind == "resource-multi-hop":
+                    digest = hashlib.sha256(resource_data).hexdigest()
                     expected = (
-                        f"resource-sha256-metadata:{len(resource_data)}:"
-                        f"{hashlib.sha256(resource_data).hexdigest()}:"
+                        f"resource-sha256-metadata:{len(resource_data)}:{digest}:"
                         f"{result['total_size']}:{resource_metadata}"
                     )
                     while True:
