@@ -41,6 +41,36 @@ fn percent_decode_plus(value: &str) -> Option<String> {
     }
 }
 
+// Match urllib.parse.unquote_plus for /media only: malformed escapes remain
+// literal and invalid UTF-8 is replaced, without relaxing path validation.
+fn media_unquote_plus(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            b'%' if index + 2 < bytes.len() => {
+                if let (Some(high), Some(low)) = (hex_nibble(bytes[index + 1]), hex_nibble(bytes[index + 2])) {
+                    decoded.push((high << 4) | low);
+                    index += 3;
+                } else {
+                    decoded.push(bytes[index]);
+                    index += 1;
+                }
+            }
+            byte => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
 fn percent_encode_plus(value: &str) -> String {
     let mut encoded = String::with_capacity(value.len());
     for byte in value.as_bytes() {
@@ -59,6 +89,13 @@ fn percent_encode_plus(value: &str) -> String {
     encoded
 }
 
+fn image_markup_media_path(group: &str, repository: &str, reference: &str, file_path: &str) -> String {
+    format!(
+        "/media/{group}/{repository}/{reference}/{}",
+        percent_encode_plus(file_path)
+    )
+}
+
 fn resource_metadata(name: &str) -> Option<Vec<u8>> {
     pack_value(&rmpv::Value::Map(vec![(
         rmpv::Value::String("name".into()),
@@ -73,14 +110,40 @@ fn filename(value: &str) -> Option<String> {
 }
 
 impl ReticulumGitNode {
+    fn page_media_blob_after_read_failure(
+        repository_path: &Path,
+        resolved: &str,
+        file_path: &str,
+        failed_stream: Option<Vec<u8>>,
+    ) -> Option<Vec<u8>> {
+        let object_type = Self::page_git_output(
+            repository_path,
+            &["cat-file".into(), "-t".into(), format!("{resolved}:{file_path}")],
+            16,
+        )?;
+        match object_type.as_slice() {
+            b"tree\n" => Self::page_git_output(
+                repository_path,
+                &["show".into(), format!("{resolved}:{file_path}")],
+                MEDIA_BLOB_LIMIT,
+            ),
+            b"blob\n" => failed_stream,
+            _ => None,
+        }
+    }
+
     fn media_request_path(path: &str) -> Option<(String, String, String, String)> {
         let remainder = path.strip_prefix(PAGE_MEDIA)?.trim_start_matches('/');
         let mut components = remainder.splitn(4, '/');
-        let group = percent_decode_plus(components.next()?)?;
-        let repository = percent_decode_plus(components.next()?)?;
-        let reference = percent_decode_plus(components.next()?)?;
-        let file_path = percent_decode_plus(components.next()?)?;
-        if group.is_empty() || repository.is_empty() || reference.is_empty() || file_path.is_empty() {
+        // The pinned Python handler treats these path components literally;
+        // only the file-path tail is URL-decoded with unquote_plus.
+        let group = components.next()?.to_string();
+        let repository = components.next()?.to_string();
+        let reference = components.next()?.to_string();
+        // Python's media handler strips leading/trailing slashes before Git
+        // lookup, so an extra slash after the ref is accepted as a path edge.
+        let file_path = media_unquote_plus(components.next()?).trim_matches('/').to_string();
+        if group.is_empty() || repository.is_empty() || reference.is_empty() {
             return None;
         }
         Some((group, repository, reference, file_path))
@@ -95,15 +158,77 @@ impl ReticulumGitNode {
         map: &[(rmpv::Value, rmpv::Value)],
         remote: [u8; 16],
         link_id: [u8; 16],
+        cancelled: &mut dyn FnMut() -> bool,
     ) -> Option<PageResponse> {
-        map_value(map, &rmpv::Value::String("key".into()))?;
-        let request_path = map_string_value(map, "path")?;
-        let (group, repository, reference, file_path) = Self::media_request_path(&request_path)?;
-        let record = self.accessible_repository(&remote, &group, &repository)?;
+        if map_value(map, &rmpv::Value::String("key".into())).is_none() {
+            return Some(page_denial_response());
+        }
+        let Some(request_path) = map_string_value(map, "path") else {
+            return Some(page_denial_response());
+        };
+        let Some((group, repository, reference, file_path)) = Self::media_request_path(&request_path) else {
+            return Some(page_denial_response());
+        };
+        let Some(record) = self.accessible_repository(&remote, &group, &repository) else {
+            return Some(page_denial_response());
+        };
         let repository_path = record.path.clone();
-        let resolved = Self::resolve_page_ref(&repository_path, &reference)?;
-        let blob = Self::page_blob(&repository_path, &resolved, &file_path, MEDIA_BLOB_LIMIT)?;
-        let original_name = filename(&file_path)?;
+        let Some(resolved) = Self::resolve_page_ref(&repository_path, &reference) else {
+            return Some(page_denial_response());
+        };
+        if file_path.is_empty() {
+            return Some(page_denial_response());
+        }
+        if !Self::valid_page_path(&file_path) {
+            return Some(page_denial_response());
+        }
+        let blob_spec = format!("{resolved}:{file_path}");
+        if Self::page_git_output(
+            &repository_path,
+            &["cat-file".into(), "-s".into(), blob_spec.clone()],
+            64,
+        )
+        .is_none()
+        {
+            return Some(page_denial_response());
+        }
+        // A missing object is the pinned handler's False response above. If a
+        // blob vanishes after its size probe, Python's zero-stat stream proxy
+        // still produces an empty Resource; preserve that race behavior below.
+        let blob = match Self::page_blob_with_status(
+            &repository_path,
+            &resolved,
+            &file_path,
+            MEDIA_BLOB_LIMIT,
+        ) {
+            Some((true, blob)) => blob,
+            Some((false, blob)) => {
+                // The pinned Python handler accepts any object for which
+                // `cat-file -s` succeeds, then streams `git show`; that
+                // includes tree paths, whose response is Git's tree listing.
+                // Python returns the stream even when `git show` exits
+                // unsuccessfully; Resource consumes its bounded stdout.
+                Self::page_media_blob_after_read_failure(
+                    &repository_path,
+                    &resolved,
+                    &file_path,
+                    Some(blob),
+                )?
+            }
+            None => {
+                // Preserve the prior tree fallback for output/read failures
+                // that cannot be represented as a completed child status.
+                Self::page_media_blob_after_read_failure(
+                    &repository_path,
+                    &resolved,
+                    &file_path,
+                    None,
+                )?
+            }
+        };
+        let Some(original_name) = filename(&file_path) else {
+            return Some(page_denial_response());
+        };
         let extension = Path::new(&file_path)
             .extension()
             .and_then(|value| value.to_str())
@@ -127,25 +252,35 @@ impl ReticulumGitNode {
                     "blob".to_string(),
                     format!("{resolved}:{file_path}"),
                 ];
-                let converted = convert_to_webp(
+                let converted = convert_to_webp_with_cancel(
                     &input,
                     &output_path,
                     Some(&repository_path),
                     Some(Duration::from_secs(8)),
                     Some(self.media_quality),
                     self.media_max_dimension,
+                    cancelled,
                 );
                 if converted {
-                    if let Ok(converted_data) = fs::read(&output_path) {
+                    if let Some(converted_data) = read_bounded_file(&output_path, MEDIA_BLOB_LIMIT) {
                         let response_name = format!("{stem}.webp");
                         self.download_succeeded(&group, &repository, false);
                         return Self::file_response(converted_data, &response_name);
                     }
                 }
-                if let Some(paths) = self.active_page_links.get_mut(&link_id) {
-                    paths.remove(&directory);
+                if let Err(error) = Self::remove_tracked_page_media_directory(
+                    &mut self.active_page_links,
+                    link_id,
+                    &directory,
+                    |path| fs::remove_dir_all(path),
+                ) {
+                    log_page_media_cleanup_failure(
+                        "WebP conversion fallback",
+                        link_id,
+                        &directory,
+                        &error,
+                    );
                 }
-                let _ = fs::remove_dir_all(directory);
             }
         }
 

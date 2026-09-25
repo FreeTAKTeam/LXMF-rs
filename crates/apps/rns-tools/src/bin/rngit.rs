@@ -5,6 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[path = "rngit_parts/page_git_output.rs"]
+mod page_git_output;
+
+#[path = "rngit_parts/media_config.rs"]
+mod media_config;
+
 mod rngit_network {
     include!("rngit_parts/network.rs");
 }
@@ -180,6 +186,7 @@ mod tests {
         escape_for_stdout, map_value, san_ref, san_refs, san_sha, PermissionTarget, RemoteGroup,
         RemoteRepository, RepositoryGroup, RepositoryRecord, ReticulumGitClient, ReticulumGitNode,
     };
+    use rns_transport::destination::link::LinkStatus;
     use std::collections::BTreeMap;
     use std::fs;
     use std::process::Command;
@@ -394,6 +401,8 @@ mod tests {
     include!("rngit_parts/issue_612_concurrency_tests.rs");
     include!("rngit_parts/issue_612_wire_schema_tests.rs");
     include!("rngit_parts/issue_613_tests.rs");
+    include!("rngit_parts/issue_613_pagination_tests.rs");
+    include!("rngit_parts/page_git_output_tests.rs");
 
     #[test]
     fn statistics_hooks_record_python_rngit_event_buckets() {

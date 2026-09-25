@@ -1,6 +1,11 @@
-use super::{decode_page_request, page_paths, rngit_paths, Cli, GitCommand, PageResponse, ReticulumGitNode};
+use super::{
+    decode_page_request, log_page_media_cleanup_failure, page_paths, rngit_paths, Cli,
+    GitCommand, PageLinkCleanup, PageResponse, ReticulumGitNode,
+};
+use super::media_config::media_conversion_enabled;
 use rns_transport::destination::link::{LinkEvent, LinkStatus};
 use rns_transport::destination::DestinationName;
+use rns_transport::error::RnsError;
 use rns_transport::hash::AddressHash;
 use rns_transport::identity::{Identity, PrivateIdentity};
 use rns_transport::iface::tcp_client::TcpClient;
@@ -71,7 +76,22 @@ async fn run_async(cli: &Cli) -> io::Result<()> {
     let mut node = ReticulumGitNode::default();
     node.load_repository_root(&root)?;
     node.load_page_templates(&root.join("templates"))?;
-    node.media_conversion = !cli.no_media_conversion;
+    for value in &cli.blocked_identity_hash {
+        let bytes = hex::decode(value).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("invalid blocked identity hash {value:?}: {error}"),
+            )
+        })?;
+        let identity: [u8; 16] = bytes.try_into().map_err(|bytes: Vec<u8>| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("blocked identity hash must be 16 bytes, got {}", bytes.len()),
+            )
+        })?;
+        node.blocked_identities.insert(identity);
+    }
+    node.media_conversion = !cli.no_media_conversion && media_conversion_enabled(cli.config.as_deref())?;
     node.media_quality = cli.media_quality;
     node.media_max_dimension = cli.media_max_dimension.filter(|value| *value > 0);
     let _registered_page_paths = page_paths();
@@ -151,11 +171,19 @@ async fn spawn_interfaces(transport: &Arc<Transport>, cli: &Cli) {
 }
 
 async fn serve(runtime: Runtime) -> io::Result<()> {
+    serve_with_intervals(runtime, Duration::from_secs(5), Duration::from_secs(60)).await
+}
+
+async fn serve_with_intervals(
+    runtime: Runtime,
+    announce_period: Duration,
+    cleanup_period: Duration,
+) -> io::Result<()> {
     let mut link_events = runtime.transport.in_link_events();
     let mut data_events = runtime.transport.received_data_events();
     let mut resource_events = runtime.transport.resource_events();
-    let mut announce_timer = interval(Duration::from_secs(5));
-    let mut cleanup_timer = interval(Duration::from_secs(60));
+    let mut announce_timer = interval(announce_period);
+    let mut cleanup_timer = interval(cleanup_period);
     loop {
         tokio::select! {
             _ = announce_timer.tick() => {
@@ -164,23 +192,24 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
             }
             _ = cleanup_timer.tick() => {
                 let candidates = runtime.node.lock().await.active_page_link_ids();
-                let mut stale = Vec::new();
+                let mut statuses = Vec::with_capacity(candidates.len());
                 for link_id in candidates {
                     let address = AddressHash::new(link_id);
-                    let closed = match runtime.transport.find_in_link(&address).await {
-                        Some(link) => link.lock().await.status() == LinkStatus::Closed,
-                        None => true,
+                    let status = match runtime.transport.find_in_link(&address).await {
+                        Some(link) => Some(link.lock().await.status()),
+                        None => None,
                     };
-                    if closed {
-                        stale.push(link_id);
-                    }
+                    statuses.push((link_id, status));
                 }
-                if !stale.is_empty() {
-                    let removed = runtime.node.lock().await.clean_page_links(&stale);
-                    if removed > 0 && !runtime.silent {
-                        eprintln!("rngit: cleaned {removed} temporary media director{suffix}",
-                            suffix = if removed == 1 { "y" } else { "ies" });
-                    }
+                let cleanup = {
+                    let mut node = runtime.node.lock().await;
+                    clean_stale_page_links(&mut node, statuses)
+                };
+                log_page_link_cleanup_failures(&cleanup);
+                if cleanup.removed_directories > 0 && !runtime.silent {
+                    eprintln!("rngit: cleaned {removed} temporary media director{suffix}",
+                        removed = cleanup.removed_directories,
+                        suffix = if cleanup.removed_directories == 1 { "y" } else { "ies" });
                 }
             }
             result = link_events.recv() => match result {
@@ -193,10 +222,12 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
                             }
                         }
                         LinkEvent::Closed if event.address_hash == runtime.page_destination_hash => {
-                            let removed = runtime.node.lock().await.page_link_closed(address_array(&event.id));
-                            if removed > 0 && !runtime.silent {
+                            let cleanup = runtime.node.lock().await.page_link_closed(address_array(&event.id));
+                            log_page_link_cleanup_failures(&cleanup);
+                            if cleanup.removed_directories > 0 && !runtime.silent {
                                 eprintln!("rngit: cleaned {removed} temporary media director{suffix}",
-                                    suffix = if removed == 1 { "y" } else { "ies" });
+                                    removed = cleanup.removed_directories,
+                                    suffix = if cleanup.removed_directories == 1 { "y" } else { "ies" });
                             }
                         }
                         LinkEvent::Closed => {}
@@ -240,6 +271,13 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
     }
 }
 
+#[cfg(test)]
+mod periodic_cleanup_tests {
+    include!("periodic_cleanup_tests.rs");
+}
+
+include!("page_link_cleanup.rs");
+
 async fn process_request(
     runtime: &Runtime,
     link_id: AddressHash,
@@ -256,13 +294,19 @@ async fn process_request(
         RequestService::Pages => {
             let Some(request) = decode_page_request(&payload).ok().flatten() else { return };
             let _ = request.requested_at;
+            let Some(link) = runtime.transport.find_in_link(&link_id).await else { return };
+            let mut cancelled = || {
+                link.try_lock()
+                    .is_ok_and(|guard| !matches!(guard.status(), LinkStatus::Active))
+            };
             let page_response = {
                 let mut node = runtime.node.lock().await;
-                node.handle_page_request(
+                node.handle_page_request_with_cancel(
                     request.path,
                     &request.data,
                     remote,
                     address_array(&link_id),
+                    &mut cancelled,
                 )
             };
             page_response
@@ -281,13 +325,20 @@ async fn process_request(
                 remote,
                 peer_identity,
             );
-            Some(PageResponse { data, metadata: None })
+            Some(PageResponse { data, metadata: None, response_is_false: false })
         }
     };
     if let Some(response) = response {
         if let Err(error) = send_response(runtime, link_id, request_id, response).await {
             if !runtime.silent {
                 eprintln!("rngit: could not send NomadNet response: {error}");
+            }
+            if matches!(service, RequestService::Pages)
+                && error.kind() == io::ErrorKind::NotConnected
+            {
+                if let Some(link) = runtime.transport.find_in_link(&link_id).await {
+                    link.lock().await.close();
+                }
             }
         }
     }
@@ -379,16 +430,22 @@ async fn send_response(
                 false,
             )
             .await
-            .map_err(|error| {
-                io::Error::other(format!("media Resource response failed: {error:?}"))
+            .map_err(|error| match error {
+                connection @ RnsError::ConnectionError => io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    format!("media Resource response failed: {connection:?}"),
+                ),
+                other => io::Error::other(format!("media Resource response failed: {other:?}")),
             })?;
         return Ok(());
     }
 
-    let envelope = rmpv::Value::Array(vec![
-        rmpv::Value::Binary(request_id.clone()),
-        rmpv::Value::Binary(response.data),
-    ]);
+    let response_value = if response.response_is_false {
+        rmpv::Value::Boolean(false)
+    } else {
+        rmpv::Value::Binary(response.data)
+    };
+    let envelope = rmpv::Value::Array(vec![rmpv::Value::Binary(request_id.clone()), response_value]);
     let mut encoded = Vec::new();
     rmpv::encode::write_value(&mut encoded, &envelope).map_err(io::Error::other)?;
     let link = runtime.transport.find_in_link(&link_id).await.ok_or_else(|| {
@@ -420,7 +477,13 @@ async fn send_response(
             .transport
             .send_response_resource(&link_id, request_id, encoded, None)
             .await
-            .map_err(|error| io::Error::other(format!("page Resource response failed: {error:?}")))?;
+            .map_err(|error| match error {
+                connection @ RnsError::ConnectionError => io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    format!("page Resource response failed: {connection:?}"),
+                ),
+                other => io::Error::other(format!("page Resource response failed: {other:?}")),
+            })?;
         Ok(())
     }
 }

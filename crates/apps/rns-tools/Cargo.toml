@@ -28,7 +28,12 @@ rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version =
 rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.11.0" }
 rand_core = { workspace = true, features = ["getrandom"] }
 bzip2.workspace = true
+# process-wrap 8.2 keeps process-tree cleanup compatible with the workspace MSRV (1.85).
+process-wrap = { version = "=8.2.1", default-features = false, features = ["std", "process-group", "job-object", "tracing"] }
 portable-pty = "=0.8.1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 btleplug = "0.12"
@@ -36,13 +41,14 @@ futures = "0.3.31"
 uuid = "1.16.0"
 tokio = { workspace = true }
 
+[target.'cfg(unix)'.dependencies]
+nix = { version = "=0.30.1", default-features = false, features = ["fs"] }
+rustix = { version = "1.1.2", features = ["pty", "termios"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 # Unify btleplug's Linux dbus dependency with its vendored feature so musl
 # release builds do not try to probe a host glibc dbus installation.
 dbus = { version = "0.9.11", features = ["vendored"] }
-
-[target.'cfg(unix)'.dependencies]
-rustix = { version = "1.1.2", features = ["pty", "termios"] }
 
 [lints]
 workspace = true

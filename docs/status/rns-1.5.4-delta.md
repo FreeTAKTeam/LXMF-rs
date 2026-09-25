@@ -428,14 +428,47 @@ explicit no-compression Resource responses. A new pinned Python/NomadNet
 client trace establishes and identifies a real TCP Reticulum Link, checks
 successful and negative repository/page/file requests, verifies denied access,
 downloads raw media, checks metadata, size, and SHA-256, and validates a live
-`ffmpeg` PNG-to-WebP response with filename metadata. The separate
+`ffmpeg` PNG-to-WebP response with filename metadata. The periodic cleanup sweep
+now removes tracked temporary directories for stale, closed, or missing links;
+a deterministic regression proves those states are cleaned while active-link
+media is retained. A new injected deletion-failure regression verifies the
+directory remains tracked and is removed on the subsequent Link cleanup retry;
+the conversion-fallback and link-cleanup handlers log path/Link context.
+A focused Unix timeout regression also verifies that both WebP pipeline child
+processes are terminated and reaped after a bounded deadline. A separate-process
+pinned-Python test now synchronizes on partial `/media` Resource progress,
+tears down the Link, and verifies no false completion, receiver Resource state
+or files, Linux server child processes, or serving temp directory remain; the
+transport Resource-manager link-close regression asserts tracked sender and
+receiver state is cleared.
+The same PR adds a fail-closed Verify lane that installs ImageMagick and
+GraphicsMagick and runs the production-Link WebP test with their `convert` and
+`gm` commands. It checks real conversion, configured quality/resize arguments,
+decoded dimensions, response metadata, raw fallback, and Link-scoped cleanup.
+Hosted Verify run `36024299709` passed at PR #633 head
+`317cc142dde34ebcdf30a3c007f7d5a5568557aa`. ImageMagick 7's `magick` command,
+`avconv`, and full rendering parity remain unverified.
+An abrupt Python process exit still left the Rust link
+`Active` after 104 seconds without inbound traffic, so the live stale-transition
+path and other filesystem failures remain unverified. The separate
 `git.repositories` list/fetch/push/delete/create/sync/fork/mirror trace does
-not complete the page issue's broader Git/work acceptance. The row remains
-partial and unverified because other conversion backends, complete reference
-rendering, remaining page/file cases, restart/fault cleanup, and end-to-end
-rngit Git/work network workflows remain open. Commit `e41189c8` adds live
-malformed-media requests with missing keys, missing paths, and insufficient
-path components; each fails closed without an unexpected response.
+not complete the page issue's broader Git/work acceptance. The utility row
+remains partial because ImageMagick 7 `magick`, `avconv`, complete reference
+rendering, remaining page/file cases, other restart/fault cleanup paths, and end-to-end
+rngit Git/work network workflows remain open. Commit `e41189c8` initially added
+live malformed-media requests with missing keys, missing paths, and
+insufficient path components. The later #613 production-handler follow-up
+updates those cases to require the pinned scalar `False` response, with no
+Resource metadata or media bytes, and adds same-Link coverage for private
+access, absent blobs, malformed/empty paths, and invalid refs. The
+key-presence contract is now explicit too: a present `None` key is accepted
+and returns the expected Resource bytes and filename metadata, while an absent
+key is denied; the Rust handler already matches. The
+issue-specific follow-up observes the converted-media temp directory during
+the active Python Link and verifies the production `LinkEvent::Closed` handler
+removes it after teardown, against frozen Python commit
+`99de23c040d507e3fefca19e87b182302902725d`. Periodic stale-link, fault, and
+cancellation cleanup remain open.
 
 The #614 implementation slice now has committed local evidence in
 [`evidence/614-native-interfaces.md`](../goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md):

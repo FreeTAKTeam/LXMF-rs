@@ -194,6 +194,198 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
 
+The issue-specific #613 software trace additionally confirms that converted
+media temporary data exists only for the serving Reticulum Link and is removed
+by the production disconnect path against the frozen Python reference. A new
+cross-Link production trace pauses a pinned-Python raw-media Resource at partial
+progress, disconnects a different Link that owns a converted-media directory,
+verifies that directory is gone before resuming, then checks the response's
+exact size and SHA-256. This proves one deterministic cleanup/active-response
+isolation case only; #613 remains partial. A new
+media-path differential also verifies that group, repository, and ref
+components remain literal while only the file-path tail is URL-decoded, as in
+the pinned Python `serve_media`; encoded `%67roup` is denied rather than
+resolving the `group` repository. #613 remains partial.
+The decoded media file path now also matches Python's `strip("/")` edge
+normalization before Git lookup; interior empty components remain invalid.
+The pinned-Python `/media` differential now also sends a file tail that
+decodes to `assets/../README.md`. The frozen handler passes that path to Git's
+`cat-file` object lookup, which returns no blob; the Rust path validation also
+denies it. The production-Link response is scalar `False` without Resource
+metadata or bytes. This covers one encoded dot-segment traversal case only;
+broader path and media-failure parity remain open, and #613 remains partial.
+The production-Link page/media trace now also checks the complete rendered
+invalid-reference response, including navigation, the exact error text, and
+the base template/footer, against a deterministic fixture received by the
+pinned Python Link. This strengthens one page-error case only; #613 remains
+partial.
+The frozen `pages.py::serve_front_page` gate also now matches its exact
+condition: the remote identity must be absent and the pinned null-identity
+hash (`d7db22f63b453c23bb0688dde565b7c1`) must be blocked before `no_ident` is
+rendered. Unit cases cover blocked/unblocked anonymous clients and
+identified-but-blocked behavior; a pinned-Python real-Link trace preserves the
+unblocked anonymous front page, and a second pinned-Python real-Link trace
+asserts the exact `READY` no-identity response for a blocked anonymous client
+without private repository content. The earlier unconditional guard was
+incompatible and has been corrected; #613 remains partial.
+A new separate-process pinned-Python regression synchronizes on partial `/media`
+Resource progress, closes the Link, and verifies no false completion, receiver
+Resource/file state, Linux server child process, or media temp directory
+remains; the transport link-close unit regression also verifies its Resource
+state maps are empty. The periodic sweep removes stale/closed/missing-link
+directories while preserving active-link media, with a deterministic
+regression. A matched abrupt-client-exit trace showed pinned Python cleans the
+media directory immediately, while Rust's failed Resource response left its
+page Link `ACTIVE`; Rust now closes that page Link on the detected response
+failure, with a deterministic regression. Silent peer exits without a failed
+response and other filesystem failures remain unverified. A failure-injection
+regression proves a failed directory deletion stays tracked and succeeds on a
+later link-cleanup retry; cleanup handlers log the path and Link ID, including
+under `--silent`. Focused timeout and injected child-status-error regressions
+prove both WebP pipeline subprocesses are terminated and reaped on those paths,
+allowing conversion fallback and temporary-directory cleanup to complete. This
+does not cover silent peer exits without a failed response or other filesystem
+failures. A new unit regression forces an actual removal error through the
+stale-link sweep helper, confirms the media path remains tracked, and proves a
+later sweep removes it after the directory is restored; other filesystem fault
+paths remain open. The WebP supervisor now also receives cancellation from the requesting
+Link's status; a deterministic Unix regression verifies that disconnect
+cancellation promptly terminates and reaps both live pipeline children. This
+process-level test does not close the broader cleanup criterion. A same-Link
+pinned-Python media differential now verifies the
+successful `main` Resource control and scalar-`False` denials for missing or
+malformed request fields, denied private access, absent blobs, and invalid
+refs, with no Resource metadata or media bytes on denial. Object-info failure
+maps to `False`; a later media-content read failure still maps to no response
+and is now fault-injected over the production TCP Link: the Rust process allows
+`cat-file -s` to succeed and fails the subsequent blob read, while the pinned
+Python client observes neither a response nor a failed callback before
+timeout. This matches the frozen Python handler and Link semantics, so no
+production change was needed. Verify runs this exact ignored regression
+against its pinned Reticulum checkout. Verify also runs the exact pinned-Python
+raw-media fallback test with an unavailable WebP backend. The utility and full
+operational parity rows remain partial.
+The current #633 software increment also caps converted WebP output reads at
+the 32 MiB media-response limit and falls back to the bounded raw response when
+converted output is oversized or unreadable. Its exact-limit/over-limit unit
+regression and full `rngit` unit suite pass. A live fake `ffmpeg` process now
+emits 32 MiB plus one byte and verifies bounded capture, prompt child
+termination/reaping, and partial-output removal; over-limit output from a real
+production backend remains unverified. Real production-Link encoding with
+ImageMagick 6 `convert`, GraphicsMagick `gm`, and ImageMagick 7 `magick` now
+passes locally against the pinned Python client; the `magick` runtime is the
+official checksum-pinned 7.1.2-31 AppImage. Hosted Verify already covers
+`convert` and `gm`; the updated hosted `magick` smoke/integration lane is
+pending. Tree/commit pagination, navigable child links, and file-scoped commit
+history now have local source-contract regressions. Full rendered-output,
+Markdown, diff/work-document, remaining media, and lifecycle parity remain
+partial for #613.
+Automatic WebP backend selection now also retains Python's `_winner` behavior:
+the previously selected available backend stays preferred, explicit backend
+configuration still wins, and a missing cached executable falls back to normal
+preference order. Rust unit regressions cover that sequence, with a separate
+ignored test exercising the pinned Python helper directly; the broader #613
+acceptance remains partial.
+Backend discovery now also matches Python's executable-file eligibility on
+Unix, so a non-executable earlier converter cannot mask a later usable one; a
+focused filesystem unit regression covers the permission check. Hosted
+production-Link fixtures prove real `convert` and `gm` encoding; the local
+ImageMagick 7 `magick` result is recorded above, while `avconv` and visual
+parity remain unverified, and broader #613 acceptance remains partial.
+The current #633 increment also wires two existing ignored process regressions
+into Verify: exact media CLI argv forwarding and encoder-failure raw fallback
+plus conversion-directory cleanup. Both exact filters passed locally against
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`; hosted execution of the
+new steps is pending. This adds CI coverage only and does not close the wider
+#613 lifecycle/filesystem gaps.
+The #633 follow-up adds a pinned-Python production-Link test for explicit
+`avconv` selection using a deterministic stub executable. It verifies the
+complete quality/resize argv—including shell-sensitive filter text—and the
+WebP Resource response. No local `avconv` or installable `libav-tools` package
+was available; this is process-wiring evidence only, not real encoder or
+visual parity, so the image/WebP acceptance remains open pending real
+`avconv` behavior and the other listed gaps. The exact ignored test passed
+locally against the pinned Reticulum commit; hosted execution is pending.
+The #633 follow-up also verifies runtime WebP configuration forwarding: a
+production `rngit` process selects a deterministic stub `ffmpeg`, passes its
+configured quality and maximum-dimension options, and returns WebP metadata to
+a pinned Python Link. This adds CLI-to-backend wiring evidence only; #613
+remains partial. A new config-file path reads `[pages].media_conversion`
+from `--config <directory>/config`, defaults conversion on, rejects malformed
+values, and preserves `--no-media-conversion` as an explicit override. The
+production-Link regression confirms configured-off serves the original PNG;
+this closes that configuration slice only, while the remaining #613
+page/media/error cases remain open. A second pinned-Python Link regression
+injects a nonzero encoder exit, verifies the exact raw PNG fallback and filename
+metadata, checks that the encoder's stderr detail is logged, and confirms the
+failed conversion directory is removed. No production mismatch was found. The
+image-markup fixture now also records the pinned `urllib.parse.quote_plus`
+output for a filename containing UTF-8, `+`, `%`, space, and `#`; no Rust
+mismatch was observed and broader rendering/retrieval parity remains open. The
+new Verify lane provisions ImageMagick and GraphicsMagick and runs the production-Link test
+against real `convert` and `gm` executables, checking forwarded quality and
+resize arguments, 8x4-to-1x1 WebP output, filename metadata, raw fallback, and
+Link-scoped cleanup. Hosted Verify run `36024299709` passed at PR #633 head
+`317cc142dde34ebcdf30a3c007f7d5a5568557aa`; that run did not exercise the
+ImageMagick 7 `magick` CLI. The newer local AppImage production-Link evidence
+is recorded separately below; `avconv` and broader rendering parity remain
+unverified.
+The production-Link page/media differential also covers one nested image path
+containing a space and confirms that rendered Micron markup matches the frozen
+Python `quote_plus(file_path)` encoding. A focused parity test additionally
+confirms group, repository, and ref are interpolated literally, with only the
+file path encoded as in pinned `pages.py`. Other template and rendering
+behavior remains unverified, so #613 stays partial.
+The frozen handler's key check is presence-only: a `None` value with a valid
+media path still returns the Resource and filename metadata. A production-Link
+regression now proves that response alongside absent-key denial; Rust already
+matches, so this slice required no production change.
+
+A new pinned-Python Link regression also forces the recognized `magick` backend
+while an isolated service `PATH` exposes only an alternate `ffmpeg` sentinel
+and `git`; it verifies raw media is returned without falling through to that
+encoder. The local pinned-Python test passes at PR commit `e7563fca`; Verify runs
+the same regression.
+Local pinned-Python production-Link conversion with checksum-pinned ImageMagick
+7 `magick` now passes; the updated hosted Verify step is pending. Real
+`avconv` conversion and broader visual parity remain unverified, so #613 stays
+partial.
+
+The #633 follow-up adds two filesystem-failure acceptance slices: a regular
+file at the Rust service's `TMPDIR` makes conversion temp-directory creation
+fail, and a service file-size limit makes the real conversion output write
+fail. A pinned Python production Link receives the exact original `/media`
+Resource in both cases, matching the frozen Python conversion-failure fallback;
+no production change was needed. A separate ordered filesystem fault removes
+the fixture repository working directory after blob-info lookup, preventing the
+Rust source command from starting. The pinned Python Link receives no response,
+then recovers on the same Link after restoration, matching frozen `pages.py`
+`Popen` failure behavior; no Resource is constructed and no production change
+was needed. One metadata/stat race is now also covered: after a successful
+object-size probe, an injected failed blob stream for an object that remains a
+blob returns the zero-byte Resource implied by Python's zero-stat pipe path.
+Other metadata/stat races and the broader #613 matrix remain open.
+
+A pinned-Python-client production-Link regression now also checks zero-length
+and nonempty tracked media blobs. The pinned source confirms `/media` returns a
+`git show` pipe whose `stat` size is zero and `Resource.py` proxies the stream;
+Rust serves the expected filenames and bytes while keeping the Link active.
+This is a source-checked, reference-shaped case against the Rust server, not a
+Python-server differential. Other metadata/stat races and broader #613
+acceptance remain open.
+
+The pinned-Python `/media` trace now also covers a tracked directory path:
+reference `get_blob_info` accepts its tree object size and `get_blob_stream`
+uses `git show`, so Rust returns the same tree listing and basename metadata
+instead of producing no response. `page_git_output` now reads at most the
+configured limit plus one byte, then promptly terminates and reaps an
+over-limit child; previously `Command::output()` buffered all stdout before
+rejecting excess data. A host-independent child-process regression verifies
+bounded rejection and reaping. The regression also retains the zero-stat
+empty/nonempty blob checks. This is source-checked against the pinned Python
+handler with a pinned Python Link client to the Rust service, not a
+Python-server differential; #613 remains partial.
+
 The current #631 increment adds one isolated `rnpath` discovery trace: the Rust
 CLI calls a live `reticulumd` TCP RPC while a separate pinned-Python peer
 announces the target over a TCP interface. This closes only the mocked-boundary
@@ -2698,6 +2890,15 @@ public Reticulum networks, and Sideband/MeshChatX/Columba or other
 third-party-client claims remain separate deferred evidence tracks. They do not
 downgrade the completed software inventory and must not be described as
 validated without their own evidence.
+
+Rust also matches the pinned `pages.py::get_template` fallback for dynamic
+template process failures: spawn/I/O/timeout/decode errors are logged and the
+override is treated as unavailable, while stdout from nonzero exits remains
+usable as in Python's `check=False` call. Unit regressions cover missing and
+unlaunchable interpreters plus nonzero exit; a pinned-Python client over a
+production TCP Link proves missing-interpreter fallback. Rust keeps a 2-second
+and 256-KiB safety bound, which is documented as a deliberate divergence. The
+broader #613 rendering and lifecycle acceptance remains partial.
 
 ## Active Execution Order
 

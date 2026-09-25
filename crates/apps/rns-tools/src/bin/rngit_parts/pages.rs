@@ -15,6 +15,10 @@ const PAGE_RELEASES: &str = "/page/releases.mu";
 const PAGE_RELEASE: &str = "/page/release.mu";
 const PAGE_WORK: &str = "/page/work.mu";
 const PAGE_WORK_DOC: &str = "/page/work_doc.mu";
+const NULL_IDENTITY_HASH: [u8; 16] = [
+    0xd7, 0xdb, 0x22, 0xf6, 0x3b, 0x45, 0x3c, 0x23, 0xbb, 0x06, 0x88, 0xdd, 0xe5, 0x65, 0xb7,
+    0xc1,
+];
 const PAGE_MEDIA: &str = "/media";
 const FILE_ARTIFACT: &str = "/file/artifact";
 const FILE_DOWNLOAD: &str = "/file/download";
@@ -50,13 +54,44 @@ static MEDIA_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 pub(crate) struct PageResponse {
     pub data: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
+    pub response_is_false: bool,
 }
+
+#[cfg(all(test, unix))]
+#[path = "issue_613_template_failure_tests.rs"]
+mod issue_613_template_failure_tests;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DecodedPageRequest {
     pub path: &'static str,
     pub requested_at: f64,
     pub data: rmpv::Value,
+}
+
+#[derive(Default)]
+pub(crate) struct PageLinkCleanup {
+    pub removed_directories: usize,
+    pub failures: Vec<PageLinkCleanupFailure>,
+}
+
+pub(crate) struct PageLinkCleanupFailure {
+    pub link_id: [u8; 16],
+    pub directory: PathBuf,
+    pub error: io::Error,
+}
+
+fn log_page_media_cleanup_failure(
+    context: &str,
+    link_id: [u8; 16],
+    directory: &Path,
+    error: &io::Error,
+) {
+    // Keep unrecovered temp-data failures visible even when routine output is silent.
+    eprintln!(
+        "rngit: failed to remove temporary media directory {} for link {} during {context}; retained for retry: {error}",
+        directory.display(),
+        hex::encode(link_id),
+    );
 }
 
 pub(crate) fn page_paths() -> &'static [&'static str] {
@@ -116,7 +151,11 @@ fn null_identity(identity: &[u8; 16]) -> bool {
 }
 
 fn page_response(data: Vec<u8>, metadata: Option<Vec<u8>>) -> PageResponse {
-    PageResponse { data, metadata }
+    PageResponse { data, metadata, response_is_false: false }
+}
+
+fn page_denial_response() -> PageResponse {
+    PageResponse { data: Vec::new(), metadata: None, response_is_false: true }
 }
 
 impl ReticulumGitNode {
@@ -159,11 +198,20 @@ impl ReticulumGitNode {
                 continue;
             };
             let content = match fs::metadata(&path) {
-                Ok(metadata) if is_executable_file(&metadata) => run_permission_resolver(&path)?,
+                Ok(metadata) if is_executable_file(&metadata) => match run_dynamic_template(&path) {
+                    Ok(content) => content,
+                    Err(error) => {
+                        eprintln!(
+                            "rngit: could not get dynamic template content from {}: {error}",
+                            path.display()
+                        );
+                        continue;
+                    }
+                },
                 Ok(_) => fs::read_to_string(&path)?,
                 Err(error) => return Err(error),
             };
-            if content.len() > 256 * 1024 {
+            if content.len() > MAX_DYNAMIC_TEMPLATE_OUTPUT {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("page template is too large: {}", path.display()),
@@ -183,19 +231,41 @@ impl ReticulumGitNode {
         self.active_page_links.keys().copied().collect()
     }
 
-    pub(crate) fn clean_page_links(&mut self, link_ids: &[[u8; 16]]) -> usize {
-        link_ids.iter().map(|link_id| self.page_link_closed(*link_id)).sum()
+    pub(crate) fn clean_page_links(&mut self, link_ids: &[[u8; 16]]) -> PageLinkCleanup {
+        let mut cleanup = PageLinkCleanup::default();
+        for link_id in link_ids {
+            let link_cleanup = self.page_link_closed(*link_id);
+            cleanup.removed_directories += link_cleanup.removed_directories;
+            cleanup.failures.extend(link_cleanup.failures);
+        }
+        cleanup
     }
 
-    pub fn page_link_closed(&mut self, link_id: [u8; 16]) -> usize {
-        let Some(paths) = self.active_page_links.remove(&link_id) else { return 0 };
-        let mut removed = 0;
-        for path in paths {
-            if fs::remove_dir_all(&path).is_ok() {
-                removed += 1;
+    pub(crate) fn page_link_closed(&mut self, link_id: [u8; 16]) -> PageLinkCleanup {
+        let paths = self
+            .active_page_links
+            .get(&link_id)
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let mut cleanup = PageLinkCleanup::default();
+        for directory in paths {
+            match Self::remove_tracked_page_media_directory(
+                &mut self.active_page_links,
+                link_id,
+                &directory,
+                |path| fs::remove_dir_all(path),
+            ) {
+                Ok(true) => cleanup.removed_directories += 1,
+                Ok(false) => {}
+                Err(error) => {
+                    cleanup.failures.push(PageLinkCleanupFailure { link_id, directory, error })
+                }
             }
         }
-        removed
+        if cleanup.failures.is_empty() {
+            self.active_page_links.remove(&link_id);
+        }
+        cleanup
     }
 
     pub(crate) fn next_media_directory(&mut self, link_id: [u8; 16]) -> io::Result<PathBuf> {
@@ -248,9 +318,20 @@ impl ReticulumGitNode {
         remote_identity: [u8; 16],
         link_id: [u8; 16],
     ) -> Option<PageResponse> {
+        self.handle_page_request_with_cancel(path, data, remote_identity, link_id, &mut || false)
+    }
+
+    pub(crate) fn handle_page_request_with_cancel(
+        &mut self,
+        path: &str,
+        data: &rmpv::Value,
+        remote_identity: [u8; 16],
+        link_id: [u8; 16],
+        cancelled: &mut dyn FnMut() -> bool,
+    ) -> Option<PageResponse> {
         let map = request_map(data);
         if path == PAGE_MEDIA {
-            return self.serve_media(map, remote_identity, link_id);
+            return self.serve_media(map, remote_identity, link_id, cancelled);
         }
         if path == FILE_ARTIFACT {
             return self.serve_artifact(map, remote_identity);
@@ -265,7 +346,7 @@ impl ReticulumGitNode {
             return None;
         }
         if null_identity(&remote_identity)
-            && self.blocked_identities.contains(&remote_identity)
+            && self.blocked_identities.contains(&NULL_IDENTITY_HASH)
         {
             return Some(self.no_ident());
         }
@@ -287,6 +368,24 @@ impl ReticulumGitNode {
         }
     }
 
+    fn remove_tracked_page_media_directory(
+        active_page_links: &mut BTreeMap<[u8; 16], BTreeSet<PathBuf>>,
+        link_id: [u8; 16],
+        directory: &Path,
+        remove_directory: impl FnOnce(&Path) -> io::Result<()>,
+    ) -> io::Result<bool> {
+        let removed = match remove_directory(directory) {
+            Ok(()) => true,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error),
+        };
+
+        if let Some(directories) = active_page_links.get_mut(&link_id) {
+            directories.remove(directory);
+        }
+        Ok(removed)
+    }
+
     #[allow(dead_code)]
     pub(crate) fn handle_page_map_request(
         &mut self,
@@ -296,7 +395,14 @@ impl ReticulumGitNode {
     ) -> Vec<u8> {
         let value = rmpv::Value::Map(data.to_vec());
         match self.handle_page_request(path, &value, remote_identity, [0; 16]) {
-            Some(PageResponse { data, .. }) => response(Self::RES_OK, "", Some(&rmpv::Value::Binary(data))),
+            Some(page_response) => {
+                let value = if page_response.response_is_false {
+                    rmpv::Value::Boolean(false)
+                } else {
+                    rmpv::Value::Binary(page_response.data)
+                };
+                response(Self::RES_OK, "", Some(&value))
+            }
             None => response(Self::RES_NOT_FOUND, "Not found", None),
         }
     }

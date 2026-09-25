@@ -5,6 +5,49 @@ use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[path = "rngit_python_interop/issue_613_cleanup.rs"]
+mod issue_613_cleanup;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_cleanup_isolation.rs"]
+mod issue_613_cleanup_isolation;
+#[path = "rngit_python_interop/issue_613_configured_backend.rs"]
+mod issue_613_configured_backend;
+#[path = "rngit_python_interop/issue_613_media_access.rs"]
+mod issue_613_media_access;
+#[path = "rngit_python_interop/issue_613_media_compression.rs"]
+mod issue_613_media_compression;
+#[path = "rngit_python_interop/issue_613_media_invalid_ref.rs"]
+mod issue_613_media_invalid_ref;
+#[path = "rngit_python_interop/issue_613_media_options.rs"]
+mod issue_613_media_options;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_media_read_failure.rs"]
+mod issue_613_media_read_failure;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_media_source_open_failure.rs"]
+mod issue_613_media_source_open_failure;
+#[path = "rngit_python_interop/issue_613_media_traversal.rs"]
+mod issue_613_media_traversal;
+#[path = "rngit_python_interop/issue_613_media_url.rs"]
+mod issue_613_media_url;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_media_zero_stat.rs"]
+mod issue_613_media_zero_stat;
+#[path = "rngit_python_interop/issue_613_no_ident.rs"]
+mod issue_613_no_ident;
+#[cfg(target_os = "linux")]
+#[path = "rngit_python_interop/issue_613_output_open_failure.rs"]
+mod issue_613_output_open_failure;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_output_write_failure.rs"]
+mod issue_613_output_write_failure;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_temp_directory_failure.rs"]
+mod issue_613_temp_directory_failure;
+#[cfg(unix)]
+#[path = "rngit_python_interop/issue_613_template_launch_failure.rs"]
+mod issue_613_template_launch_failure;
+
 static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[path = "rngit_python_interop/typed_msgpack.rs"]
@@ -30,6 +73,22 @@ fn wait_for_port(port: u16, child: &mut Child) -> io::Result<()> {
         thread::sleep(Duration::from_millis(25));
     }
     Err(io::Error::new(io::ErrorKind::TimedOut, "rngit did not open its TCP port"))
+}
+
+fn wait_for_empty_directory(directory: &Path) -> io::Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if fs::read_dir(directory)?.next().transpose()?.is_none() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("temporary media files remain under {}", directory.display()),
+            ));
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 fn python_repo() -> PathBuf {
@@ -96,6 +155,10 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
     fs::write(source.join("README.md"), b"# Python rngit interop\n")?;
     let media = (0..8192).map(|index| (index as u8).wrapping_mul(29)).collect::<Vec<_>>();
     fs::write(source.join("image.png"), &media)?;
+    fs::create_dir_all(source.join("assets"))?;
+    fs::write(source.join("assets/space name.bin"), b"percent decoded media path\0\xff\n")?;
+    fs::write(source.join("assets/nested image.png"), b"\x89PNG\xffnested image")?;
+    fs::write(source.join("large.png"), vec![0x5a; 8 * 1024 * 1024])?;
     fs::write(
         source.join("valid.png"),
         [
@@ -106,7 +169,7 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
             0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
         ],
     )?;
-    run_git(&source, &["add", "README.md", "image.png", "valid.png"])?;
+    run_git(&source, &["add", "README.md", "image.png", "large.png", "valid.png", "assets"])?;
     run_git(&source, &["commit", "-qm", "interop fixture"])?;
 
     run_git(&group, &["init", "--bare", "-q", "repo"])?;
@@ -199,6 +262,7 @@ fn run_python_client(
     config_dir: &Path,
     identity: &Path,
     destination: &str,
+    media_temp_directory: &Path,
 ) -> io::Result<Output> {
     const CLIENT: &str = r#"
 import hashlib
@@ -207,9 +271,10 @@ import os
 import sys
 import threading
 import time
+import urllib.parse
 import RNS
 
-config_dir, identity_path, destination_hex = sys.argv[1:4]
+config_dir, identity_path, destination_hex, media_temp_directory = sys.argv[1:5]
 RNS.Reticulum(configdir=config_dir, loglevel=0)
 identity = RNS.Identity.from_file(identity_path) if os.path.isfile(identity_path) else RNS.Identity()
 if not os.path.isfile(identity_path):
@@ -264,6 +329,8 @@ def request(path, data):
             result["name"] = None
         result["sha256"] = hashlib.sha256(payload).hexdigest()
         result["size"] = len(payload)
+        if not hasattr(value, "read"):
+            result["body"] = payload.decode("utf-8", errors="replace")
         result["page_has_repository"] = b"Repository" in payload
         result["has_not_found"] = b"Not Found" in payload
         result["has_ref_not_found"] = b"reference was not found" in payload
@@ -289,11 +356,25 @@ def request(path, data):
         raise RuntimeError(result["error"] + ": " + path)
     return result
 
-def request_failure(path, data):
+def request_media_denial(path, data):
     finished = threading.Event()
-    result = {"failed": False, "timed_out": False, "unexpected_response": False}
+    result = {
+        "failed": False,
+        "timed_out": False,
+        "response_received": False,
+        "response_is_false": False,
+        "metadata_present": False,
+        "media_bytes_received": False,
+    }
     def response(receipt):
-        result["unexpected_response"] = True
+        value = receipt.response
+        result["response_received"] = True
+        result["response_is_false"] = value is False
+        result["metadata_present"] = receipt.metadata is not None
+        if hasattr(value, "read"):
+            result["media_bytes_received"] = bool(value.read())
+        elif isinstance(value, (bytes, bytearray)):
+            result["media_bytes_received"] = bool(value)
         finished.set()
     def failed(receipt):
         result["failed"] = True
@@ -353,6 +434,18 @@ media = request(
         "path": "/media/group/repo/HEAD/image.png",
     },
 )
+image_page = request(
+    "/page/blob.mu",
+    {
+        "var_g": "group",
+        "var_r": "repo",
+        "var_ref": "HEAD",
+        "var_path": "assets/nested image.png",
+    },
+)
+expected_image_markup = "`(Image file`w=n`a=c`:/media/group/repo/HEAD/" + urllib.parse.quote_plus("assets/nested image.png") + ")"
+if expected_image_markup not in image_page["body"]:
+    raise RuntimeError(f"nested image markup differs from pinned quote_plus behavior: {image_page['body']}")
 converted_media = request(
     "/media",
     {
@@ -360,15 +453,20 @@ converted_media = request(
         "path": "/media/group/repo/HEAD/valid.png",
     },
 )
-missing_media_key = request_failure(
+media_temp_directories_during_link = [
+    name for name in os.listdir(media_temp_directory) if name.startswith("rngit-media-")
+]
+if not media_temp_directories_during_link:
+    raise RuntimeError("successful WebP conversion did not retain link-scoped temporary data")
+missing_media_key = request_media_denial(
     "/media",
     {"path": "/media/group/repo/HEAD/image.png"},
 )
-missing_media_path = request_failure(
+missing_media_path = request_media_denial(
     "/media",
     {"key": b"rngit-python-interop"},
 )
-malformed_media_path = request_failure(
+malformed_media_path = request_media_denial(
     "/media",
     {"key": b"rngit-python-interop", "path": "/media/group/repo"},
 )
@@ -390,8 +488,15 @@ for label, result in [
     ("missing media path", missing_media_path),
     ("malformed media path", malformed_media_path),
 ]:
-    if (not result["failed"] and not result["timed_out"]) or result["unexpected_response"]:
-        raise RuntimeError(f"{label} did not fail closed: {result}")
+    if (
+        result["failed"]
+        or result["timed_out"]
+        or not result["response_received"]
+        or not result["response_is_false"]
+        or result["metadata_present"]
+        or result["media_bytes_received"]
+    ):
+        raise RuntimeError(f"{label} did not return the reference False denial: {result}")
 print(json.dumps({
     "page": page,
     "missing_repository": missing_repository,
@@ -400,7 +505,9 @@ print(json.dumps({
     "denied_repository": denied_repository,
     "download": download,
     "media": media,
+    "image_page": image_page,
     "converted_media": converted_media,
+    "media_temp_directories_during_link": len(media_temp_directories_during_link),
     "missing_media_key": missing_media_key,
     "missing_media_path": missing_media_path,
     "malformed_media_path": malformed_media_path,
@@ -412,6 +519,7 @@ print(json.dumps({
         .arg(config_dir)
         .arg(identity)
         .arg(destination)
+        .arg(media_temp_directory)
         .env("PYTHONPATH", repo)
         .output()
 }
@@ -1033,141 +1141,5 @@ fn spawn_rngit_server(root: &Path, port: u16, identity_seed: &str) -> io::Result
         .spawn()
 }
 
-#[test]
-#[ignore = "requires local Python Reticulum checkout"]
-fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
-    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
-    let temp = tempfile::tempdir()?;
-    let root = create_repository_fixture(temp.path())?;
-    let python_repo = python_repo();
-    if !python_repo.join("RNS/Link.py").is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
-        ));
-    }
-
-    let port = free_port()?;
-    let identity_seed = "rngit-python-interop-server";
-    if !Command::new("ffmpeg")
-        .arg("-version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?
-        .success()
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "pinned Python rngit interop requires ffmpeg for the conversion trace",
-        ));
-    }
-    let mut server = Command::new(env!("CARGO_BIN_EXE_rngit"))
-        .args([
-            "--root",
-            root.to_string_lossy().as_ref(),
-            "--listen",
-            &format!("127.0.0.1:{port}"),
-            "--identity-seed",
-            identity_seed,
-            "--silent",
-        ])
-        .env("RNGIT_MEDIA_BACKEND", "ffmpeg")
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-    let result = (|| {
-        wait_for_port(port, &mut server)?;
-        let destination = rust_destination(&root, identity_seed)?;
-        let config_dir = temp.path().join("python-client");
-        fs::create_dir_all(&config_dir)?;
-        write_python_config(&config_dir, port)?;
-        let identity = config_dir.join("identity");
-        let output = run_python_client(&python_repo, &config_dir, &identity, &destination)?;
-        if !output.status.success() {
-            return Err(io::Error::other(format!(
-                "Python rngit client failed: {}\nstdout:\n{}\nstderr:\n{}",
-                output.status,
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("\"page_has_repository\": true"), "page response: {stdout}");
-        assert!(stdout.contains("\"name\": \"image.png\""), "media metadata: {stdout}");
-        assert!(
-            stdout.contains(
-                "\"sha256\": \"f8e920545e99cdc9bbc2650eb8282344e8971a7ff0c397c91355d0fcaf6c61fa\""
-            ),
-            "media checksum: {stdout}"
-        );
-        assert!(stdout.contains("\"size\": 8192"), "media size: {stdout}");
-        assert!(stdout.contains("\"name\": \"valid.webp\""), "converted media metadata: {stdout}");
-        assert!(stdout.contains("\"is_webp\": true"), "converted media payload: {stdout}");
-
-        let git_destination = rust_git_destination(&root, identity_seed)?;
-        let git_config_dir = temp.path().join("python-git-client");
-        fs::create_dir_all(&git_config_dir)?;
-        write_python_config(&git_config_dir, port)?;
-        let git_identity = git_config_dir.join("identity");
-        let git_output = run_python_git_client(
-            &python_repo,
-            &git_config_dir,
-            &git_identity,
-            &git_destination,
-            &temp.path().join("source"),
-        )?;
-        if !git_output.status.success() {
-            return Err(io::Error::other(format!(
-                "Python rngit Git client failed: {}\nstdout:\n{}\nstderr:\n{}",
-                git_output.status,
-                String::from_utf8_lossy(&git_output.stdout),
-                String::from_utf8_lossy(&git_output.stderr)
-            )));
-        }
-        let git_stdout = String::from_utf8_lossy(&git_output.stdout);
-        assert!(
-            !root.join("private/repo.work").exists(),
-            "denied work request created persistent work state"
-        );
-        assert!(git_stdout.contains("\"status\": 0"), "Git list status: {git_stdout}");
-        assert!(git_stdout.contains("\"contains_main\": true"), "Git list payload: {git_stdout}");
-        assert!(git_stdout.contains("\"fetch_status\": 0"), "Git fetch status: {git_stdout}");
-        assert!(git_stdout.contains("\"fetch_valid\": true"), "Git fetch bundle: {git_stdout}");
-        assert!(!git_stdout.contains("\"fetch_size\": 0"), "Git fetch was empty: {git_stdout}");
-        assert!(git_stdout.contains("\"push_status\": 0"), "Git push status: {git_stdout}");
-        assert!(
-            git_stdout.contains("\"push_contains_python_ref\": true"),
-            "Git push ref listing: {git_stdout}"
-        );
-        assert!(git_stdout.contains("\"delete_status\": 0"), "Git delete status: {git_stdout}");
-        assert!(
-            git_stdout.contains("\"delete_removed_python_ref\": true"),
-            "Git delete ref listing: {git_stdout}"
-        );
-        assert!(git_stdout.contains("\"sync_status\": 0"), "Git sync status: {git_stdout}");
-        assert!(
-            git_stdout.contains("\"sync_contains_upstream_ref\": true"),
-            "Git sync ref listing: {git_stdout}"
-        );
-        assert!(git_stdout.contains("\"fork_status\": 0"), "Git fork status: {git_stdout}");
-        assert!(
-            git_stdout.contains("\"fork_contains_main\": true"),
-            "Git fork ref listing: {git_stdout}"
-        );
-        assert!(git_stdout.contains("\"mirror_status\": 0"), "Git mirror status: {git_stdout}");
-        assert!(
-            git_stdout.contains("\"mirror_contains_main\": true"),
-            "Git mirror ref listing: {git_stdout}"
-        );
-        assert!(git_stdout.contains("\"create_status\": 0"), "Git create status: {git_stdout}");
-        assert!(
-            git_stdout.contains("\"create_registered_repository\": true"),
-            "Git create listing: {git_stdout}"
-        );
-        Ok(())
-    })();
-    let _ = server.kill();
-    let _ = server.wait();
-    result
-}
+include!("rngit_python_interop/issue_612_work_restart.rs");
+include!("rngit_python_interop/issue_613_page_media.rs");

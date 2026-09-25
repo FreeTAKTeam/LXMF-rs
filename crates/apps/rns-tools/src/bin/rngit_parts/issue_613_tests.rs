@@ -1,6 +1,12 @@
-use super::{decode_page_request, page_paths};
+use super::{decode_page_request, image_markup_media_path, page_paths};
+use super::MEDIA_TEST_ENV_LOCK;
 use rns_transport::destination::link::Link;
+use std::io;
 use std::path::Path;
+
+const PYTHON_NULL_IDENTITY_HASH: [u8; 16] = [
+    0xd7, 0xdb, 0x22, 0xf6, 0x3b, 0x45, 0x3c, 0x23, 0xbb, 0x06, 0x88, 0xdd, 0xe5, 0x65, 0xb7, 0xc1,
+];
 
 fn run_git(directory: &Path, args: &[&str]) {
     assert!(
@@ -30,7 +36,10 @@ fn page_fixture() -> (tempfile::TempDir, ReticulumGitNode) {
     run_git(&source, &["checkout", "-qb", "main"]);
     std::fs::write(source.join("README.md"), "# page fixture\n").expect("README");
     std::fs::write(source.join("image.png"), b"\x89PNG\r\n\x1a\n\x00\x01").expect("image");
-    run_git(&source, &["add", "README.md", "image.png"]);
+    std::fs::create_dir_all(source.join("assets")).expect("assets directory");
+    std::fs::write(source.join("assets/nested image.png"), b"\x89PNG\r\n\x1a\n\x00\x02")
+        .expect("nested image");
+    run_git(&source, &["add", "README.md", "image.png", "assets/nested image.png"]);
     run_git(&source, &["commit", "-qm", "initial"]);
 
     run_git(&group, &["init", "--bare", "-q", "repo"]);
@@ -129,6 +138,25 @@ fn pages_accept_nomadnet_var_fields_and_render_not_found_errors() {
 
     let response = node
         .handle_page_request(
+            "/page/blob.mu",
+            &request_map(&[
+                ("var_g", rmpv::Value::String("group".into())),
+                ("var_r", rmpv::Value::String("repo".into())),
+                ("var_ref", rmpv::Value::String("HEAD".into())),
+                ("var_path", rmpv::Value::String("assets/nested image.png".into())),
+            ]),
+            remote,
+            link,
+        )
+        .expect("nested image blob page response");
+    assert!(
+        String::from_utf8_lossy(&response.data)
+            .contains("`(Image file`w=n`a=c`:/media/group/repo/HEAD/assets%2Fnested+image.png)"),
+        "binary image markup must quote_plus the complete repository path"
+    );
+
+    let response = node
+        .handle_page_request(
             "/page/repo.mu",
             &request_map(&[
                 ("var_g", rmpv::Value::String("missing".into())),
@@ -139,6 +167,40 @@ fn pages_accept_nomadnet_var_fields_and_render_not_found_errors() {
         )
         .expect("not-found page response");
     assert!(String::from_utf8_lossy(&response.data).contains("Not Found"));
+}
+
+#[test]
+fn image_markup_quotes_only_the_file_path_like_pinned_python() {
+    assert_eq!(
+        image_markup_media_path("group+name", "repo name", "refs/heads/topic", "assets/nested image.png"),
+        "/media/group+name/repo name/refs/heads/topic/assets%2Fnested+image.png"
+    );
+}
+
+#[test]
+fn image_markup_matches_pinned_python_quote_plus_for_utf8_and_reserved_path_bytes() {
+    // Fixture from urllib.parse.quote_plus at Reticulum 99de23c's pages.py
+    // image-markup call site: only file_path is quoted, with UTF-8 encoded
+    // bytes, literal '+' and '%' escaped, space mapped to '+', and '#' escaped.
+    assert_eq!(
+        image_markup_media_path("group", "repo", "HEAD", "images/café+50% #1.png"),
+        "/media/group/repo/HEAD/images%2Fcaf%C3%A9%2B50%25+%231.png"
+    );
+}
+
+#[test]
+fn unknown_page_request_returns_the_protocol_not_found_response() {
+    let (_temporary, mut node) = page_fixture();
+    let request = request_map(&[]);
+
+    let response =
+        node.handle_page_map_request("/page/unknown.mu", request.as_map().expect("request map"), [7_u8; 16]);
+
+    let expected = [ReticulumGitNode::RES_NOT_FOUND]
+        .into_iter()
+        .chain(b"Not found".iter().copied())
+        .collect::<Vec<_>>();
+    assert_eq!(response, expected, "unexpected unknown-page response");
 }
 
 #[test]
@@ -193,7 +255,9 @@ fn media_and_file_endpoints_enforce_keys_refs_permissions_and_metadata() {
             remote,
             link,
         )
-        .is_none());
+        .is_some_and(|response| {
+            response.response_is_false && response.data.is_empty() && response.metadata.is_none()
+        }));
     assert!(node
         .handle_page_request(
             "/media",
@@ -204,23 +268,30 @@ fn media_and_file_endpoints_enforce_keys_refs_permissions_and_metadata() {
             remote,
             link,
         )
-        .is_none());
+        .is_some_and(|response| {
+            response.response_is_false && response.data.is_empty() && response.metadata.is_none()
+        }));
 
     node.groups.get_mut("group").expect("group").permissions.read = Default::default();
     assert!(node
         .handle_page_request("/media", &media_request, remote, link)
-        .is_none());
+        .is_some_and(|response| {
+            response.response_is_false && response.data.is_empty() && response.metadata.is_none()
+        }));
 }
 
 #[test]
 fn media_conversion_failure_falls_back_to_raw_and_link_cleanup_removes_temp_files() {
+    let _environment_lock = MEDIA_TEST_ENV_LOCK.lock().expect("media test environment lock");
     let (_temporary, mut node) = page_fixture();
     let remote = [7_u8; 16];
     let link = [8_u8; 16];
     node.page_link_connected(link);
     let directory = node.next_media_directory(link).expect("media directory");
     assert!(directory.is_dir());
-    assert_eq!(node.page_link_closed(link), 1);
+    let cleanup = node.page_link_closed(link);
+    assert_eq!(cleanup.removed_directories, 1);
+    assert!(cleanup.failures.is_empty());
     assert!(!directory.exists());
 
     node.page_link_connected(link);
@@ -243,9 +314,121 @@ fn media_conversion_failure_falls_back_to_raw_and_link_cleanup_removes_temp_file
 }
 
 #[test]
-fn blocked_unidentified_clients_receive_no_identity_template() {
+fn page_link_cleanup_retries_failed_removal() {
     let (_temporary, mut node) = page_fixture();
-    node.blocked_identities.insert([0_u8; 16]);
+    let link = [9_u8; 16];
+    let directory = node.next_media_directory(link).expect("media directory");
+
+    let first_attempt = ReticulumGitNode::remove_tracked_page_media_directory(
+        &mut node.active_page_links,
+        link,
+        &directory,
+        |_| Err(io::Error::new(io::ErrorKind::PermissionDenied, "injected removal failure")),
+    );
+
+    assert!(first_attempt.is_err());
+    assert!(directory.is_dir());
+    assert!(node
+        .active_page_links
+        .get(&link)
+        .is_some_and(|paths| paths.contains(&directory)));
+
+    let retry = node.page_link_closed(link);
+    assert_eq!(retry.removed_directories, 1);
+    assert!(retry.failures.is_empty());
+    assert!(!directory.exists());
+    assert!(!node.active_page_links.contains_key(&link));
+}
+
+#[test]
+fn stale_page_links_are_cleaned_while_active_links_keep_media() {
+    let (temporary, mut node) = page_fixture();
+    let base_link_id = rns_transport::hash::address_hash(
+        temporary.path().to_string_lossy().as_bytes(),
+    );
+    let link_id = |discriminator: u8| {
+        let mut link_id = base_link_id;
+        link_id[15] ^= discriminator;
+        link_id
+    };
+    let active = link_id(1);
+    let stale = link_id(2);
+    let closed = link_id(3);
+    let missing = link_id(4);
+    let active_directory = node.next_media_directory(active).expect("active media directory");
+    let stale_directory = node.next_media_directory(stale).expect("stale media directory");
+    let closed_directory = node.next_media_directory(closed).expect("closed media directory");
+    let missing_directory = node.next_media_directory(missing).expect("missing media directory");
+
+    let cleanup = super::rngit_network::clean_stale_page_links(
+        &mut node,
+        [
+            (active, Some(LinkStatus::Active)),
+            (stale, Some(LinkStatus::Stale)),
+            (closed, Some(LinkStatus::Closed)),
+            (missing, None),
+        ],
+    );
+
+    assert_eq!(cleanup.removed_directories, 3);
+    assert!(cleanup.failures.is_empty());
+    assert!(active_directory.is_dir());
+    assert!(!stale_directory.exists());
+    assert!(!closed_directory.exists());
+    assert!(!missing_directory.exists());
+    assert!(node.active_page_links.contains_key(&active));
+    assert!(!node.active_page_links.contains_key(&stale));
+    let cleanup = node.page_link_closed(active);
+    assert_eq!(cleanup.removed_directories, 1);
+    assert!(cleanup.failures.is_empty());
+    assert!(!active_directory.exists());
+}
+
+#[test]
+fn stale_page_link_sweep_retries_filesystem_removal_failure() {
+    let (temporary, mut node) = page_fixture();
+    let link = rns_transport::hash::address_hash(
+        temporary.path().to_string_lossy().as_bytes(),
+    );
+    let directory = node.next_media_directory(link).expect("media directory");
+
+    std::fs::remove_dir(&directory).expect("remove media directory");
+    std::fs::write(&directory, b"blocks directory removal").expect("replacement file");
+
+    let failed_cleanup = super::rngit_network::clean_stale_page_links(
+        &mut node,
+        [(link, Some(LinkStatus::Stale))],
+    );
+
+    assert_eq!(failed_cleanup.removed_directories, 0);
+    assert_eq!(failed_cleanup.failures.len(), 1);
+    assert!(directory.is_file());
+    assert!(node
+        .active_page_links
+        .get(&link)
+        .is_some_and(|paths| paths.contains(&directory)));
+
+    std::fs::remove_file(&directory).expect("remove replacement file");
+    std::fs::create_dir(&directory).expect("restore media directory");
+    let marker = directory.join("marker");
+    std::fs::write(&marker, b"tracked media").expect("marker file");
+
+    let retried_cleanup = super::rngit_network::clean_stale_page_links(
+        &mut node,
+        [(link, Some(LinkStatus::Stale))],
+    );
+
+    assert_eq!(retried_cleanup.removed_directories, 1);
+    assert!(retried_cleanup.failures.is_empty());
+    assert!(!directory.exists());
+    assert!(!marker.exists());
+    assert!(!node.active_page_links.contains_key(&link));
+}
+
+#[test]
+fn blocked_anonymous_client_receives_no_identity_template_for_frozen_null_identity_hash() {
+    let (_temporary, mut node) = page_fixture();
+    node.blocked_identities.insert(PYTHON_NULL_IDENTITY_HASH);
     let response = node
         .handle_page_request(
             "/page/index.mu",
@@ -254,7 +437,44 @@ fn blocked_unidentified_clients_receive_no_identity_template() {
             [9_u8; 16],
         )
         .expect("no-identity response");
-    assert!(String::from_utf8_lossy(&response.data).contains("No Identity"));
+    let rendered = String::from_utf8_lossy(&response.data);
+    assert!(rendered.contains("No Identity"));
+    assert!(!rendered.contains("repo"), "repository content leaked: {rendered}");
+    assert!(!rendered.contains("Python rngit interop"));
+}
+
+#[test]
+fn unblocked_anonymous_client_receives_the_front_page() {
+    let (_temporary, mut node) = page_fixture();
+    let response = node
+        .handle_page_request(
+            "/page/index.mu",
+            &rmpv::Value::Map(Vec::new()),
+            [0_u8; 16],
+            [9_u8; 16],
+        )
+        .expect("front page response");
+    let rendered = String::from_utf8_lossy(&response.data);
+    assert!(!rendered.contains("No Identity"));
+    assert!(rendered.contains("Groups"));
+}
+
+#[test]
+fn identified_blocked_client_does_not_receive_no_identity_template() {
+    let (_temporary, mut node) = page_fixture();
+    let blocked_identity = [0xa5_u8; 16];
+    node.blocked_identities.insert(blocked_identity);
+    let response = node
+        .handle_page_request(
+            "/page/index.mu",
+            &rmpv::Value::Map(Vec::new()),
+            blocked_identity,
+            [9_u8; 16],
+        )
+        .expect("front page response");
+    let rendered = String::from_utf8_lossy(&response.data);
+    assert!(!rendered.contains("No Identity"));
+    assert!(!rendered.contains("repo"), "blocked repository content leaked: {rendered}");
 }
 
 #[test]
@@ -264,7 +484,7 @@ fn custom_page_templates_replace_the_default_no_identity_page() {
     std::fs::write(templates.path().join("no_ident.mu"), "custom identity required")
         .expect("custom template");
     assert_eq!(node.load_page_templates(templates.path()).expect("load template"), 1);
-    node.blocked_identities.insert([0_u8; 16]);
+    node.blocked_identities.insert(PYTHON_NULL_IDENTITY_HASH);
     let response = node
         .handle_page_request(
             "/page/index.mu",

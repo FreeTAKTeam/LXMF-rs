@@ -1,10 +1,25 @@
 use std::env as media_env;
 use std::fs::File as MediaFile;
 use std::process::Child as MediaChild;
+use std::sync::atomic::{AtomicBool, Ordering as MediaOrdering};
 use std::thread::JoinHandle as MediaJoinHandle;
 
 const MEDIA_CONVERSION_TIMEOUT: Duration = Duration::from_secs(8);
 const STDERR_LIMIT: usize = 1024;
+static SELECTED_BACKEND: std::sync::Mutex<Option<&'static str>> = std::sync::Mutex::new(None);
+#[cfg(test)]
+static MEDIA_TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[path = "media_capture.rs"]
+mod media_capture;
+use media_capture::capture_bounded_output;
+
+fn read_bounded_file(path: &Path, limit: usize) -> Option<Vec<u8>> {
+    let file = MediaFile::open(path).ok()?;
+    let mut bytes = Vec::with_capacity(limit.min(64 * 1024));
+    file.take((limit as u64).saturating_add(1)).read_to_end(&mut bytes).ok()?;
+    (bytes.len() <= limit).then_some(bytes)
+}
 
 struct Backend {
     name: &'static str,
@@ -28,21 +43,37 @@ const BACKENDS: &[Backend] = &[
 fn command_available(program: &str) -> bool {
     let program_path = Path::new(program);
     if program_path.components().count() > 1 {
-        return fs::metadata(program_path).is_ok_and(|metadata| metadata.is_file());
+        return executable_file(program_path);
     }
     let Some(path) = media_env::var_os("PATH") else { return false };
     media_env::split_paths(&path).any(|directory| {
         let candidate = directory.join(program);
         #[cfg(windows)]
         {
-            candidate.is_file()
+            executable_file(&candidate)
                 || [".exe", ".cmd", ".bat"].iter().any(|suffix| {
-                    directory.join(format!("{program}{suffix}")).is_file()
+                    executable_file(&directory.join(format!("{program}{suffix}")))
                 })
         }
         #[cfg(not(windows))]
-        candidate.is_file()
+        executable_file(&candidate)
     })
+}
+
+fn executable_file(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else { return false };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 #[allow(dead_code)]
@@ -54,12 +85,29 @@ pub(crate) fn available_backends() -> Vec<(String, bool)> {
 }
 
 fn selected_backend() -> Option<&'static Backend> {
-    if let Ok(requested) = media_env::var("RNGIT_MEDIA_BACKEND") {
+    let requested = media_env::var("RNGIT_MEDIA_BACKEND").ok();
+    let mut previous = SELECTED_BACKEND.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let selected = select_backend(requested.as_deref(), *previous, command_available);
+    if requested.as_deref().is_none_or(str::is_empty) {
+        *previous = selected.map(|backend| backend.name);
+    }
+    selected
+}
+
+fn select_backend(
+    requested: Option<&str>,
+    previous: Option<&str>,
+    mut is_available: impl FnMut(&str) -> bool,
+) -> Option<&'static Backend> {
+    if let Some(requested) = requested.filter(|requested| !requested.is_empty()) {
         return BACKENDS
             .iter()
-            .find(|backend| backend.name == requested && command_available(backend.argv[0]));
+            .find(|backend| backend.name == requested && is_available(backend.argv[0]));
     }
-    BACKENDS.iter().find(|backend| command_available(backend.argv[0]))
+    previous
+        .and_then(|name| BACKENDS.iter().find(|backend| backend.name == name))
+        .filter(|backend| is_available(backend.argv[0]))
+        .or_else(|| BACKENDS.iter().find(|backend| is_available(backend.argv[0])))
 }
 
 fn configured_argv(
@@ -84,10 +132,7 @@ fn configured_argv(
         let format_index = argv.iter().position(|value| value == "-f").unwrap_or(argv.len());
         let mut options = Vec::new();
         if let Some(quality) = quality {
-            let qscale = 31_u32.saturating_sub(
-                (quality.saturating_sub(1) as u32 * 29) / 99,
-            );
-            options.extend(["-q:v".to_string(), qscale.to_string()]);
+            options.extend(["-quality".to_string(), quality.to_string()]);
         }
         if let Some(dimension) = dimension {
             options.extend([
@@ -171,10 +216,17 @@ fn wait_encoder(
     backend_name: &str,
     encoder: &mut MediaChild,
     stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
+    capture_failed: &AtomicBool,
     timeout: Duration,
 ) -> bool {
     let deadline = Instant::now() + timeout;
     let status = loop {
+        if capture_failed.load(MediaOrdering::Acquire) {
+            terminate(encoder);
+            let detail = join_stderr(stderr);
+            eprintln!("rngit: media conversion via {backend_name} exceeded its 32 MiB output limit: {detail}");
+            return false;
+        }
         match encoder.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
@@ -199,28 +251,73 @@ fn wait_encoder(
     status.success()
 }
 
-fn wait_pipeline(
+fn wait_pipeline_with_cancel(
     backend_name: &str,
     input: &mut MediaChild,
     encoder: &mut MediaChild,
     input_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
     encoder_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
     timeout: Duration,
+    mut cancelled: impl FnMut() -> bool,
+) -> bool {
+    wait_pipeline_with_status(
+        backend_name,
+        input,
+        encoder,
+        input_stderr,
+        encoder_stderr,
+        timeout,
+        |child| {
+            if cancelled() {
+                Err(io::Error::new(io::ErrorKind::Interrupted, "media conversion cancelled"))
+            } else {
+                child.try_wait()
+            }
+        },
+    )
+}
+
+fn wait_pipeline_with_status(
+    backend_name: &str,
+    input: &mut MediaChild,
+    encoder: &mut MediaChild,
+    input_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
+    encoder_stderr: MediaJoinHandle<io::Result<Vec<u8>>>,
+    timeout: Duration,
+    mut try_wait: impl FnMut(&mut MediaChild) -> io::Result<Option<ExitStatus>>,
 ) -> bool {
     let deadline = Instant::now() + timeout;
     let mut input_status: Option<ExitStatus> = None;
     let mut encoder_status: Option<ExitStatus> = None;
     while input_status.is_none() || encoder_status.is_none() {
         if input_status.is_none() {
-            match input.try_wait() {
+            match try_wait(input) {
                 Ok(status) => input_status = status,
-                Err(_) => break,
+                Err(error) => {
+                    terminate(input);
+                    terminate(encoder);
+                    let input_detail = join_stderr(input_stderr);
+                    let encoder_detail = join_stderr(encoder_stderr);
+                    eprintln!(
+                        "rngit: could not inspect {backend_name} media pipeline status: {error} (input: {input_detail}; encoder: {encoder_detail})"
+                    );
+                    return false;
+                }
             }
         }
         if encoder_status.is_none() {
-            match encoder.try_wait() {
+            match try_wait(encoder) {
                 Ok(status) => encoder_status = status,
-                Err(_) => break,
+                Err(error) => {
+                    terminate(input);
+                    terminate(encoder);
+                    let input_detail = join_stderr(input_stderr);
+                    let encoder_detail = join_stderr(encoder_stderr);
+                    eprintln!(
+                        "rngit: could not inspect {backend_name} media pipeline status: {error} (input: {input_detail}; encoder: {encoder_detail})"
+                    );
+                    return false;
+                }
             }
         }
         if input_status.is_some() && encoder_status.is_some() {
@@ -263,13 +360,14 @@ fn spawn_command(argv: &[String], cwd: Option<&Path>) -> io::Result<MediaChild> 
     command.spawn()
 }
 
-pub(crate) fn convert_to_webp(
+pub(crate) fn convert_to_webp_with_cancel(
     input_argv: &[String],
     output_path: &Path,
     cwd: Option<&Path>,
     timeout: Option<Duration>,
     quality: Option<u8>,
     max_dimension: Option<u32>,
+    mut cancelled: impl FnMut() -> bool,
 ) -> bool {
     let Some(backend) = selected_backend() else { return false };
     let encoder_argv = configured_argv(backend, quality, max_dimension);
@@ -300,7 +398,7 @@ pub(crate) fn convert_to_webp(
     encoder_command
         .args(&encoder_argv[1..])
         .stdin(input_stdout)
-        .stdout(output)
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut encoder = match encoder_command.spawn() {
         Ok(child) => child,
@@ -309,6 +407,7 @@ pub(crate) fn convert_to_webp(
             if let Some(stderr) = input_stderr {
                 let _ = join_stderr(stderr);
             }
+            let _ = fs::remove_file(output_path);
             eprintln!("rngit: could not start {} media backend: {error}", backend.name);
             return false;
         }
@@ -316,97 +415,53 @@ pub(crate) fn convert_to_webp(
     let Some(input_stderr) = input_stderr else {
         terminate(&mut input);
         terminate(&mut encoder);
+        let _ = fs::remove_file(output_path);
         return false;
     };
     let Some(encoder_stderr) = encoder.stderr.take().map(read_stderr_tail) else {
         terminate(&mut input);
         terminate(&mut encoder);
         let _ = join_stderr(input_stderr);
+        let _ = fs::remove_file(output_path);
         return false;
     };
-    let ok = wait_pipeline(
+    let Some(encoder_stdout) = encoder.stdout.take() else {
+        terminate(&mut input);
+        terminate(&mut encoder);
+        let _ = join_stderr(input_stderr);
+        let _ = join_stderr(encoder_stderr);
+        let _ = fs::remove_file(output_path);
+        return false;
+    };
+    let (capture, capture_failed) = capture_bounded_output(encoder_stdout, output);
+    let ok = wait_pipeline_with_cancel(
         backend.name,
         &mut input,
         &mut encoder,
         input_stderr,
         encoder_stderr,
         timeout.unwrap_or(MEDIA_CONVERSION_TIMEOUT),
+        || cancelled() || capture_failed.load(MediaOrdering::Acquire),
     );
-    if !ok || !valid_webp(output_path) {
+    let capture_ok = capture.join().is_ok_and(|result| result.is_ok());
+    if !ok || !capture_ok || capture_failed.load(MediaOrdering::Acquire) || !valid_webp(output_path) {
+        if capture_failed.load(MediaOrdering::Acquire) {
+            eprintln!("rngit: media conversion via {} exceeded its 32 MiB output limit", backend.name);
+        }
         let _ = fs::remove_file(output_path);
         return false;
     }
     true
 }
 
-#[allow(dead_code)]
-pub(crate) fn convert_file_to_webp(
-    source_path: &Path,
-    quality: Option<u8>,
-    max_dimension: Option<u32>,
-    timeout: Option<Duration>,
-) -> Option<PathBuf> {
-    let backend = selected_backend()?;
-    let encoder_argv = configured_argv(backend, quality, max_dimension);
-    let input = MediaFile::open(source_path).ok()?;
-    let temporary = tempfile::Builder::new()
-        .prefix("rngit-media-")
-        .suffix(".webp")
-        .tempfile()
-        .ok()?
-        .into_temp_path();
-    let output_path = temporary.to_path_buf();
-    let output = MediaFile::create(&output_path).ok()?;
-    let mut encoder_command = Command::new(&encoder_argv[0]);
-    encoder_command
-        .args(&encoder_argv[1..])
-        .stdin(input)
-        .stdout(output)
-        .stderr(Stdio::piped());
-    let mut encoder = encoder_command.spawn().ok()?;
-    let Some(stderr) = encoder.stderr.take().map(read_stderr_tail) else {
-        terminate(&mut encoder);
-        return None;
-    };
-    if !wait_encoder(
-        backend.name,
-        &mut encoder,
-        stderr,
-        timeout.unwrap_or(MEDIA_CONVERSION_TIMEOUT),
-    ) || !valid_webp(&output_path)
-    {
-        let _ = fs::remove_file(&output_path);
-        return None;
-    }
-    temporary.keep().ok()
-}
-
 #[cfg(test)]
-mod media_tests {
-    use super::webp_info;
+#[path = "media_backend_tests.rs"]
+mod media_backend_tests;
 
-    #[test]
-    fn webp_header_dimensions_match_reference_chunk_layouts() {
-        let mut vp8x = [0_u8; 30];
-        vp8x[..4].copy_from_slice(b"RIFF");
-        vp8x[8..12].copy_from_slice(b"WEBP");
-        vp8x[12..16].copy_from_slice(b"VP8X");
-        vp8x[24..27].copy_from_slice(&[9, 0, 0]);
-        vp8x[27..30].copy_from_slice(&[19, 0, 0]);
-        assert_eq!(webp_info(&vp8x), Some((10, 20)));
+#[cfg(all(test, unix))]
+#[path = "issue_613_converter_process_tests.rs"]
+mod issue_613_converter_process_tests;
 
-        let mut vp8l = [0_u8; 30];
-        vp8l[..4].copy_from_slice(b"RIFF");
-        vp8l[8..12].copy_from_slice(b"WEBP");
-        vp8l[12..16].copy_from_slice(b"VP8L");
-        let bits = 31_u32 | (41_u32 << 14);
-        vp8l[21..25].copy_from_slice(&bits.to_le_bytes());
-        assert_eq!(webp_info(&vp8l), Some((32, 42)));
-    }
-
-    #[test]
-    fn malformed_webp_headers_are_rejected() {
-        assert_eq!(webp_info(&[0_u8; 30]), None);
-        assert_eq!(webp_info(b"RIFF"), None);
-    }
-}
+#[cfg(all(test, unix))]
+#[path = "issue_613_output_limit_tests.rs"]
+mod issue_613_output_limit_tests;

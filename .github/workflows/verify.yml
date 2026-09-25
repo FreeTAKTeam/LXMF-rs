@@ -80,7 +80,59 @@ jobs:
       - name: Install Linux BLE build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libdbus-1-dev
+          sudo apt-get install -y pkg-config libdbus-1-dev ffmpeg imagemagick graphicsmagick squashfs-tools
+
+      - name: Install pinned ImageMagick 7 AppImage with WebP support
+        run: |
+          asset=ImageMagick-7.1.2-31-gcc-x86_64.AppImage
+          image="$RUNNER_TEMP/$asset"
+          appdir="$RUNNER_TEMP/imagemagick-appdir"
+          curl --fail --location --retry 3 \
+            "https://github.com/ImageMagick/ImageMagick/releases/download/7.1.2-31/$asset" \
+            --output "$image"
+          printf '%s  %s\n' \
+            'b22dee096a68e7eb6771a6f98c16490ea78d399ffa27f34ca2ec4f02e707fd9c' \
+            "$image" | sha256sum --check
+          chmod +x "$image"
+          offset=$("$image" --appimage-offset)
+          test "$offset" -gt 0
+          unsquashfs -no-progress -o "$offset" -d "$appdir" "$image"
+          test -x "$appdir/AppRun"
+          test -x "$appdir/usr/bin/magick"
+          mkdir -p "$RUNNER_TEMP/magick-bin"
+          printf '#!/bin/sh\nunset APPIMAGE ARGV0\nexec "%s/AppRun" "$@"\n' \
+            "$appdir" > "$RUNNER_TEMP/magick-bin/magick"
+          chmod +x "$RUNNER_TEMP/magick-bin/magick"
+          printf '%s\n' "$RUNNER_TEMP/magick-bin" >> "$GITHUB_PATH"
+
+      - name: Smoke-test pinned ImageMagick WebP encode and decode
+        run: |
+          magick -version
+          input="$RUNNER_TEMP/magick-webp-smoke.png"
+          output="$RUNNER_TEMP/magick-webp-smoke.webp"
+          decoded="$RUNNER_TEMP/magick-webp-smoke-decoded.png"
+          magick -size 8x4 xc:red "$input"
+          magick "$input" "$output"
+          magick "$output" "$decoded"
+          python3 - "$output" "$decoded" <<'PY'
+          import json
+          import subprocess
+          import sys
+
+          webp, decoded = sys.argv[1:]
+          probe = subprocess.run(
+              ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+               "stream=codec_name,width,height", "-of", "json", webp],
+              check=True, capture_output=True, text=True,
+          )
+          stream = json.loads(probe.stdout)["streams"][0]
+          assert stream == {"codec_name": "webp", "width": 8, "height": 4}, stream
+          identify = subprocess.run(
+              ["magick", "identify", "-format", "%w %h", decoded],
+              check=True, capture_output=True, text=True,
+          )
+          assert identify.stdout == "8 4", identify.stdout
+          PY
 
       - name: Checkout pinned Python Reticulum parity target
         uses: actions/checkout@v4
@@ -258,6 +310,150 @@ jobs:
             --all \
             --output target/interop/python-compat-matrix/verify-${{ github.run_id }}/matrix.json \
             --timeout 420
+
+      - name: Run pinned Python rngit pages and media interoperability
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            rngit_serves_pages_and_media_to_pinned_python_client \
+            -- --ignored --nocapture
+
+      - name: Verify forced unavailable WebP backend does not fall through over pinned Python Link
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            rngit_does_not_fall_through_from_unavailable_forced_backend \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify real ImageMagick, ImageMagick 7, and GraphicsMagick WebP backends over pinned Python Links
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          for backend in convert magick gm; do
+            RNGIT_TEST_WEBP_BACKEND="$backend" cargo test -p rns-tools --test rngit_python_interop \
+              issue_613_configured_backend::configured_backend_serves_decodable_webp_and_falls_back_to_raw_media \
+              -- --ignored --exact --nocapture --test-threads=1
+          done
+
+      - name: Run pinned Python blocked anonymous no-ident page interoperability
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_no_ident::rngit_returns_reference_no_ident_page_to_blocked_anonymous_python_link \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Run pinned Python rngit media validation differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_invalid_ref::rngit_media_validation_denials_return_false_over_python_link \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python rngit media read-failure behavior
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_read_failure::rngit_media_blob_stat_then_stream_failure_matches_python_empty_resource \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python rngit media filesystem-failure fallbacks
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_temp_directory_failure::rngit_media_temp_directory_creation_failure_returns_raw_resource \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_output_open_failure::rngit_media_output_open_failure_returns_raw_resource \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_output_write_failure::rngit_media_output_write_failure_returns_raw_resource \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_source_open_failure::rngit_media_source_stream_open_failure_has_no_response_and_keeps_link_live \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_zero_stat::rngit_media_zero_stat_and_tree_paths_match_pinned_show_behavior \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify raw media fallback when WebP backend is unavailable
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            rngit_returns_raw_media_when_webp_backend_is_unavailable \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python configured media conversion and Resource flag
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_compression::rngit_media_resource_preserves_precompressed_png_without_resource_compression \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python WebP helper backend selection
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_compression::pinned_python_media_backend_selection_reuses_available_automatic_winner \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python rngit media CLI option forwarding
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_options::rngit_passes_media_cli_options_to_the_selected_webp_backend \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python avconv-selected production invocation
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_options::rngit_invokes_selected_avconv_backend_with_argument_safe_options \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify pinned Python rngit encoder failure fallback and cleanup
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_options::rngit_failed_webp_encoder_returns_raw_media_and_cleans_conversion_directory \
+            -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify multi-hop duplicate link-request-proof filtering
         env:
@@ -441,6 +637,12 @@ jobs:
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
+
+      - name: Verify pinned Python quote_plus image-markup edge fixture
+        run: >-
+          cargo test -p rns-tools --bin rngit --all-features
+          tests::image_markup_matches_pinned_python_quote_plus_for_utf8_and_reserved_path_bytes
+          -- --exact
 
       - name: Verify frozen 1.5.4 missing-part Resource retry exhaustion
         env:

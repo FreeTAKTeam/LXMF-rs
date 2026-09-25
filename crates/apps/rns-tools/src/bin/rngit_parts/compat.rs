@@ -1,7 +1,16 @@
 const RNGIT_HASH_HEX_LENGTH: usize = 32;
 
+use process_wrap::std::{StdChildWrapper, StdCommandWrap};
+#[cfg(unix)]
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
+#[cfg(unix)]
+use process_wrap::std::ProcessGroup;
+#[cfg(windows)]
+use process_wrap::std::JobObject;
 use std::fs;
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
+use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteRepository {
@@ -183,6 +192,7 @@ include!("compat_node.rs");
 include!("media.rs");
 include!("pages.rs");
 include!("page_git.rs");
+include!("page_git_pagination.rs");
 include!("page_git_work.rs");
 include!("page_media.rs");
 
@@ -218,115 +228,7 @@ fn permission_sidecar(path: &Path) -> io::Result<PathBuf> {
     Ok(canonical)
 }
 
-const MAX_DYNAMIC_PERMISSION_OUTPUT: usize = 64 * 1024;
-const DYNAMIC_PERMISSION_TIMEOUT: Duration = Duration::from_secs(2);
-
-fn is_executable_file(metadata: &fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = metadata;
-        false
-    }
-}
-
-fn read_bounded(mut reader: impl Read) -> io::Result<Vec<u8>> {
-    let mut output = Vec::new();
-    let mut buffer = [0_u8; 8192];
-    let mut exceeded = false;
-    loop {
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        let remaining = MAX_DYNAMIC_PERMISSION_OUTPUT.saturating_sub(output.len());
-        let copied = read.min(remaining);
-        output.extend_from_slice(&buffer[..copied]);
-        exceeded |= read > copied;
-    }
-    if exceeded {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "permission resolver output exceeds 64 KiB",
-        ))
-    } else {
-        Ok(output)
-    }
-}
-
-fn spawn_permission_resolver(path: &Path) -> io::Result<std::process::Child> {
-    let retry_deadline = Instant::now() + Duration::from_millis(250);
-    loop {
-        let result = Command::new(path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        match result {
-            Err(error)
-                if error.kind() == io::ErrorKind::ExecutableFileBusy
-                    && Instant::now() < retry_deadline =>
-            {
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            result => return result,
-        }
-    }
-}
-
-fn run_permission_resolver(path: &Path) -> io::Result<String> {
-    let mut child = spawn_permission_resolver(path)?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("permission resolver stdout unavailable"))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| io::Error::other("permission resolver stderr unavailable"))?;
-    let stdout_reader = std::thread::spawn(move || read_bounded(stdout));
-    let stderr_reader = std::thread::spawn(move || read_bounded(stderr));
-    let deadline = Instant::now() + DYNAMIC_PERMISSION_TIMEOUT;
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = stdout_reader.join();
-            let _ = stderr_reader.join();
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "permission resolver exceeded 2 second timeout",
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    };
-    let stdout = stdout_reader
-        .join()
-        .map_err(|_| io::Error::other("permission resolver stdout reader panicked"))??;
-    let stderr = stderr_reader
-        .join()
-        .map_err(|_| io::Error::other("permission resolver stderr reader panicked"))??;
-    if !status.success() {
-        return Err(io::Error::other(format!(
-            "permission resolver exited with {status}: {}",
-            String::from_utf8_lossy(&stderr).trim()
-        )));
-    }
-    String::from_utf8(stdout).map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("permission resolver output is not UTF-8: {error}"),
-        )
-    })
-}
-
+include!("bounded_executable.rs");
 impl ReticulumGitNode {
     fn read_companion_permissions(&self, path: &Path) -> io::Result<PermissionSet> {
         let sidecar = permission_sidecar(path)?;

@@ -1,10 +1,31 @@
 impl ReticulumGitNode {
     fn page_git_output(path: &Path, args: &[String], limit: usize) -> Option<Vec<u8>> {
-        let output = Command::new("git").args(args).current_dir(path).output().ok()?;
-        if !output.status.success() || output.stdout.len() > limit {
-            return None;
-        }
-        Some(output.stdout)
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        page_git_output::read_bounded_child_stdout(&mut child, limit)
+    }
+
+    fn page_git_output_with_status(
+        path: &Path,
+        args: &[String],
+        limit: usize,
+    ) -> Option<(bool, Vec<u8>)> {
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let (status, output) = page_git_output::read_bounded_child_stdout_with_status(&mut child, limit)?;
+        Some((status.success(), output))
     }
 
     fn page_git_text(path: &Path, args: &[String], limit: usize) -> Option<String> {
@@ -35,10 +56,13 @@ impl ReticulumGitNode {
         }
         reference == "HEAD"
             || san_sha(reference).is_some()
-            || (reference.starts_with("refs/")
-                && reference.split('/').all(|component| {
-                    !component.is_empty() && component != "." && component != ".."
-                }))
+            || reference.split('/').all(|component| {
+                !component.is_empty()
+                    && !component.starts_with('.')
+                    && !component.ends_with('.')
+                    && !component.ends_with(".lock")
+                    && component != "@"
+            })
     }
 
     fn resolve_page_ref(path: &Path, reference: &str) -> Option<String> {
@@ -71,6 +95,19 @@ impl ReticulumGitNode {
         }
         let spec = format!("{resolved}:{file_path}");
         Self::page_git_output(path, &["cat-file".into(), "blob".into(), spec], limit)
+    }
+
+    fn page_blob_with_status(
+        path: &Path,
+        resolved: &str,
+        file_path: &str,
+        limit: usize,
+    ) -> Option<(bool, Vec<u8>)> {
+        if !Self::valid_page_path(file_path) {
+            return None;
+        }
+        let spec = format!("{resolved}:{file_path}");
+        Self::page_git_output_with_status(path, &["cat-file".into(), "blob".into(), spec], limit)
     }
 
     fn page_repository<'a>(
@@ -229,61 +266,6 @@ impl ReticulumGitNode {
         self.page_render("repo", content, Some(&group), Some(&repository))
     }
 
-    fn serve_tree(
-        &mut self,
-        map: &[(rmpv::Value, rmpv::Value)],
-        remote: [u8; 16],
-    ) -> PageResponse {
-        let Some(group) = page_param(map, "g") else {
-            return self.not_found("", "Invalid tree request");
-        };
-        let Some(repository) = page_param(map, "r") else {
-            return self.not_found("", "Invalid tree request");
-        };
-        let reference = page_param(map, "ref").unwrap_or_else(|| "HEAD".to_string());
-        let tree_path = page_param(map, "path")
-            .and_then(|value| percent_decode_plus(&value))
-            .unwrap_or_default();
-        let Some(record) = self.accessible_repository(&remote, &group, &repository) else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "The requested repository was not found",
-            );
-        };
-        let Some(resolved) = Self::resolve_page_ref(&record.path, &reference) else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "The requested reference was not found",
-            );
-        };
-        let spec = if tree_path.is_empty() {
-            resolved.clone()
-        } else if Self::valid_page_path(&tree_path) {
-            format!("{resolved}:{tree_path}")
-        } else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "Invalid tree path",
-            );
-        };
-        let Some(listing) = Self::page_git_text(
-            &record.path,
-            &["ls-tree".into(), "-z".into(), "--name-only".into(), spec],
-            256 * 1024,
-        ) else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "The requested tree was not found",
-            );
-        };
-        let mut content = String::from("> Tree\n\n");
-        for entry in listing.split('\0').filter(|entry| !entry.is_empty()) {
-            let _ = writeln!(content, "- `{entry}`");
-        }
-        self.view_succeeded(Some(&group), Some(&repository), false);
-        self.page_render("tree", content, Some(&group), Some(&repository))
-    }
-
     fn serve_blob(
         &mut self,
         map: &[(rmpv::Value, rmpv::Value)],
@@ -329,13 +311,8 @@ impl ReticulumGitNode {
                 if extension.as_deref().is_some_and(|value| {
                     matches!(value, "webp" | "png" | "jpg" | "jpeg" | "gif" | "tiff" | "tif" | "bmp")
                 }) {
-                    let media_path = format!(
-                        "/media/{}/{}/{}/{}",
-                        percent_encode_plus(&group),
-                        percent_encode_plus(&repository),
-                        percent_encode_plus(&reference),
-                        percent_encode_plus(&file_path)
-                    );
+                    let media_path =
+                        image_markup_media_path(&group, &repository, &reference, &file_path);
                     content.push_str(&format!("`(Image file`w=n`a=c`:{media_path})\n"));
                 } else {
                     content.push_str(
@@ -346,41 +323,6 @@ impl ReticulumGitNode {
         }
         self.view_succeeded(Some(&group), Some(&repository), false);
         self.page_render("blob", content, Some(&group), Some(&repository))
-    }
-
-    fn serve_commits(
-        &mut self,
-        map: &[(rmpv::Value, rmpv::Value)],
-        remote: [u8; 16],
-    ) -> PageResponse {
-        let Some((group, repository, reference, _, record)) = self.page_repository(map, &remote) else {
-            return self.not_found("", "The requested repository was not found");
-        };
-        let Some(resolved) = Self::resolve_page_ref(&record.path, &reference) else {
-            return self.not_found(
-                &self.navigation(Some(&group), Some(&repository)),
-                "The requested reference was not found",
-            );
-        };
-        let log = Self::page_git_text(
-            &record.path,
-            &[
-                "log".into(),
-                "-n".into(),
-                "100".into(),
-                "--format=%h%x09%s".into(),
-                resolved,
-            ],
-            256 * 1024,
-        )
-        .unwrap_or_default();
-        self.view_succeeded(Some(&group), Some(&repository), false);
-        self.page_render(
-            "commits",
-            format!("> Commits\n\n{log}"),
-            Some(&group),
-            Some(&repository),
-        )
     }
 
     fn serve_commit(
