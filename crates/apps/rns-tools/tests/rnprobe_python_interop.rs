@@ -186,6 +186,37 @@ fn rnprobe_invalid_probe_count_matches_pinned_python_process_failure() -> io::Re
 
 #[test]
 #[ignore = "requires the pinned Python Reticulum checkout"]
+fn rnprobe_missing_destination_reports_failure_without_network_startup() -> io::Result<()> {
+    let repo = python_repo();
+    let script = repo.join("RNS/Utilities/rnprobe.py");
+    if !script.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python rnprobe script not found: {}", script.display()),
+        ));
+    }
+
+    let args = ["rnstransport.probe"];
+    let python =
+        Command::new(python_bin()).arg(script).args(args).env("PYTHONPATH", &repo).output()?;
+    let rust = Command::new(env!("CARGO_BIN_EXE_rnprobe")).args(args).output()?;
+
+    // In this reference revision, a single positional argument is interpreted
+    // as an incomplete invocation and argparse prints help with status 0.
+    assert_eq!(python.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&python.stdout).contains("positional arguments:"));
+    assert!(python.stderr.is_empty());
+
+    // Rust deliberately reports the absent destination as a failure instead
+    // of treating the incomplete invocation as successful.
+    assert_eq!(rust.status.code(), Some(1));
+    assert!(rust.stdout.is_empty());
+    assert_eq!(String::from_utf8_lossy(&rust.stderr), "rnprobe: destination hash is required\n");
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires the pinned Python Reticulum checkout"]
 fn rnprobe_invalid_destination_identity_matches_pinned_python_failure() -> io::Result<()> {
     let repo = python_repo();
     let script = repo.join("RNS/Utilities/rnprobe.py");

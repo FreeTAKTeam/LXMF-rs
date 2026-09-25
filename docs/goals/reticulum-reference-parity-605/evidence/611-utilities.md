@@ -82,6 +82,14 @@ also compares malformed `--probes` handling at the process boundary: Rust and
 the frozen Python utility both exit with status 2 and report their respective
 invalid-integer diagnostics. Verify runs this test against the exact pinned
 Reticulum checkout; it does not complete the broader `rnprobe` option matrix.
+The `rnprobe_missing_destination_reports_failure_without_network_startup`
+process regression supplies only the full destination name. Frozen Python
+`argparse` prints usage/help and exits 0 for this incomplete invocation, while
+the Rust production CLI exits 1 with `rnprobe: destination hash is required`
+and no stdout. This records Rust's fail-closed behavior against the reference's
+apparent-success response; neither process starts networking. Verify runs this
+exact-target case. It is one missing-argument slice only and does not establish
+general `rnprobe` option parity.
 The `rnprobe_invalid_destination_identity_matches_pinned_python_failure`
 regression instead passes a 32-character non-hex destination identity hash to
 both production CLI processes. Frozen Python prints exactly
