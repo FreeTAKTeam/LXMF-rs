@@ -73,6 +73,7 @@ impl RpcDaemon {
             | "get_packet_rssi"
             | "get_packet_snr"
             | "get_packet_q"
+            | "get_path_table"
             | "discovered_interfaces"
             | "router_stats"
             | "router_storage_policy_get"

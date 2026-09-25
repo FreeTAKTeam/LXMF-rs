@@ -10,7 +10,9 @@ failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
 program = "cargo"
-args = ["nextest", "run", "-j", "1", "-p", "reticulumd", "--test", "python_channel_interop", "--run-ignored", "only", "--no-capture"]
+# This one frozen-1.5.4 differential is run by the dedicated Verify lane below;
+# keep it out of this generic batch, which inherits canonical Reticulum 1.5.2.
+args = ["nextest", "run", "-j", "1", "-p", "reticulumd", "--test", "python_channel_interop", "--run-ignored", "only", "--no-capture", "--", "--skip", "pinned_python_resource_cancels_after_missing_part_retry_budget"]
 
 [[cases]]
 id = "python-paper-interop"

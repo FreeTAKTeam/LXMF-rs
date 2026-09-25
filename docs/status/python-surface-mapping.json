@@ -1786,7 +1786,14 @@
         "test_command": "cargo xtask hil --help",
         "evidence_artifact": "target/issue-605/evidence/616-operational-matrix.json",
         "owner_issue": 616,
-        "notes": "Operational physical, platform, client, public-network, and soak evidence is a separate acceptance axis, not a software implementation status."
+        "notes": "Operational physical, platform, client, public-network, and soak evidence is a separate acceptance axis, not a software implementation status.",
+        "not_applicable_provenance": {
+          "decision": "exclude-from-software-goal",
+          "review_basis": "explicit-user-scope-direction",
+          "approval_reference": "codex-task:01a0bf74-9050-70e1-b8bf-0e528184c9ad",
+          "decision_record": "docs/goals/reticulum-reference-parity-605/GOAL.md",
+          "rationale": "The software goal excludes physical/platform/client/network-soak acceptance and tracks those requirements under issue 616 as hardware-unverified."
+        }
       }
     ]
   }

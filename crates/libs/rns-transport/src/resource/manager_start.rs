@@ -216,9 +216,10 @@ impl ResourceManager {
         let total_size = (metadata_size as u64)
             .checked_add(data_size)
             .ok_or(RnsError::InvalidArgument)?;
-        if total_size > AUTO_COMPRESS_MAX_SIZE as u64 {
-            return Err(RnsError::InvalidArgument);
-        }
+        // The reference's 64 MiB bound controls compression work, not
+        // admission. Split resources retain the reader and only read the
+        // segment currently being advertised.
+        let compress_resource = auto_compress && data_size <= AUTO_COMPRESS_MAX_SIZE as u64;
 
         let mut reader: Box<dyn Read + Send + Sync> = Box::new(reader);
         if total_size <= MAX_EFFICIENT_SIZE as u64 {
@@ -231,7 +232,7 @@ impl ResourceManager {
                 request_id,
                 is_response,
                 interface_mtu,
-                auto_compress,
+                compress_resource,
             )?;
             return Ok(PreparedSend { first: sender, pending: None });
         }
@@ -258,7 +259,7 @@ impl ResourceManager {
             1,
             total_segments,
             Some(total_size),
-            auto_compress,
+            compress_resource,
         )?;
         let original_hash = first.original_hash;
         Ok(PreparedSend {
@@ -268,14 +269,14 @@ impl ResourceManager {
                     reader,
                     remaining: data_size.saturating_sub(first_data_len as u64),
                 },
-                next_segment_index: 2,
+                next_segment_index: Some(2),
                 total_segments,
                 total_size,
                 request_id,
                 is_response,
                 interface_mtu,
                 original_hash,
-                auto_compress,
+                auto_compress: compress_resource,
             }),
             first,
         })
@@ -307,11 +308,13 @@ impl ResourceManager {
             )?;
             return Ok(PreparedSend { first: sender, pending: None });
         }
-        if metadata_size >= MAX_EFFICIENT_SIZE || total_size > AUTO_COMPRESS_MAX_SIZE {
+        if metadata_size >= MAX_EFFICIENT_SIZE {
             return Err(RnsError::InvalidArgument);
         }
 
-        let total_segments = total_size.div_ceil(MAX_EFFICIENT_SIZE) as u32;
+        let total_segments = u32::try_from(total_size.div_ceil(MAX_EFFICIENT_SIZE))
+            .map_err(|_| RnsError::InvalidArgument)?;
+        let compress_resource = auto_compress && data.len() <= AUTO_COMPRESS_MAX_SIZE;
         let first_data_len = (MAX_EFFICIENT_SIZE - metadata_size).min(data.len());
         let first = ResourceSender::new_segment_with_options_mtu_and_compression(
             link,
@@ -324,7 +327,7 @@ impl ResourceManager {
             1,
             total_segments,
             Some(total_size as u64),
-            auto_compress,
+            compress_resource,
         )?;
         let original_hash = first.original_hash;
         // Only segment 1 is built here. The rest are built as each preceding
@@ -333,14 +336,14 @@ impl ResourceManager {
             pending: Some(PendingSegments {
                 link_id: first.link_id,
                 source: PendingSegmentSource::InMemory { data, offset: first_data_len },
-                next_segment_index: 2,
+                next_segment_index: Some(2),
                 total_segments,
                 total_size: total_size as u64,
                 request_id,
                 is_response,
                 interface_mtu,
                 original_hash,
-                auto_compress,
+                auto_compress: compress_resource,
             }),
             first,
         })

@@ -292,6 +292,8 @@ struct LocalInterface {
     address: AddressHash,
     parent: Option<AddressHash>,
     full_hash: Hash,
+    display_name: Option<String>,
+    tcp_client_path_table_metadata: Option<TcpClientPathTableMetadata>,
     tx_send: InterfaceTxSender,
     stop: CancellationToken,
     online: Arc<AtomicBool>,

@@ -4,6 +4,7 @@ mod tests {
     use crate::packet::PacketType;
 
     include!("iface_tests_parts/closed_tx_queue_cleanup.rs");
+    include!("iface_tests_parts/inheritance_lock_poison.rs");
 
     #[test]
     fn new_channel_defaults_to_unicast_role() {

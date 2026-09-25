@@ -17,7 +17,7 @@ use rns_transport::packet::{
     PacketDataBuffer, PacketType, PropagationType,
 };
 
-use rns_transport::resource::ResourceEventKind;
+use rns_transport::resource::{ResourceEventKind, ResourceProgress};
 
 use rns_transport::transport::Transport;
 
@@ -204,7 +204,16 @@ pub(super) fn spawn_inbound_worker(
                             segment.total_segments
                         );
                     }
-                    ResourceEventKind::Progress(_) => {}
+                    ResourceEventKind::Progress(progress) => {
+                        log::debug!(
+                            "[daemon-rx] {}",
+                            resource_progress_status(
+                                &event.hash.to_string(),
+                                &event.link_id.to_string(),
+                                &progress
+                            )
+                        );
+                    }
                 }
             }
         }
@@ -219,6 +228,16 @@ fn resource_request_id(request_id: &Option<Vec<u8>>) -> Option<[u8; 16]> {
     let mut out = [0u8; 16];
     out.copy_from_slice(bytes.as_slice());
     Some(out)
+}
+
+fn resource_progress_status(hash: &str, link_id: &str, progress: &ResourceProgress) -> String {
+    format!(
+        "resource progress hash={hash} link={link_id} bytes={}/{} parts={}/{}",
+        progress.received_bytes,
+        progress.total_bytes,
+        progress.received_parts,
+        progress.total_parts
+    )
 }
 
 async fn remote_propagation_peer_for_link(
@@ -284,7 +303,7 @@ fn handle_outbound_resource_failure(
             daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
             emit_receipt_event(
                 receipt_tx,
-                ReceiptEvent::new(tracking.message_id, "failed: resource transfer timed out")
+                ReceiptEvent::new(tracking.message_id, "failed: resource transfer failed")
                     .with_resource_hash(resource_hash_hex)
                     .with_peer(tracking.peer)
                     .with_delivery_kind("resource-failed")

@@ -59,7 +59,11 @@ async fn main() -> std::process::ExitCode {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("rncp: {error}");
-                std::process::ExitCode::FAILURE
+                if error.kind() == io::ErrorKind::NotADirectory {
+                    std::process::ExitCode::from(3)
+                } else {
+                    std::process::ExitCode::FAILURE
+                }
             }
         };
     }
