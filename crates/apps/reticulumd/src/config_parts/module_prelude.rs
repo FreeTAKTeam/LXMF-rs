@@ -196,7 +196,7 @@ pub struct InterfaceConfig {
     pub announces_to_internal: Option<bool>,
     #[serde(default)]
     pub ignore_config_warnings: Option<bool>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_ifac_size")]
     pub ifac_size: Option<u64>,
     #[serde(default)]
     pub networkname: Option<String>,

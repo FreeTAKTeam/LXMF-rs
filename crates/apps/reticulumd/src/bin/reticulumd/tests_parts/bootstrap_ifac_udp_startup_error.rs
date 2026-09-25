@@ -168,7 +168,7 @@ interfaces = [
 }
 
 #[test]
-fn bootstrap_uses_python_default_ifac_size_below_minimum_on_real_udp_carrier() {
+fn bootstrap_uses_python_default_ifac_size_for_negative_size_on_real_udp_carrier() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
     let config_path = temp.path().join("daemon.toml");
@@ -176,7 +176,7 @@ fn bootstrap_uses_python_default_ifac_size_below_minimum_on_real_udp_carrier() {
         &config_path,
         r#"
 interfaces = [
-  { type = "udp", enabled = true, name = "below-minimum-ifac-size", host = "127.0.0.1", port = 0, target_host = "127.0.0.1", target_port = 42421, ifac_size = 7, network_name = "below-minimum-test" }
+  { type = "udp", enabled = true, name = "negative-ifac-size", host = "127.0.0.1", port = 0, target_host = "127.0.0.1", target_port = 42421, ifac_size = -1, network_name = "below-minimum-test" }
 ]
 "#,
     )
@@ -198,7 +198,7 @@ interfaces = [
         .expect("interfaces array");
     let interface = interfaces
         .iter()
-        .find(|entry| entry.get("name").and_then(|value| value.as_str()) == Some("below-minimum-ifac-size"))
+        .find(|entry| entry.get("name").and_then(|value| value.as_str()) == Some("negative-ifac-size"))
         .expect("configured IFAC UDP carrier");
     let runtime = interface
         .get("settings")

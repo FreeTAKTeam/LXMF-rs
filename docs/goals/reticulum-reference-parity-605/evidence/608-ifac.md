@@ -114,6 +114,23 @@ default tag sizes, and rejects missing, unexpected, malformed, or invalid IFAC
 frames before packet admission. Invalid-frame counters are shared with the
 interface runtime status path and rejection logs do not include wire payloads.
 
+## Signed below-minimum IFAC size configuration
+
+At the pinned `RNS/Reticulum.py:801-803`, Python reads `ifac_size` as an
+integer and only overrides the carrier default when the configured bit count
+is at least `IFAC_MIN_SIZE * 8`. Thus negative values, as well as `0..7`, are
+ignored for sizing. Rust previously deserialized the field as `Option<u64>`,
+rejecting negative TOML before applying the same default. The config parser now
+normalizes negative values to the existing below-minimum sentinel `Some(0)`;
+the value remains present through validation, so missing network name and
+passphrase still fail closed. With credentials, `InterfaceSharedConfig`
+selects the carrier-specific default exactly as for other below-minimum values.
+
+The focused regression parses `ifac_size = -1`, checks the UDP 16-byte default
+with credentials, and checks rejection without credentials. This covers
+configuration semantics only; it does not add a separate pinned-Python packet
+differential or broaden #608 carrier/platform/physical acceptance.
+
 ## Executed software evidence
 
 The following checks passed on the isolated `codex/issue-605-parity` checkout:
