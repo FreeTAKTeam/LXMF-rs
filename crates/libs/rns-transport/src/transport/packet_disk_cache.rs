@@ -1,4 +1,4 @@
-use crate::hash::{AddressHash, Hash};
+use crate::hash::{AddressHash, Hash, HASH_SIZE};
 use crate::packet::Packet;
 use rmpv::Value;
 use std::collections::BTreeSet;
@@ -113,13 +113,67 @@ impl ReticulumPacketDiskCache {
         storage_path: impl AsRef<Path>,
         hashes: &[Hash],
     ) -> io::Result<()> {
-        let value = Value::Array(
-            hashes.iter().map(|hash| Value::Binary(hash.as_slice().to_vec())).collect(),
-        );
-        let mut payload = Vec::new();
-        rmpv::encode::write_value(&mut payload, &value)
+        let mut payload = Vec::with_capacity(hashes.len().saturating_mul(HASH_SIZE));
+        for hash in hashes {
+            payload.extend_from_slice(hash.as_slice());
+        }
+        tokio::fs::write(storage_path.as_ref().join("packet_hashlist.raw"), payload).await
+    }
+
+    pub async fn load_packet_hashlist(
+        &self,
+        storage_path: impl AsRef<Path>,
+    ) -> io::Result<Vec<Hash>> {
+        let raw_path = storage_path.as_ref().join("packet_hashlist.raw");
+        match tokio::fs::read(&raw_path).await {
+            Ok(payload) => {
+                return Ok(payload
+                    .chunks_exact(HASH_SIZE)
+                    .map(|bytes| {
+                        let bytes: [u8; HASH_SIZE] =
+                            bytes.try_into().expect("chunks_exact yields fixed-size packet hashes");
+                        Hash::new(bytes)
+                    })
+                    .collect());
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+
+        // Read the MessagePack file emitted by earlier Rust builds when no
+        // pinned-Python-format packet_hashlist.raw exists yet.
+        let legacy_path = storage_path.as_ref().join("packet_hashlist");
+        let payload = match tokio::fs::read(legacy_path).await {
+            Ok(payload) => payload,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        let value = rmpv::decode::read_value(&mut io::Cursor::new(payload))
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        tokio::fs::write(storage_path.as_ref().join("packet_hashlist"), payload).await
+        let values = value
+            .as_array()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid packet hashlist"))?;
+        values
+            .iter()
+            .map(|value| {
+                let bytes = match value {
+                    Value::Binary(bytes) => bytes.as_slice(),
+                    Value::String(bytes) => bytes.as_str().map(str::as_bytes).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "invalid packet hash")
+                    })?,
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "invalid packet hash",
+                        ))
+                    }
+                };
+                let bytes: [u8; HASH_SIZE] = bytes.try_into().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidData, "invalid packet hash length")
+                })?;
+                Ok(Hash::new(bytes))
+            })
+            .collect()
     }
 
     pub fn interface_hash(reference: &str) -> Option<AddressHash> {

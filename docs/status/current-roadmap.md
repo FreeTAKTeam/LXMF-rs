@@ -44,6 +44,12 @@ paths, exchange fresh LXMF messages in both directions, and complete fresh
 RNS Resources in both directions with receiver-verified size/digest/metadata
 and sender-visible completion.
 
+The standalone transport restart path now restores exact packet hashes from
+the pinned-Python-compatible `packet_hashlist.raw`, preserving duplicate
+packet/proof filtering across restart. This is separate from the LXMF
+`LXMRouter` delivered-ID cache and applies only to transport-enabled nodes not
+attached to a shared instance; the broader #609 recovery matrix remains open.
+
 The previously intermittent B-to-A LXMF delivery was traced to relay A
 rejecting the shared-owner `LinkRequestProof` because it lacked the
 destination's identity. The relay now records this exact owner handoff and

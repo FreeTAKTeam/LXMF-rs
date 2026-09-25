@@ -983,3 +983,27 @@ passed in 9.98 s. This confirms the already-known intermittency but does not
 localize a new mismatch or establish stable delivery; no production change is
 justified by this replay. An initial pair of runs used the non-pinned generic
 Reticulum checkout and is excluded from this evidence.
+
+## Exact packet/proof replay after standalone daemon restart
+
+The pinned Reticulum parity target at `99de23c040d507e3fefca19e87b182302902725d`
+loads `packet_hashlist.raw` at startup when transport is enabled and the node
+is not attached to a shared instance (`RNS/Transport.py:339-351`). It stores
+exact packet hashes and `packet_filter()` rejects a replay found in either
+current or previous hash sets (`:1668-1679`); graceful/runtime persistence
+writes the same raw concatenated-hash format (`save_packet_hashlist`). This
+includes ordinary proof packets, unlike the separate LXMF delivered-ID cache
+contract documented above.
+
+Rust previously wrote only a MessagePack list to `packet_hashlist` and never
+restored that list during daemon bootstrap. The focused fix now writes and
+restores the pinned `packet_hashlist.raw` format, continues to read the legacy
+Rust MessagePack file, restores the cache only for standalone transport-enabled
+nodes, and does not fabricate proof return-route/interface state from hashes.
+The production ingress regression accepts one proof, persists the cache,
+constructs a fresh transport, restores the raw hash list, then rejects the
+exact same proof. The compatibility test reads the prior Rust MessagePack
+format, and a shared-instance test confirms attached clients skip owner-managed
+hash restoration. This covers exact hash replay only; proof retransmission
+classes, cache rotation/size behavior, and the broader #609 restart matrix
+remain open.

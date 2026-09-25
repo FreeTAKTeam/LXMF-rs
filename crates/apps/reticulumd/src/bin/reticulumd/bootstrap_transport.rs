@@ -253,6 +253,15 @@ pub(super) async fn start_transport_and_interfaces(
             .set_inbound_queue_limits(inbound_queue_limits)
             .expect("runtime policy validates inbound queue limits");
         let mut transport_instance = Transport::new(config);
+        match transport_instance.restore_packet_hashlist(reticulum_storage_path).await {
+            Ok(restored) if restored > 0 => {
+                log::info!("[daemon] restored {} Reticulum packet hashes", restored);
+            }
+            Ok(_) => {}
+            Err(err) => {
+                log::error!("[daemon] failed to restore Reticulum packet hashlist: {}", err);
+            }
+        }
         transport_instance
             .set_receipt_handler(Box::new(ReceiptBridge::with_probe_registry(
                 receipt_map,
