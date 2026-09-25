@@ -933,3 +933,15 @@ s and 32.91 s). The broad reverse-delivery test still has intermittent B-to-A
 timeouts in later reruns, so broad delivery stability is not established.
 Deeper relay replacement, other packet/proof duplicate classes, and the wider
 #609 transport matrix remain open; issue #609 stays partial.
+
+A fresh bounded replay on the detached #629 head
+`bfcd85132a6a6e7cf4c596fc5e5732d3d0e4f561` used the exact pinned Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` and LXMF
+`727830cefda83d9c6e3982b48675425f3f988f9c` checkouts. Two serial runs again
+timed out on post-restart B-to-A delivery (54.92 s and 54.93 s); existing
+diagnostics showed two outbound attempts at progress 0.5, an empty A inbox, B's
+two-hop cached route, and relay B's one-hop route to A. A third immediate replay
+passed in 9.98 s. This confirms the already-known intermittency but does not
+localize a new mismatch or establish stable delivery; no production change is
+justified by this replay. An initial pair of runs used the non-pinned generic
+Reticulum checkout and is excluded from this evidence.
