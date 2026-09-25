@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-24
+Last reassessed: 2026-09-25
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -44,11 +44,17 @@ paths, exchange fresh LXMF messages in both directions, and complete fresh
 RNS Resources in both directions with receiver-verified size/digest/metadata
 and sender-visible completion.
 
-The standalone transport restart path now restores exact packet hashes from
-the pinned-Python-compatible `packet_hashlist.raw`, preserving duplicate
-packet/proof filtering across restart. This is separate from the LXMF
-`LXMRouter` delivered-ID cache and applies only to transport-enabled nodes not
-attached to a shared instance; the broader #609 recovery matrix remains open.
+The standalone transport restart path now restores and persists exact packet
+hashes in the pinned-Python-compatible `packet_hashlist.raw`. A production
+ingress regression additionally starts `reticulumd` as a subprocess, admits a
+proof and counts its duplicate, gracefully stops it, then restarts on the same
+storage and confirms the exact proof is filtered again. This is separate from
+the LXMF `LXMRouter` delivered-ID cache. A deterministic failure-injection
+regression also confirms a failed hashlist save does not suppress path-table
+writes, while persistence errors remain surfaced. This applies only to
+transport-enabled nodes not attached to a shared instance; retransmission
+classes, cache rotation/size parity, and the broader #609 recovery matrix
+remain open.
 
 The previously intermittent B-to-A LXMF delivery was traced to relay A
 rejecting the shared-owner `LinkRequestProof` because it lacked the

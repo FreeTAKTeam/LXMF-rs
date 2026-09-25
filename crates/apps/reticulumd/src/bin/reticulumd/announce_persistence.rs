@@ -23,7 +23,19 @@ impl PathTablePersistenceContext {
 pub(super) async fn flush_reticulum_path_table(
     context: &PathTablePersistenceContext,
 ) -> io::Result<usize> {
-    context.transport.save_reticulum_path_table(&context.path).await
+    let packet_hashlist_result = context.transport.save_packet_hashlist(&context.path).await;
+    let path_table_result = context.transport.save_reticulum_path_table(&context.path).await;
+
+    match (packet_hashlist_result, path_table_result) {
+        (Ok(_), path_table_result) => path_table_result,
+        (Err(packet_hashlist_error), Ok(_)) => Err(io::Error::new(
+            packet_hashlist_error.kind(),
+            format!("failed to persist packet hashlist: {packet_hashlist_error}"),
+        )),
+        (Err(packet_hashlist_error), Err(path_table_error)) => Err(io::Error::other(format!(
+            "failed to persist packet hashlist: {packet_hashlist_error}; failed to persist Reticulum path table: {path_table_error}"
+        ))),
+    }
 }
 
 pub(super) async fn flush_reticulum_path_table_if_configured(

@@ -169,6 +169,11 @@ jobs:
           python_to_python_duplicate_link_request_is_filtered_by_rust_transport
           -- --ignored --nocapture --test-threads=1
 
+      - name: Verify packet replay filtering across standalone daemon restart
+        run: >-
+          cargo test -p reticulumd --test packet_replay_process_restart
+          -- --nocapture --test-threads=1
+
       - name: Verify shared-instance peer recovery after daemon restart
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity

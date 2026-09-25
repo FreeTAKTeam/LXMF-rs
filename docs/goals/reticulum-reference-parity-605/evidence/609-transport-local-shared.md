@@ -1007,3 +1007,29 @@ format, and a shared-instance test confirms attached clients skip owner-managed
 hash restoration. This covers exact hash replay only; proof retransmission
 classes, cache rotation/size behavior, and the broader #609 restart matrix
 remain open.
+
+## Exact proof replay across standalone daemon-process restart
+
+The prior regression restored the hash list into a fresh `Transport` instance
+inside one process. The new production-process regression exercises the
+shutdown boundary itself: it starts `reticulumd` with isolated storage, sends
+the same proof twice through its TCP ingress, and observes one replay-filter
+counter hit. After graceful SIGINT shutdown, it verifies the raw persisted
+hash list contains the proof hash, starts a second daemon against the same
+storage, sends the proof again, and observes the replay-filter counter there.
+This matches the pinned Python behavior of loading `packet_hashlist.raw` at
+startup and saving packet hashes during graceful persistence. Hash-list and
+path-table saves are attempted independently so a failure in one does not
+prevent the other; errors are still surfaced. This closes only the exact
+ordinary-proof process-restart case; retransmission classes, cache rotation,
+and broader #609 acceptance remain open.
+
+```text
+cargo test -p reticulumd --bin reticulumd shutdown_flush_attempts_path_table_when_packet_hashlist_persistence_fails -- --nocapture
+  PASS (1 test)
+cargo test -p reticulumd --test packet_replay_process_restart -- --nocapture --test-threads=1
+  PASS (1 test)
+cargo test -p reticulumd --tests
+  PASS (all reticulumd test targets)
+Formatting, strict all-targets Clippy, module-size, and diff checks passed.
+```
