@@ -14,7 +14,8 @@ fn assert_ordinary_rebroadcast(message: &crate::iface::TxMessage, source: &Packe
     assert_eq!(message.packet.header.header_type, HeaderType::Type2);
     assert_eq!(
         message.packet.header.propagation_type,
-        PropagationType::Broadcast
+        PropagationType::Transport,
+        "a relayed announce must carry the transport propagation flag"
     );
     assert_eq!(message.packet.data.as_slice(), source.data.as_slice());
     assert!(

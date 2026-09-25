@@ -179,6 +179,58 @@ jobs:
             --output target/interop/python-compat-matrix/verify-${{ github.run_id }}/matrix.json \
             --timeout 420
 
+      - name: Verify multi-hop duplicate link-request-proof filtering
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_channel_interop
+          python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport
+          -- --ignored --nocapture --test-threads=1
+
+      - name: Verify multi-hop duplicate LinkRequest filtering
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_channel_interop
+          python_to_python_duplicate_link_request_is_filtered_by_rust_transport
+          -- --ignored --nocapture --test-threads=1
+
+      - name: Verify packet replay filtering across standalone daemon restart
+        run: >-
+          cargo test -p reticulumd --test packet_replay_process_restart
+          -- --nocapture --test-threads=1
+
+      - name: Verify shared-instance peer recovery after daemon restart
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p lxmf-cli --test python_lxmd_remote_relay
+          python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e
+          -- --ignored --nocapture --test-threads=1
+
+      - name: Verify local-client classification against pinned Python
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          pinned_python_local_client_classification_matches_parent_relationship
+          -- --ignored --nocapture
+
+      - name: Verify local-client announce schedule against pinned Python
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          test "$(git -C "$RETICULUM_PY_REPO" rev-parse HEAD)" = "$PYTHON_RETICULUM_PARITY_REF"
+          cargo test -p reticulum-rs-transport --lib \
+            pinned_python_local_client_schedule_matches_production_worker_tick \
+            -- --ignored --nocapture
+
       - name: Verify pinned Python rncp compression advertisements
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity

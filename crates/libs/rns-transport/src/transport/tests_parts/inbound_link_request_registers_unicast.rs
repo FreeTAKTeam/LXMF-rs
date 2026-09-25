@@ -195,3 +195,21 @@ async fn duplicate_filter_allows_repeated_channel_frames() {
         "channel retransmit must not be suppressed as a transport-level duplicate",
     );
 }
+
+#[tokio::test]
+async fn duplicate_filter_suppresses_repeated_link_requests() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let handler = transport.get_handler();
+    let destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let request = link_request_to(destination.desc);
+
+    assert!(handler.lock().await.filter_duplicate_packets(&request).await);
+    assert!(
+        !handler.lock().await.filter_duplicate_packets(&request).await,
+        "an exact repeated LinkRequest is already filtered by the pinned transport reference",
+    );
+}

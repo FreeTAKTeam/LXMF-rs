@@ -268,11 +268,30 @@ pub fn write_python_client_rns_config_with_ifac(dir: &Path, server_port: u16) {
 }
 
 pub fn write_python_shared_instance_rns_config(dir: &Path, shared_port: u16) {
+    write_python_shared_instance_rns_config_inner(dir, shared_port, None);
+}
+
+pub fn write_python_shared_instance_rns_config_with_control_port(
+    dir: &Path,
+    shared_port: u16,
+    control_port: u16,
+) {
+    write_python_shared_instance_rns_config_inner(dir, shared_port, Some(control_port));
+}
+
+fn write_python_shared_instance_rns_config_inner(
+    dir: &Path,
+    shared_port: u16,
+    control_port: Option<u16>,
+) {
     fs::create_dir_all(dir).expect("create Python shared-instance RNS dir");
+    let control_port_setting = control_port
+        .map(|port| format!("instance_control_port = {port}\n"))
+        .unwrap_or_default();
     fs::write(
         dir.join("config"),
         format!(
-            "[reticulum]\nenable_transport = no\nshare_instance = yes\nshared_instance_type = tcp\nshared_instance_port = {shared_port}\ndiscover_interfaces = no\n\n[logging]\nloglevel = 7\n"
+            "[reticulum]\nenable_transport = no\nshare_instance = yes\nshared_instance_type = tcp\nshared_instance_port = {shared_port}\n{control_port_setting}discover_interfaces = no\n\n[logging]\nloglevel = 7\n"
         ),
     )
     .expect("write Python shared-instance RNS config");
@@ -295,7 +314,7 @@ pub fn spawn_lxmd(
             .arg("--config")
             .arg(config_dir.join("lxmd.toml"))
             .env("RETICULUMD_BIN", reticulumd_bin)
-            .env("RUST_LOG", "reticulumd=trace,reticulum_rs_transport=trace")
+            .env("RUST_LOG", "reticulumd=trace,rns_transport=trace")
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
@@ -306,7 +325,7 @@ pub fn spawn_lxmd(
             .arg("--config")
             .arg(config_dir.join("lxmd.toml"))
             .env("RETICULUMD_BIN", reticulumd_bin)
-            .env("RUST_LOG", "reticulumd=trace,reticulum_rs_transport=trace")
+            .env("RUST_LOG", "reticulumd=trace,rns_transport=trace")
             .stdout(Stdio::null())
             .stderr(Stdio::from(stderr))
             .spawn()

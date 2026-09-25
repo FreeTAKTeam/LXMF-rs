@@ -124,7 +124,16 @@ pub(super) async fn send_to_next_hop<'a>(
     handler: &MutexGuard<'a, TransportHandler>,
     lookup: Option<AddressHash>,
 ) -> bool {
-    if !handler.config.transport_enabled {
+    send_to_next_hop_with_policy(packet, handler, lookup, false).await
+}
+
+async fn send_to_next_hop_with_policy<'a>(
+    packet: &Packet,
+    handler: &MutexGuard<'a, TransportHandler>,
+    lookup: Option<AddressHash>,
+    allow_when_transport_disabled: bool,
+) -> bool {
+    if !handler.config.transport_enabled && !allow_when_transport_disabled {
         log::debug!(
             "[tp-diag] forward_next_hop_skip node={} dst={} reason=transport_disabled",
             handler.config.name,
@@ -384,7 +393,9 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     packet: &Packet,
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
-    if !handler.config.transport_enabled {
+    let from_local_client =
+        handler.iface_manager.lock().await.is_local_client_interface(&received_from);
+    if !handler.config.transport_enabled && !from_local_client {
         log::debug!(
             "[tp-diag] link_request_intermediate_skip node={} dst={} from_iface={} reason=transport_disabled",
             handler.config.name,
@@ -393,7 +404,6 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
         );
         return;
     }
-
     log::debug!(
         "[tp-diag] link_request_intermediate node={} dst={} from_iface={} next_hop={} next_iface={} packet={}",
         handler.config.name,
@@ -407,7 +417,7 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     clamp_forwarded_link_request_mtu(&mut packet, &handler, received_from, next_hop_iface).await;
     handler.link_table.add(&packet, packet.destination, received_from, next_hop, next_hop_iface);
 
-    send_to_next_hop(&packet, &handler, None).await;
+    send_to_next_hop_with_policy(&packet, &handler, None, from_local_client).await;
 }
 
 async fn clamp_forwarded_link_request_mtu<'a>(
@@ -437,7 +447,7 @@ async fn clamp_forwarded_link_request_mtu<'a>(
 pub(super) async fn handle_link_request<'a>(
     packet: &Packet,
     iface: AddressHash,
-    handler: MutexGuard<'a, TransportHandler>,
+    mut handler: MutexGuard<'a, TransportHandler>,
 ) {
     log::trace!(
         "[tp] link_request dst={} ctx={:02x} hops={}",
@@ -445,11 +455,12 @@ pub(super) async fn handle_link_request<'a>(
         packet.context as u8,
         packet.header.hops
     );
+    let from_local_client = handler.iface_manager.lock().await.is_local_client_interface(&iface);
     if let Some(destination) = handler.single_in_destinations.get(&packet.destination).cloned() {
         log::trace!("tp({}): handle link request for {}", handler.config.name, packet.destination);
 
         handle_link_request_as_destination(destination, packet, iface, handler).await;
-    } else if !handler.config.transport_enabled {
+    } else if !handler.config.transport_enabled && !from_local_client {
         log::trace!(
             "tp({}): dropping transit link request to {} because transport forwarding is disabled",
             handler.config.name,
@@ -464,7 +475,7 @@ pub(super) async fn handle_link_request<'a>(
 
         let (next_hop, next_iface) = entry;
         handle_link_request_as_intermediate(iface, next_hop, next_iface, packet, handler).await;
-    } else {
+    } else if !handle_unknown_owner_local_link_request(packet, iface, &mut handler).await {
         log::trace!(
             "tp({}): dropping link request to unknown destination {}",
             handler.config.name,
@@ -473,4 +484,5 @@ pub(super) async fn handle_link_request<'a>(
     }
 }
 
+include!("path_parts/unknown_owner_local_link_request.rs");
 include!("path_tests.rs");

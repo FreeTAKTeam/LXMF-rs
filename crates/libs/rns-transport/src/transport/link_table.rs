@@ -5,6 +5,12 @@ use crate::destination::link::LinkId;
 use crate::hash::AddressHash;
 use crate::packet::Packet;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum LinkProofValidationPolicy {
+    DestinationIdentity,
+    SharedOwnerHandoff,
+}
+
 #[allow(dead_code)]
 pub struct LinkEntry {
     pub timestamp: Instant,
@@ -16,6 +22,7 @@ pub struct LinkEntry {
     pub taken_hops: u8,
     pub remaining_hops: u8,
     pub validated: bool,
+    proof_validation_policy: LinkProofValidationPolicy,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -65,6 +72,46 @@ impl LinkTable {
         next_hop: AddressHash,
         iface: AddressHash,
     ) {
+        self.add_with_proof_validation_policy(
+            link_request,
+            destination,
+            received_from,
+            next_hop,
+            iface,
+            LinkProofValidationPolicy::DestinationIdentity,
+        );
+    }
+
+    /// Records a LinkRequest handed to the unique configured shared owner.
+    /// That owner may return a proof for a destination whose identity this
+    /// relay cannot recall locally.
+    pub fn add_shared_owner_handoff(
+        &mut self,
+        link_request: &Packet,
+        destination: AddressHash,
+        received_from: AddressHash,
+        next_hop: AddressHash,
+        iface: AddressHash,
+    ) {
+        self.add_with_proof_validation_policy(
+            link_request,
+            destination,
+            received_from,
+            next_hop,
+            iface,
+            LinkProofValidationPolicy::SharedOwnerHandoff,
+        );
+    }
+
+    fn add_with_proof_validation_policy(
+        &mut self,
+        link_request: &Packet,
+        destination: AddressHash,
+        received_from: AddressHash,
+        next_hop: AddressHash,
+        iface: AddressHash,
+        proof_validation_policy: LinkProofValidationPolicy,
+    ) {
         let link_id = LinkId::from(link_request);
 
         if self.entries.contains_key(&link_id) {
@@ -84,6 +131,7 @@ impl LinkTable {
             taken_hops,
             remaining_hops: 0,
             validated: false,
+            proof_validation_policy,
         };
 
         self.entries.insert(link_id, entry);
@@ -102,6 +150,15 @@ impl LinkTable {
 
     pub fn proof_validation_context(&self, link_id: &LinkId) -> Option<(AddressHash, AddressHash)> {
         self.entries.get(link_id).map(|entry| (entry.original_destination, entry.next_hop_iface))
+    }
+
+    /// Whether `link_id` was sent to the recorded shared owner interface.
+    /// This does not authorize ordinary transit LinkRequest proofs.
+    pub fn allows_shared_owner_proof_on_iface(&self, link_id: &LinkId, iface: AddressHash) -> bool {
+        self.entries.get(link_id).is_some_and(|entry| {
+            entry.proof_validation_policy == LinkProofValidationPolicy::SharedOwnerHandoff
+                && entry.next_hop_iface == iface
+        })
     }
 
     pub fn handle_keepalive(&mut self, packet: &Packet) -> Option<(Packet, AddressHash)> {

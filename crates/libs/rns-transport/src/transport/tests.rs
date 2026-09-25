@@ -4,6 +4,10 @@ include!("tests_parts/path_table_api.rs");
 
 include!("tests_parts/reticulum_path_restore_bad_cache.rs");
 
+include!("tests_parts/blackholed_path_restore.rs");
+
+include!("tests_parts/expired_route_restart_recovery.rs");
+
 include!("tests_parts/path_request_duplicate_scoping.rs");
 
 include!("tests_parts/unknown_path_request_answered_by_announce.rs");
@@ -22,6 +26,13 @@ include!("tests_parts/announce_identity_drift.rs");
 
 include!("tests_parts/announce_broadcast_policy.rs");
 include!("tests_parts/announce_table_retransmission_gate.rs");
+include!("tests_parts/pinned_python_local_announce_schedule.rs");
+include!("tests_parts/disabled_transport_shared_child_local_destination.rs");
+include!("tests_parts/enabled_transport_shared_child_local_destination.rs");
+include!("tests_parts/disabled_shared_child_local_announce.rs");
+include!("tests_parts/enabled_shared_child_local_announce.rs");
+include!("tests_parts/shared_child_remote_link_request.rs");
+include!("tests_parts/shared_owner_unknown_link_request.rs");
 
 include!("tests_parts/encrypted_resource_control_packet.rs");
 
@@ -38,6 +49,10 @@ include!("tests_parts/inbound_link_request_registers_unicast.rs");
 include!("tests_parts/blackhole_path_eviction.rs");
 
 include!("tests_parts/rns_1_5_ingress_admission.rs");
+include!("tests_parts/ordinary_proof_duplicate.rs");
+include!("tests_parts/plain_group_packet_duplicates.rs");
+include!("tests_parts/duplicate_filter_python_matrix.rs");
+include!("tests_parts/packet_replay_restart.rs");
 include!("tests_parts/accepted_child_ifac_rotation.rs");
 
 include!("tests_parts/reticulum_runtime_management.rs");

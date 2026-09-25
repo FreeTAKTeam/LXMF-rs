@@ -417,13 +417,29 @@ pub(super) async fn handle_ingress_limited_announce<'a>(
     let _ = process_announce(packet, handler, iface, source, announce, shared_config).await;
 }
 
-pub(super) async fn retransmit_announces<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
+#[cfg(test)]
+pub(super) async fn retransmit_announces<'a>(handler: MutexGuard<'a, TransportHandler>) {
+    retransmit_announces_at(handler, Instant::now()).await;
+}
+
+async fn retransmit_announces_at<'a>(mut handler: MutexGuard<'a, TransportHandler>, now: Instant) {
     let transport_id = *handler.config.identity.address_hash();
-    let messages = handler.announce_table.drain_retransmissions(&transport_id);
+    let messages = handler.announce_table.drain_retransmissions_at(&transport_id, now);
 
     for message in messages {
         handler.send(message).await;
     }
+}
+
+pub(super) async fn announce_retransmit_tick(
+    handler_arc: &Arc<Mutex<TransportHandler>>,
+    now: Instant,
+) {
+    retransmit_announces_at(handler_arc.lock().await, now).await;
+    release_held_announces(handler_arc.lock().await).await;
+
+    let iface_manager = handler_arc.lock().await.iface_manager.clone();
+    iface_manager.lock().await.release_queued_announces().await;
 }
 
 pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, TransportHandler>) {
