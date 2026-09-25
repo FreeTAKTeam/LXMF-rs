@@ -58,6 +58,10 @@ pub trait PathLookupBridge: Send + Sync {
         Ok(json!({ "path_found": path_found }))
     }
 
+    fn path_table(&self, _max_hops: Option<u64>) -> Result<JsonValue, std::io::Error> {
+        Err(std::io::Error::other("path table bridge is not configured"))
+    }
+
     fn link_count(&self) -> Result<usize, std::io::Error> {
         Err(std::io::Error::other("link count bridge is not configured"))
     }

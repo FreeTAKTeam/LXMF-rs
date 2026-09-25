@@ -78,6 +78,48 @@ async fn wait_for_link_request_response_fails_on_resource_rejection() {
 }
 
 #[tokio::test]
+async fn wait_for_link_request_response_surfaces_inbound_resource_failure() {
+    let (_data_tx, mut data_rx) = tokio::sync::broadcast::channel(4);
+    let (resource_tx, mut resource_rx) = tokio::sync::broadcast::channel(4);
+    let destination = AddressHash::new([0x11; 16]);
+    let link_id = AddressHash::new([0x22; 16]);
+    let request_id = [0x33; 16];
+
+    resource_tx
+        .send(ResourceEvent {
+            hash: Hash::new_from_slice(b"failed inbound propagation response"),
+            link_id,
+            kind: ResourceEventKind::InboundFailed(rns_transport::resource::ResourceFailure {
+                reason: "retry_limit_exhausted".to_string(),
+                progress: rns_transport::resource::ResourceProgress {
+                    received_bytes: 0,
+                    total_bytes: 64,
+                    received_parts: 0,
+                    total_parts: 1,
+                },
+            }),
+        })
+        .expect("send inbound terminal resource event");
+
+    let err = wait_for_link_request_response(
+        &mut data_rx,
+        &mut resource_rx,
+        destination,
+        link_id,
+        request_id,
+        Duration::from_secs(1),
+    )
+    .await
+    .expect_err("inbound Resource failure must not degrade into request timeout");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+    assert_eq!(
+        err.to_string(),
+        "propagation control inbound resource transfer failed: retry_limit_exhausted"
+    );
+}
+
+#[tokio::test]
 async fn wait_for_link_request_response_ignores_terminal_resource_without_policy() {
     let (data_tx, mut data_rx) = tokio::sync::broadcast::channel(4);
     let (resource_tx, mut resource_rx) = tokio::sync::broadcast::channel(4);

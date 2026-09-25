@@ -235,6 +235,9 @@ pub enum ResourceEventKind {
     /// issue #369 diagnostics and is an intentional public event surface change.
     InboundFailed(ResourceFailure),
     OutboundComplete,
+    /// Outbound transfer stopped unsuccessfully. This intentionally does not
+    /// imply a timeout: dispatch, Link teardown, retry exhaustion, and lazy
+    /// split-segment construction can all terminate with this variant.
     OutboundFailed,
     /// The remote receiver rejected the outbound resource. Reticulum uses
     /// `RESOURCE_RCL` for this terminal outcome; it is distinct from a local

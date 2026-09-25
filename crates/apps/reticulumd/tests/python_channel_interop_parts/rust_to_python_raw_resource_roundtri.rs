@@ -67,6 +67,140 @@ async fn rust_to_python_raw_resource_roundtrip() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
+async fn rust_to_python_split_resource_first_segment_metadata_wire_matches_reference() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-resource-wire");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config(&py_config_dir, server_port);
+
+    let mut child = paths.spawn_endpoint(&py_config_dir, "resource-wire");
+    let ready = read_ready(&mut child).expect("Python wire-capture endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-resource-wire-interop", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
+    let transport = Transport::new(config);
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpClient::new(format!("127.0.0.1:{server_port}")), TcpClient::spawn);
+
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+    sleep(Duration::from_millis(100)).await;
+
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    transport
+        .channel(link_id)
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register channel handler");
+
+    let metadata = rmp_serde::to_vec(&String::from("rust-meta")).expect("metadata encoding");
+    let metadata_wire_size = metadata.len() + 3;
+    let mut state = 0x6051_5eed_u64;
+    let mut data = vec![0u8; rns_transport::resource::MAX_EFFICIENT_SIZE + 257];
+    for byte in &mut data {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        *byte = (state >> 24) as u8;
+    }
+    let mut resource_events = transport.resource_events();
+    let resource_hash = transport
+        .send_resource_with_compression(&link_id, data.clone(), Some(metadata.clone()), false)
+        .await
+        .expect("send uncompressed split Resource");
+    wait_for_outbound_resource_complete(
+        &mut resource_events,
+        resource_hash,
+        Duration::from_secs(30),
+    )
+    .await;
+
+    let ack = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            if let Some((_, data)) = seen
+                .lock()
+                .expect("seen lock")
+                .iter()
+                .find(|(id, data)| id == "rust-resource" && data.starts_with("resource-wire:"))
+                .cloned()
+            {
+                break data;
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("timed out waiting for Python raw-segment report");
+    let report: serde_json::Value = serde_json::from_str(
+        ack.strip_prefix("resource-wire:").expect("wire report marker"),
+    )
+    .expect("decode Python wire report");
+
+    let wire_segments = report["wire_segments"].as_array().expect("captured Resource segments");
+    assert_eq!(wire_segments.len(), 2, "capture must observe each incoming Resource segment");
+    assert_eq!(wire_segments[1]["segment_index"].as_u64(), Some(2));
+    let first = &wire_segments[0];
+    let mut expected_first_payload = Vec::with_capacity(rns_transport::resource::MAX_EFFICIENT_SIZE);
+    let metadata_len = u32::try_from(metadata.len()).expect("metadata length fits u32");
+    expected_first_payload.extend_from_slice(&metadata_len.to_be_bytes()[1..]);
+    expected_first_payload.extend_from_slice(&metadata);
+    let first_data_len = rns_transport::resource::MAX_EFFICIENT_SIZE - metadata_wire_size;
+    expected_first_payload.extend_from_slice(&data[..first_data_len]);
+
+    assert_eq!(report["compressed"].as_bool(), Some(false));
+    assert_eq!(report["segments"].as_u64(), Some(2));
+    assert_eq!(report["metadata"], "rust-meta");
+    assert_eq!(report["data_size"].as_u64(), Some(data.len() as u64));
+    assert_eq!(report["total_size"].as_u64(), Some((data.len() + metadata_wire_size) as u64));
+    assert_eq!(report["sha256"].as_str(), Some(digest_hex(&data).as_str()));
+    assert_eq!(first["segment_index"].as_u64(), Some(1));
+    assert_eq!(first["total_segments"].as_u64(), Some(2));
+    assert_eq!(first["has_metadata"].as_bool(), Some(true));
+    assert_eq!(first["compressed"].as_bool(), Some(false));
+    assert_eq!(first["payload_size"].as_u64(), Some(expected_first_payload.len() as u64));
+    assert_eq!(
+        first["payload_sha256"].as_str(),
+        Some(digest_hex(&expected_first_payload).as_str()),
+        "the complete first segment must equal the metadata prefix followed by the first data slice"
+    );
+    assert_eq!(
+        first["metadata_prefix_hex"].as_str(),
+        Some(hex::encode(&expected_first_payload[..metadata_wire_size]).as_str()),
+        "the three-byte metadata length and encoded metadata must lead segment 1"
+    );
+    assert_eq!(
+        first["first_content_hex"].as_str(),
+        Some(hex::encode(&expected_first_payload[metadata_wire_size..metadata_wire_size + 32]).as_str()),
+        "file content must immediately follow the metadata block in segment 1"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_backbone_raw_resource_roundtrip() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();

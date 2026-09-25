@@ -1,4 +1,4 @@
-use super::{decode_page_request, page_paths, rngit_paths, Cli, PageResponse, ReticulumGitNode};
+use super::{decode_page_request, page_paths, rngit_paths, Cli, GitCommand, PageResponse, ReticulumGitNode};
 use rns_transport::destination::link::{LinkEvent, LinkStatus};
 use rns_transport::destination::DestinationName;
 use rns_transport::hash::AddressHash;
@@ -18,6 +18,8 @@ use tokio::time::interval;
 
 const NULL_IDENTITY: [u8; 16] = [0; 16];
 
+include!("network_fetch.rs");
+
 struct Runtime {
     transport: Arc<Transport>,
     destination: Arc<Mutex<rns_transport::destination::SingleInputDestination>>,
@@ -30,6 +32,12 @@ struct Runtime {
 }
 
 pub(crate) fn run(cli: &Cli) -> io::Result<()> {
+    if let Some(GitCommand::Fetch { remote, reference, destination_ref }) = &cli.command {
+        return run_git_fetch(cli, remote, reference, destination_ref);
+    }
+    if let Some(GitCommand::Push { remote, local_ref, remote_ref, force }) = &cli.command {
+        return run_git_push(cli, remote, local_ref, remote_ref, *force);
+    }
     tokio::runtime::Runtime::new()?.block_on(run_async(cli))
 }
 

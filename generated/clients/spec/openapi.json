@@ -57,6 +57,45 @@
   },
   "components": {
     "schemas": {
+      "BehavioralParityCheckpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "complete_ratio": {
+            "$ref": "#/components/schemas/ParityRatio"
+          },
+          "coverage_status": {
+            "enum": [
+              "complete",
+              "incomplete",
+              "blocked",
+              "hardware-unverified"
+            ],
+            "type": "string"
+          },
+          "evidence_verified": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/ParityInventory"
+          },
+          "level": {
+            "$ref": "#/components/schemas/ParityLevel"
+          },
+          "reference": {
+            "$ref": "#/components/schemas/ReferenceRevision"
+          }
+        },
+        "required": [
+          "complete_ratio",
+          "coverage_status",
+          "evidence_verified",
+          "inventory",
+          "level",
+          "reference"
+        ],
+        "type": "object"
+      },
       "ErrorExtensionMap": {
         "additionalProperties": true,
         "maxProperties": 32,
@@ -1458,6 +1497,9 @@
         "properties": {
           "advisory": {
             "const": true
+          },
+          "forward_behavioral": {
+            "$ref": "#/components/schemas/BehavioralParityCheckpoint"
           },
           "lxmf": {
             "$ref": "#/components/schemas/ParityCheckpoint"
