@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[path = "rngit_parts/page_git_output.rs"]
+mod page_git_output;
+
 #[path = "rngit_parts/media_config.rs"]
 mod media_config;
 
@@ -357,6 +360,7 @@ mod tests {
     include!("rngit_parts/issue_612_work_storage_failure_tests.rs");
     include!("rngit_parts/issue_612_concurrency_tests.rs");
     include!("rngit_parts/issue_613_tests.rs");
+    include!("rngit_parts/page_git_output_tests.rs");
 
     #[test]
     fn statistics_hooks_record_python_rngit_event_buckets() {

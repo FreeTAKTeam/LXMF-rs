@@ -126,10 +126,36 @@ production-Link regression now requests a tracked directory with a pinned
 Python client, checks the pinned source call pattern, and compares the exact
 Resource bytes to `git show` output (including the `assets` filename). Rust
 handles this as a tree-only fallback while preserving the existing no-response
-behavior for failed blob reads; output remains capped at `MEDIA_BLOB_LIMIT`.
+behavior for failed blob reads. The prior `page_git_output` used
+`Command::output()` and checked the limit only after buffering complete stdout,
+so this did not yet provide a memory bound and a child that kept writing could
+not be rejected promptly. It now reads at most `limit + 1` bytes and kills
+then waits for an over-limit child; command and read failures still produce no
+response.
+
+The focused subprocess regression launches the current Rust test binary as a
+child that continuously writes stdout, with no shell or platform-specific
+program. It verifies the helper rejects at a 1 KiB limit in under five
+seconds and that the child has been reaped. The pinned-Python Link regression
+continues to compare tree Resource bytes with `git show` at the resolved
+commit.
 The same regression retains empty/nonempty zero-stat blob assertions. This is
 a source-checked trace against the Rust server, not a Python-server
 differential, and does not close the broader #613 acceptance.
+
+Focused validation on this worktree passed:
+
+```text
+cargo test -p rns-tools --bin rngit page_git_output_rejects_overflow_and_reaps_child_promptly -- --nocapture PASS (1 test)
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_zero_stat::rngit_media_zero_stat_and_tree_paths_match_pinned_show_behavior \
+  -- --ignored --exact --nocapture --test-threads=1 PASS (1 test)
+cargo fmt --all -- --check PASS
+cargo clippy -p rns-tools --all-targets --all-features --no-deps -- -D warnings PASS
+tools/scripts/check-module-size.sh PASS
+git diff --check PASS
+```
 
 Focused validation on the #633 worktree:
 

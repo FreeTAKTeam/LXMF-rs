@@ -1,10 +1,14 @@
 impl ReticulumGitNode {
     fn page_git_output(path: &Path, args: &[String], limit: usize) -> Option<Vec<u8>> {
-        let output = Command::new("git").args(args).current_dir(path).output().ok()?;
-        if !output.status.success() || output.stdout.len() > limit {
-            return None;
-        }
-        Some(output.stdout)
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        page_git_output::read_bounded_child_stdout(&mut child, limit)
     }
 
     fn page_git_text(path: &Path, args: &[String], limit: usize) -> Option<String> {

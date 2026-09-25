@@ -214,11 +214,15 @@ remain open.
 
 The pinned-Python `/media` trace now also covers a tracked directory path:
 reference `get_blob_info` accepts its tree object size and `get_blob_stream`
-uses `git show`, so Rust now returns the bounded tree listing with the same
-basename metadata instead of producing no response. The regression also
-retains the zero-stat empty/nonempty blob checks. This is source-checked
-against the pinned Python handler with a pinned Python Link client to the Rust
-service, not a Python-server differential; #613 remains partial.
+uses `git show`, so Rust returns the same tree listing and basename metadata
+instead of producing no response. `page_git_output` now reads at most the
+configured limit plus one byte, then promptly terminates and reaps an
+over-limit child; previously `Command::output()` buffered all stdout before
+rejecting excess data. A host-independent child-process regression verifies
+bounded rejection and reaping. The regression also retains the zero-stat
+empty/nonempty blob checks. This is source-checked against the pinned Python
+handler with a pinned Python Link client to the Rust service, not a
+Python-server differential; #613 remains partial.
 
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
