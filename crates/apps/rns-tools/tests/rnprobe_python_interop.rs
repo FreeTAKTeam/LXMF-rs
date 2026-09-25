@@ -241,6 +241,33 @@ fn spawn_rust_daemon(
         .spawn()
 }
 
+fn interrupt_and_wait(child: &mut Child, label: &str) -> io::Result<()> {
+    if let Some(status) = child.try_wait()? {
+        return Err(io::Error::other(format!("{label} exited before shutdown: {status}")));
+    }
+    let pid = child.id().to_string();
+    let signal = Command::new("kill").args(["-INT", &pid]).status()?;
+    if !signal.success() {
+        return Err(io::Error::other(format!("could not interrupt {label} process {pid}")));
+    }
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        if let Some(status) = child.try_wait()? {
+            if !status.success() {
+                return Err(io::Error::other(format!("{label} exited unsuccessfully: {status}")));
+            }
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    let _ = child.kill();
+    let status = child.wait()?;
+    Err(io::Error::new(
+        io::ErrorKind::TimedOut,
+        format!("{label} did not stop after SIGINT; terminated with {status}"),
+    ))
+}
+
 fn spawn_python_probe_responder(
     repo: &Path,
     config: &Path,
@@ -269,11 +296,17 @@ destination = RNS.Destination(
 )
 destination.set_proof_strategy(RNS.Destination.PROVE_ALL if prove_probes == "true" else RNS.Destination.PROVE_NONE)
 pathlib.Path(hash_path).write_text(destination.hash.hex(), encoding="ascii")
-while not pathlib.Path(announce_trigger).exists():
-    time.sleep(0.025)
-destination.announce()
+trigger_path = pathlib.Path(announce_trigger)
+last_trigger = None
 while True:
-    time.sleep(1)
+    try:
+        trigger = trigger_path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        trigger = ""
+    if trigger and trigger != last_trigger:
+        destination.announce()
+        last_trigger = trigger
+    time.sleep(0.025)
 "#;
     Command::new(python_bin())
         .arg("-c")
@@ -623,6 +656,168 @@ fn native_rnprobe_reuses_one_live_daemon_across_client_processes() -> io::Result
     let _ = python.kill();
     let _ = python.wait();
     result
+}
+
+#[test]
+#[ignore = "requires local pinned Python Reticulum checkout and built reticulumd and rnprobe binaries"]
+fn native_rnprobe_succeeds_after_rust_daemon_restart() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let python_interface_port = free_port()?;
+    let rpc_port = free_port()?;
+    let repo = python_repo();
+    let python_config = temp.path().join("python-config");
+    fs::create_dir_all(&python_config)?;
+    write_python_server_config(&python_config, python_interface_port)?;
+    let hash_path = temp.path().join("destination.hash");
+    let announce_trigger = temp.path().join("announce.trigger");
+    let mut python = spawn_python_probe_responder(
+        &repo,
+        &python_config,
+        &python_config.join("identity"),
+        &hash_path,
+        &announce_trigger,
+        true,
+    )?;
+    let result = (|| {
+        let pin = Command::new("git").arg("-C").arg(&repo).args(["rev-parse", "HEAD"]).output()?;
+        if !pin.status.success()
+            || String::from_utf8_lossy(&pin.stdout).trim()
+                != "99de23c040d507e3fefca19e87b182302902725d"
+        {
+            return Err(io::Error::other(format!(
+                "rnprobe restart regression requires pinned Reticulum 99de23c040d507e3fefca19e87b182302902725d; got {}",
+                String::from_utf8_lossy(&pin.stdout).trim()
+            )));
+        }
+        wait_for_port(python_interface_port, &mut python)?;
+        let destination_hash =
+            wait_for_file_value(&hash_path, &mut python, "Python probe responder")?;
+        let rust_config = temp.path().join("reticulumd.toml");
+        fs::write(
+            &rust_config,
+            format!(
+                "[reticulum]\n\
+                 enable_transport = true\n\
+                 share_instance = false\n\
+                 respond_to_probes = false\n\
+                 \n\
+                 [[interfaces]]\n\
+                 type = \"tcp_client\"\n\
+                 enabled = true\n\
+                 name = \"python-rnprobe-restart\"\n\
+                 host = \"127.0.0.1\"\n\
+                 port = {python_interface_port}\n"
+            ),
+        )?;
+        let database = temp.path().join("reticulum.db");
+        let log = temp.path().join("reticulumd.log");
+        let rpc_unix = temp.path().join("rpc-before-restart.sock");
+        let rpc = format!("127.0.0.1:{rpc_port}");
+        let mut daemon = spawn_rust_daemon(&rust_config, &database, &rpc, &rpc_unix, &log)?;
+        let first_run = (|| {
+            wait_for_port(rpc_port, &mut daemon)?;
+            let rnprobe =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/rnprobe");
+            let first = Command::new(&rnprobe)
+                .args([
+                    "--rpc",
+                    &rpc,
+                    "--probes",
+                    "2",
+                    "--timeout",
+                    "8",
+                    "--json",
+                    "rnstransport.probe",
+                    &destination_hash,
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?;
+            thread::sleep(Duration::from_millis(300));
+            fs::write(&announce_trigger, "before-restart")?;
+            let output = wait_for_output(
+                first,
+                Duration::from_secs(30),
+                "native rnprobe before daemon restart",
+            )?;
+            assert_successful_rnprobe(&output, &destination_hash, "before daemon restart")
+        })();
+        let stop_result = interrupt_and_wait(&mut daemon, "reticulumd before restart");
+        first_run?;
+        stop_result?;
+
+        let restarted_rpc_unix = temp.path().join("rpc-after-restart.sock");
+        let mut restarted_daemon =
+            spawn_rust_daemon(&rust_config, &database, &rpc, &restarted_rpc_unix, &log)?;
+        let restarted_run = (|| {
+            wait_for_port(rpc_port, &mut restarted_daemon)?;
+            thread::sleep(Duration::from_millis(500));
+            let rnprobe =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/rnprobe");
+            let second = Command::new(&rnprobe)
+                .args([
+                    "--rpc",
+                    &rpc,
+                    "--probes",
+                    "2",
+                    "--timeout",
+                    "8",
+                    "--json",
+                    "rnstransport.probe",
+                    &destination_hash,
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?;
+            thread::sleep(Duration::from_millis(300));
+            fs::write(&announce_trigger, "after-restart")?;
+            let output = wait_for_output(
+                second,
+                Duration::from_secs(30),
+                "native rnprobe after daemon restart",
+            )?;
+            assert_successful_rnprobe(&output, &destination_hash, "after daemon restart")
+        })();
+        let _ = restarted_daemon.kill();
+        let _ = restarted_daemon.wait();
+        restarted_run
+    })();
+    let _ = python.kill();
+    let _ = python.wait();
+    result
+}
+
+fn assert_successful_rnprobe(
+    output: &Output,
+    destination_hash: &str,
+    phase: &str,
+) -> io::Result<()> {
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "rnprobe failed {phase}: {}; stdout={}; stderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    if !output.stderr.is_empty() {
+        return Err(io::Error::other(format!(
+            "rnprobe wrote to stderr {phase}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    if response["destination"] != destination_hash
+        || response["probes"].as_u64() != Some(2)
+        || response["sent"].as_u64() != Some(2)
+        || response["replies"].as_u64() != Some(2)
+        || response["results"][0]["status"].as_str() != Some("delivered")
+        || response["results"][1]["status"].as_str() != Some("delivered")
+    {
+        return Err(io::Error::other(format!("unexpected rnprobe result {phase}: {response}")));
+    }
+    Ok(())
 }
 
 #[test]

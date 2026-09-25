@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-23
+Last reassessed: 2026-09-25
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -107,8 +107,13 @@ An additional exact-target process regression runs two separate native
 client discovers the pinned-Python responder. Both calls deliver both probes,
 showing shared-daemon utility reuse over production transport; this is not a
 daemon-restart or concurrency claim. No production discrepancy was exposed.
-These increments do not complete the broader #611 utility matrix, which
-remains partial.
+The new `native_rnprobe_succeeds_after_rust_daemon_restart` process regression
+then gracefully stops and restarts `reticulumd` against the same state database
+while the pinned-Python peer stays live, releases a fresh announce, and asserts
+that a new native `rnprobe` process delivers both probes over the restarted
+production transport. Verify runs it against the exact pinned peer. This is
+software loopback evidence for one restart path, not a general daemon recovery
+or utility matrix claim; #611 remains partial.
 
 A focused `rnprobe` process check now injects a daemon RPC authorization
 rejection and verifies exit status 1, contextual stderr, and empty stdout. It
