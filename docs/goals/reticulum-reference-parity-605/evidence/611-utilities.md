@@ -188,7 +188,7 @@ option family; it is not a callable-surface completion claim.
 | `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; a new local `--table`/`--max` path-table RPC/CLI slice; `rnpath_cli` regressions; `rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc` exercises the Rust CLI, live daemon TCP RPC, and a separate pinned-Python Reticulum peer | partial / discovery has one live mixed-runtime trace and table listing has software unit/RPC coverage; remaining reference options open |
 | `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. `f86ecc1c` exercises pinned Python→Rust and native Rust→pinned Python probe roles over isolated TCP interfaces. The ignored `native_rnprobe_succeeds_after_rust_daemon_restart` process test verifies successful probe delivery after a graceful daemon restart. | partial / bounded software workflow evidenced; broader failure/restart, physical, and public-network evidence remain open |
 | `rnsd` | Configured daemon launch, service/interactive modes, verbosity, example configuration | Rust compatibility shim resolves and delegates to `reticulumd`; delegation/help/status tests exist | partial / daemon delegation evidenced |
-| `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates/displays persisted identities and now emits Python-compatible binary `.rsg` signatures for files; pinned Python validates the signature and rejects a changed payload | partial / local identity and bounded file-signing workflow evidenced |
+| `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates/displays persisted identities, emits Python-compatible binary `.rsg` signatures, and validates pinned-Python signed `.rsg` envelopes; the process regression checks valid binary input and tampering against both implementations | partial / local identity, bounded file-signing, and signature-validation workflows evidenced; other reference modes open |
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
 | `rnodeconf` | Serial RNode information, firmware/bootstrap/update, EEPROM, Wi-Fi/Bluetooth/display/radio management, signing/trust operations | Rust `rnodeconf-rs` exposes daemon-backed management commands and mock-RPC coverage; physical serial/firmware rows are separate | partial / software management evidenced; hardware-unverified |
 | `rnpkg` | Package-manager configuration and package workflow entry point | Rust exposes global/example-config options only, matching the currently shipped no-subcommand surface | partial / configuration-only |
@@ -926,8 +926,20 @@ uses the frozen Reticulum-Python revision
 
 This proves only the reference-style default binary file-signing contract and
 Python validation of its output. `--raw`, alternate encodings, imports/exports,
-verify commands in Rust, identity requests, encryption, metadata, and the broad
-#611 utility matrix remain open.
+legacy signature formats without a required signer, identity requests,
+encryption, metadata, and the broad #611 utility matrix remain open.
+
+## `rnid --validate` signed-file slice
+
+Rust now exposes the reference `--validate <path>` / `-V` operation. An ignored
+exact-target process regression generates an identity with the Rust CLI, signs
+a binary payload with frozen Python Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`, and confirms Rust validates the
+resulting `.rsg` signed envelope. It also confirms Python accepts the unchanged
+payload and that both implementations reject a changed byte with status 10.
+Rust accepts either the payload path or the `.rsg` path and derives the other.
+This covers one local signed-file workflow only; `--raw`, other identity
+operations, and the broader #611 matrix remain open.
 
 The `rncp_missing_save_directory_uses_reference_failure_status` production
 process test covers a separate startup failure. Frozen Reticulum

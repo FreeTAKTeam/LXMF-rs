@@ -224,6 +224,9 @@ jobs:
           cargo test -p rns-tools --test rnsd_python_example_config \
             rnsd_example_config_matches_pinned_python_without_starting_daemon \
             -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnid_python_validate \
+            rnid_validates_pinned_python_signed_files_and_rejects_tampering \
+            -- --ignored --exact --nocapture --test-threads=1
           RETICULUM_PY_REPO="$GITHUB_WORKSPACE/Reticulum-parity" \
             cargo test -p rns-tools --test rncp_python_missing_source \
             rncp_missing_source_records_python_and_rust_cli_transcripts \

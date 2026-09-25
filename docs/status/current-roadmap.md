@@ -142,6 +142,13 @@ both binary payloads and rejects a one-byte mutation with its reference
 invalid-signature exit status. This does not complete the other `rnid` modes
 or the broader #611 utility matrix.
 
+The #631 follow-up adds native `rnid --validate` for frozen Python's signed
+`.rsg` envelope. A production-process regression validates a binary signature
+created by pinned Python, then changes the payload and confirms both Rust and
+Python reject it with status 10. Rust accepts either the payload path or its
+`.rsg` signature path. Identity import/export, network identity requests,
+encryption, and the broader #611 utility matrix remain open.
+
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted

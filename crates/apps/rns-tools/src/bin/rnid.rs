@@ -1,9 +1,11 @@
 use clap::{Parser, Subcommand};
 use rand_core::OsRng;
-use rns_transport::identity::PrivateIdentity;
+use rns_transport::identity::{lxmf_verify, Identity, PrivateIdentity};
 use sha2::{Digest, Sha256};
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Parser)]
@@ -13,6 +15,8 @@ struct Cli {
     identity: Option<PathBuf>,
     #[arg(short = 's', long, global = true, value_name = "PATH", num_args = 1..)]
     sign: Option<Vec<PathBuf>>,
+    #[arg(short = 'V', long, global = true, value_name = "PATH")]
+    validate: Option<PathBuf>,
     #[arg(short = 'f', long, global = true)]
     force: bool,
     #[command(subcommand)]
@@ -43,6 +47,11 @@ fn main() -> std::process::ExitCode {
             if error.kind() == io::ErrorKind::AlreadyExists {
                 println!("{error}");
                 std::process::ExitCode::from(11)
+            } else if error.kind() == io::ErrorKind::InvalidData
+                && error.to_string() == "invalid signature"
+            {
+                eprintln!("rnid: {error}");
+                std::process::ExitCode::from(10)
             } else {
                 eprintln!("rnid: {error}");
                 std::process::ExitCode::FAILURE
@@ -52,7 +61,25 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: Cli) -> io::Result<()> {
-    let Cli { identity, sign, force, command } = cli;
+    let Cli { identity, sign, validate, force, command } = cli;
+    if let Some(validation_target) = validate {
+        if sign.is_some() || command.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--validate cannot be combined with --sign or a subcommand",
+            ));
+        }
+        let (input_path, signature_path) = validation_paths(&validation_target);
+        if validate_signature(identity.as_deref(), &input_path, &signature_path)? {
+            println!(
+                "Signature {} for file {} is valid",
+                signature_path.display(),
+                input_path.display()
+            );
+            return Ok(());
+        }
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid signature"));
+    }
     if let Some(inputs) = sign {
         if command.is_some() {
             return Err(io::Error::new(
@@ -98,6 +125,76 @@ fn run(cli: Cli) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn validation_paths(target: &Path) -> (PathBuf, PathBuf) {
+    if target.extension() == Some(OsStr::new("rsg")) {
+        (target.with_extension(""), target.to_path_buf())
+    } else {
+        let mut signature_path = target.as_os_str().to_os_string();
+        signature_path.push(".rsg");
+        (target.to_path_buf(), PathBuf::from(signature_path))
+    }
+}
+
+fn validate_signature(
+    required_identity_path: Option<&Path>,
+    input_path: &Path,
+    signature_path: &Path,
+) -> io::Result<bool> {
+    let input = fs::read(input_path)?;
+    let signature = fs::read(signature_path)?;
+    let required_identity = required_identity_path.map(read_private_identity).transpose()?;
+
+    if signature.len() == 64 {
+        return Ok(required_identity
+            .as_ref()
+            .is_some_and(|identity| lxmf_verify(identity.as_identity(), &input, &signature)));
+    }
+    if signature.len() < 65 {
+        return Ok(false);
+    }
+
+    let (signature_bytes, envelope_bytes) = signature.split_at(64);
+    let mut envelope_cursor = Cursor::new(envelope_bytes);
+    let Ok(envelope) = rmpv::decode::read_value(&mut envelope_cursor) else { return Ok(false) };
+    let rmpv::Value::Map(envelope_map) = envelope else { return Ok(false) };
+    let envelope = rmpv::Value::Map(envelope_map);
+    if envelope_cursor.position() != envelope_bytes.len() as u64
+        || envelope["hashtype"].as_str() != Some("sha256")
+    {
+        return Ok(false);
+    }
+    let rmpv::Value::Binary(expected_hash) = &envelope["hash"] else {
+        return Ok(false);
+    };
+    if expected_hash.as_slice() != Sha256::digest(&input).as_slice() {
+        return Ok(false);
+    }
+    let rmpv::Value::Map(metadata) = &envelope["meta"] else {
+        return Ok(false);
+    };
+    let metadata = rmpv::Value::Map(metadata.clone());
+    let rmpv::Value::Binary(signer_hash) = &metadata["signer"] else {
+        return Ok(false);
+    };
+    let rmpv::Value::Binary(public_key) = &metadata["pubkey"] else {
+        return Ok(false);
+    };
+    if public_key.len() != 64 {
+        return Ok(false);
+    }
+    let Ok(signer) = Identity::try_new_from_slices(&public_key[..32], &public_key[32..]) else {
+        return Ok(false);
+    };
+    if signer_hash.as_slice() != signer.address_hash.as_slice()
+        || required_identity
+            .as_ref()
+            .is_some_and(|identity| identity.address_hash() != &signer.address_hash)
+    {
+        return Ok(false);
+    }
+    Ok(lxmf_verify(&signer, envelope_bytes, signature_bytes))
 }
 
 fn sign_file(identity_path: &Path, input: &Path, force: bool) -> io::Result<()> {
