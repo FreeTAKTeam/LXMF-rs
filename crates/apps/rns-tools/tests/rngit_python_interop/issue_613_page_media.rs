@@ -111,6 +111,10 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
             )));
         }
         let git_stdout = String::from_utf8_lossy(&git_output.stdout);
+        assert!(
+            !root.join("private/repo.work").exists(),
+            "denied work request created persistent work state"
+        );
         assert!(git_stdout.contains("\"status\": 0"), "Git list status: {git_stdout}");
         assert!(git_stdout.contains("\"contains_main\": true"), "Git list payload: {git_stdout}");
         assert!(git_stdout.contains("\"fetch_status\": 0"), "Git fetch status: {git_stdout}");

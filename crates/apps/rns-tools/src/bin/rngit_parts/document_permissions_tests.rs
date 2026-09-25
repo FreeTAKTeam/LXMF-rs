@@ -42,7 +42,8 @@ fn document_permissions_restrict_work_item_operations_and_listing() {
 
     assert_eq!(
         client.work_view(remote, 1, "active").expect("view response")[0],
-        ReticulumGitNode::RES_DISALLOWED
+        ReticulumGitNode::RES_OK,
+        "repository administrators retain the pinned Python view fallback"
     );
     assert_eq!(
         client.work_edit(remote, 1, "Restricted", "Changed", "active").expect("edit response")[0],

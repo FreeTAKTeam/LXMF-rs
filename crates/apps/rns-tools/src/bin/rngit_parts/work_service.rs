@@ -1,26 +1,21 @@
 impl ReticulumGitNode {
-    fn valid_work_document_request(request: &[(rmpv::Value, rmpv::Value)]) -> bool {
-        let Some(doc_id) = map_value(request, &rmpv::Value::String("doc_id".into())) else {
-            return false;
-        };
-        if doc_id.as_u64().is_none()
-            && doc_id
-                .as_str()
-                .and_then(|value| value.parse::<u64>().ok())
-                .is_none()
-        {
-            return false;
-        }
-        let Some(scope) = map_value(request, &rmpv::Value::String("scope".into())) else {
-            return true;
-        };
-        matches!(
-            scope.as_str(),
-            Some("active" | "completed" | "proposed" | "all")
-        )
+    fn work_request_document_id(request: &[(rmpv::Value, rmpv::Value)]) -> Option<u64> {
+        map_value(request, &rmpv::Value::String("doc_id".into())).and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_str()?.parse::<u64>().ok())
+                .or_else(|| {
+                    let numeric = value.as_f64()?;
+                    (numeric.is_finite() && numeric > -1.0 && numeric < u64::MAX as f64)
+                        .then_some(numeric as u64)
+                })
+        })
     }
 
-    fn valid_work_list_scope(request: &[(rmpv::Value, rmpv::Value)]) -> bool {
+    fn valid_work_document_request(request: &[(rmpv::Value, rmpv::Value)]) -> bool {
+        if Self::work_request_document_id(request).is_none() {
+            return false;
+        }
         let Some(scope) = map_value(request, &rmpv::Value::String("scope".into())) else {
             return true;
         };
@@ -53,7 +48,6 @@ impl ReticulumGitNode {
     fn work_remove_permissions(root: &Path, id: u64) -> Result<(), String> {
         match fs::remove_file(Self::work_permission_path(root, id)) {
             Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.to_string()),
         }
     }
@@ -115,11 +109,11 @@ impl ReticulumGitNode {
     }
 
     fn work_now() -> rmpv::Value {
-        rmpv::Value::F64(
+        rmpv::Value::from(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .map(|value| value.as_secs_f64())
-                .unwrap_or(0.0),
+                .map(|value| value.as_secs())
+                .unwrap_or(0),
         )
     }
 
@@ -141,26 +135,49 @@ impl ReticulumGitNode {
             Ok(value) => value,
             Err(error) => return error,
         };
-        let operation =
-            map_string(request, &rmpv::Value::String("operation".into())).unwrap_or_default();
+        let Some(operation) = map_string(request, &rmpv::Value::String("operation".into()))
+            .filter(|operation| !operation.is_empty())
+        else {
+            return response(Self::RES_INVALID_REQ, "Invalid request", None);
+        };
         if !self.resolve_permission(&remote, &group, &repository, Self::PERM_READ) {
             return response(Self::RES_NOT_FOUND, "Not found", None);
         }
         let root = Self::work_root(record);
 
+        if matches!(operation.as_str(), "view" | "comment" | "edit" | "delete" | "perms") {
+            let document_id = Self::work_request_document_id(request);
+            if let Some(id) = document_id {
+                if !self.resolve_doc_permission(&remote, &group, &repository, id, Self::PERM_READ)
+                    && !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN)
+                {
+                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                }
+            }
+        }
+
         match operation.as_str() {
             "list" => {
-                if !Self::valid_work_list_scope(request) {
-                    return response(Self::RES_INVALID_REQ, "Invalid scope", None);
-                }
                 self.work_list(&root, request, remote, &group, &repository)
             }
             "view" => {
+                if map_value(request, &rmpv::Value::String("doc_id".into())).is_none() {
+                    return response(Self::RES_INVALID_REQ, "No document ID specified", None);
+                }
+                if map_value(request, &rmpv::Value::String("doc_id".into()))
+                    .and_then(rmpv::Value::as_i64)
+                    .is_some_and(|id| id < 0)
+                {
+                    return response(Self::RES_NOT_FOUND, "Not found", None);
+                }
+                if Self::work_request_document_id(request).is_none() {
+                    return response(Self::RES_INVALID_REQ, "Invalid request", None);
+                }
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
                 let Some((_, id, _)) = Self::work_view_location(&root, request) else {
-                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                    return response(Self::RES_NOT_FOUND, "Not found", None);
                 };
                 if !self.resolve_doc_permission(
                     &remote,
@@ -168,7 +185,8 @@ impl ReticulumGitNode {
                     &repository,
                     id,
                     Self::PERM_READ,
-                ) {
+                ) && !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN)
+                {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
                 self.work_view(&root, request)
@@ -177,7 +195,9 @@ impl ReticulumGitNode {
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
-                let Some((_, id, _, _)) = self.work_request_document(&root, request) else {
+                let Some((_, id, _, _)) =
+                    self.work_request_document_ignoring_scope(&root, request)
+                else {
                     return response(Self::RES_NOT_FOUND, "Document not found", None);
                 };
                 let can_read = self.resolve_doc_permission(
@@ -186,7 +206,7 @@ impl ReticulumGitNode {
                     &repository,
                     id,
                     Self::PERM_READ,
-                );
+                ) || self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN);
                 let can_write = self.resolve_doc_permission(
                     &remote,
                     &group,
@@ -226,16 +246,41 @@ impl ReticulumGitNode {
                 self.work_create(&root, request, remote, false, peer_identity)
             }
             "edit" => {
+                if map_value(request, &rmpv::Value::String("doc_id".into())).is_none() {
+                    if !self.resolve_permission(&remote, &group, &repository, Self::PERM_WRITE)
+                        || !self.resolve_permission(
+                            &remote,
+                            &group,
+                            &repository,
+                            Self::PERM_INTERACT,
+                        )
+                    {
+                        return response(Self::RES_DISALLOWED, "Not allowed", None);
+                    }
+                    if let Err(error) = Self::validate_work_signature(request, peer_identity) {
+                        return response(Self::RES_INVALID_REQ, error, None);
+                    }
+                    return response(Self::RES_INVALID_REQ, "No document ID specified", None);
+                }
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
-                let Some((_, id, _, document)) = self.work_request_document(&root, request) else {
+                let Some((_, id, directory, _)) =
+                    self.work_request_document_ignoring_scope(&root, request)
+                else {
                     return response(Self::RES_NOT_FOUND, "Document not found", None);
+                };
+                let root_path = directory.join("root");
+                if !root_path.is_file() {
+                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                }
+                let Some(document) = self.work_load_document(&root_path) else {
+                    return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
                 };
                 if !Self::work_author_matches(&document, &remote)
                     || !self.work_manage_allowed(&remote, &group, &repository, id)
                 {
-                    return response(Self::RES_DISALLOWED, "Not allowed", None);
+                    return response(Self::RES_DISALLOWED, "No access, not author", None);
                 }
                 self.work_edit(&root, request, peer_identity)
             }
@@ -243,8 +288,10 @@ impl ReticulumGitNode {
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
-                let Some((_, id, _, document)) = self.work_request_document(&root, request) else {
-                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                let Some((_, id, _, document)) =
+                    self.work_request_document_for_delete(&root, request)
+                else {
+                    return response(Self::RES_REMOTE_FAIL, "Remote error", None);
                 };
                 let admin = self.resolve_doc_permission(
                     &remote,
@@ -253,10 +300,11 @@ impl ReticulumGitNode {
                     id,
                     Self::PERM_ADMIN,
                 );
-                if (!Self::work_author_matches(&document, &remote) && !admin)
-                    || !self.work_manage_allowed(&remote, &group, &repository, id)
-                {
+                if !self.work_manage_allowed(&remote, &group, &repository, id) {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
+                }
+                if !Self::work_author_matches(&document, &remote) && !admin {
+                    return response(Self::RES_DISALLOWED, "No access, not author", None);
                 }
                 self.work_delete(&root, request)
             }
@@ -270,21 +318,23 @@ impl ReticulumGitNode {
                 if !Self::valid_work_document_request(request) {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
-                let Some((_, id, _, document)) = self.work_request_document(&root, request) else {
-                    return response(Self::RES_NOT_FOUND, "Document not found", None);
-                };
-                let manage = self.work_manage_allowed(&remote, &group, &repository, id);
-                let admin = self.resolve_doc_permission(
-                    &remote,
-                    &group,
-                    &repository,
-                    id,
-                    Self::PERM_ADMIN,
-                );
-                if !(admin || (manage && Self::work_author_matches(&document, &remote))) {
+                if !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN)
+                    || !self.resolve_permission(
+                        &remote,
+                        &group,
+                        &repository,
+                        Self::PERM_WRITE,
+                    )
+                    || !self.resolve_permission(
+                        &remote,
+                        &group,
+                        &repository,
+                        Self::PERM_INTERACT,
+                    )
+                {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                self.work_permissions(&root, request)
+                self.work_permissions(&root, request, remote, &group, &repository)
             }
             _ => response(Self::RES_INVALID_REQ, "Invalid request", None),
         }

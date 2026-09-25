@@ -181,8 +181,22 @@ def request(data):
         raise RuntimeError(result["error"])
     return result["payload"]
 
+unknown_scope_response = request(
+    {0: "group/repo", "operation": "list", "scope": "unknown"}
+)
+if unknown_scope_response[0] != 0:
+    raise RuntimeError(
+        "pinned Python accepts unknown list scope with success status: "
+        + repr(unknown_scope_response)
+    )
+unknown_scope_result = mp.unpackb(unknown_scope_response[1:])
+if unknown_scope_result != {"active": [], "completed": [], "proposed": []}:
+    raise RuntimeError(
+        "unknown list scope did not return the pinned Python empty scopes map: "
+        + repr(unknown_scope_result)
+    )
+
 malformed_requests = [
-    ("invalid list scope", {0: "group/repo", "operation": "list", "scope": "unknown"}),
     (
         "malformed document ID",
         {0: "group/repo", "operation": "view", "doc_id": "not-a-number"},
@@ -212,6 +226,7 @@ link.teardown()
 print(json.dumps({
     "id": document["id"],
     "scope": document["scope"],
+    "unknown_list_scope_accepted": True,
     "malformed_request_cases": len(malformed_requests),
 }))
 "#;
@@ -298,10 +313,17 @@ fn concurrent_python_clients_reserve_distinct_persisted_work_ids() -> io::Result
             if result.get("scope").and_then(serde_json::Value::as_str) != Some("active") {
                 return Err(io::Error::other("Python creator did not receive active work scope"));
             }
-            if result.get("malformed_request_cases").and_then(serde_json::Value::as_u64) != Some(3)
+            if result.get("unknown_list_scope_accepted").and_then(serde_json::Value::as_bool)
+                != Some(true)
             {
                 return Err(io::Error::other(
-                    "Python creator did not verify all malformed work request cases",
+                    "Python creator did not verify pinned unknown-list-scope behavior",
+                ));
+            }
+            if result.get("malformed_request_cases").and_then(serde_json::Value::as_u64) != Some(2)
+            {
+                return Err(io::Error::other(
+                    "Python creator did not verify both malformed work request cases",
                 ));
             }
         }
@@ -474,7 +496,7 @@ fn pinned_python_rngit_work_cli_round_trips_production_service_lifecycle() -> io
             String::from_utf8_lossy(&denied_edit.stdout),
             String::from_utf8_lossy(&denied_edit.stderr)
         );
-        if denied_edit.status.success() || !denied_output.contains("Not allowed") {
+        if denied_edit.status.success() || !denied_output.contains("No access, not author") {
             return Err(io::Error::other(format!(
                 "pinned Python CLI did not report the denied edit: {}\n{denied_output}",
                 denied_edit.status

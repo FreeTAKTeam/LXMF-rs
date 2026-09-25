@@ -68,7 +68,7 @@ jobs:
         working-directory: reticulum-conformance
         run: |
           python -m pip install -r requirements.txt
-          python -m pip install 'cryptography>=3.4.7' 'pyserial>=3.5' 'qrcode>=7.4.2'
+          python -m pip install 'cryptography>=3.4.7' 'pyserial>=3.5' 'qrcode>=7.4.2' 'msgpack>=1.0.8'
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -141,6 +141,55 @@ jobs:
           ref: ${{ env.PYTHON_RETICULUM_PARITY_REF }}
           path: Reticulum-parity
 
+      - name: Verify pinned Python executable rngit permission resolver
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          test "$(git -C "$RETICULUM_PY_REPO" rev-parse HEAD)" = "$PYTHON_RETICULUM_PARITY_REF"
+          cargo test -p rns-tools --bin rngit \
+            tests::executable_allowed_resolver_matches_pinned_python_permission_decisions \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::permission_handler_revocation_and_blocked_identity_match_pinned_python \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_can_view_document_denied_by_its_sidecar_like_pinned_python \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_comment_uses_pinned_python_document_read_gate \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_edit_uses_pinned_python_document_read_gate \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_delete_uses_pinned_python_document_read_gate \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_permissions_get_uses_pinned_python_document_read_gate \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::document_author_permissions_get_requires_repository_admin_like_pinned_python \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::document_author_permissions_get_requires_repository_write_and_interact_like_pinned_python \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_author_permissions_get_still_requires_repository_write_and_interact \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::repository_admin_without_document_admin_cannot_get_or_set_permissions_like_pinned_python \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::document_author_or_document_admin_can_manage_permissions_like_pinned_python \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::document_write_access_without_read_matches_pinned_python_edit_gate \
+            -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::work_edit_by_non_author_matches_pinned_python_without_mutation \
+            -- --ignored --exact --nocapture
+
       - name: Run pinned Python rngit concurrency, CLI, and malformed-request interoperability
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
@@ -148,6 +197,15 @@ jobs:
         run: >-
           cargo test -p rns-tools --test rngit_concurrent_python_interop
           -- --ignored --nocapture
+
+      - name: Verify pinned Python rngit optional-signature wire schema
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --bin rngit
+          tests::rngit_work_view_preserves_explicit_nil_optional_signature
+          -- --ignored --exact --nocapture
 
       - name: Verify Rust rngit fetch and push CLI against pinned Python
         env:
@@ -449,6 +507,53 @@ jobs:
             pinned_python_local_client_schedule_matches_production_worker_tick \
             -- --ignored --nocapture
 
+      - name: Run pinned Python rngit work-list differential regressions
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            work_list_success_matches_pinned_python_scopes_order_metadata_and_comment_counts \
+            -- --ignored --nocapture --test-threads=1
+          cargo test -p rns-tools --bin rngit \
+            work_list_completed_scope_matches_pinned_python_and_is_read_only \
+            -- --ignored --nocapture --test-threads=1
+
+      - name: Run pinned Python rngit work-view numeric-ID differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            work_view_document_id_coercion_matches_pinned_python \
+            -- --ignored --nocapture --test-threads=1
+
+      - name: Run pinned Python rngit create/propose validation differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            tests::work_create_and_propose_missing_signature_errors_match_pinned_python_precedence \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Run pinned Python rngit binary-comment differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            tests::work_comment_binary_content_matches_pinned_python_and_persists_bytes \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Run pinned Python rngit missing-comment-content differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            tests::work_comment_missing_content_matches_pinned_python_without_mutation \
+            -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python rncp compression advertisements
         env:
