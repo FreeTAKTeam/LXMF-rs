@@ -1000,3 +1000,35 @@ cargo fmt --all -- --check
 git diff --check
 # passed
 ```
+
+## IFAC UDP live replacement bind failure and retry
+
+The production daemon hot-apply regression
+`hot_apply_ifac_udp_bind_retry_keeps_reconfigured_policy_fail_closed` starts an
+IFAC-protected UDP listener, then applies a valid replacement configuration
+while another local socket holds the replacement port. It verifies that the
+old listener is stopped, the replacement retains its new IFAC configuration,
+and both the runtime handle and `daemon_status_ex` report `bind_failed` with a
+socket error and no credential disclosure. Once the port is released, the
+production UDP worker retries and reports `bound`; a plaintext datagram then
+increments IFAC/decode-error counters without incrementing admitted packet
+counters. Runtime status is checked through the daemon RPC as well as the
+worker handle. This is deterministic local software-carrier evidence and adds
+one live-reconfiguration failure/recovery case; it does not cover all
+carrier-family, startup/error, or physical acceptance.
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  hot_apply_ifac_udp_bind_retry_keeps_reconfigured_policy_fail_closed -- --nocapture
+# 1 passed; failed replacement reported, IFAC retained through retry, plaintext rejected and counted
+cargo test -p reticulumd --bin reticulumd interface_hot_apply -- --nocapture
+# 36 passed; related hot-apply regressions including the new IFAC case
+cargo clippy -p reticulumd --bin reticulumd --all-targets --all-features --no-deps -- -D warnings
+# passed
+cargo fmt --all -- --check
+# passed
+bash tools/scripts/check-module-size.sh
+# passed
+git diff --check
+# passed
+```

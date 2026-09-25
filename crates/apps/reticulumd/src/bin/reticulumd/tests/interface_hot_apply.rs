@@ -18,6 +18,9 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 
+#[path = "interface_hot_apply/issue_608_udp_bind_retry.rs"]
+mod issue_608_udp_bind_retry;
+
 fn tcp_record(name: &str, host: &str, port: u16) -> InterfaceRecord {
     InterfaceRecord {
         kind: "tcp_client".to_string(),
