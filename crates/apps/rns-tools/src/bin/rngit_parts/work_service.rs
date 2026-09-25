@@ -177,7 +177,7 @@ impl ReticulumGitNode {
                     return response(Self::RES_INVALID_REQ, "Invalid document request", None);
                 }
                 let Some((_, id, _)) = Self::work_view_location(&root, request) else {
-                    return response(Self::RES_NOT_FOUND, "Document not found", None);
+                    return response(Self::RES_NOT_FOUND, "Not found", None);
                 };
                 if !self.resolve_doc_permission(
                     &remote,

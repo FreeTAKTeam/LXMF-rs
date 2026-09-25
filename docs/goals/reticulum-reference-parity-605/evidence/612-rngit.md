@@ -349,6 +349,31 @@ matrix remains open.
 
 ## Deliberate remaining gaps
 
+### Mixed-peer work request-shape coverage
+
+The ignored `rngit_serves_pages_and_media_to_pinned_python_client` production-
+Link trace now exercises five additional `/mgmt/work` request shapes: unknown
+list scope, missing and malformed view IDs, absent document, and repository-
+read denial. The pinned Python handler returns an empty successful listing for
+an unknown list scope, `RES_INVALID_REQ` for missing/malformed view IDs, and
+`RES_NOT_FOUND` / `Not found` when the requested document directory is absent
+or repository reads are denied. Rust's production view handler now returns
+the same `Not found` body for the absent-directory branch; the earlier
+document-read authorization gate remains `Document not found`, matching
+Python's distinct hidden-denial response. The Python-client production-Link
+test asserts these exact bounded responses and verifies denied access does not
+create the private repository's `.work` root. It uses the pinned Python client
+against the Rust server and checks the pinned Python handler's source contract;
+it does not start a second Python server for these cases, and does not prove
+the broader per-operation acceptance matrix.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_serves_pages_and_media_to_pinned_python_client \
+  -- --ignored --exact --test-threads=1                              PASS
+```
+
 - The transport-neutral local request seam still carries only the remote
   16-byte hash, so it intentionally cannot perform public-key verification.
   The native network adapter supplies the identified peer key and verifies

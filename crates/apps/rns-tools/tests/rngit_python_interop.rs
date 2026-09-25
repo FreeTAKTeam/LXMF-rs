@@ -9,6 +9,8 @@ static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(()
 
 #[path = "rngit_python_interop/typed_msgpack.rs"]
 mod typed_msgpack;
+#[path = "rngit_python_interop/work_request_cases.rs"]
+mod work_request_cases;
 
 fn free_port() -> io::Result<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
@@ -707,6 +709,8 @@ work_id = work_created["id"]
 if work_created.get("scope") != "active":
     raise RuntimeError("work create did not return the active scope")
 
+__RNGIT_WORK_REQUEST_CASES__
+
 work_list = request(
     "/mgmt/work",
     {0: "group/repo", "operation": "list", "scope": "active"},
@@ -825,6 +829,11 @@ result["group_permissions_status"] = group_permissions[0]
 result["repository_permissions_status"] = repository_permissions[0]
 result["invalid_work_signature_status"] = invalid_work[0]
 result["work_create_status"] = work_create[0]
+result["work_malformed_list_status"] = malformed_list[0]
+result["work_missing_view_status"] = missing_view_id[0]
+result["work_malformed_view_status"] = malformed_view_id[0]
+result["work_missing_document_status"] = missing_document[0]
+result["work_denied_read_status"] = denied_read[0]
 result["work_list_status"] = work_list[0]
 result["work_view_status"] = work_view[0]
 result["work_comment_status"] = work_comment[0]
@@ -837,9 +846,10 @@ result["work_delete_status"] = work_delete[0]
 link.teardown()
 print(json.dumps(result, sort_keys=True))
 "#;
+    let client = CLIENT.replace("__RNGIT_WORK_REQUEST_CASES__", work_request_cases::PYTHON);
     Command::new(python_bin())
         .arg("-c")
-        .arg(CLIENT)
+        .arg(client)
         .arg(config_dir)
         .arg(identity)
         .arg(destination)
@@ -1116,6 +1126,10 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
             )));
         }
         let git_stdout = String::from_utf8_lossy(&git_output.stdout);
+        assert!(
+            !root.join("private/repo.work").exists(),
+            "denied work request created persistent work state"
+        );
         assert!(git_stdout.contains("\"status\": 0"), "Git list status: {git_stdout}");
         assert!(git_stdout.contains("\"contains_main\": true"), "Git list payload: {git_stdout}");
         assert!(git_stdout.contains("\"fetch_status\": 0"), "Git fetch status: {git_stdout}");
