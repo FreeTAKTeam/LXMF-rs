@@ -28,14 +28,24 @@ impl ReticulumGitNode {
         if content_value.is_some_and(|value| value.as_str().is_none() && !value.is_bin()) {
             return response(Self::RES_REMOTE_FAIL, "Remote error", None);
         }
-        let content = map_string(request, &rmpv::Value::String("content".into()))
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        if content.is_empty() {
+        let content = match content_value {
+            Some(rmpv::Value::Binary(content)) => {
+                rmpv::Value::Binary(content.trim_ascii().to_vec())
+            }
+            Some(rmpv::Value::String(content)) => {
+                rmpv::Value::from(content.as_str().unwrap_or_default().trim())
+            }
+            _ => rmpv::Value::String(String::new().into()),
+        };
+        let content_len = match &content {
+            rmpv::Value::Binary(content) => content.len(),
+            rmpv::Value::String(content) => content.as_str().map(str::len).unwrap_or(0),
+            _ => 0,
+        };
+        if content_len == 0 {
             return response(Self::RES_INVALID_REQ, "Content is required", None);
         }
-        if content.len() > Self::WORK_DOC_LIMIT {
+        if content_len > Self::WORK_DOC_LIMIT {
             return response(Self::RES_INVALID_REQ, "Content limit exceeded", None);
         }
         let comment_id = self.work_get_next_comment_id(&directory);
@@ -43,7 +53,7 @@ impl ReticulumGitNode {
         let comment = rmpv::Value::Map(vec![
             (
                 rmpv::Value::String("content".into()),
-                rmpv::Value::String(content.into()),
+                content,
             ),
             (
                 rmpv::Value::String("meta".into()),

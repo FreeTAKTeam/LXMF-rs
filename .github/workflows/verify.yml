@@ -239,6 +239,15 @@ jobs:
             tests::work_create_and_propose_missing_signature_errors_match_pinned_python_precedence \
             -- --ignored --exact --nocapture --test-threads=1
 
+      - name: Run pinned Python rngit binary-comment differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p rns-tools --bin rngit \
+            tests::work_comment_binary_content_matches_pinned_python_and_persists_bytes \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report

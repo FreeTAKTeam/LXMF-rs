@@ -231,6 +231,13 @@ response; both production handlers leave the document root unchanged and
 create no comment file. Only this request shape is covered, so the broader
 #612 operation/error matrix remains open.
 
+A separate pinned-Python #612 differential found that `comment` accepts
+MessagePack binary `content`, trims Python byte whitespace, and persists the
+remaining bytes. Rust now preserves that binary value instead of converting it
+to an empty string. The exact production-handler response and persisted bytes
+match the frozen reference; other comment shapes and the broader #612 matrix
+remain open.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits
