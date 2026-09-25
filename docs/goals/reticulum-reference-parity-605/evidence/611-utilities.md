@@ -800,11 +800,20 @@ fetched commit with `git cat-file`, asserting exact bytes including NUL and
 non-UTF-8 values. The same test then pushes a local branch to a new service
 ref and verifies its exact commit ID and binary blob bytes. Push uses the
 existing `/git/push` bundle request (`local_ref`, `remote_ref`, `force`, and
-`bundle`); deletion, batching, and remote-helper behavior are not added. It
-was run against Reticulum `99de23c040d507e3fefca19e87b182302902725d` and
-passed; Verify runs this focused test against its pinned checkout. The full
-Git remote-helper workflow, initial-branch variation, and broader #611
-utility matrix remain open.
+`bundle`); deletion, batching, and remote-helper push remain out of scope. The
+same process regression now installs the production Rust `git-remote-rns`
+helper in a temporary executable search path, then runs real `git ls-remote`
+and `git fetch` commands against the separate pinned Python service over
+Reticulum. Git's helper protocol performs capability discovery and ref listing,
+then requests `refs/heads/main`; the fetched remote-tracking ref is checked
+against the exact Python service commit and its binary blob is compared byte
+for byte. This verifies the real helper-discovery/list/fetch read path, not just
+the direct `rngit fetch` subcommand. It was run against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` and passed; Verify runs this focused
+test against its pinned checkout. Remote-helper push/deletion, batching,
+initial-branch variation, and the broader #611 utility matrix remain open.
+The helper reads its TCP interface from `RNGIT_CONNECT`; `RNGIT_IDENTITY_SEED`
+can pin the helper's Reticulum identity, with a stable default otherwise.
 
 Validation against a checkout at the pinned revision:
 
@@ -815,6 +824,15 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
   rngit_cli_fetches_and_pushes_with_python_service \
   -- --ignored --exact --nocapture --test-threads=1
 PASS: 1 passed
+```
+
+The same test exercises helper discovery/list and fetch through Git itself:
+
+```text
+git ls-remote rns://<pinned-python-destination>/group/repo
+git fetch rns://<pinned-python-destination>/group/repo \
+  refs/heads/main:refs/remotes/rns/main
+PASS: exact advertised/fetched commit ID and exact binary blob bytes
 ```
 
 ## Mixed rnsh per-stream pipe/PTY process behavior

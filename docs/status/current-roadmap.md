@@ -84,7 +84,10 @@ The #611 `rngit fetch` and bounded `push` increments add production Rust
 CLI-to-pinned-Python Git workflows: fetch verifies and imports a real bundle;
 push sends a local ref bundle to a requested remote ref. A separate-process
 test checks exact commit IDs and binary blob bytes for both directions. The
-broader Git remote-helper and utility matrices remain open.
+production Rust `git-remote-rns` helper now also passes real Git capability
+discovery/list and fetch against the pinned Python service, with the exact
+remote-tracking commit and binary blob verified. Remote-helper push/deletion,
+batching, initial-branch variation, and broader utility matrices remain open.
 
 The #631 `rnprobe` follow-up compares `--probes not-an-integer` across the Rust
 and frozen Python processes. Both return exit status 2 with their corresponding

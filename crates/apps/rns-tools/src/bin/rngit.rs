@@ -9,9 +9,26 @@ mod rngit_network {
     include!("rngit_parts/network.rs");
 }
 
+mod rngit_remote_helper {
+    include!("rngit_parts/remote_helper.rs");
+}
+
 include!("rngit_parts/cli.rs");
 
 pub fn main() -> std::process::ExitCode {
+    if std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_stem().map(|name| name == "git-remote-rns"))
+        .unwrap_or(false)
+    {
+        return match rngit_remote_helper::run() {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("git-remote-rns: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     let cli = Cli::parse();
     if cli.network_mode() {
         return match rngit_network::run(&cli) {

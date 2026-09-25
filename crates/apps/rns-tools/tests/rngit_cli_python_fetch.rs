@@ -21,6 +21,35 @@ fn run_git(directory: &Path, args: &[&str]) -> io::Result<String> {
     }
 }
 
+fn run_git_with_env(
+    directory: &Path,
+    args: &[&str],
+    helper_dir: &Path,
+    port: u16,
+) -> io::Result<String> {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let mut search_path = std::env::split_paths(&path).collect::<Vec<_>>();
+    search_path.insert(0, helper_dir.to_path_buf());
+    let search_path = std::env::join_paths(search_path)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(directory)
+        .env("PATH", search_path)
+        .env("RNGIT_CONNECT", format!("127.0.0.1:{port}"))
+        .env("RNGIT_IDENTITY_SEED", "git-remote-rns-python-fetch-test")
+        .output()?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    } else {
+        Err(io::Error::other(format!(
+            "git {args:?} via Rust remote helper failed: {}\nstdout:\n{}",
+            String::from_utf8_lossy(&output.stderr).trim(),
+            String::from_utf8_lossy(&output.stdout)
+        )))
+    }
+}
+
 fn free_port() -> io::Result<u16> {
     Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
@@ -267,6 +296,42 @@ while node._should_run:
             )));
         }
         assert_eq!(pushed_blob.stdout, pushed_payload);
+
+        let helper_repo = temp.path().join("remote-helper-repository");
+        let helper_dir = temp.path().join("remote-helpers");
+        fs::create_dir_all(&helper_repo)?;
+        fs::create_dir_all(&helper_dir)?;
+        run_git(&helper_repo, &["init", "-q"])?;
+        fs::copy(env!("CARGO_BIN_EXE_git-remote-rns"), helper_dir.join("git-remote-rns"))?;
+        let remote_url = format!("rns://{destination}/group/repo");
+
+        let listed =
+            run_git_with_env(&helper_repo, &["ls-remote", &remote_url], &helper_dir, port)?;
+        assert!(
+            listed.lines().any(|line| line == format!("{expected_head}\trefs/heads/main")),
+            "Git remote-helper discovery did not advertise the exact Python ref: {listed}"
+        );
+
+        let fetched = run_git_with_env(
+            &helper_repo,
+            &["fetch", &remote_url, "refs/heads/main:refs/remotes/rns/main"],
+            &helper_dir,
+            port,
+        )?;
+        assert_eq!(run_git(&helper_repo, &["rev-parse", "refs/remotes/rns/main"])?, expected_head);
+        let helper_blob = Command::new("git")
+            .arg("cat-file")
+            .arg("blob")
+            .arg("refs/remotes/rns/main:binary-fixture.dat")
+            .current_dir(&helper_repo)
+            .output()?;
+        if !helper_blob.status.success() {
+            return Err(io::Error::other(format!(
+                "could not read remote-helper fetched blob: {}\nfetch output: {fetched}",
+                String::from_utf8_lossy(&helper_blob.stderr)
+            )));
+        }
+        assert_eq!(helper_blob.stdout, payload);
         Ok(())
     })();
 
