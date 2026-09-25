@@ -1081,3 +1081,24 @@ carrier-family acceptance remains open.
 cargo test -p reticulumd --bin reticulumd bootstrap_uses_nonempty_legacy_ifac_name_when_canonical_alias_is_empty
 # 1 passed; UDP listener bound with the pinned-reference legacy network name
 ```
+
+## Accepted-child IFAC egress after parent credential rotation
+
+The accepted-child regression already proved that the child channel's inherited
+IFAC state rejects an ingress frame authenticated with the parent's previous
+credential and admits the rotated credential. It now also encodes an egress
+frame through that child state and verifies that the previous-key context
+rejects it while the rotated parent context authenticates it. This confirms
+both directions on the same inherited child state after the parent config
+changes; no production-code fix was needed. It is deterministic unit evidence,
+not full TCP carrier or physical-device acceptance, and does not close #608.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  rns_1_5_accepted_child_uses_parent_ifac_rotation_for_wire_admission -- --nocapture
+# 1 passed; the accepted child rejects old-key ingress and emits rotated-key egress
+cargo clippy -p reticulum-rs-transport --lib --all-targets --no-deps -- -D warnings
+# passed
+cargo fmt --all -- --check
+# passed
+```

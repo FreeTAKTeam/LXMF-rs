@@ -57,4 +57,17 @@ async fn rns_1_5_accepted_child_uses_parent_ifac_rotation_for_wire_admission() {
             .destination,
         packet.destination
     );
+
+    let child_egress_frame =
+        encode_packet_ifac(&child_channel.ifac_state, &packet).expect("encode child egress frame");
+    assert!(
+        decode_packet_ifac(&old_state, &child_egress_frame).is_err(),
+        "accepted-child egress must stop using the parent's previous credential after rotation"
+    );
+    assert_eq!(
+        decode_packet_ifac(&rotated_state, &child_egress_frame)
+            .expect("accepted-child egress authenticates with the rotated parent credential")
+            .destination,
+        packet.destination
+    );
 }

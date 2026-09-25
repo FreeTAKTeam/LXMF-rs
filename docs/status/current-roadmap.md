@@ -77,11 +77,12 @@ outbound I2P peer loop now also has a fake-SAM stream
 regression for wrong-key rejection and authenticated ingress/egress; none of
 these tests is physical-carrier or public-I2P evidence. A second fake-SAM test
 verifies an established virtual I2P peer observes parent IFAC credential
-rotation, rejects stale credentials, and uses the rotated key for egress. The
-transport ingress suite also verifies an already-attached accepted child
-channel rejects the previous parent credential and admits frames under the
-rotated credential after live configuration change. This is software-only
-coverage of the child decoder state; no production-code fix was required. TCP
+rotation, rejects stale credentials, and uses the rotated key for egress. An
+accepted-child IFAC regression verifies inbound rejection of the previous
+parent credential and admission under the rotated credential; it now also
+encodes child egress with the inherited state and confirms only the rotated
+parent key authenticates it. This covers both directions after live
+configuration change and required no production-code fix. TCP
 accepted clients now inherit their parent's IFAC policy before the child worker
 is scheduled, with a deterministic first-poll regression proving plaintext is
 rejected; a separate pinned-Python TCP process test now verifies first-frame
