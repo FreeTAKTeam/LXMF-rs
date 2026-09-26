@@ -147,7 +147,7 @@ ledger and should be tracked in roadmap or matrix residual gaps instead:
 | Weave connected serial hardware and display/status combinations | `RNS/Interfaces/*`, `RNS/Utilities/*` | Depends on physical device and operator workflow evidence. |
 | VR-N76 BLE readiness/write/reconnect evidence | `RNS/Interfaces/*`, `RNS/Utilities/*` | BLE hardware behavior is outside software-only acceptance. |
 | Public I2P peer-set and long-running production soak | `RNS/Interfaces/*`, `RNS/Transport.py` | Useful operational confidence, but not required for local software parity rows. |
-| Sideband, MeshChatX, Columba, and other external clients | `LXMF/LXMRouter.py`, `LXMF/Handlers.py` | Client-specific compatibility claims require separate release evidence. |
+| External-client evidence | `LXMF/LXMRouter.py`, `LXMF/Handlers.py` | This remains outside the software ledger. Columba has retained bidirectional direct-LXMF gate evidence and Sideband has live phone-HIL evidence; MeshChatX and release-specific reruns remain separate client evidence. See `docs/status/real-world-interoperability.md`. |
 
 ## Agent Ownership Notes
 
