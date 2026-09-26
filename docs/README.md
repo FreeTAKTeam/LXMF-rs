@@ -82,6 +82,8 @@ Update these documents when their corresponding behavior changes:
 
 ## Release and evidence
 
+- [Real-world interoperability evidence](status/real-world-interoperability.md)
+
 - [Latest GitHub release](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
 - [v0.9.9 release notes](release-notes-v0.9.9.md)
 - [v0.10.0 release notes](release-notes-v0.10.0.md)
