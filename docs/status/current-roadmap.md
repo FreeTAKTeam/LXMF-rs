@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-25
+Last reassessed: 2026-09-26
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -698,8 +698,7 @@ author/identity/signature values and integer document IDs/timestamps across
 Python↔Rust storage and production Link response boundaries. It also corrected
 Rust's newly generated timestamps to integer seconds, matching frozen Python;
 legacy float-valued records remain readable and no data migration is applied.
-This closes only that typed-value compatibility seam; #612 and #605 remain
-partial.
+This closes only that typed-value compatibility seam; #612 remains partial.
 
 A focused #612 malformed-comment differential now confirms that an authorized
 array-valued `content` raises in pinned Python's `_work_comment` and returns
@@ -728,8 +727,8 @@ unsuccessfully with the injected exception and bounded timeout preserved. A
 reciprocal Python-initiated in-flight Resource trace now verifies reasoned
 inbound failure and Link closure after keepalive loss, followed by a distinct
 Link and exact-checksum Resource recovery. This is local mixed-peer evidence
-only; the #605 candidate and its release posture remain open pending the
-documented broader gates. A daemon Resource-completion regression now checks
+only; broader #610 acceptance and release posture remain separately tracked.
+A daemon Resource-completion regression now checks
 receipt metadata, peer byte accounting, exactly-once emission, and tracking
 cleanup, including suppression of a repeated completion notification. The
 timeout-failure receipt path now has the same exactly-once metadata and cleanup
@@ -831,9 +830,9 @@ The bounded #615 software acceptance is complete at PR #626 head
 `a649f51e9671007c08aeff469877038e2db7a716`): local release-check passed with
 the final candidate provenance, hosted PR HIL passed `23/23` cases, the exact
 pinned compatibility matrix passed `30/30`, and the Independent and CI gates
-also passed. This closes the software acceptance slice only; issue #605 stays
-open while its forward behavioral contract remains incomplete, and physical,
-platform, third-party-client, public-network, and long-soak evidence remains
+also passed. This closes the software acceptance slice only; the broader
+forward behavioral contract remains incomplete under its child issues.
+Physical, platform, third-party-client, public-network, and long-soak evidence remains
 explicitly excluded under #616.
 
 The #614 Windows BLE software increment adds a dedicated `windows-latest` CI
@@ -846,7 +845,7 @@ A new daemon-binary loopback regression also exercises the production
 AutoInterface activation helper, manager channel registration/removal, runtime
 task/socket teardown, and restart on the same test-owned ports. It does not
 replace the remaining native-interface, broader #614 lifecycle, platform, or
-paired-device/hardware evidence and does not promote #614/#605 to complete. A
+paired-device/hardware evidence and does not promote #614 to complete. A
 second regression now covers failed activation after the discovery socket is
 bound, asserting daemon-channel rollback and immediate discovery-port reuse.
 Pinned Python AutoInterface peer timeout also detaches and tears down each
@@ -867,13 +866,13 @@ the configured bounded fallback, a scripted disconnect exercises cleanup and
 fresh-backend restart, and cancellation closes the restarted backend. This was
 compared with pinned Python `99de23c040d507e3fefca19e87b182302902725d`'s
 five-second `ble_detect_timeout`; it is not physical BLE support or device
-evidence, and #614/#605 remain partial.
+evidence, and #614 remains partial.
 Strict I2P startup now also has one negative fake-SAM daemon-path regression:
 a rejected SAM HELLO prevents interface registration and leaves a contextual
 startup failure. Two fake-SAM regressions separately cancel outbound setup via
 the daemon and interface tokens while the SAM HELLO reply is stalled; both verify
 the worker exits and closes its socket. These do not replace destination-
-creation/session coverage or real-router/public-network evidence; #614/#605
+creation/session coverage or real-router/public-network evidence; #614
 remain partial.
 The Linux PipeInterface lifecycle now has deterministic production-worker and
 configured-daemon process evidence: child EOF causes one respawn; a local peer
@@ -891,7 +890,7 @@ status reports RX/TX counters, and clean shutdown permits a same-port restart.
 A focused Linux CI job runs the trace and uploads its report. Along with the
 worker cancellation/rebind regression, this covers software packet flow and
 restart for the configured UDP unicast path; multicast, multi-host,
-cross-platform, mobile, physical, and wider #614/#605 interface evidence remain
+cross-platform, mobile, physical, and wider #614 interface evidence remain
 open.
 The ordinary TCP client now also has a focused loopback regression for packet
 ingress after an established carrier stream closes and reconnects: the test
@@ -905,7 +904,7 @@ two clients each deliver HDLC packets through the listener, the first child
 reports closed after peer EOF, and the listener remains able to accept and
 route the second client. This fills a distinct accepted-server software
 evidence gap; it does not establish Backbone-specific or cross-platform parity,
-and #614/#605 remain partial.
+and #614 remains partial.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
@@ -1155,14 +1154,22 @@ interactive signing ceremonies are explicitly deferred to v1.0. Until then
 they remain hardware-unverified or human-validation targets and are not v0.9.5
 release blockers.
 
-## Issue #605 forward parity candidate
+## Issue #605 pinned 1.5.4-dev feature update
 
 The repository's current release posture remains anchored to the RNS 1.5.2
-baseline above, but the next full-parity target is the immutable RNS 1.5.4-dev
+baseline above. The #605 feature-update target is the immutable RNS 1.5.4-dev
 development revision `99de23c040d507e3fefca19e87b182302902725d`. The target is
 recorded in the canonical `[parity_target]` section of
 `tools/interop/independent-implementations.toml`; changing it requires a
 reviewed reference update and a regenerated delta ledger.
+
+The identified feature delta is integrated on the combined mainline: HDLC
+framing, RNode BLE lifecycle/Windows paired-device selection, and rngit media,
+page, permission-refresh, and work-transition changes. Focused Rust tests,
+pinned-Python interop, and normal CI provide software evidence. The short
+reconciliation in [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) is #605's update
+checklist; the inherited gaps below remain linked follow-ups, not automatic
+blockers. The 1.5.2 release baseline is unchanged.
 
 The callable inventory is now treated as historical navigation evidence for the
 active release, not as proof of forward behavioral parity. The generated
@@ -1174,11 +1181,10 @@ candidate inventory intentionally demotes inherited mappings to provisional
 `partial` until behavior is exercised.
 
 The forward ledger is [`docs/status/rns-1.5.4-delta.md`](rns-1.5.4-delta.md).
-No current release, SDK orientation, or runtime status may describe the
-1.5.4-development target as complete until the behavioral contract, exact
-candidate software gate, and independently reviewed child issues pass. Physical,
-platform, third-party-client, public-network, and soak evidence remain a
-separate operational axis.
+Completing #605's feature update does not certify full Reticulum parity,
+promote a new release baseline, or close the inherited behavioral contract.
+Physical, platform, third-party-client, public-network, and soak evidence
+remain a separate operational axis under #616.
 
 ## v0.9.0 Full Software-Parity Baseline
 
