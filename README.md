@@ -48,7 +48,8 @@ that canonical pin remains unchanged in v0.11.0.
 | LXMF software parity | All seven tracked software scenarios complete |
 | Rust/Python interoperability | Direct, link, channel, paper, propagation, and daemon scenarios exercised against pinned references |
 | Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately for `v0.10.1`; v0.11.0 evidence is qualified by its tag workflows |
-| Hardware and external clients | Physical devices, public networks, and third-party clients remain separate evidence tracks and are not claimed by the software-parity result |
+| Real-world interoperability | Bounded field evidence exists for REM on physical RNode/LoRa, two-phone TCP, Sideband phone HIL, Columba bidirectional direct LXMF, and live RCH paths; see [real-world interoperability evidence](docs/status/real-world-interoperability.md) |
+| Remaining operational matrix | Permanent HIL, the full declared hardware/platform matrix, public-network rows, long soak, and current-release client reruns remain separate from the completed software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
 project posture, the [v0.11.0 release notes](docs/release-notes-v0.11.0.md),
