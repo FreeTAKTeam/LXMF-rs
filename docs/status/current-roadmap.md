@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-25
+Last reassessed: 2026-09-26
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
