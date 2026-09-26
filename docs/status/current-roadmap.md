@@ -18,6 +18,22 @@ override these status files.
 
 ## Current Position
 
+### Real-world evidence baseline
+
+The software-parity labels in this repository do not mean that LXMF-rs has
+never been exercised on hardware or with real applications. Published and
+retained evidence includes REM 1.4 on two physical RNode/LoRa links, the REM
+two-phone TCP release tests, bidirectional Sideband phone HIL, a passing
+bidirectional Columba direct-LXMF gate, and live RCH integration. The exact
+proofs and their limits are listed in
+[real-world interoperability evidence](real-world-interoperability.md).
+
+Issues #616 and #624 remain open because this evidence does not cover every
+declared device/platform/client row and is not yet a permanent unattended HIL
+lane. They should be read as coverage-completion and automation work, not as
+evidence that physical interoperability has never been demonstrated.
+
+
 The 2026-09-21 behavior audit confirms that mapped surface coverage is **not
 full operational parity**. The implemented BLE/HDLC/rngit increment and explicit
 remaining acceptance gates are recorded in
@@ -2885,11 +2901,14 @@ provenance, OCI, and crates.io axes for immutable commit
 four public performance assets are verified and tracked in
 `docs/status/v0.10.0-release.md`.
 
-Physical RNode/RNodeMulti, Weave, VR-N76, BLE, serial-radio, public I2P,
-public Reticulum networks, and Sideband/MeshChatX/Columba or other
-third-party-client claims remain separate deferred evidence tracks. They do not
-downgrade the completed software inventory and must not be described as
-validated without their own evidence.
+Real-world evidence is already available for specific physical and external-client
+rows: REM has exercised LXMF-rs on physical RNodes over LoRa and on two-phone
+TCP paths; Sideband has been exercised in live phone HIL; Columba has a retained
+passing bidirectional direct-LXMF gate; and RCH has live integration evidence.
+Those proofs are bounded to the recorded versions and workflows. RNodeMulti,
+Weave, VR-N76, the complete serial/TCP-Wi-Fi/BLE hardware matrix, public
+I2P/public Reticulum operation, long soak, and release-specific client reruns
+remain separate operational evidence tracks under #616/#624.
 
 Rust also matches the pinned `pages.py::get_template` fallback for dynamic
 template process failures: spawn/I/O/timeout/decode errors are logged and the
