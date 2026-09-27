@@ -1,6 +1,7 @@
 # Software Parity Ledger
 
 Last reassessed: 2026-08-07
+MeshChat POC scope note added: 2026-09-27
 
 This ledger records software, protocol, and runtime work packets together with
 their evidence follow-ups. It is scoped to software parity only; it is not the
@@ -35,6 +36,11 @@ Out of scope for this ledger:
 
 Deferred evidence can be referenced only to prevent accidental scope expansion.
 It must not be treated as acceptance evidence for a software ledger row.
+
+The opt-in MeshChat HTTP/WebSocket proof of concept is tracked in the
+[roadmap](current-roadmap.md) and [API runbook](../runbooks/meshchat-api.md).
+Its application contract and manual TCP/RNode session do not add a Python
+RNS/LXMF callable-parity work packet or change this ledger's software status.
 
 ## v0.7.0 SDK-First Ledger Boundary
 

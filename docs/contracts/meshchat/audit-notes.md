@@ -57,3 +57,9 @@ The source has no application authentication, authorization, explicit Origin all
 Keep these complete reference specifications under the existing repository's documentation. A first implementation can expose config/app-info, discovery, conversation/history/send/cancel/read state and their control events, using existing daemon services. The unchanged application shell also polls calls and propagation status; a text-chat implementation must make an explicit decision about those requests rather than assume they never occur. Keep remaining functions visibly unsupported or implement them, rather than return fabricated state. Do not start a second chat application.
 
 Treat any Rust-friendly API design, stricter validation, authentication, replay, transactional settings or corrected response text as a deliberate extension or separate native API. Do not silently rewrite the compatibility contract. Test the final binding with a pinned frontend build and a Python reference peer before claiming interoperability. This proposal is not part of the extracted upstream contract.
+
+Development status on 27 September 2026: the opt-in Rust adapter implements
+the initial chat path and selected file/image, propagation-fetch, and control
+operations. The [runbook](../../runbooks/meshchat-api.md) records its exact
+tested boundary and unsupported operations. This update does not alter the
+pinned upstream audit or turn the proposal into a full-compatibility claim.

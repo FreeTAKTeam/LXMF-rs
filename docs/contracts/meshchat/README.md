@@ -26,3 +26,9 @@ For control-message validation, select `#/$defs/ClientMessage` or `#/$defs/Serve
 Run `python3 validate_specs.py` from this directory with PyYAML and jsonschema available. For source coverage, add `--source-root /path/to/reticulum-meshchat-at-the-pinned-commit`. Optionally add `--oas-schema /path/to/official-openapi-3.1-schema.json`; the audited schema identifier is `https://spec.openapis.org/oas/3.1/schema/2022-10-07`. The validator does not fetch anything or start MeshChat.
 
 This is a source-derived compatibility specification. It does not claim successful Rust integration. Some RNS/LXMF-owned values remain intentionally open because upstream dependencies are not exactly pinned. Input schemas describe normal client payloads; loose Python coercion and malformed-input behavior are documented separately. Do not treat the unauthenticated upstream interface as safe for public exposure.
+
+The development Rust adapter implements a subset of this contract. Its tested
+routes, unsupported operations, and manual TCP/RNode observations are recorded
+in the [MeshChat API runbook](../../runbooks/meshchat-api.md). This reference
+specification and its validation report remain pinned to the upstream source;
+the adapter is not claimed to pass the complete contract.

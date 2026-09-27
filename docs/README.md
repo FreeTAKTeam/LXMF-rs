@@ -15,6 +15,10 @@ documents.
   release confidence, evidence boundaries, and execution order.
 - [SDK integration guide](sdk/README.md): supported application integration
   path.
+- [MeshChat Rust POC runbook](runbooks/meshchat-api.md): opt-in local API,
+  supported chat flows, and current test limits.
+- [MeshChat 2.4.0 source contract](contracts/meshchat/README.md): pinned HTTP
+  and WebSocket reference specification for the POC.
 - [Checked examples](examples.md): daemon, SDK, transport, and validation
   examples.
 

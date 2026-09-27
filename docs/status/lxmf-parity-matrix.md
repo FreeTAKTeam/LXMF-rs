@@ -1,6 +1,7 @@
 # LXMF Parity Matrix
 
 Last reassessed: 2026-09-01
+MeshChat POC evidence added: 2026-09-27
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -26,6 +27,18 @@ The historical v0.9.8 record retains its release boundary. Current `main` and
 the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for their
 named software scenarios, with hardware, public-network, and third-party-client
 evidence tracked independently.
+
+## MeshChat proof-of-concept evidence (outside module counts)
+
+| Surface | Evidence in this development branch | Remaining boundary |
+| --- | --- | --- |
+| LXMF file and image fields | `lxmf-wire` converts byte arrays in field 5 (files) and field 6 (images) to MessagePack binary; focused wire tests and `meshchat-api` send/history round trips pass. | This proves the local wire and API path, not arbitrary file sizes or every external client. A roughly 271 KB attachment failed during the earlier live trial. |
+| MeshChat chat and propagation | The opt-in adapter uses the daemon identity and store for text, history, incoming field mapping and remote propagation fetch. A manual TCP/RNode session reported two-way LoRa text, eventual receipt of small images, and one delivered message after about four idle minutes. | These observations are not a repeatable soak or proof that Columba's three queued messages reached the recipient. Fetching with this daemon's identity does not retrieve another peer's queue. |
+| Unsupported application features | The API reports unsupported audio sends/calls and NomadNet operations explicitly. | MeshChat application coverage is partial; it is not a new `LXMF.py` or `LXMRouter.py` callable-parity row. |
+
+The seven Python LXMF module statuses and generated callable counts below are
+unchanged. See the [MeshChat API runbook](../runbooks/meshchat-api.md) and
+[field-evidence record](real-world-interoperability.md) for test conditions.
 
 ## Module Matrix
 
@@ -128,6 +141,10 @@ evidence tracked independently.
 - Propagation and paper packing use canonical `lxmf-wire` helpers.
 - Signed messages, fields, attachment aliases, floating timestamps, and
   non-UTF8 title/content bytes retain client-visible fidelity.
+- The MeshChat adapter's file (field 5) and image (field 6) byte arrays are
+  encoded as MessagePack binary before LXMF handoff; focused wire tests and
+  local API round trips cover the conversion. This does not establish large
+  external-client transfers.
 - Documented basic field IDs are exported from `lxmf-wire`, and the typed
   ZeroMQ SDK send path preserves those keys plus `_lxmf_fields_msgpack_b64`.
 - The typed ZeroMQ SDK send and batch-send paths map payload `body` into the

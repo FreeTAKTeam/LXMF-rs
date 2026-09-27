@@ -52,13 +52,33 @@ propagation-transfer state. When no transport is configured, path reads return
 Do not use this build as evidence of full API conformance or network
 interoperability.
 
-`cargo test -p meshchat-api` checks HTTP send/history/deletion, conversation
-reads, and explicit unsupported behavior. A local daemon smoke check covered
-HTTP status, static assets, WebSocket config/pong, and persistence across
-restart. The pinned MeshChat 2.4.0 frontend built and loaded in Chromium; its
-messages page opened a conversation, sent a text message, and displayed that
-message after reload without browser console errors. The Rust proof of concept
-was also exercised with TCP and a serial RNode against external chat peers;
-text and small image exchange worked. One post-idle message was reported
-delivered after about four minutes. These observations do not establish a
-sustained delivery rate or full attachment interoperability.
+## Validation and field trial
+
+`cargo test -p meshchat-api` checks HTTP send/history/deletion, file and image
+round trips, incoming audio/telemetry mapping, conversation reads, and explicit
+unsupported behavior. A local daemon smoke check covered HTTP status, static
+assets, WebSocket config/pong, and persistence across restart. The pinned
+MeshChat 2.4.0 frontend built and loaded in Chromium; its messages page opened
+a conversation, sent a text message, and displayed that message after reload
+without browser console errors. The 32 synthetic contract fixtures pass their
+offline validator. The implementation is not certified against every route in
+the pinned contract.
+
+The companion `reticulum-meshchat` launcher, outside this repository, ran one
+`reticulumd` process with `rmap.world:4242` and the serial RNode on
+`/dev/ttyUSB1` (915 MHz, 500 kHz, SF10, coding rate 4/5, 22 dBm). It set
+`[reticulum] enable_transport = true`, the measured 3,906 bps radio bitrate,
+and a 2% announce cap. In that manual session:
+
+| Observation | Limit of the evidence |
+| --- | --- |
+| The user reported two-way text exchange with external LoRa chat peers. | One device/profile and interactive test; no repeatable throughput or soak result. |
+| Small images were eventually received after propagation activity. Local file and image API round trips pass. | A roughly 271 KB attachment failed earlier; large-file and broad attachment compatibility remain unverified. |
+| A remote propagation fetch imported 12 messages for this daemon's identity. | It cannot fetch messages queued for another recipient. Columba showed three other messages as "in propagation" without confirmed receipt. |
+| TCP stayed connected, the RNode stayed online, and the one-hop LoRa route persisted during about four idle minutes; the next message was reported delivered. | No packet-level evidence establishes that a specific message crossed between the TCP and LoRa interfaces. |
+
+These observations do not establish a sustained delivery rate, full attachment
+interoperability, or a complete forwarding bridge. The [roadmap](../status/current-roadmap.md),
+[LXMF matrix](../status/lxmf-parity-matrix.md), and
+[Reticulum matrix](../status/reticulum-parity-matrix.md) keep those boundaries
+separate from Python software-parity counts.

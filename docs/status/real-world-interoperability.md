@@ -1,6 +1,6 @@
 # Real-world interoperability evidence
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
 
 LXMF-rs has been exercised with real applications, real phones, and physical
 RNode/LoRa links. The open operational issues track breadth, repeatability, and
@@ -40,6 +40,24 @@ Primary source links:
   https://github.com/FreeTAKTeam/LXMF-rs/commit/133dd162da59ddf191c8dee7bb2d8ae9e344c649
 - RCH live stress report:
   https://github.com/FreeTAKTeam/Reticulum-Community-Hub/blob/main/docs/release-live-stress-report.md
+
+## Development MeshChat POC observation (2026-09-27)
+
+The opt-in Rust MeshChat API was exercised with `reticulumd` connected to
+`rmap.world:4242` and a serial RNode on `/dev/ttyUSB1` (915 MHz, 500 kHz,
+SF10, coding rate 4/5, 22 dBm), with Reticulum transport enabled. The user
+reported two-way LoRa text with external chat peers and eventual receipt of
+small images. After about four minutes without test messages, TCP remained
+connected, the RNode remained online, and the cached peer route stayed one hop
+over LoRa; the next message was reported delivered.
+
+This is a manually observed development session, not a retained automated HIL
+artifact or release gate. The observation does not prove that a particular
+message crossed from TCP to LoRa, nor a sustained delivery rate. A roughly
+271 KB attachment failed earlier, and receipt of three messages shown by
+Columba as "in propagation" was not confirmed. See the
+[MeshChat API runbook](../runbooks/meshchat-api.md) for the supported API and
+test boundaries. The Python parity matrices retain their existing row statuses.
 
 ## What remains open
 
