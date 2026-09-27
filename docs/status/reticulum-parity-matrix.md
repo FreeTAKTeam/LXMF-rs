@@ -106,23 +106,26 @@ checkpoint reports the frozen 1.5.4-dev contract separately. It is currently
 capability negotiation, runtime feature checks, or the separate
 hardware-evidence axis.
 
-## RNS 1.5.4 forward candidate
+## RNS 1.5.4-dev feature update and forward parity follow-ups
 
-Issue #605 audits the immutable development revision
+Issue #605 updates the working 1.5.2-compatible system for features in the
+immutable development revision
 `99de23c040d507e3fefca19e87b182302902725d`, recorded as `1.5.4-dev` in the
-canonical parity-target manifest. This is an open candidate, not a replacement
-for the active 1.5.2 release baseline. A detached scan against the target finds
+canonical parity-target manifest. The identified HDLC, BLE, and rngit feature
+delta is integrated and tested, but does not replace the active 1.5.2 release
+baseline or certify full Reticulum parity. A detached scan against the target
+finds
 1,868 callable/manual rows, including ten new callable IDs; inherited mappings
 are deliberately provisional `partial` rows because wildcard matches and
 callable presence do not prove behavior.
 
-The generated Python surface artifact now carries the issue #605 behavioral
+The generated Python surface artifact also carries the broader behavioral
 contract for child issues #607–#616. The contract remains `incomplete`; its
 scoped #615 software-acceptance requirement is verified, while the remaining
 forward behavior and operational rows remain separately tracked. It is the
-authoritative forward status for this matrix; the baseline rows below remain
-historical/current-release claims and must not be read as completion of the
-1.5.4 candidate. See
+authoritative broad-parity status for this matrix, not #605's feature-update
+closure checklist. The baseline rows below remain historical/current-release
+claims. See
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) for the exact target, measured delta,
 evidence fields, and acceptance boundary.
 
@@ -130,10 +133,10 @@ The bounded software acceptance tracked by #615 is complete at PR #626 head
 `b863e1d115395232a41445dbdfe1ccb08ee6abeb` (merged as
 `a649f51e9671007c08aeff469877038e2db7a716`): local release-check passed with
 2,684 tests and one skip, hosted PR HIL passed `23/23`, the exact pinned matrix
-passed `30/30`, and the Independent and CI gates passed. This does not change
-the forward contract to complete: #605 and its remaining behavioral child
-rows stay incomplete, while the physical/platform/client/public-network/long-
-soak axis remains explicitly excluded under #616.
+passed `30/30`, and the Independent and CI gates passed. This does not complete
+the broader forward contract: remaining behavioral child rows stay incomplete,
+while the physical/platform/client/public-network/long-soak axis remains
+explicitly excluded from #605 under #616.
 
 ## Surface Matrix
 

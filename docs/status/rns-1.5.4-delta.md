@@ -1,22 +1,51 @@
-# Forward RNS 1.5.4 parity candidate
+# Pinned RNS 1.5.4-dev feature delta and parity follow-ups
 
-Status: **open and incomplete**. This ledger is the forward candidate for issue
-[#605](https://github.com/FreeTAKTeam/LXMF-rs/issues/605); it does not replace the
-active RNS 1.5.2 release baseline in [`rns-1.5-delta.md`](rns-1.5-delta.md),
-and it does not claim that PR #604 completes the epic.
+The feature update scoped by [#605](https://github.com/FreeTAKTeam/LXMF-rs/issues/605)
+is implemented on the working RNS 1.5.2-compatible baseline. The broader
+behavioral-parity inventory below remains incomplete and belongs to its linked
+follow-ups; it is not the #605 closure checklist. The active release baseline in
+[`rns-1.5-delta.md`](rns-1.5-delta.md) is unchanged.
+
+## Feature-update reconciliation
+
+The pinned Python diff from `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6` to
+`99de23c040d507e3fefca19e87b182302902725d` changes ten files under
+`RNS/`. These are the behavior changes relevant to #605:
+
+| Pinned change | Integrated Rust path and focused evidence |
+| --- | --- |
+| `HDLC.frame` and its local/backbone callers | `rns-transport` HDLC framing; `rns_1_5_4_hdlc` checks pinned-Python vectors. |
+| RNode BLE detection/cleanup and Windows paired-device selection | `rnode_ble` worker and WinRT paired-address resolver; `rns_1_5_4_ble_lifecycle`, detection-fallback, and hosted Windows BLE checks. Physical-device acceptance remains #616. |
+| rngit media conversion, page media responses, anonymous no-identity response, and link-scoped cleanup | Existing `rngit_parts` media/page paths; pinned-Python `rngit_python_interop` page/media and cleanup cases, plus focused converter tests. |
+| rngit permission refresh and work-item transition changes | Existing `rngit_parts` permission/work handlers; `rns_1_5_4` and pinned-Python permission-refresh tests. |
+
+The remaining Python diff is a Link docstring correction, version metadata,
+and suppression of a debug log for packets attached to an interface; it does
+not add a wire or runtime feature. No remaining #605 feature item was identified
+in this pinned diff. The broader #608, #609, and #611–#614 gaps recorded below
+remain visible follow-ups, not automatic #605 blockers. #616
+physical, client, and public-network evidence is outside this goal.
+
+At combined mainline commit `4ee750169caab755d52a6d3858746885b35d3bf0`,
+normal [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/36186540506)
+and [Verify](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/36186540487)
+passed. Focused local checks also passed for `rns_1_5_4_hdlc`,
+`rns_1_5_4_ble_lifecycle`, the BLE detection fallback, `rngit`'s `rns_1_5_4`
+tests, and pinned-Python rngit page/media, media-cleanup, and permission-refresh
+cases. These are software checks, not #616 physical or public-network evidence.
 
 ## Frozen reference boundary
 
 | Role | Implementation | Version | Revision | Authority |
 | --- | --- | --- | --- | --- |
 | Active release baseline | Reticulum-Python | 1.5.2 | `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6` | Existing release gates and historical status |
-| Forward parity candidate | Reticulum-Python | `1.5.4-dev` | `99de23c040d507e3fefca19e87b182302902725d` | `tools/interop/independent-implementations.toml` `[parity_target]` |
+| Forward feature target | Reticulum-Python | `1.5.4-dev` | `99de23c040d507e3fefca19e87b182302902725d` | `tools/interop/independent-implementations.toml` `[parity_target]` |
 | LXMF companion reference | LXMF-Python | pinned active revision | `727830cefda83d9c6e3982b48675425f3f988f9c` | Generated inventory input |
 
 The forward RNS revision is an immutable development commit, not a release tag.
 Changing it requires a reviewed update to the canonical manifest and this
-ledger. The active release pin remains unchanged until the exact candidate
-acceptance gate is complete.
+ledger. Promoting the active release pin is a separate release decision, not
+part of closing #605.
 
 ## Callable inventory measurement
 
@@ -189,7 +218,7 @@ then verifies retry on a distinct Link and Resource and exactly one message
 delivery. These are bounded acceptance cells: deeper multi-relay replacement
 and duplicate behavior remain open, and the broad reverse-delivery scenario
 still has an intermittent B-to-A timeout. #609 therefore remains partial; none
-of this evidence completes #609 or parent issue #605. Physical/HIL evidence is
+of this evidence completes #609. Physical/HIL evidence is
 excluded. A focused
 transport save/restart regression proves a newer cached `PATH_RESPONSE`
 announce supersedes scheduled state without becoming retransmission work after
@@ -494,10 +523,10 @@ evidence in
 [`evidence/615-release-acceptance.md`](../goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md).
 The final release check passed with 2,684 tests and one skip; hosted PR HIL
 passed `23/23`, the exact pinned matrix passed `30/30` with zero skips, and the
-Independent and CI workflows passed. This completes only #615's software
-acceptance gate. The remaining forward behavior rows keep their own statuses,
-the #605 contract remains incomplete, and physical/platform/client/network-soak
-evidence remains separate under #616.
+Independent and CI workflows passed. This completes #615's scoped software
+acceptance gate. The remaining forward behavior rows keep their own statuses;
+they do not reopen #605's narrower feature-update checklist. Physical,
+platform, client, and network-soak evidence remains separate under #616.
 
 The #623 wire-conformance increment adds
 [`evidence/623-wire-conformance.md`](../goals/reticulum-reference-parity-605/evidence/623-wire-conformance.md),
@@ -505,25 +534,27 @@ the committed byte corpus at
 `tools/interop/python-rust-wire-conformance-v1.json`, and the stable
 `cargo xtask interop` gate. Verify now runs the same Python decoder and Rust
 decoder test and uploads the report. This bounded wire lane is one input to the
-completed #615 software gate; it does not complete #605 while broader live,
-fault, restart, multi-hop, platform, client, and hardware requirements remain
-open under their respective rows and #616.
+completed #615 software gate. Broader live, fault, restart, multi-hop, and
+platform requirements remain open under their respective rows and #616, not
+as automatic blockers to #605's feature update.
 
 ## Merged base increment
 
-The candidate branch now includes the merged PR #604 base increment at
+The combined mainline includes the merged PR #604 base increment at
 `3ed5932d` (RNS 1.5.4 BLE lifecycle/EOF handling, HDLC framing vectors, and
 rngit work-transition and companion-sidecar corrections). Those changes are
-preserved here as a bounded increment; they do not promote the forward
-candidate or close issue #605. Their local tests and provenance checks were
-inputs to the completed #615 software gate, while native hardware and
-public-network claims remain outside local validation.
+preserved here as a bounded increment and count toward #605's selected feature
+delta. Their local tests and provenance checks were inputs to the completed
+#615 software gate, while native hardware and public-network claims remain
+outside local validation.
 
-## Acceptance gate
+## Acceptance boundaries
 
-This candidate is not release-complete until the contract coverage is complete,
-all applicable rows have verified evidence, the exact candidate CI/release gate
-passes, and the independent child issues have been reviewed. Hardware and
-public-network evidence remain a separate axis and cannot be inferred from
-software tests. The `--require-behavioral-complete` generator mode is expected
-to fail while this ledger is incomplete.
+Close #605 when this identified feature delta, affected-path regressions,
+pinned-Python interoperability where behavior changed, and normal exact-head CI
+are integrated, with remaining gaps accurately documented. Do not require all
+inherited Python behavior, every linked child, or a new release solely for
+#605. The broader behavioral contract remains incomplete; its
+`--require-behavioral-complete` generator mode is expected to fail until those
+separately tracked parity rows are complete. Hardware and public-network
+evidence remain under #616 and cannot be inferred from software tests.
