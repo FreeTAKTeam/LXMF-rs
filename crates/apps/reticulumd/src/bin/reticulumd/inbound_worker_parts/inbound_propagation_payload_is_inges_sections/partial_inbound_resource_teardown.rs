@@ -40,7 +40,7 @@ async fn daemon_reports_partial_inbound_resource_failure_after_gated_link_teardo
                 forwarded_resource_parts += 1;
                 if forwarded_resource_parts > 1 {
                     if let Some(held_tx) = held_tx.take() {
-                        let _ = held_tx.send(());
+                        assert!(held_tx.send(()).is_ok(), "resource gate observer closed");
                     }
                     // Keep later data fragments behind the gate, but continue
                     // forwarding LinkClose and other control packets.

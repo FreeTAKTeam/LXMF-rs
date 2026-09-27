@@ -41,7 +41,7 @@ async fn daemon_observes_remote_cancel_of_partial_inbound_resource_without_false
                 forwarded_parts += 1;
                 if forwarded_parts > 1 {
                     if let Some(signal) = later_part_tx.take() {
-                        let _ = signal.send(());
+                        assert!(signal.send(()).is_ok(), "resource part observer closed");
                     }
                     continue;
                 }

@@ -224,7 +224,7 @@ PY
       done
       if [[ "$peer_gone" != true ]]; then
         peer_state="$(ps -o stat= -p "$PEER_PID" 2>/dev/null | tr -d '[:space:]')"
-        fail "Pipe peer process $PEER_PID remained after 2s shutdown grace (state=${peer_state:-unknown})"
+        fail "Pipe peer process $PEER_PID survived daemon shutdown after 2s grace (state=${peer_state:-unknown})"
       fi
       write_report "pass"
       echo "[pipe-fake-subprocess-smoke] pass"

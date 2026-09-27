@@ -70,8 +70,8 @@ def active_mirrors() -> dict[str, tuple[str, ...]]:
             'PYTHON_RETICULUM_REF: &str = "{revision}"',
         ),
         "README.md": (
-            "targets Python Reticulum {version} at",
-            "`{revision}` for the next release candidate",
+            "release reference remains Python Reticulum {version} at",
+            "`{revision}`. The separate",
         ),
         "docs/interop/README.md": ("Python Reticulum {version} at `{revision}`",),
         "docs/contracts/compatibility-contract.md": (
@@ -121,7 +121,7 @@ def parity_target_mirrors() -> dict[str, tuple[str, ...]]:
             "`{revision}`, recorded as `{version}`",
         ),
         "docs/status/rns-1.5.4-delta.md": (
-            "| Forward parity candidate | Reticulum-Python | `{version}` | `{revision}` |",
+            "| Forward feature target | Reticulum-Python | `{version}` | `{revision}` |",
             "immutable development commit, not a release tag",
         ),
     }
