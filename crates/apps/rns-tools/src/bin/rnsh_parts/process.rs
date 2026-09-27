@@ -110,9 +110,8 @@ async fn run_pipe_command(
     let (status, cancelled) = tokio::select! {
         status = child.wait() => (status?, false),
         _ = &mut cancel => {
-            // The session owns the cancellation sender and signals it when the
-            // Link closes or its receive loop exits. Kill and reap before
-            // returning so neither the command nor its pipes outlive the Link.
+            // The session signals cancellation on Link close or receive-loop exit.
+            // Kill and reap so the command and pipes cannot outlive the Link.
             if let Err(error) = child.start_kill() {
                 if child.try_wait()?.is_none() {
                     return Err(error);
@@ -278,7 +277,9 @@ async fn run_pty_command(
     };
 
     input_stopped.store(true, std::sync::atomic::Ordering::Release);
-    let _ = child_done_tx.send(true);
+    if child_done_tx.send(true).is_err() {
+        log::debug!("rnsh command completion observer already closed");
+    }
     let _ = input_bridge_task.await;
     let result = input_writer_task.await.map_err(join_error)?;
     if let Err(error) = result {
@@ -331,9 +332,17 @@ async fn await_optional_task(
 }
 
 async fn kill_pty_child(killer: Arc<Mutex<Box<dyn ChildKiller + Send + Sync>>>) {
-    let killer = killer.lock().ok().map(|killer| killer.clone_killer());
-    if let Some(mut killer) = killer {
-        let _ = tokio::task::spawn_blocking(move || killer.kill()).await;
+    let mut child_killer = killer
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            log::warn!("rnsh child-killer mutex poisoned; attempting child cleanup");
+            poisoned.into_inner()
+        })
+        .clone_killer();
+    match tokio::task::spawn_blocking(move || child_killer.kill()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => log::warn!("rnsh child cleanup failed: {error}"),
+        Err(error) => log::warn!("rnsh child-killer task failed: {error}"),
     }
 }
 

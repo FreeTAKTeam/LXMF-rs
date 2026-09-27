@@ -264,7 +264,9 @@ fn spawn_session(
 }
 
 async fn stop_session(session: SessionTask) {
-    let _ = session.cancel.send(true);
+    if session.cancel.send(true).is_err() {
+        log::debug!("rnsh session cancellation receiver already closed");
+    }
     if let Err(error) = session.task.await {
         log::debug!("rnsh session task ended before join: {}", error);
     }

@@ -244,7 +244,7 @@ mod tests {
                     .as_ref()
                     .map(|_| decode_packet_ifac(&state, &[0, 1]).is_err())
                     .unwrap_or(false);
-                let _ = tx.send(result);
+                assert!(tx.send(result).is_ok(), "child IFAC policy observer closed");
             },
         ).expect("parent policy inherited before worker spawn");
 

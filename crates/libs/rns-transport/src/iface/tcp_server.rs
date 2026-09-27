@@ -492,7 +492,9 @@ impl TcpServer {
             let listener = bind_tcp_listener(addr.clone(), prefer_ipv6).await;
             if let Some(sender) = startup_result.take() {
                 let result = listener.as_ref().map(|_| ()).map_err(ToString::to_string);
-                let _ = sender.send(result);
+                if sender.send(result).is_err() {
+                    log::debug!("tcp server startup observer closed for {addr}");
+                }
             }
             let listener = listener.map_err(|err| {
                 runtime_status

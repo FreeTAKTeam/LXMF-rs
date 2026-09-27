@@ -112,7 +112,7 @@ async fn start_daemon_resource_peer(
             if mode == ResourcePeerMode::HoldResourceRequests
                 && message.packet.context == PacketContext::ResourceRequest
             {
-                let _ = request_tx.send(()).await;
+                assert!(request_tx.send(()).await.is_ok(), "resource request observer closed");
                 continue;
             }
             if daemon_rx

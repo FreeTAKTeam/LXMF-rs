@@ -1771,7 +1771,7 @@ mod tests {
 
         cancel.cancel();
         iface_stop.cancel();
-        let _ = release_peer_tx.send(());
+        assert!(release_peer_tx.send(()).is_ok(), "fake SAM release receiver closed");
         tokio::time::timeout(Duration::from_secs(2), accept_loop)
             .await
             .expect("I2P accept loop shutdown timeout")
@@ -2093,7 +2093,7 @@ mod tests {
                 .write_all(b"HELLO REPLY RESULT=OK VERSION=3.3\n")
                 .await
                 .expect("reply reconnect HELLO");
-            let _ = elapsed_tx.send(elapsed);
+            assert!(elapsed_tx.send(elapsed).is_ok(), "reconnect elapsed receiver closed");
         });
 
         let peer = "peer.b32.i2p".to_string();
@@ -2143,7 +2143,7 @@ mod tests {
             let mut hello = String::new();
             reader.read_line(&mut hello).await.expect("read SAM HELLO");
             assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
-            let _ = hello_tx.send(());
+            assert!(hello_tx.send(()).is_ok(), "fake SAM HELLO receiver closed");
 
             let mut remainder = Vec::new();
             tokio::time::timeout(Duration::from_secs(1), reader.read_to_end(&mut remainder))
@@ -2201,7 +2201,7 @@ mod tests {
             let mut hello = String::new();
             reader.read_line(&mut hello).await.expect("read SAM HELLO");
             assert_eq!(hello.trim_end(), "HELLO VERSION MIN=3.0 MAX=3.3");
-            let _ = hello_tx.send(());
+            assert!(hello_tx.send(()).is_ok(), "fake SAM HELLO receiver closed");
 
             let mut remainder = Vec::new();
             tokio::time::timeout(Duration::from_secs(1), reader.read_to_end(&mut remainder))

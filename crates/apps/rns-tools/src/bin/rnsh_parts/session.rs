@@ -151,7 +151,9 @@ pub(crate) async fn serve_link(
                                 );
                             }
                         }
-                        let _ = command_done.send(true);
+                        if command_done.send(true).is_err() {
+                            log::debug!("rnsh command completion receiver already closed");
+                        }
                     }));
                     state = ServerState::Running;
                 }
@@ -180,7 +182,9 @@ pub(crate) async fn serve_link(
                         break;
                     }
                     if let Some(sender) = resize_tx.as_ref() {
-                        let _ = sender.send(message).await;
+                        if sender.send(message).await.is_err() {
+                            log::debug!("rnsh command resize receiver already closed");
+                        }
                     }
                 }
                 IncomingMessage::Noop(NoopMessage) => {
@@ -204,7 +208,9 @@ pub(crate) async fn serve_link(
     .await;
 
     if let Some(cancel) = command_cancel {
-        let _ = cancel.send(());
+        if cancel.send(()).is_err() {
+            log::debug!("rnsh command cancellation receiver already closed");
+        }
     }
     if let Some(task) = command_task {
         if let Err(error) = task.await {
