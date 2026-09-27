@@ -26,6 +26,10 @@ impl Transport {
         *self.handler.lock().await.config.identity.address_hash()
     }
 
+    pub async fn transport_enabled(&self) -> bool {
+        self.handler.lock().await.config.transport_enabled
+    }
+
     pub async fn is_shared_instance(&self, interface: &AddressHash) -> bool {
         self.iface_manager.lock().await.is_shared_instance(interface)
     }

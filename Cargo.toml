@@ -11,6 +11,7 @@ members = [
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
   "crates/libs/lxmf-runtime",
+  "crates/libs/meshchat-api",
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
@@ -31,6 +32,7 @@ default-members = [
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
   "crates/libs/lxmf-runtime",
+  "crates/libs/meshchat-api",
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
@@ -61,6 +63,7 @@ allowed_library_edges = [
   "lxmf-runtime->lxmf-sdk",
   "lxmf-runtime->lxmf-wire",
   "lxmf-runtime->reticulum-rs-transport",
+  "meshchat-api->reticulum-rs-rpc",
   "reticulum-rs->reticulum-rs-core",
   "reticulum-rs->reticulum-rs-rpc",
   "reticulum-rs->reticulum-rs-transport",
@@ -80,6 +83,7 @@ allowed_library_edges = [
 allowed_app_edges = [
   "lxmf-cli->lxmf-sdk",
   "reticulumd->lxmf-wire",
+  "reticulumd->meshchat-api",
   "reticulumd->reticulum-rs-core",
   "reticulumd->reticulum-rs-rpc",
   "reticulumd->reticulum-rs-transport",
@@ -138,6 +142,9 @@ tokio-rustls = "0.26.2"
 tokio-serial = "5.4.4"
 tokio-stream = "0.1"
 zeromq = { version = "0.6.0", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["fs"] }
+futures-util = "0.3"
 rustls = "0.23.23"
 rustls-pki-types = { version = "1.15", features = ["std"] }
 x509-parser = "0.16.0"

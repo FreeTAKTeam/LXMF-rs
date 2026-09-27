@@ -417,7 +417,11 @@ impl LoraInterface {
     }
 
     pub fn preflight_open(&self) -> Result<(), String> {
-        self.config.validate()?;
+        if self.config.max_payload_bytes > 255 {
+            self.config.validate_rnode()?;
+        } else {
+            self.config.validate()?;
+        }
         match &self.endpoint {
             LoraEndpoint::Serial { device, baud_rate } => {
                 tokio_serial::new(device.clone(), *baud_rate)

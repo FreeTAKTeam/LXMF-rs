@@ -1,0 +1,607 @@
+{
+  "title": "Reticulum MeshChat WebSocket wire contract",
+  "specificationVersion": "1.0.0",
+  "source": {
+    "repository": "https://github.com/liamcottle/reticulum-meshchat",
+    "commit": "df5aea94eab7f4be1cdfef494446e9d6979aed77",
+    "appVersion": "2.4.0",
+    "auditedOn": "2026-09-27"
+  },
+  "payloadSchema": "meshchat-websocket.schema.json",
+  "endpointDefinitions": [
+    {
+      "name": "control",
+      "path": "/ws",
+      "defaultUrl": "ws://127.0.0.1:8000/ws",
+      "handshake": {
+        "method": "GET",
+        "successStatus": 101,
+        "subprotocol": null,
+        "authentication": null,
+        "customHeaders": null,
+        "explicitOriginValidation": false
+      },
+      "frames": {
+        "clientToServer": "UTF-8 JSON in WebSocket TEXT frames",
+        "serverToClient": "UTF-8 JSON in WebSocket TEXT frames",
+        "maxClientMessageBytes": 52428800,
+        "binaryClientFrames": "Ignored by the application loop.",
+        "serverMessageLimit": "No explicit application-level outgoing limit."
+      },
+      "schemas": {
+        "clientToServer": "meshchat-websocket.schema.json#/$defs/ClientMessage",
+        "serverToClient": "meshchat-websocket.schema.json#/$defs/ServerMessage"
+      },
+      "connectionBehaviour": [
+        "After registering a new socket, broadcast a full config event to ALL control sockets. Concurrent events can interleave; do not assume a globally exclusive first frame.",
+        "No subscription step, event sequence number, request ID, acknowledgement envelope, durable queue or replay cursor exists.",
+        "Frontend sends JSON {\"type\":\"ping\"} every 30000 ms and reconnects 1000 ms after close. It does not buffer sends while disconnected. These timings are frontend policy, not server requirements.",
+        "Malformed JSON, missing keys and handler exceptions are logged and ignored. There is no generic error event. Unknown type values are logged; no reply is sent.",
+        "On application shutdown, registered control sockets are closed using code 1001 (GOING_AWAY).",
+        "Network messages and local event broadcasts may race with REST responses. Re-fetch history/config/state to recover after reconnect."
+      ],
+      "sources": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            904,
+            938
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L904-L938"
+        },
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2206,
+            2373
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2206-L2373"
+        },
+        {
+          "file": "src/frontend/js/WebSocketConnection.js",
+          "lines": [
+            1,
+            72
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/js/WebSocketConnection.js#L1-L72"
+        }
+      ]
+    },
+    {
+      "name": "audio",
+      "path": "/api/v1/calls/{audio_call_link_hash}/audio",
+      "defaultUrl": "ws://127.0.0.1:8000/api/v1/calls/{audio_call_link_hash}/audio",
+      "handshake": {
+        "method": "GET",
+        "successStatus": 101,
+        "preUpgradeErrors": {
+          "404": {
+            "message": "audio call not found"
+          },
+          "500": "Invalid hex or unhandled errors."
+        },
+        "subprotocol": null,
+        "authentication": null
+      },
+      "frames": {
+        "clientToServer": "BINARY; one opaque RNS link packet per WebSocket message",
+        "serverToClient": "BINARY; one received RNS link packet per WebSocket message",
+        "frontendEncoding": "Protocol Buffers proto2 AudioCallPayload, containing Codec2 data",
+        "base64OnWire": false,
+        "textFrames": "Ignored by the application loop.",
+        "serverMaxMessageSize": "aiohttp WebSocketResponse default; not explicitly set or pinned by this repository.",
+        "forwardingLimit": "RNS.Link.MDU bytes in the installed RNS version. Oversize packets and packets for inactive calls are dropped without an application reply."
+      },
+      "protobuf": {
+        "syntax": "proto2",
+        "rootMessage": "AudioCallPayload",
+        "source": {
+          "file": "src/frontend/public/assets/proto/audio_call.proto",
+          "lines": [
+            1,
+            31
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/public/assets/proto/audio_call.proto#L1-L31"
+        },
+        "messages": {
+          "AudioCallPayload": {
+            "audioData": {
+              "fieldNumber": 1,
+              "type": "AudioData",
+              "label": "optional"
+            }
+          },
+          "AudioData": {
+            "codec2Audio": {
+              "fieldNumber": 1,
+              "type": "Codec2Audio",
+              "label": "optional"
+            }
+          },
+          "Codec2Audio": {
+            "mode": {
+              "fieldNumber": 1,
+              "type": "Mode",
+              "label": "required"
+            },
+            "encoded": {
+              "fieldNumber": 2,
+              "type": "bytes",
+              "label": "required"
+            }
+          }
+        },
+        "enums": {
+          "Mode": {
+            "MODE_3200": 0,
+            "MODE_2400": 1,
+            "MODE_1600": 2,
+            "MODE_1400": 3,
+            "MODE_1300": 4,
+            "MODE_1200": 5,
+            "MODE_700C": 6,
+            "MODE_450": 7,
+            "MODE_450PWB": 8
+          }
+        }
+      },
+      "connectionBehaviour": [
+        "Join an existing call obtained through REST. The handler only checks existence, not is_active, before upgrading.",
+        "Call hangup closes its audio socket with code 1001. Closing/leaving the audio socket is not an explicit REST hangup.",
+        "The backend forwards bytes without parsing Protocol Buffers. The supplied frontend encodes/decodes AudioCallPayload.",
+        "The source re-registers its audio listener on socket exit instead of unregistering it; this is a resource-management defect, not a desired wire requirement."
+      ],
+      "sources": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1101,
+            1162
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1101-L1162"
+        },
+        {
+          "file": "src/backend/audio_call_manager.py",
+          "lines": [
+            15,
+            80
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/backend/audio_call_manager.py#L15-L80"
+        },
+        {
+          "file": "src/frontend/components/call/CallPage.vue",
+          "lines": [
+            370,
+            479
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/call/CallPage.vue#L370-L479"
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "name": "Ping",
+      "type": "ping",
+      "direction": "client_to_server",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/Ping",
+      "audience": "server",
+      "description": "Application JSON keepalive, distinct from WebSocket protocol ping frames.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2211,
+            2216
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2211-L2216"
+        }
+      ]
+    },
+    {
+      "name": "SetConfig",
+      "type": "config.set",
+      "direction": "client_to_server",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/SetConfig",
+      "audience": "server",
+      "description": "Apply supported ConfigPatch keys. Produces a full config broadcast, not a correlated acknowledgement.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2219,
+            2226
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2219-L2226"
+        }
+      ]
+    },
+    {
+      "name": "DownloadFile",
+      "type": "nomadnet.file.download",
+      "direction": "client_to_server",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/DownloadFile",
+      "audience": "server",
+      "description": "Begin a NomadNet file request. Results are sent only to this socket.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2229,
+            2237
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2229-L2237"
+        }
+      ]
+    },
+    {
+      "name": "DownloadPage",
+      "type": "nomadnet.page.download",
+      "direction": "client_to_server",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/DownloadPage",
+      "audience": "server",
+      "description": "Begin a NomadNet page request. field_data is required by direct indexing even when no form values exist; send {}.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2279,
+            2310
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2279-L2310"
+        }
+      ]
+    },
+    {
+      "name": "Pong",
+      "type": "pong",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/Pong",
+      "audience": "requesting_control_client",
+      "description": "Reply to the initiating socket only; no timestamp or request ID.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2211,
+            2216
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2211-L2216"
+        }
+      ]
+    },
+    {
+      "name": "ConfigEvent",
+      "type": "config",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/ConfigEvent",
+      "audience": "all_control_clients",
+      "description": "Full configuration. Broadcast on every control connection, supported config update and propagation-sync start.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2363,
+            2367
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2363-L2367"
+        }
+      ]
+    },
+    {
+      "name": "Announced",
+      "type": "announced",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/Announced",
+      "audience": "all_control_clients",
+      "description": "Local destinations were announced. No config body, destination list or timestamp is included.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2370,
+            2373
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2370-L2373"
+        }
+      ]
+    },
+    {
+      "name": "IncomingAudioCall",
+      "type": "incoming_audio_call",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/IncomingAudioCall",
+      "audience": "all_control_clients",
+      "description": "Notification only. Fetch GET /api/v1/calls to discover call details.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            273,
+            278
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L273-L278"
+        }
+      ]
+    },
+    {
+      "name": "AnnounceEvent",
+      "type": "announce",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/AnnounceEvent",
+      "audience": "all_control_clients",
+      "description": "A registered-aspect announcement was stored. Other emitters use the same serialization.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            3042,
+            3063
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3042-L3063"
+        }
+      ]
+    },
+    {
+      "name": "LxmfDelivery",
+      "type": "lxmf.delivery",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/LxmfDelivery",
+      "audience": "all_control_clients",
+      "description": "New incoming message after database persistence. Sideband telemetry-request commands are filtered and generate no delivery event.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2724,
+            2737
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2724-L2737"
+        }
+      ]
+    },
+    {
+      "name": "LxmfMessageCreated",
+      "type": "lxmf_message_created",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/LxmfMessageCreated",
+      "audience": "all_control_clients",
+      "description": "Outbound message created. No database id/timestamps are present. This event can precede the HTTP send response.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2997,
+            3001
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2997-L3001"
+        }
+      ]
+    },
+    {
+      "name": "LxmfMessageStateUpdated",
+      "type": "lxmf_message_state_updated",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/LxmfMessageStateUpdated",
+      "audience": "all_control_clients",
+      "description": "Full live message state, emitted by callbacks and a one-second progress loop. Not a patch and not guaranteed exactly once.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2746,
+            2750
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2746-L2750"
+        }
+      ]
+    },
+    {
+      "name": "LxmfMessageDeleted",
+      "type": "lxmf_message_deleted",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/LxmfMessageDeleted",
+      "audience": "all_control_clients",
+      "description": "Sent only by failed-message automatic resend cleanup. Direct REST delete handlers do not emit this event.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            3161,
+            3164
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3161-L3164"
+        }
+      ]
+    },
+    {
+      "name": "NomadnetFileProgress",
+      "type": "nomadnet.file.download",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/NomadnetFileProgress",
+      "audience": "requesting_control_client",
+      "description": "Request-local file progress response. Correlate by destination_hash and original file_path; there is no request ID.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2263,
+            2271
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2263-L2271"
+        }
+      ]
+    },
+    {
+      "name": "NomadnetFileSuccess",
+      "type": "nomadnet.file.download",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/NomadnetFileSuccess",
+      "audience": "requesting_control_client",
+      "description": "Request-local file success response. Correlate by destination_hash and original file_path; there is no request ID.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2238,
+            2247
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2238-L2247"
+        }
+      ]
+    },
+    {
+      "name": "NomadnetFileFailure",
+      "type": "nomadnet.file.download",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/NomadnetFileFailure",
+      "audience": "requesting_control_client",
+      "description": "Request-local file failure response. Correlate by destination_hash and original file_path; there is no request ID.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2251,
+            2259
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2251-L2259"
+        }
+      ]
+    },
+    {
+      "name": "NomadnetPageProgress",
+      "type": "nomadnet.page.download",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/NomadnetPageProgress",
+      "audience": "requesting_control_client",
+      "description": "Request-local page progress response. Correlate by destination_hash and original page_path; there is no request ID.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2335,
+            2343
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2335-L2343"
+        }
+      ]
+    },
+    {
+      "name": "NomadnetPageSuccess",
+      "type": "nomadnet.page.download",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/NomadnetPageSuccess",
+      "audience": "requesting_control_client",
+      "description": "Request-local page success response. Correlate by destination_hash and original page_path; there is no request ID.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2311,
+            2319
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2311-L2319"
+        }
+      ]
+    },
+    {
+      "name": "NomadnetPageFailure",
+      "type": "nomadnet.page.download",
+      "direction": "server_to_client",
+      "schemaRef": "meshchat-websocket.schema.json#/$defs/NomadnetPageFailure",
+      "audience": "requesting_control_client",
+      "description": "Request-local page failure response. Correlate by destination_hash and original page_path; there is no request ID.",
+      "source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2323,
+            2331
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2323-L2331"
+        }
+      ]
+    }
+  ],
+  "stateAndDeliverySemantics": {
+    "messageKey": "hash",
+    "liveShape": "No id/created_at/updated_at. Used for created/state events and send HTTP response.",
+    "storedShape": "Includes id/created_at/updated_at. Used for incoming delivery events and history.",
+    "progressPollingIntervalMs": 1000,
+    "stopProgressLoopWhen": [
+      "state=delivered",
+      "state=failed",
+      "state=rejected",
+      "state=cancelled",
+      "state=sent AND method=propagated"
+    ],
+    "propagatedSentMeaning": "Sent to propagation node, not a proven final-recipient delivery.",
+    "duplicateUpdatesPossible": true,
+    "deletionEventScope": "Only automatic failed-message resend cleanup. REST deletes do not broadcast.",
+    "noEventsFor": [
+      "favourite changes",
+      "custom display name changes",
+      "mark-as-read",
+      "propagation progress",
+      "interface stats",
+      "call-list state changes other than incoming call notification"
+    ],
+    "source": [
+      {
+        "file": "meshchat.py",
+        "lines": [
+          3011,
+          3039
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3011-L3039"
+      },
+      {
+        "file": "meshchat.py",
+        "lines": [
+          3109,
+          3168
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3109-L3168"
+      }
+    ]
+  },
+  "nomadnetCorrelation": {
+    "key": [
+      "destination_hash",
+      "original file_path or page_path"
+    ],
+    "requestId": false,
+    "parallelSamePathRequests": "Ambiguous; no independent request identifier exists.",
+    "destinationHashNormalization": "Responses serialize destination_hash.hex(), hence lowercase.",
+    "pageVariables": "Text after first backtick is split on | and then =, with var_ prefix. The frontend field_data object is separately mapped using field_ prefixes. Responses echo the original complete page_path.",
+    "timeouts": "Path lookup and link setup default to 15 s each; these are not exposed as fields in control commands. Transfer timeout is delegated to RNS.",
+    "progressScale": "0..1, not 0..100.",
+    "source": [
+      {
+        "file": "meshchat.py",
+        "lines": [
+          2179,
+          2203
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2179-L2203"
+      },
+      {
+        "file": "meshchat.py",
+        "lines": [
+          2288,
+          2349
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2288-L2349"
+      },
+      {
+        "file": "meshchat.py",
+        "lines": [
+          3437,
+          3488
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3437-L3488"
+      }
+    ]
+  },
+  "securityNote": "This faithfully describes an unauthenticated local application. A remotely exposed Rust binding needs an explicit access-control/origin policy; that would be a deliberate extension, not claimed upstream behaviour."
+}

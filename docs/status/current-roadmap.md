@@ -16,6 +16,20 @@ external-client evidence.
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
 
+## MeshChat application API (development)
+
+The opt-in loopback `meshchat-api` crate exposes a partial MeshChat 2.4.0
+HTTP/WebSocket compatibility layer from `reticulumd`. Text and file/image
+messaging, conversation/history reads, cancellation, deletion, local
+preferences, remote propagation fetch, and control-socket basics are
+implemented and locally tested. The full application
+contract remains incomplete where daemon capabilities or exact MeshChat data
+are absent, especially audio, NomadNet, interface editing, and propagation
+transfer state. This application-facing work is separate from the Python RNS
+and LXMF software-parity counts below. See
+[`meshchat-api.md`](../runbooks/meshchat-api.md) for the launch command,
+supported boundary, and remaining evidence gate.
+
 ## Current Position
 
 ### Real-world evidence baseline

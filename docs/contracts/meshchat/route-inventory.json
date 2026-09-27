@@ -1,0 +1,751 @@
+{
+  "sourceCommit": "df5aea94eab7f4be1cdfef494446e9d6979aed77",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "operationId": "getIndex",
+      "kind": "static",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          298,
+          303
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L298-L303"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/status",
+      "operationId": "getStatus",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          306,
+          310
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L306-L310"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/comports",
+      "operationId": "listComPorts",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          313,
+          326
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L313-L326"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reticulum/interfaces",
+      "operationId": "listInterfaces",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          329,
+          359
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L329-L359"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/interfaces/enable",
+      "operationId": "enableInterface",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          362,
+          382
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L362-L382"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/interfaces/disable",
+      "operationId": "disableInterface",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          385,
+          405
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L385-L405"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/interfaces/delete",
+      "operationId": "deleteInterface",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          408,
+          424
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L408-L424"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/interfaces/add",
+      "operationId": "saveInterface",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          427,
+          773
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L427-L773"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/interfaces/export",
+      "operationId": "exportInterfaces",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          776,
+          828
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L776-L828"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/interfaces/import-preview",
+      "operationId": "previewInterfaceImport",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          831,
+          849
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L831-L849"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/interfaces/import",
+      "operationId": "importInterfaces",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          852,
+          901
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L852-L901"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/ws",
+      "operationId": "openControlWebSocket",
+      "kind": "websocket",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          904,
+          938
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L904-L938"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/app/info",
+      "operationId": "getAppInfo",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          941,
+          956
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L941-L956"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/config",
+      "operationId": "getConfig",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          959,
+          963
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L959-L963"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/config",
+      "operationId": "updateConfig",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          966,
+          977
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L966-L977"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/enable-transport",
+      "operationId": "enableTransport",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          980,
+          989
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L980-L989"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reticulum/disable-transport",
+      "operationId": "disableTransport",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          992,
+          1001
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L992-L1001"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calls",
+      "operationId": "listCalls",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1004,
+          1014
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1004-L1014"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/calls/clear-call-history",
+      "operationId": "clearCallHistory",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1017,
+          1027
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1017-L1027"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calls/hangup-all",
+      "operationId": "hangupAllCalls",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1030,
+          1035
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1030-L1035"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calls/{audio_call_link_hash}",
+      "operationId": "getCall",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1038,
+          1056
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1038-L1056"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/calls/{audio_call_link_hash}",
+      "operationId": "deleteCall",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1059,
+          1073
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1059-L1073"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calls/initiate/{destination_hash}",
+      "operationId": "initiateCall",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1076,
+          1098
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1076-L1098"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calls/{audio_call_link_hash}/audio",
+      "operationId": "openAudioWebSocket",
+      "kind": "websocket",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1101,
+          1162
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1101-L1162"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calls/{audio_call_link_hash}/hangup",
+      "operationId": "hangupCall",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1165,
+          1186
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1165-L1186"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/announce",
+      "operationId": "announceNow",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1189,
+          1196
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1189-L1196"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/announces",
+      "operationId": "listAnnounces",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1199,
+          1237
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1199-L1237"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/favourites",
+      "operationId": "listFavourites",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1240,
+          1263
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1240-L1263"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/favourites/add",
+      "operationId": "addFavourite",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1266,
+          1297
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1266-L1297"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/favourites/{destination_hash}/rename",
+      "operationId": "renameFavourite",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1300,
+          1316
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1300-L1316"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/favourites/{destination_hash}",
+      "operationId": "deleteFavourite",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1319,
+          1329
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1319-L1329"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lxmf/propagation-node/status",
+      "operationId": "getPropagationStatus",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1332,
+          1340
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1332-L1340"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lxmf/propagation-node/sync",
+      "operationId": "startPropagationSync",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1343,
+          1357
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1343-L1357"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lxmf/propagation-node/stop-sync",
+      "operationId": "stopPropagationSync",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1360,
+          1367
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1360-L1367"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lxmf/propagation-nodes",
+      "operationId": "listPropagationNodes",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1370,
+          1429
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1370-L1429"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/destination/{destination_hash}/path",
+      "operationId": "getDestinationPath",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1432,
+          1483
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1432-L1483"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/destination/{destination_hash}/drop-path",
+      "operationId": "dropDestinationPath",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1486,
+          1500
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1486-L1500"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/destination/{destination_hash}/signal-metrics",
+      "operationId": "getDestinationSignalMetrics",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1503,
+          1560
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1503-L1560"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ping/{destination_hash}/lxmf.delivery",
+      "operationId": "pingDestination",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1567,
+          1653
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1567-L1653"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/destination/{destination_hash}/custom-display-name",
+      "operationId": "getCustomDisplayName",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1656,
+          1664
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1656-L1664"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/destination/{destination_hash}/custom-display-name/update",
+      "operationId": "setCustomDisplayName",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1667,
+          1689
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1667-L1689"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/destination/{destination_hash}/lxmf-stamp-info",
+      "operationId": "getStampInfo",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1692,
+          1715
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1692-L1715"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/interface-stats",
+      "operationId": "getInterfaceStats",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1718,
+          1753
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1718-L1753"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/path-table",
+      "operationId": "getPathTable",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1756,
+          1768
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1756-L1768"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lxmf-messages/send",
+      "operationId": "sendMessage",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1771,
+          1834
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1771-L1834"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lxmf-messages/{hash}/cancel",
+      "operationId": "cancelMessage",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1837,
+          1858
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1837-L1858"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/nomadnetwork/{destination_hash}/identify",
+      "operationId": "identifyNomadnetLink",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1861,
+          1882
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1861-L1882"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/lxmf-messages/{hash}",
+      "operationId": "deleteMessage",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1885,
+          1902
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1885-L1902"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lxmf-messages/conversation/{destination_hash}",
+      "operationId": "listConversationMessages",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1905,
+          1941
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1905-L1941"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/lxmf-messages/conversation/{destination_hash}",
+      "operationId": "deleteConversationMessages",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1944,
+          1961
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1944-L1961"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lxmf/conversations",
+      "operationId": "listConversations",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          1964,
+          2028
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1964-L2028"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lxmf/conversations/{destination_hash}/mark-as-read",
+      "operationId": "markConversationRead",
+      "kind": "rest",
+      "source": {
+        "file": "meshchat.py",
+        "lines": [
+          2031,
+          2042
+        ],
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2031-L2042"
+      }
+    }
+  ],
+  "staticMount": {
+    "prefix": "/",
+    "directory": "public/",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "recursive": true,
+    "description": "Registered after explicit routes. Serves built assets, call.html, manifest/service worker, fonts and audio_call.proto. No generic SPA fallback for arbitrary paths is declared.",
+    "source": {
+      "file": "meshchat.py",
+      "lines": [
+        2059,
+        2059
+      ],
+      "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2059-L2059"
+    }
+  }
+}

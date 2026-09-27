@@ -97,7 +97,39 @@ pub fn json_to_rmpv(value: &JsonValue) -> Result<Value, LxmfError> {
     if let JsonValue::Object(map) = &mut normalized {
         normalize_attachment_fields_for_wire(map)?;
     }
-    json_to_rmpv_lossless(&normalized)
+    let mut wire = json_to_rmpv_lossless(&normalized)?;
+    if let Value::Map(entries) = &mut wire {
+        for (key, value) in entries {
+            if *key == Value::Integer(5.into()) {
+                if let Value::Array(files) = value {
+                    for file in files {
+                        if let Value::Array(pair) = file {
+                            if let Some(data) = pair.get_mut(1) {
+                                convert_byte_array_to_binary(data);
+                            }
+                        }
+                    }
+                }
+            } else if *key == Value::Integer(6.into()) {
+                if let Value::Array(image) = value {
+                    if let Some(data) = image.get_mut(1) {
+                        convert_byte_array_to_binary(data);
+                    }
+                }
+            }
+        }
+    }
+    Ok(wire)
+}
+
+fn convert_byte_array_to_binary(value: &mut Value) {
+    let Value::Array(bytes) = value else { return };
+    let bytes: Option<Vec<u8>> = bytes.iter()
+        .map(|byte| byte.as_u64().and_then(|value| u8::try_from(value).ok()))
+        .collect();
+    if let Some(bytes) = bytes {
+        *value = Value::Binary(bytes);
+    }
 }
 
 pub fn rmpv_to_json(value: &Value) -> Result<JsonValue, LxmfError> {

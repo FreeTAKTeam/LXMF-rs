@@ -464,6 +464,30 @@ impl RpcDaemon {
         Ok(self.store.get_message(message_id).map_err(std::io::Error::other)?.is_some())
     }
 
+    pub fn list_meshchat_conversation(
+        &self,
+        destination: &str,
+        after_id: Option<i64>,
+        descending: bool,
+        limit: usize,
+    ) -> Result<Vec<(i64, MessageRecord)>, std::io::Error> {
+        self.store
+            .list_meshchat_conversation(destination, after_id, descending, limit)
+            .map_err(std::io::Error::other)
+    }
+
+    pub fn meshchat_message_row_id(&self, message_id: &str) -> Result<Option<i64>, std::io::Error> {
+        self.store.meshchat_message_row_id(message_id).map_err(std::io::Error::other)
+    }
+
+    pub fn delete_meshchat_message(&self, message_id: &str) -> Result<usize, std::io::Error> {
+        self.store.delete_meshchat_message(message_id).map_err(std::io::Error::other)
+    }
+
+    pub fn delete_meshchat_conversation(&self, destination: &str) -> Result<usize, std::io::Error> {
+        self.store.delete_meshchat_conversation(destination).map_err(std::io::Error::other)
+    }
+
     pub fn propagation_transient_exists(&self, transient_id: &str) -> Result<bool, std::io::Error> {
         let transient_id = transient_id.trim();
         if transient_id.is_empty() {

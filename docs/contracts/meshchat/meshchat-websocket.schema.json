@@ -1,0 +1,3364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:meshchat:df5aea9:websocket:payloads",
+  "title": "MeshChat JSON control WebSocket messages",
+  "description": "Wire payload schemas derived from the pinned source. Use $defs/ClientMessage or $defs/ServerMessage for direction-specific validation. Binary audio is intentionally not a JSON payload; see protocol specification. Extra keys are tolerated as the upstream dispatcher does.",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/ClientMessage"
+    },
+    {
+      "$ref": "#/$defs/ServerMessage"
+    }
+  ],
+  "$defs": {
+    "HexHash": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]+$",
+      "description": "Hexadecimal hash. Application serializers emit lowercase. No hash-length check is imposed by MeshChat itself; bytes.fromhex() accepts more than this normal client form."
+    },
+    "Base64Bytes": {
+      "type": "string",
+      "contentEncoding": "base64",
+      "description": "Standard base64 text, not a data: URL."
+    },
+    "DatabaseTimestamp": {
+      "type": "string",
+      "examples": [
+        "2026-09-27 11:00:00.123456+00:00"
+      ],
+      "description": "SQLite/Peewee UTC datetime string, commonly YYYY-MM-DD HH:MM:SS.ffffff+00:00. Not declared format:date-time because the source does not guarantee RFC 3339 syntax."
+    },
+    "MessageResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "message"
+      ]
+    },
+    "UserIcon": {
+      "type": "object",
+      "properties": {
+        "icon_name": {
+          "type": "string"
+        },
+        "foreground_colour": {
+          "type": "string",
+          "description": "Colour text, normally #RRGGBB."
+        },
+        "background_colour": {
+          "type": "string",
+          "description": "Colour text, normally #RRGGBB."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "icon_name",
+        "foreground_colour",
+        "background_colour"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2601,
+            2609
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2601-L2609"
+        },
+        {
+          "file": "database.py",
+          "lines": [
+            155,
+            161
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/database.py#L155-L161"
+        }
+      ]
+    },
+    "Path": {
+      "type": "object",
+      "properties": {
+        "hops": {
+          "type": "integer"
+        },
+        "next_hop": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "next_hop_interface": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "hops",
+        "next_hop",
+        "next_hop_interface"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1461,
+            1483
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1461-L1483"
+        }
+      ]
+    },
+    "Config": {
+      "type": "object",
+      "properties": {
+        "display_name": {
+          "type": "string",
+          "default": "Anonymous Peer"
+        },
+        "identity_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "lxmf_address_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "audio_call_address_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "is_transport_enabled": {
+          "type": "boolean",
+          "description": "Active runtime state, not necessarily the pending on-disk setting."
+        },
+        "auto_announce_enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Derived when setting the interval; not writable directly through update_config."
+        },
+        "auto_announce_interval_seconds": {
+          "type": "integer",
+          "default": 0,
+          "description": "Positive enables automatic announcing; zero or negative disables it."
+        },
+        "last_announced_at": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Unix seconds. Null before first announce."
+        },
+        "theme": {
+          "type": "string",
+          "default": "light",
+          "description": "No enum validation in the server. Frontend uses light/dark."
+        },
+        "auto_resend_failed_messages_when_announce_received": {
+          "type": "boolean",
+          "default": true
+        },
+        "allow_auto_resending_failed_messages_with_attachments": {
+          "type": "boolean",
+          "default": false
+        },
+        "auto_send_failed_messages_to_propagation_node": {
+          "type": "boolean",
+          "default": false
+        },
+        "show_suggested_community_interfaces": {
+          "type": "boolean",
+          "default": true
+        },
+        "lxmf_local_propagation_node_enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "lxmf_local_propagation_node_address_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "lxmf_preferred_propagation_node_destination_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Configured propagation destination. Null/empty disables the active node. Invalid values may remain stored while active selection is cleared."
+        },
+        "lxmf_preferred_propagation_node_auto_sync_interval_seconds": {
+          "type": "integer",
+          "default": 0,
+          "description": "Positive enables periodic sync."
+        },
+        "lxmf_preferred_propagation_node_last_synced_at": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Unix seconds, or null."
+        },
+        "lxmf_user_icon_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lxmf_user_icon_foreground_colour": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lxmf_user_icon_background_colour": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "display_name",
+        "identity_hash",
+        "lxmf_address_hash",
+        "audio_call_address_hash",
+        "is_transport_enabled",
+        "auto_announce_enabled",
+        "auto_announce_interval_seconds",
+        "last_announced_at",
+        "theme",
+        "auto_resend_failed_messages_when_announce_received",
+        "allow_auto_resending_failed_messages_with_attachments",
+        "auto_send_failed_messages_to_propagation_node",
+        "show_suggested_community_interfaces",
+        "lxmf_local_propagation_node_enabled",
+        "lxmf_local_propagation_node_address_hash",
+        "lxmf_preferred_propagation_node_destination_hash",
+        "lxmf_preferred_propagation_node_auto_sync_interval_seconds",
+        "lxmf_preferred_propagation_node_last_synced_at",
+        "lxmf_user_icon_name",
+        "lxmf_user_icon_foreground_colour",
+        "lxmf_user_icon_background_colour"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2376,
+            2399
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2376-L2399"
+        },
+        {
+          "file": "meshchat.py",
+          "lines": [
+            3401,
+            3419
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3401-L3419"
+        }
+      ]
+    },
+    "ConfigPatch": {
+      "type": "object",
+      "properties": {
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Empty string is ignored; null clears the stored entry and restores its default."
+        },
+        "theme": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Empty string is ignored; null clears the stored entry and restores its default."
+        },
+        "auto_announce_interval_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "description": "Python int()-compatible numeric string."
+            }
+          ],
+          "description": "Coerced using Python int(); there is no range validation. A malformed value raises an uncaught error."
+        },
+        "auto_resend_failed_messages_when_announce_received": {
+          "type": "boolean"
+        },
+        "allow_auto_resending_failed_messages_with_attachments": {
+          "type": "boolean"
+        },
+        "auto_send_failed_messages_to_propagation_node": {
+          "type": "boolean"
+        },
+        "show_suggested_community_interfaces": {
+          "type": "boolean"
+        },
+        "lxmf_preferred_propagation_node_destination_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Configured propagation destination. Null/empty disables the active node. Invalid values may remain stored while active selection is cleared."
+        },
+        "lxmf_preferred_propagation_node_auto_sync_interval_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "description": "Python int()-compatible numeric string."
+            }
+          ],
+          "description": "Coerced using Python int(); there is no range validation. A malformed value raises an uncaught error."
+        },
+        "lxmf_local_propagation_node_enabled": {
+          "type": "boolean"
+        },
+        "lxmf_user_icon_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lxmf_user_icon_foreground_colour": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lxmf_user_icon_background_colour": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "description": "Partial config update. Unknown keys, including read-only Config fields, are ignored. Boolean settings use Python bool(value); clients should send actual JSON booleans, not strings. Updates are sequential and not transactional. Broadcasts a full config event to all clients even for an empty update.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2097,
+            2172
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2097-L2172"
+        }
+      ]
+    },
+    "ConfigResponse": {
+      "type": "object",
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/Config"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "config"
+      ]
+    },
+    "AppInfo": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "lxmf_version": {
+          "type": "string"
+        },
+        "rns_version": {
+          "type": "string"
+        },
+        "python_version": {
+          "type": "string"
+        },
+        "storage_path": {
+          "type": "string"
+        },
+        "database_path": {
+          "type": "string"
+        },
+        "database_file_size": {
+          "type": "integer",
+          "description": "Bytes."
+        },
+        "reticulum_config_path": {
+          "type": "string"
+        },
+        "is_connected_to_shared_instance": {
+          "type": "boolean"
+        },
+        "is_transport_enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "version",
+        "lxmf_version",
+        "rns_version",
+        "python_version",
+        "storage_path",
+        "database_path",
+        "database_file_size",
+        "reticulum_config_path",
+        "is_connected_to_shared_instance",
+        "is_transport_enabled"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            941,
+            956
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L941-L956"
+        }
+      ]
+    },
+    "ComPort": {
+      "type": "object",
+      "properties": {
+        "device": {
+          "type": "string"
+        },
+        "product": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serial_number": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "device",
+        "product",
+        "serial_number"
+      ]
+    },
+    "FileAttachment": {
+      "type": "object",
+      "properties": {
+        "file_name": {
+          "type": "string"
+        },
+        "file_bytes": {
+          "$ref": "#/$defs/Base64Bytes"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "file_name",
+        "file_bytes"
+      ]
+    },
+    "ImageField": {
+      "type": "object",
+      "properties": {
+        "image_type": {
+          "type": "string",
+          "description": "Image subtype passed to LXMF, e.g. png or jpg; no server whitelist."
+        },
+        "image_bytes": {
+          "$ref": "#/$defs/Base64Bytes"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "image_type",
+        "image_bytes"
+      ]
+    },
+    "AudioField": {
+      "type": "object",
+      "properties": {
+        "audio_mode": {
+          "type": "integer",
+          "description": "LXMF audio mode number; passed through without a local enum check."
+        },
+        "audio_bytes": {
+          "$ref": "#/$defs/Base64Bytes"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "audio_mode",
+        "audio_bytes"
+      ]
+    },
+    "MessageFields": {
+      "type": "object",
+      "properties": {
+        "file_attachments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileAttachment"
+          }
+        },
+        "image": {
+          "$ref": "#/$defs/ImageField"
+        },
+        "audio": {
+          "$ref": "#/$defs/AudioField"
+        }
+      },
+      "additionalProperties": true,
+      "description": "Named JSON fields, not numeric LXMF field IDs. Only these three are mapped by this API. Other input fields are ignored; other LXMF fields are omitted from message serialization. Icon appearance is derived from Config and exposed on peers/conversations instead.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1785,
+            1813
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1785-L1813"
+        },
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2446,
+            2488
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2446-L2488"
+        }
+      ]
+    },
+    "MessageState": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "generating",
+        "outbound",
+        "sending",
+        "sent",
+        "delivered",
+        "rejected",
+        "cancelled",
+        "failed"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2527,
+            2548
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2527-L2548"
+        }
+      ]
+    },
+    "DeliveryMethod": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "opportunistic",
+        "direct",
+        "propagated",
+        "paper"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2551,
+            2564
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2551-L2564"
+        }
+      ]
+    },
+    "LiveLxmfMessage": {
+      "type": "object",
+      "properties": {
+        "hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "source_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "destination_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "is_incoming": {
+          "type": "boolean",
+          "description": "For an incoming message, do not interpret outbound state as a delivery receipt."
+        },
+        "state": {
+          "$ref": "#/$defs/MessageState"
+        },
+        "progress": {
+          "type": "number",
+          "description": "Percentage: round(LXMF progress * 100, 2). Normally 0..100; not clamped."
+        },
+        "method": {
+          "$ref": "#/$defs/DeliveryMethod"
+        },
+        "delivery_attempts": {
+          "type": "integer"
+        },
+        "next_delivery_attempt_at": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Unix seconds, or null if not yet set."
+        },
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "fields": {
+          "$ref": "#/$defs/MessageFields"
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "LXMF creation timestamp as Unix seconds."
+        },
+        "rssi": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "snr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "quality": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "hash",
+        "source_hash",
+        "destination_hash",
+        "is_incoming",
+        "state",
+        "progress",
+        "method",
+        "delivery_attempts",
+        "next_delivery_attempt_at",
+        "title",
+        "content",
+        "fields",
+        "timestamp",
+        "rssi",
+        "snr",
+        "quality"
+      ],
+      "description": "Live LXMF object used in send responses, created events and state events. It deliberately has no database id/created_at/updated_at.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2446,
+            2524
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2446-L2524"
+        }
+      ]
+    },
+    "StoredLxmfMessage": {
+      "type": "object",
+      "properties": {
+        "hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "source_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "destination_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "is_incoming": {
+          "type": "boolean",
+          "description": "For an incoming message, do not interpret outbound state as a delivery receipt."
+        },
+        "state": {
+          "$ref": "#/$defs/MessageState"
+        },
+        "progress": {
+          "type": "number",
+          "description": "Percentage: round(LXMF progress * 100, 2). Normally 0..100; not clamped."
+        },
+        "method": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeliveryMethod"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery_attempts": {
+          "type": "integer"
+        },
+        "next_delivery_attempt_at": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Unix seconds, or null if not yet set."
+        },
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "fields": {
+          "$ref": "#/$defs/MessageFields"
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "LXMF creation timestamp as Unix seconds."
+        },
+        "rssi": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "snr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "quality": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "integer"
+        },
+        "created_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "hash",
+        "source_hash",
+        "destination_hash",
+        "is_incoming",
+        "state",
+        "progress",
+        "method",
+        "delivery_attempts",
+        "next_delivery_attempt_at",
+        "title",
+        "content",
+        "fields",
+        "timestamp",
+        "rssi",
+        "snr",
+        "quality",
+        "id",
+        "created_at",
+        "updated_at"
+      ],
+      "description": "Database message used in conversation history, cancel response and lxmf.delivery events. method may be null in migrated rows.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2645,
+            2667
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2645-L2667"
+        },
+        {
+          "file": "database.py",
+          "lines": [
+            110,
+            137
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/database.py#L110-L137"
+        }
+      ]
+    },
+    "SendMessageRequest": {
+      "type": "object",
+      "properties": {
+        "delivery_method": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "direct, opportunistic or propagated are recognized. Missing, null or unrecognized strings use automatic selection. paper is not an explicit send option."
+        },
+        "lxmf_message": {
+          "type": "object",
+          "properties": {
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "content": {
+              "type": "string",
+              "description": "May be empty; attachment-only messages are supported."
+            },
+            "fields": {
+              "$ref": "#/$defs/MessageFields"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "destination_hash",
+            "content"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "lxmf_message"
+      ],
+      "description": "No title input is consumed. Missing nested required keys or invalid attachment payloads fail outside the send try/except, normally as HTTP 500. The schema describes normal client inputs, not all Python coercions.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1771,
+            1834
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1771-L1834"
+        },
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2886,
+            3008
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2886-L3008"
+        }
+      ]
+    },
+    "Announce": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "destination_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "aspect": {
+          "type": "string",
+          "description": "Registered listeners: call.audio, lxmf.delivery, lxmf.propagation, nomadnetwork.node."
+        },
+        "identity_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "identity_public_key": {
+          "$ref": "#/$defs/Base64Bytes"
+        },
+        "app_data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Base64Bytes"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hops": {
+          "type": "integer",
+          "description": "Live hops_to() value; an unknown-path sentinel is possible."
+        },
+        "rssi": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "snr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "quality": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Parsed for lxmf.delivery and nomadnetwork.node only; other aspects return null."
+        },
+        "custom_display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lxmf_user_icon": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UserIcon"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "destination_hash",
+        "aspect",
+        "identity_hash",
+        "identity_public_key",
+        "app_data",
+        "hops",
+        "rssi",
+        "snr",
+        "quality",
+        "display_name",
+        "custom_display_name",
+        "lxmf_user_icon",
+        "created_at",
+        "updated_at"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2593,
+            2631
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2593-L2631"
+        },
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2810,
+            2837
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2810-L2837"
+        }
+      ]
+    },
+    "Favourite": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "destination_hash": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "aspect": {
+          "type": "string"
+        },
+        "created_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "destination_hash",
+        "display_name",
+        "aspect",
+        "created_at",
+        "updated_at"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2634,
+            2642
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2634-L2642"
+        }
+      ]
+    },
+    "Conversation": {
+      "type": "object",
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "custom_display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "destination_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "is_unread": {
+          "type": "boolean"
+        },
+        "failed_messages_count": {
+          "type": "integer"
+        },
+        "lxmf_user_icon": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UserIcon"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "display_name",
+        "custom_display_name",
+        "destination_hash",
+        "is_unread",
+        "failed_messages_count",
+        "lxmf_user_icon",
+        "updated_at"
+      ],
+      "description": "Ordered by most recent message creation time, not progress-update time.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1964,
+            2028
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1964-L2028"
+        }
+      ]
+    },
+    "AudioCall": {
+      "type": "object",
+      "properties": {
+        "hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "remote_destination_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HexHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "remote_identity_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HexHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "is_active": {
+          "type": "boolean"
+        },
+        "is_outbound": {
+          "type": "boolean"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Path"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "hash",
+        "remote_destination_hash",
+        "remote_identity_hash",
+        "is_active",
+        "is_outbound",
+        "path"
+      ],
+      "description": "Calls are held in memory. Remote identity/destination/path may be null until known.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2402,
+            2443
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2402-L2443"
+        }
+      ]
+    },
+    "SignalMetrics": {
+      "type": "object",
+      "properties": {
+        "snr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rssi": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "quality": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DatabaseTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "snr",
+        "rssi",
+        "quality",
+        "updated_at"
+      ]
+    },
+    "StampInfo": {
+      "type": "object",
+      "properties": {
+        "stamp_cost": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "outbound_ticket_expiry": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Unix expiry time from LXMF; no ticket material is exposed."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "stamp_cost",
+        "outbound_ticket_expiry"
+      ]
+    },
+    "PropagationStatus": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "idle",
+            "path_requested",
+            "link_establishing",
+            "link_established",
+            "request_sent",
+            "receiving",
+            "response_received",
+            "complete",
+            "no_path",
+            "link_failed",
+            "transfer_failed",
+            "no_identity_received",
+            "no_access",
+            "failed",
+            "unknown"
+          ]
+        },
+        "progress": {
+          "type": "number",
+          "description": "Percentage: LXMF transfer progress * 100."
+        },
+        "messages_received": {
+          "description": "Last transfer result, passed through from the installed LXMF version. Normally an integer count; MeshChat itself imposes no type or nullability guarantee."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "state",
+        "progress",
+        "messages_received"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1332,
+            1340
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1332-L1340"
+        },
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2566,
+            2590
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2566-L2590"
+        }
+      ]
+    },
+    "PropagationNode": {
+      "type": "object",
+      "properties": {
+        "destination_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "identity_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "operator_display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "is_propagation_enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "per_transfer_limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Value parsed from announcement entry [2]. Unit is not defined by MeshChat; do not silently assume bytes."
+        },
+        "created_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/DatabaseTimestamp"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "destination_hash",
+        "identity_hash",
+        "operator_display_name",
+        "is_propagation_enabled",
+        "per_transfer_limit",
+        "created_at",
+        "updated_at"
+      ],
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1370,
+            1429
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1370-L1429"
+        },
+        {
+          "file": "meshchat.py",
+          "lines": [
+            3251,
+            3261
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3251-L3261"
+        }
+      ]
+    },
+    "PingResult": {
+      "type": "object",
+      "properties": {
+        "rtt": {
+          "type": "number",
+          "description": "Seconds, not milliseconds."
+        },
+        "hops_there": {
+          "type": "integer"
+        },
+        "hops_back": {
+          "type": "integer"
+        },
+        "rssi": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "snr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "quality": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "receiving_interface": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "rtt",
+        "hops_there",
+        "hops_back",
+        "rssi",
+        "snr",
+        "quality",
+        "receiving_interface"
+      ]
+    },
+    "InterfaceStatsEntry": {
+      "type": "object",
+      "properties": {
+        "short_name": {
+          "type": "string"
+        },
+        "interface_name": {
+          "type": "string",
+          "description": "Copied from short_name when present."
+        },
+        "parent_interface_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent_interface_hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "ifac_signature": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Converted from nonempty bytes to hex."
+        },
+        "hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Converted from nonempty bytes to hex."
+        }
+      },
+      "additionalProperties": true,
+      "description": "RNS get_interface_stats().interfaces entry. MeshChat only normalizes the fields listed here. All other keys and their availability belong to the installed RNS version; additionalProperties is intentional."
+    },
+    "InterfaceStats": {
+      "type": "object",
+      "properties": {
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InterfaceStatsEntry"
+          }
+        },
+        "transport_id": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "network_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HexHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "probe_responder": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HexHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "interfaces"
+      ],
+      "description": "Dependency-owned pass-through object. requirements.txt specifies rns>=1.3.7, not one exact version. This source does not establish a closed, stable list of stats fields.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1718,
+            1753
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1718-L1753"
+        },
+        {
+          "file": "requirements.txt",
+          "lines": [
+            1,
+            6
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/requirements.txt#L1-L6"
+        }
+      ]
+    },
+    "PathTableEntry": {
+      "type": "object",
+      "properties": {
+        "hash": {
+          "$ref": "#/$defs/HexHash"
+        },
+        "via": {
+          "$ref": "#/$defs/HexHash"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "hash",
+        "via"
+      ],
+      "description": "RNS get_path_table() entry. Only hash and via are normalized here; other keys pass through from the installed RNS version.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            1756,
+            1768
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L1756-L1768"
+        }
+      ]
+    },
+    "InterfaceConfig": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": [
+            "string",
+            "boolean"
+          ]
+        },
+        "interface_enabled": {
+          "type": [
+            "string",
+            "boolean"
+          ]
+        },
+        "sub_interfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "name"
+            ]
+          }
+        }
+      },
+      "additionalProperties": true,
+      "description": "Reticulum ConfigObj configuration. Values may be strings, lists or nested objects; no normalization to JSON numbers/booleans is performed. GET flattens RNodeMultiInterface child sections into sub_interfaces, each with name.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            329,
+            359
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L329-L359"
+        }
+      ]
+    },
+    "ImportedInterface": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "name"
+      ],
+      "description": "Parsed ConfigObj interface. Unlike GET interfaces, RNodeMultiInterface nested child sections remain named object properties.",
+      "x-source": [
+        {
+          "file": "src/backend/interface_config_parser.py",
+          "lines": [
+            1,
+            31
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/backend/interface_config_parser.py#L1-L31"
+        }
+      ]
+    },
+    "RNodeSubInterface": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "frequency": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "description": "Converted with Python int()."
+            }
+          ]
+        },
+        "bandwidth": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "description": "Converted with Python int()."
+            }
+          ]
+        },
+        "txpower": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "description": "Converted with Python int()."
+            }
+          ]
+        },
+        "spreadingfactor": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "description": "Converted with Python int()."
+            }
+          ]
+        },
+        "codingrate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "description": "Converted with Python int()."
+            }
+          ]
+        },
+        "vport": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "description": "Converted with Python int()."
+            }
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "frequency",
+        "bandwidth",
+        "txpower",
+        "spreadingfactor",
+        "codingrate",
+        "vport"
+      ],
+      "description": "At least one sub-interface is required for RNodeMultiInterface. All listed values must be present and neither null nor empty; numeric values are coerced with int()."
+    },
+    "InterfaceWriteRequest": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "multicast_address_type": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "discovery_scope": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "discovery_port": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "data_port": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "target_host": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "target_port": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "kiss_framing": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "i2p_tunneled": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "listen_ip": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "listen_port": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "device": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "prefer_ipv6": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "forward_ip": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "forward_port": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "port": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "frequency": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "bandwidth": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "txpower": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "spreadingfactor": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "codingrate": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "callsign": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "id_interval": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "airtime_limit_long": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "airtime_limit_short": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "speed": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "databits": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "parity": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "stopbits": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "preamble": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "txtail": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "persistence": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "slottime": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "ssid": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "command": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "respawn_delay": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "bitrate": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "mode": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "network_name": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "passphrase": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "ifac_size": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Copied to configuration as supplied. A missing/null/empty optional value removes the previous key; the server does not impose a numeric range."
+        },
+        "devices": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "ConfigObj-compatible list or text; passed through."
+        },
+        "ignored_devices": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "ConfigObj-compatible list or text; passed through."
+        },
+        "peers": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "ConfigObj-compatible list or text; passed through."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unknown type names are accepted and persisted; supported branches are listed in x-type-rules."
+        },
+        "allow_overwriting_interface": {
+          "type": "boolean",
+          "default": false
+        },
+        "sub_interfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RNodeSubInterface"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "type"
+      ],
+      "description": "Create or replace interface configuration. This is not JSON Merge Patch: omitted optional fields handled by InterfaceEditor are removed. Existing name is rejected unless overwrite is allowed. A successful response writes configuration, but does not reload interfaces.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "TCPClientInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "target_host",
+              "target_port"
+            ],
+            "properties": {
+              "target_host": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "target_port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "TCPServerInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "listen_ip",
+              "listen_port"
+            ],
+            "properties": {
+              "listen_ip": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "listen_port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "UDPInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "listen_ip",
+              "listen_port",
+              "forward_ip",
+              "forward_port"
+            ],
+            "properties": {
+              "listen_ip": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "listen_port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "forward_ip": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "forward_port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "RNodeInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "port",
+              "frequency",
+              "bandwidth",
+              "txpower",
+              "spreadingfactor",
+              "codingrate"
+            ],
+            "properties": {
+              "port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "frequency": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "bandwidth": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "txpower": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "spreadingfactor": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "codingrate": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "RNodeMultiInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "port",
+              "sub_interfaces"
+            ],
+            "properties": {
+              "port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "sub_interfaces": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "SerialInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "KISSInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "AX25KISSInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "port": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "PipeInterface"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "command",
+              "respawn_delay"
+            ],
+            "properties": {
+              "command": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              },
+              "respawn_delay": {
+                "not": {
+                  "enum": [
+                    null,
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "x-type-rules": {
+        "AutoInterface": {
+          "optional": [
+            "group_id",
+            "multicast_address_type",
+            "devices",
+            "ignored_devices",
+            "discovery_scope",
+            "discovery_port",
+            "data_port"
+          ]
+        },
+        "TCPClientInterface": {
+          "required": [
+            "target_host",
+            "target_port"
+          ],
+          "optional": [
+            "kiss_framing",
+            "i2p_tunneled"
+          ]
+        },
+        "I2PInterface": {
+          "optional": [
+            "peers"
+          ],
+          "forced": {
+            "connectable": "True"
+          }
+        },
+        "TCPServerInterface": {
+          "required": [
+            "listen_ip",
+            "listen_port"
+          ],
+          "optional": [
+            "device",
+            "prefer_ipv6"
+          ]
+        },
+        "UDPInterface": {
+          "required": [
+            "listen_ip",
+            "listen_port",
+            "forward_ip",
+            "forward_port"
+          ],
+          "optional": [
+            "device"
+          ]
+        },
+        "RNodeInterface": {
+          "required": [
+            "port",
+            "frequency",
+            "bandwidth",
+            "txpower",
+            "spreadingfactor",
+            "codingrate"
+          ],
+          "optional": [
+            "callsign",
+            "id_interval",
+            "airtime_limit_long",
+            "airtime_limit_short"
+          ]
+        },
+        "RNodeMultiInterface": {
+          "required": [
+            "port",
+            "sub_interfaces"
+          ]
+        },
+        "SerialInterface": {
+          "required": [
+            "port"
+          ],
+          "optional": [
+            "speed",
+            "databits",
+            "parity",
+            "stopbits"
+          ]
+        },
+        "KISSInterface": {
+          "required": [
+            "port"
+          ],
+          "optional": [
+            "speed",
+            "databits",
+            "parity",
+            "stopbits",
+            "preamble",
+            "txtail",
+            "persistence",
+            "slottime",
+            "callsign",
+            "ssid"
+          ]
+        },
+        "AX25KISSInterface": {
+          "required": [
+            "port"
+          ],
+          "optional": [
+            "speed",
+            "databits",
+            "parity",
+            "stopbits",
+            "preamble",
+            "txtail",
+            "persistence",
+            "slottime",
+            "callsign",
+            "ssid"
+          ]
+        },
+        "PipeInterface": {
+          "required": [
+            "command",
+            "respawn_delay"
+          ]
+        },
+        "common_optional": [
+          "callsign",
+          "id_interval",
+          "airtime_limit_long",
+          "airtime_limit_short",
+          "bitrate",
+          "mode",
+          "network_name",
+          "passphrase",
+          "ifac_size"
+        ]
+      },
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            427,
+            773
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L427-L773"
+        },
+        {
+          "file": "src/backend/interface_editor.py",
+          "lines": [
+            1,
+            14
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/backend/interface_editor.py#L1-L14"
+        }
+      ]
+    },
+    "FavouriteWriteRequest": {
+      "type": "object",
+      "properties": {
+        "destination_hash": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "aspect": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "destination_hash",
+        "display_name",
+        "aspect"
+      ],
+      "description": "Only null/missing checks are applied, not nonempty/format checks. Upserts by destination hash, not by (destination hash, aspect)."
+    },
+    "Ping": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "ping"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type"
+      ],
+      "description": "Application JSON keepalive, distinct from WebSocket protocol ping frames.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2211,
+            2216
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2211-L2216"
+        }
+      ]
+    },
+    "SetConfig": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "config.set"
+        },
+        "config": {
+          "$ref": "#/$defs/ConfigPatch"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "config"
+      ],
+      "description": "Apply supported ConfigPatch keys. Produces a full config broadcast, not a correlated acknowledgement.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2219,
+            2226
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2219-L2226"
+        }
+      ]
+    },
+    "DownloadFile": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "nomadnet.file.download"
+        },
+        "nomadnet_file_download": {
+          "type": "object",
+          "properties": {
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "file_path": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "destination_hash",
+            "file_path"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "nomadnet_file_download"
+      ],
+      "description": "Begin a NomadNet file request. Results are sent only to this socket.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2229,
+            2237
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2229-L2237"
+        }
+      ]
+    },
+    "DownloadPage": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "nomadnet.page.download"
+        },
+        "nomadnet_page_download": {
+          "type": "object",
+          "properties": {
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "page_path": {
+              "type": "string",
+              "description": "May contain a backtick followed by key=value|key=value variables."
+            },
+            "field_data": {
+              "description": "Required key. A JSON object supplies field_ prefixed form values; nonobjects/null are accepted but ignored."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "destination_hash",
+            "page_path",
+            "field_data"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "nomadnet_page_download"
+      ],
+      "description": "Begin a NomadNet page request. field_data is required by direct indexing even when no form values exist; send {}.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2279,
+            2310
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2279-L2310"
+        }
+      ]
+    },
+    "Pong": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "pong"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type"
+      ],
+      "description": "Reply to the initiating socket only; no timestamp or request ID.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2211,
+            2216
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2211-L2216"
+        }
+      ]
+    },
+    "ConfigEvent": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "config"
+        },
+        "config": {
+          "$ref": "#/$defs/Config"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "config"
+      ],
+      "description": "Full configuration. Broadcast on every control connection, supported config update and propagation-sync start.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2363,
+            2367
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2363-L2367"
+        }
+      ]
+    },
+    "Announced": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "announced"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type"
+      ],
+      "description": "Local destinations were announced. No config body, destination list or timestamp is included.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2370,
+            2373
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2370-L2373"
+        }
+      ]
+    },
+    "IncomingAudioCall": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "incoming_audio_call"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type"
+      ],
+      "description": "Notification only. Fetch GET /api/v1/calls to discover call details.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            273,
+            278
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L273-L278"
+        }
+      ]
+    },
+    "AnnounceEvent": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "announce"
+        },
+        "announce": {
+          "$ref": "#/$defs/Announce"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "announce"
+      ],
+      "description": "A registered-aspect announcement was stored. Other emitters use the same serialization.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            3042,
+            3063
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3042-L3063"
+        }
+      ]
+    },
+    "LxmfDelivery": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "lxmf.delivery"
+        },
+        "lxmf_message": {
+          "$ref": "#/$defs/StoredLxmfMessage"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "lxmf_message"
+      ],
+      "description": "New incoming message after database persistence. Sideband telemetry-request commands are filtered and generate no delivery event.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2724,
+            2737
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2724-L2737"
+        }
+      ]
+    },
+    "LxmfMessageCreated": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "lxmf_message_created"
+        },
+        "lxmf_message": {
+          "$ref": "#/$defs/LiveLxmfMessage"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "lxmf_message"
+      ],
+      "description": "Outbound message created. No database id/timestamps are present. This event can precede the HTTP send response.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2997,
+            3001
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2997-L3001"
+        }
+      ]
+    },
+    "LxmfMessageStateUpdated": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "lxmf_message_state_updated"
+        },
+        "lxmf_message": {
+          "$ref": "#/$defs/LiveLxmfMessage"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "lxmf_message"
+      ],
+      "description": "Full live message state, emitted by callbacks and a one-second progress loop. Not a patch and not guaranteed exactly once.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2746,
+            2750
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2746-L2750"
+        }
+      ]
+    },
+    "LxmfMessageDeleted": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "lxmf_message_deleted"
+        },
+        "hash": {
+          "$ref": "#/$defs/HexHash"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "hash"
+      ],
+      "description": "Sent only by failed-message automatic resend cleanup. Direct REST delete handlers do not emit this event.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            3161,
+            3164
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L3161-L3164"
+        }
+      ]
+    },
+    "NomadnetFileProgress": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "nomadnet.file.download"
+        },
+        "nomadnet_file_download": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "progress"
+            },
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "file_path": {
+              "type": "string"
+            },
+            "progress": {
+              "type": "number",
+              "description": "Raw RNS RequestReceipt progress, normally 0..1; unlike message/propagation progress, not a percentage."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "status",
+            "destination_hash",
+            "file_path",
+            "progress"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "nomadnet_file_download"
+      ],
+      "description": "Request-local file progress response. Correlate by destination_hash and original file_path; there is no request ID.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2263,
+            2271
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2263-L2271"
+        }
+      ]
+    },
+    "NomadnetFileSuccess": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "nomadnet.file.download"
+        },
+        "nomadnet_file_download": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "success"
+            },
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "file_path": {
+              "type": "string"
+            },
+            "file_name": {
+              "type": "string"
+            },
+            "file_bytes": {
+              "$ref": "#/$defs/Base64Bytes"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "status",
+            "destination_hash",
+            "file_path",
+            "file_name",
+            "file_bytes"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "nomadnet_file_download"
+      ],
+      "description": "Request-local file success response. Correlate by destination_hash and original file_path; there is no request ID.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2238,
+            2247
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2238-L2247"
+        }
+      ]
+    },
+    "NomadnetFileFailure": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "nomadnet.file.download"
+        },
+        "nomadnet_file_download": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "failure"
+            },
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "file_path": {
+              "type": "string"
+            },
+            "failure_reason": {
+              "type": "string",
+              "description": "Examples: Could not find path to destination.; Could not establish link to destination.; request_failed; unsupported_response (file). Not a closed enum."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "status",
+            "destination_hash",
+            "file_path",
+            "failure_reason"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "nomadnet_file_download"
+      ],
+      "description": "Request-local file failure response. Correlate by destination_hash and original file_path; there is no request ID.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2251,
+            2259
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2251-L2259"
+        }
+      ]
+    },
+    "NomadnetPageProgress": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "nomadnet.page.download"
+        },
+        "nomadnet_page_download": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "progress"
+            },
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "page_path": {
+              "type": "string"
+            },
+            "progress": {
+              "type": "number",
+              "description": "Raw RNS RequestReceipt progress, normally 0..1; unlike message/propagation progress, not a percentage."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "status",
+            "destination_hash",
+            "page_path",
+            "progress"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "nomadnet_page_download"
+      ],
+      "description": "Request-local page progress response. Correlate by destination_hash and original page_path; there is no request ID.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2335,
+            2343
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2335-L2343"
+        }
+      ]
+    },
+    "NomadnetPageSuccess": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "nomadnet.page.download"
+        },
+        "nomadnet_page_download": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "success"
+            },
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "page_path": {
+              "type": "string"
+            },
+            "page_content": {
+              "type": "string",
+              "description": "UTF-8 Micron markup."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "status",
+            "destination_hash",
+            "page_path",
+            "page_content"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "nomadnet_page_download"
+      ],
+      "description": "Request-local page success response. Correlate by destination_hash and original page_path; there is no request ID.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2311,
+            2319
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2311-L2319"
+        }
+      ]
+    },
+    "NomadnetPageFailure": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "nomadnet.page.download"
+        },
+        "nomadnet_page_download": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "failure"
+            },
+            "destination_hash": {
+              "$ref": "#/$defs/HexHash"
+            },
+            "page_path": {
+              "type": "string"
+            },
+            "failure_reason": {
+              "type": "string",
+              "description": "Examples: Could not find path to destination.; Could not establish link to destination.; request_failed; unsupported_response (file). Not a closed enum."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "status",
+            "destination_hash",
+            "page_path",
+            "failure_reason"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "nomadnet_page_download"
+      ],
+      "description": "Request-local page failure response. Correlate by destination_hash and original page_path; there is no request ID.",
+      "x-source": [
+        {
+          "file": "meshchat.py",
+          "lines": [
+            2323,
+            2331
+          ],
+          "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py#L2323-L2331"
+        }
+      ]
+    },
+    "ClientMessage": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Ping"
+        },
+        {
+          "$ref": "#/$defs/SetConfig"
+        },
+        {
+          "$ref": "#/$defs/DownloadFile"
+        },
+        {
+          "$ref": "#/$defs/DownloadPage"
+        }
+      ],
+      "description": "Validate client-to-server JSON control payloads against this definition."
+    },
+    "ServerMessage": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Pong"
+        },
+        {
+          "$ref": "#/$defs/ConfigEvent"
+        },
+        {
+          "$ref": "#/$defs/Announced"
+        },
+        {
+          "$ref": "#/$defs/IncomingAudioCall"
+        },
+        {
+          "$ref": "#/$defs/AnnounceEvent"
+        },
+        {
+          "$ref": "#/$defs/LxmfDelivery"
+        },
+        {
+          "$ref": "#/$defs/LxmfMessageCreated"
+        },
+        {
+          "$ref": "#/$defs/LxmfMessageStateUpdated"
+        },
+        {
+          "$ref": "#/$defs/LxmfMessageDeleted"
+        },
+        {
+          "$ref": "#/$defs/NomadnetFileProgress"
+        },
+        {
+          "$ref": "#/$defs/NomadnetFileSuccess"
+        },
+        {
+          "$ref": "#/$defs/NomadnetFileFailure"
+        },
+        {
+          "$ref": "#/$defs/NomadnetPageProgress"
+        },
+        {
+          "$ref": "#/$defs/NomadnetPageSuccess"
+        },
+        {
+          "$ref": "#/$defs/NomadnetPageFailure"
+        }
+      ],
+      "description": "Validate server-to-client JSON control payloads against this definition."
+    }
+  },
+  "x-source-commit": "df5aea94eab7f4be1cdfef494446e9d6979aed77"
+}

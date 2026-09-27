@@ -74,6 +74,12 @@ struct Args {
     #[cfg(feature = "zmq-pipeline-rpc")]
     #[arg(long)]
     zmq_rpc_command: Option<String>,
+    /// Opt-in local MeshChat HTTP/WebSocket bind address (for example 127.0.0.1:8000).
+    #[arg(long)]
+    meshchat_bind: Option<std::net::SocketAddr>,
+    /// Directory containing the built MeshChat public assets.
+    #[arg(long)]
+    meshchat_assets: Option<PathBuf>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -82,6 +88,13 @@ async fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let args = Args::parse();
+    let meshchat_bind = args.meshchat_bind;
+    let meshchat_assets = args.meshchat_assets.clone();
+    let meshchat_state = args.db.with_extension("meshchat.json");
+    if meshchat_bind.is_some_and(|bind| !bind.ip().is_loopback()) {
+        eprintln!("--meshchat-bind must use a loopback address");
+        std::process::exit(2);
+    }
     #[cfg(feature = "zmq-pipeline-rpc")]
     let zmq_rpc_command = args.zmq_rpc_command.clone();
     #[cfg(feature = "zmq-pipeline-rpc")]
@@ -89,12 +102,21 @@ async fn main() {
     let context = bootstrap::bootstrap(args).await;
     #[cfg(feature = "zmq-pipeline-rpc")]
     {
-        run_daemon_loops(context, zmq_rpc_endpoint, zmq_rpc_command).await;
+        run_daemon_loops(
+            context,
+            zmq_rpc_endpoint,
+            zmq_rpc_command,
+            meshchat_bind,
+            meshchat_assets,
+            meshchat_state,
+        )
+        .await;
     }
     #[cfg(not(feature = "zmq-pipeline-rpc"))]
     {
         let path_table_persistence = context.path_table_persistence;
         let auto_runtime_shutdowns = context.auto_runtime_shutdowns;
+        spawn_meshchat_api(meshchat_bind, meshchat_assets, meshchat_state, context.daemon.clone());
         rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls, context.rpc_unix)
             .await;
         bootstrap::shutdown_auto_interfaces(auto_runtime_shutdowns).await;
@@ -108,6 +130,9 @@ async fn run_daemon_loops(
     context: bootstrap::BootstrapContext,
     zmq_rpc_endpoint: Option<String>,
     zmq_rpc_command: Option<String>,
+    meshchat_bind: Option<std::net::SocketAddr>,
+    meshchat_assets: Option<PathBuf>,
+    meshchat_state: PathBuf,
 ) {
     let bootstrap::BootstrapContext {
         rpc_addr,
@@ -118,6 +143,7 @@ async fn run_daemon_loops(
         auto_runtime_shutdowns,
     } = context;
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    spawn_meshchat_api(meshchat_bind, meshchat_assets, meshchat_state, daemon.clone());
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
@@ -158,4 +184,24 @@ async fn run_daemon_loops(
     rpc_loop::run_rpc_loop_until(rpc_addr, daemon, rpc_tls, rpc_unix, shutdown_rx).await;
     bootstrap::shutdown_auto_interfaces(auto_runtime_shutdowns).await;
     announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence).await;
+}
+
+fn spawn_meshchat_api(
+    bind: Option<std::net::SocketAddr>,
+    assets: Option<PathBuf>,
+    state_path: PathBuf,
+    daemon: std::sync::Arc<rns_rpc::RpcDaemon>,
+) {
+    let Some(bind) = bind else {
+        return;
+    };
+    if !bind.ip().is_loopback() {
+        log::error!("MeshChat API bind must be loopback until an access policy is configured");
+        return;
+    }
+    tokio::spawn(async move {
+        if let Err(err) = meshchat_api::serve(bind, daemon, assets, state_path).await {
+            log::error!("MeshChat API stopped: {err}");
+        }
+    });
 }

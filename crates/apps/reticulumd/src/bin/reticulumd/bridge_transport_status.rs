@@ -10,9 +10,10 @@ pub(crate) fn build_transport_status(
         .enable_all()
         .build()
         .map_err(|err| std::io::Error::other(format!("transport status runtime: {err}")))?;
-    let (queues, interfaces, links, active_links, lowest_bitrate, medium_timeout) = runtime
-        .block_on(async move {
+    let (enabled, queues, interfaces, links, active_links, lowest_bitrate, medium_timeout) =
+        runtime.block_on(async move {
             (
+                transport.transport_enabled().await,
                 transport.inbound_queue_snapshot().await,
                 transport.interface_traffic_snapshots().await,
                 transport.link_count().await,
@@ -81,6 +82,7 @@ pub(crate) fn build_transport_status(
         }
     };
     Ok(json!({
+        "enabled": enabled,
         "inbound_queues": {
             "total": queues.total,
             "total_limit": queues.limits.iter().sum::<usize>(),
@@ -138,4 +140,26 @@ pub(crate) fn build_transport_status(
         "lowest_interface_bitrate": lowest_bitrate,
         "medium_path_timeout": medium_timeout,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rns_transport::identity::PrivateIdentity;
+    use rns_transport::transport::TransportConfig;
+
+    #[test]
+    fn transport_status_reports_forwarding_enabled() {
+        let identity = PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let mut config = TransportConfig::new("transport-status-test", &identity, true);
+        config.set_transport_enabled(true);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("transport construction runtime");
+        let _guard = runtime.enter();
+        let transport = Arc::new(Transport::new(config));
+
+        assert_eq!(build_transport_status(transport).expect("transport status")["enabled"], true);
+    }
 }
