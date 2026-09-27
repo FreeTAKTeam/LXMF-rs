@@ -49,6 +49,8 @@ Update these documents when their corresponding behavior changes:
   and pre-1.0 compatibility boundary.
 - [v0.12.0 release notes](release-notes-v0.12.0.md): scoped Reticulum
   1.5.4-dev feature update and qualified parity boundary.
+- [v0.12.0 candidate ledger](status/v0.12.0-release-candidate.md): local
+  release evidence and exact-head publication conditions.
 - [Contracts](contracts/): public compatibility, support, API, payload, RPC,
   and protocol guarantees.
 - [Interfaces](interfaces/): interface-specific configuration and integration

@@ -8,13 +8,13 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 399496,
-      "sha256": "a37e23d0e1fe87b80b368773c5fb18f701fe81039c5cdb337199de358b292092"
+      "bytes": 399541,
+      "sha256": "9f56ea75482a245a8f4ff5010f7d3942cee9977ee134e7710e70f0fa9c5b530f"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
       "bytes": 373,
-      "sha256": "4251c2f9b04ca184bd4bee691df76d59d2a004460e4e6bbdf0ca194ef435c89b"
+      "sha256": "a9b65da5493453ba456da1ee7ca5cd37581054f4bd45c1d0050a3b52826cb220"
     },
     {
       "path": "docs/contracts/ble-camera-wire-v1.md",
@@ -28,8 +28,8 @@
     },
     {
       "path": "docs/contracts/compatibility-contract.md",
-      "bytes": 3764,
-      "sha256": "be1d5267b7915df256130524b85dabf95b8d33efea0560baeeafca9ae8c3f541"
+      "bytes": 4364,
+      "sha256": "3c3627c05be5699d44e1267ee597c8125e6b85d90417fb82f70f1cfe169ef72b"
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
@@ -218,8 +218,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2.md",
-      "bytes": 13690,
-      "sha256": "9c2ea8023697f040e99270737e3f9f8ac100f8c8b7d8e4beaeb1597ee6d34b74"
+      "bytes": 14585,
+      "sha256": "3a88979acd5856ebae34dc80abed265b3b769c01f287ab281334f83b184a470f"
     },
     {
       "path": "docs/contracts/support-policy.md",
@@ -1408,8 +1408,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json",
-      "bytes": 2359,
-      "sha256": "62fe757c652bf553f9641507fcefe3524f1437e0b6a9293fb7d6133846e44e83"
+      "bytes": 2857,
+      "sha256": "3de7b4e66f45b2518f62c01d3f01e080f967c7b9ad3b2bd87c3b0fb482eae0ec"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json",
@@ -1603,8 +1603,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_negotiate_v2.schema.json",
-      "bytes": 9716,
-      "sha256": "e6beefb6ad389ed4b7a0eb4a2ed42643c7d26054fe4639cc25df8e69f1ddf3a1"
+      "bytes": 10732,
+      "sha256": "0ea73482150513315fce1b0ec87301d7ebee1affbc95e50cc9628a3e331b40b9"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_poll_events_v2.schema.json",
