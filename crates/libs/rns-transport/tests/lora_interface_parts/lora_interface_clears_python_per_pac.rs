@@ -386,6 +386,14 @@ fn lora_interface_supports_tcp_rnode_endpoint() {
 }
 
 #[test]
+fn rnode_preflight_accepts_508_byte_payload_limit() {
+    let config = LoraConfig { max_payload_bytes: 508, ..LoraConfig::us915_default() };
+    let iface = LoraInterface::new("/not-a-real-rnode-device", 115_200, config);
+    let err = iface.preflight_open().expect_err("missing device must fail");
+    assert!(err.contains("preflight open failed"), "unexpected error: {err}");
+}
+
+#[test]
 fn lora_tcp_rnode_uses_python_activity_detect_probe() {
     let serial = LoraInterface::new("/dev/ttyACM0", 115_200, LoraConfig::us915_default());
     assert_eq!(serial.activity_probe(), None);

@@ -322,6 +322,7 @@ impl RpcDaemon {
                         error: None,
                     });
                 }
+                let local_imported_count = result.get("imported_count").cloned();
                 let imported = match self
                     .import_remote_propagation_payloads(&result, "propagation_remote_fetch", None)
                 {
@@ -345,6 +346,9 @@ impl RpcDaemon {
                     }
                 };
                 if let Some(result) = result.as_object_mut() {
+                    if let Some(count) = local_imported_count {
+                        result.insert("local_imported_count".to_string(), count);
+                    }
                     result.insert("imported_count".to_string(), json!(imported.imported_count));
                     result.insert("duplicate_count".to_string(), json!(imported.duplicate_count));
                     result.insert("imported_ids".to_string(), json!(imported.imported_ids));

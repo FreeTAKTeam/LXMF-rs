@@ -25,6 +25,7 @@ LXMF-rs/
 | [`lxmf-sdk`](https://crates.io/crates/lxmf-sdk) | `crates/libs/lxmf-sdk` | High-level client APIs and backend contracts |
 | [`lxmf-wire`](https://crates.io/crates/lxmf-wire) | `crates/libs/lxmf-core` | LXMF messages, payloads, identities, and wire encoding |
 | `lxmf-runtime` | `crates/libs/lxmf-runtime` | In-process SDK backend over the Reticulum transport runtime |
+| `meshchat-api` | `crates/libs/meshchat-api` | Opt-in local MeshChat HTTP/WebSocket adapter used by `reticulumd` for the development POC; see the [runbook](runbooks/meshchat-api.md) |
 | `lxmf-reference` | `crates/libs/lxmf-reference` | Pinned reference metadata used by compatibility gates |
 
 Start application integration with the [SDK guide](sdk/README.md).

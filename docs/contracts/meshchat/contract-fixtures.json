@@ -1,0 +1,557 @@
+{
+  "description": "Illustrative synthetic fixtures, not captured network traffic. Negative cases test declared normal-input shapes, not universal upstream rejection statuses.",
+  "rest": [
+    {
+      "name": "send-text-request",
+      "schema": "SendMessageRequest",
+      "valid": true,
+      "payload": {
+        "lxmf_message": {
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "content": "hello"
+        }
+      }
+    },
+    {
+      "name": "live-message",
+      "schema": "LiveLxmfMessage",
+      "valid": true,
+      "payload": {
+        "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_hash": "0123456789abcdef0123456789abcdef",
+        "destination_hash": "fedcba9876543210fedcba9876543210",
+        "is_incoming": false,
+        "state": "outbound",
+        "progress": 0.0,
+        "method": "direct",
+        "delivery_attempts": 0,
+        "next_delivery_attempt_at": null,
+        "title": "",
+        "content": "MeshChat compatibility test",
+        "fields": {},
+        "timestamp": 1790506800.0,
+        "rssi": null,
+        "snr": null,
+        "quality": null
+      }
+    },
+    {
+      "name": "stored-message",
+      "schema": "StoredLxmfMessage",
+      "valid": true,
+      "payload": {
+        "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_hash": "0123456789abcdef0123456789abcdef",
+        "destination_hash": "fedcba9876543210fedcba9876543210",
+        "is_incoming": false,
+        "state": "outbound",
+        "progress": 0.0,
+        "method": "direct",
+        "delivery_attempts": 0,
+        "next_delivery_attempt_at": null,
+        "title": "",
+        "content": "MeshChat compatibility test",
+        "fields": {},
+        "timestamp": 1790506800.0,
+        "rssi": null,
+        "snr": null,
+        "quality": null,
+        "id": 1,
+        "created_at": "2026-09-27 11:00:00.123456+00:00",
+        "updated_at": "2026-09-27 11:00:00.123456+00:00"
+      }
+    },
+    {
+      "name": "config",
+      "schema": "Config",
+      "valid": true,
+      "payload": {
+        "display_name": "Anonymous Peer",
+        "identity_hash": "0123456789abcdef0123456789abcdef",
+        "lxmf_address_hash": "0123456789abcdef0123456789abcdef",
+        "audio_call_address_hash": "0123456789abcdef0123456789abcdef",
+        "is_transport_enabled": false,
+        "auto_announce_enabled": false,
+        "auto_announce_interval_seconds": 0,
+        "last_announced_at": null,
+        "theme": "light",
+        "auto_resend_failed_messages_when_announce_received": true,
+        "allow_auto_resending_failed_messages_with_attachments": false,
+        "auto_send_failed_messages_to_propagation_node": false,
+        "show_suggested_community_interfaces": true,
+        "lxmf_local_propagation_node_enabled": false,
+        "lxmf_local_propagation_node_address_hash": "0123456789abcdef0123456789abcdef",
+        "lxmf_preferred_propagation_node_destination_hash": null,
+        "lxmf_preferred_propagation_node_auto_sync_interval_seconds": 0,
+        "lxmf_preferred_propagation_node_last_synced_at": null,
+        "lxmf_user_icon_name": null,
+        "lxmf_user_icon_foreground_colour": null,
+        "lxmf_user_icon_background_colour": null
+      }
+    },
+    {
+      "name": "tcp-interface",
+      "schema": "InterfaceWriteRequest",
+      "valid": true,
+      "payload": {
+        "name": "Test TCP",
+        "type": "TCPClientInterface",
+        "target_host": "127.0.0.1",
+        "target_port": 4242
+      }
+    },
+    {
+      "name": "tcp-missing-host",
+      "schema": "InterfaceWriteRequest",
+      "valid": false,
+      "payload": {
+        "name": "Test TCP",
+        "type": "TCPClientInterface",
+        "target_port": 4242
+      }
+    },
+    {
+      "name": "missing-send-content",
+      "schema": "SendMessageRequest",
+      "valid": false,
+      "payload": {
+        "lxmf_message": {
+          "destination_hash": "fedcba9876543210fedcba9876543210"
+        }
+      }
+    },
+    {
+      "name": "empty-config-update",
+      "schema": "ConfigPatch",
+      "valid": true,
+      "payload": {}
+    },
+    {
+      "name": "attachment-message",
+      "schema": "SendMessageRequest",
+      "valid": true,
+      "payload": {
+        "delivery_method": "direct",
+        "lxmf_message": {
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "content": "",
+          "fields": {
+            "image": {
+              "image_type": "png",
+              "image_bytes": "AA=="
+            },
+            "audio": {
+              "audio_mode": 0,
+              "audio_bytes": "AA=="
+            },
+            "file_attachments": [
+              {
+                "file_name": "hello.txt",
+                "file_bytes": "aGVsbG8="
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "migrated-message-null-method",
+      "schema": "StoredLxmfMessage",
+      "valid": true,
+      "payload": {
+        "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_hash": "0123456789abcdef0123456789abcdef",
+        "destination_hash": "fedcba9876543210fedcba9876543210",
+        "is_incoming": false,
+        "state": "outbound",
+        "progress": 0.0,
+        "method": null,
+        "delivery_attempts": 0,
+        "next_delivery_attempt_at": null,
+        "title": "",
+        "content": "MeshChat compatibility test",
+        "fields": {},
+        "timestamp": 1790506800.0,
+        "rssi": null,
+        "snr": null,
+        "quality": null,
+        "id": 1,
+        "created_at": "2026-09-27 11:00:00.123456+00:00",
+        "updated_at": "2026-09-27 11:00:00.123456+00:00"
+      }
+    }
+  ],
+  "websocket": [
+    {
+      "name": "Ping",
+      "direction": "client_to_server",
+      "schema": "Ping",
+      "valid": true,
+      "payload": {
+        "type": "ping"
+      }
+    },
+    {
+      "name": "SetConfig",
+      "direction": "client_to_server",
+      "schema": "SetConfig",
+      "valid": true,
+      "payload": {
+        "type": "config.set",
+        "config": {
+          "display_name": "Rust test",
+          "theme": "dark"
+        }
+      }
+    },
+    {
+      "name": "DownloadFile",
+      "direction": "client_to_server",
+      "schema": "DownloadFile",
+      "valid": true,
+      "payload": {
+        "type": "nomadnet.file.download",
+        "nomadnet_file_download": {
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "file_path": "/file/example.txt"
+        }
+      }
+    },
+    {
+      "name": "DownloadPage",
+      "direction": "client_to_server",
+      "schema": "DownloadPage",
+      "valid": true,
+      "payload": {
+        "type": "nomadnet.page.download",
+        "nomadnet_page_download": {
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "page_path": "/page/index.mu",
+          "field_data": {}
+        }
+      }
+    },
+    {
+      "name": "Pong",
+      "direction": "server_to_client",
+      "schema": "Pong",
+      "valid": true,
+      "payload": {
+        "type": "pong"
+      }
+    },
+    {
+      "name": "ConfigEvent",
+      "direction": "server_to_client",
+      "schema": "ConfigEvent",
+      "valid": true,
+      "payload": {
+        "type": "config",
+        "config": {
+          "display_name": "Anonymous Peer",
+          "identity_hash": "0123456789abcdef0123456789abcdef",
+          "lxmf_address_hash": "0123456789abcdef0123456789abcdef",
+          "audio_call_address_hash": "0123456789abcdef0123456789abcdef",
+          "is_transport_enabled": false,
+          "auto_announce_enabled": false,
+          "auto_announce_interval_seconds": 0,
+          "last_announced_at": null,
+          "theme": "light",
+          "auto_resend_failed_messages_when_announce_received": true,
+          "allow_auto_resending_failed_messages_with_attachments": false,
+          "auto_send_failed_messages_to_propagation_node": false,
+          "show_suggested_community_interfaces": true,
+          "lxmf_local_propagation_node_enabled": false,
+          "lxmf_local_propagation_node_address_hash": "0123456789abcdef0123456789abcdef",
+          "lxmf_preferred_propagation_node_destination_hash": null,
+          "lxmf_preferred_propagation_node_auto_sync_interval_seconds": 0,
+          "lxmf_preferred_propagation_node_last_synced_at": null,
+          "lxmf_user_icon_name": null,
+          "lxmf_user_icon_foreground_colour": null,
+          "lxmf_user_icon_background_colour": null
+        }
+      }
+    },
+    {
+      "name": "Announced",
+      "direction": "server_to_client",
+      "schema": "Announced",
+      "valid": true,
+      "payload": {
+        "type": "announced"
+      }
+    },
+    {
+      "name": "IncomingAudioCall",
+      "direction": "server_to_client",
+      "schema": "IncomingAudioCall",
+      "valid": true,
+      "payload": {
+        "type": "incoming_audio_call"
+      }
+    },
+    {
+      "name": "AnnounceEvent",
+      "direction": "server_to_client",
+      "schema": "AnnounceEvent",
+      "valid": true,
+      "payload": {
+        "type": "announce",
+        "announce": {
+          "id": 1,
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "aspect": "lxmf.delivery",
+          "identity_hash": "0123456789abcdef0123456789abcdef",
+          "identity_public_key": "AA==",
+          "app_data": null,
+          "hops": 1,
+          "rssi": null,
+          "snr": null,
+          "quality": null,
+          "display_name": "Anonymous Peer",
+          "custom_display_name": null,
+          "lxmf_user_icon": null,
+          "created_at": "2026-09-27 11:00:00.123456+00:00",
+          "updated_at": "2026-09-27 11:00:00.123456+00:00"
+        }
+      }
+    },
+    {
+      "name": "LxmfDelivery",
+      "direction": "server_to_client",
+      "schema": "LxmfDelivery",
+      "valid": true,
+      "payload": {
+        "type": "lxmf.delivery",
+        "lxmf_message": {
+          "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_hash": "fedcba9876543210fedcba9876543210",
+          "destination_hash": "0123456789abcdef0123456789abcdef",
+          "is_incoming": true,
+          "state": "unknown",
+          "progress": 0.0,
+          "method": "direct",
+          "delivery_attempts": 0,
+          "next_delivery_attempt_at": null,
+          "title": "",
+          "content": "MeshChat compatibility test",
+          "fields": {},
+          "timestamp": 1790506800.0,
+          "rssi": null,
+          "snr": null,
+          "quality": null,
+          "id": 1,
+          "created_at": "2026-09-27 11:00:00.123456+00:00",
+          "updated_at": "2026-09-27 11:00:00.123456+00:00"
+        }
+      }
+    },
+    {
+      "name": "LxmfMessageCreated",
+      "direction": "server_to_client",
+      "schema": "LxmfMessageCreated",
+      "valid": true,
+      "payload": {
+        "type": "lxmf_message_created",
+        "lxmf_message": {
+          "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_hash": "0123456789abcdef0123456789abcdef",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "is_incoming": false,
+          "state": "outbound",
+          "progress": 0.0,
+          "method": "direct",
+          "delivery_attempts": 0,
+          "next_delivery_attempt_at": null,
+          "title": "",
+          "content": "MeshChat compatibility test",
+          "fields": {},
+          "timestamp": 1790506800.0,
+          "rssi": null,
+          "snr": null,
+          "quality": null
+        }
+      }
+    },
+    {
+      "name": "LxmfMessageStateUpdated",
+      "direction": "server_to_client",
+      "schema": "LxmfMessageStateUpdated",
+      "valid": true,
+      "payload": {
+        "type": "lxmf_message_state_updated",
+        "lxmf_message": {
+          "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_hash": "0123456789abcdef0123456789abcdef",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "is_incoming": false,
+          "state": "delivered",
+          "progress": 100.0,
+          "method": "direct",
+          "delivery_attempts": 1,
+          "next_delivery_attempt_at": null,
+          "title": "",
+          "content": "MeshChat compatibility test",
+          "fields": {},
+          "timestamp": 1790506800.0,
+          "rssi": null,
+          "snr": null,
+          "quality": null
+        }
+      }
+    },
+    {
+      "name": "LxmfMessageDeleted",
+      "direction": "server_to_client",
+      "schema": "LxmfMessageDeleted",
+      "valid": true,
+      "payload": {
+        "type": "lxmf_message_deleted",
+        "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "NomadnetFileProgress",
+      "direction": "server_to_client",
+      "schema": "NomadnetFileProgress",
+      "valid": true,
+      "payload": {
+        "type": "nomadnet.file.download",
+        "nomadnet_file_download": {
+          "status": "progress",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "file_path": "/file/example.txt",
+          "progress": 0.5
+        }
+      }
+    },
+    {
+      "name": "NomadnetFileSuccess",
+      "direction": "server_to_client",
+      "schema": "NomadnetFileSuccess",
+      "valid": true,
+      "payload": {
+        "type": "nomadnet.file.download",
+        "nomadnet_file_download": {
+          "status": "success",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "file_path": "/file/example.txt",
+          "file_name": "example.txt",
+          "file_bytes": "aGVsbG8="
+        }
+      }
+    },
+    {
+      "name": "NomadnetFileFailure",
+      "direction": "server_to_client",
+      "schema": "NomadnetFileFailure",
+      "valid": true,
+      "payload": {
+        "type": "nomadnet.file.download",
+        "nomadnet_file_download": {
+          "status": "failure",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "file_path": "/file/example.txt",
+          "failure_reason": "request_failed"
+        }
+      }
+    },
+    {
+      "name": "NomadnetPageProgress",
+      "direction": "server_to_client",
+      "schema": "NomadnetPageProgress",
+      "valid": true,
+      "payload": {
+        "type": "nomadnet.page.download",
+        "nomadnet_page_download": {
+          "status": "progress",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "page_path": "/page/index.mu",
+          "progress": 0.5
+        }
+      }
+    },
+    {
+      "name": "NomadnetPageSuccess",
+      "direction": "server_to_client",
+      "schema": "NomadnetPageSuccess",
+      "valid": true,
+      "payload": {
+        "type": "nomadnet.page.download",
+        "nomadnet_page_download": {
+          "status": "success",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "page_path": "/page/index.mu",
+          "page_content": "Hello from a NomadNet node"
+        }
+      }
+    },
+    {
+      "name": "NomadnetPageFailure",
+      "direction": "server_to_client",
+      "schema": "NomadnetPageFailure",
+      "valid": true,
+      "payload": {
+        "type": "nomadnet.page.download",
+        "nomadnet_page_download": {
+          "status": "failure",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "page_path": "/page/index.mu",
+          "failure_reason": "request_failed"
+        }
+      }
+    },
+    {
+      "name": "missing-page-field-data",
+      "direction": "client_to_server",
+      "schema": "ClientMessage",
+      "valid": false,
+      "payload": {
+        "type": "nomadnet.page.download",
+        "nomadnet_page_download": {
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "page_path": "/page/index.mu"
+        }
+      }
+    },
+    {
+      "name": "no-invented-subscribe",
+      "direction": "client_to_server",
+      "schema": "ClientMessage",
+      "valid": false,
+      "payload": {
+        "type": "subscribe",
+        "topics": [
+          "messages"
+        ]
+      }
+    },
+    {
+      "name": "live-is-not-stored",
+      "direction": "server_to_client",
+      "schema": "LxmfDelivery",
+      "valid": false,
+      "payload": {
+        "type": "lxmf.delivery",
+        "lxmf_message": {
+          "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_hash": "0123456789abcdef0123456789abcdef",
+          "destination_hash": "fedcba9876543210fedcba9876543210",
+          "is_incoming": false,
+          "state": "outbound",
+          "progress": 0.0,
+          "method": "direct",
+          "delivery_attempts": 0,
+          "next_delivery_attempt_at": null,
+          "title": "",
+          "content": "MeshChat compatibility test",
+          "fields": {},
+          "timestamp": 1790506800.0,
+          "rssi": null,
+          "snr": null,
+          "quality": null
+        }
+      }
+    }
+  ]
+}

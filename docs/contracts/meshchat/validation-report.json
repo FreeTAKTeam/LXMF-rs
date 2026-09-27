@@ -1,0 +1,1731 @@
+{
+  "validatedAt": "2026-09-27T11:59:22.003151+00:00",
+  "sourceCommit": "df5aea94eab7f4be1cdfef494446e9d6979aed77",
+  "status": "passed",
+  "checks": {
+    "yamlJsonEquivalent": true,
+    "localReferencesResolved": 205,
+    "openapiSchemaDefinitions": 37,
+    "websocketSchemaValid": true,
+    "uniqueOperationIds": 52,
+    "pathParametersMatch": true,
+    "fixtureCount": 32,
+    "fixtureResults": [
+      {
+        "name": "send-text-request",
+        "category": "rest",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "live-message",
+        "category": "rest",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "stored-message",
+        "category": "rest",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "config",
+        "category": "rest",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "tcp-interface",
+        "category": "rest",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "tcp-missing-host",
+        "category": "rest",
+        "expectedValid": false,
+        "passed": true
+      },
+      {
+        "name": "missing-send-content",
+        "category": "rest",
+        "expectedValid": false,
+        "passed": true
+      },
+      {
+        "name": "empty-config-update",
+        "category": "rest",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "attachment-message",
+        "category": "rest",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "migrated-message-null-method",
+        "category": "rest",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "Ping",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "SetConfig",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "DownloadFile",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "DownloadPage",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "Pong",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "ConfigEvent",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "Announced",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "IncomingAudioCall",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "AnnounceEvent",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "LxmfDelivery",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "LxmfMessageCreated",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "LxmfMessageStateUpdated",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "LxmfMessageDeleted",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "NomadnetFileProgress",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "NomadnetFileSuccess",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "NomadnetFileFailure",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "NomadnetPageProgress",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "NomadnetPageSuccess",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "NomadnetPageFailure",
+        "category": "websocket",
+        "expectedValid": true,
+        "passed": true
+      },
+      {
+        "name": "missing-page-field-data",
+        "category": "websocket",
+        "expectedValid": false,
+        "passed": true
+      },
+      {
+        "name": "no-invented-subscribe",
+        "category": "websocket",
+        "expectedValid": false,
+        "passed": true
+      },
+      {
+        "name": "live-is-not-stored",
+        "category": "websocket",
+        "expectedValid": false,
+        "passed": true
+      }
+    ]
+  },
+  "officialOpenapiMetaSchema": {
+    "status": "passed",
+    "id": "https://spec.openapis.org/oas/3.1/schema/2022-10-07",
+    "sha256": "da01ba28852cac0de53893797cb8d1942bc3b05084f526dcc216717dec314ed0"
+  },
+  "sourceAudit": {
+    "status": "passed",
+    "sourceBlob": "d574dda5222153b64d42fc7a945c297d2d436c3e",
+    "routeCount": 52,
+    "explicitJsonResponseBranches": 91,
+    "serverTypeCount": 11,
+    "serverVariantCount": 15,
+    "clientTypeCount": 4,
+    "serializerKeySetsChecked": 6,
+    "frontendCallSitesChecked": 72,
+    "frontendCalls": [
+      {
+        "file": "src/frontend/components/App.vue",
+        "line": 389,
+        "method": "GET",
+        "pathExpression": "/api/v1/app/info"
+      },
+      {
+        "file": "src/frontend/components/App.vue",
+        "line": 398,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/App.vue",
+        "line": 408,
+        "method": "GET",
+        "pathExpression": "/api/v1/announce"
+      },
+      {
+        "file": "src/frontend/components/App.vue",
+        "line": 459,
+        "method": "GET",
+        "pathExpression": "/api/v1/lxmf/propagation-node/sync"
+      },
+      {
+        "file": "src/frontend/components/App.vue",
+        "line": 496,
+        "method": "GET",
+        "pathExpression": "/api/v1/lxmf/propagation-node/stop-sync"
+      },
+      {
+        "file": "src/frontend/components/App.vue",
+        "line": 507,
+        "method": "GET",
+        "pathExpression": "/api/v1/lxmf/propagation-node/status"
+      },
+      {
+        "file": "src/frontend/components/App.vue",
+        "line": 520,
+        "method": "GET",
+        "pathExpression": "/api/v1/calls"
+      },
+      {
+        "file": "src/frontend/components/App.vue",
+        "line": 539,
+        "method": "GET",
+        "pathExpression": "/api/v1/calls/hangup-all"
+      },
+      {
+        "file": "src/frontend/components/about/AboutPage.vue",
+        "line": 138,
+        "method": "GET",
+        "pathExpression": "/api/v1/app/info"
+      },
+      {
+        "file": "src/frontend/components/about/AboutPage.vue",
+        "line": 147,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/call/CallPage.vue",
+        "line": 342,
+        "method": "GET",
+        "pathExpression": "/api/v1/calls/initiate/${destinationHash}"
+      },
+      {
+        "file": "src/frontend/components/call/CallPage.vue",
+        "line": 499,
+        "method": "GET",
+        "pathExpression": "/api/v1/calls/${callHash}/hangup"
+      },
+      {
+        "file": "src/frontend/components/call/CallPage.vue",
+        "line": 640,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/call/CallPage.vue",
+        "line": 655,
+        "method": "GET",
+        "pathExpression": "/api/v1/calls"
+      },
+      {
+        "file": "src/frontend/components/call/CallPage.vue",
+        "line": 672,
+        "method": "GET",
+        "pathExpression": "/api/v1/calls/${callHash}"
+      },
+      {
+        "file": "src/frontend/components/call/CallPage.vue",
+        "line": 692,
+        "method": "DELETE",
+        "pathExpression": "/api/v1/calls/${callHash}"
+      },
+      {
+        "file": "src/frontend/components/call/CallPage.vue",
+        "line": 712,
+        "method": "POST",
+        "pathExpression": "/api/v1/calls/clear-call-history"
+      },
+      {
+        "file": "src/frontend/components/call/CallPage.vue",
+        "line": 724,
+        "method": "GET",
+        "pathExpression": "/api/v1/announce"
+      },
+      {
+        "file": "src/frontend/components/interfaces/AddInterfacePage.vue",
+        "line": 975,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/interfaces/AddInterfacePage.vue",
+        "line": 984,
+        "method": "PATCH",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/interfaces/AddInterfacePage.vue",
+        "line": 993,
+        "method": "GET",
+        "pathExpression": "/api/v1/comports"
+      },
+      {
+        "file": "src/frontend/components/interfaces/AddInterfacePage.vue",
+        "line": 1003,
+        "method": "GET",
+        "pathExpression": "/api/v1/reticulum/interfaces"
+      },
+      {
+        "file": "src/frontend/components/interfaces/AddInterfacePage.vue",
+        "line": 1131,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/interfaces/add"
+      },
+      {
+        "file": "src/frontend/components/interfaces/ImportInterfacesModal.vue",
+        "line": 152,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/interfaces/import-preview"
+      },
+      {
+        "file": "src/frontend/components/interfaces/ImportInterfacesModal.vue",
+        "line": 218,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/interfaces/import"
+      },
+      {
+        "file": "src/frontend/components/interfaces/InterfacesPage.vue",
+        "line": 129,
+        "method": "GET",
+        "pathExpression": "/api/v1/reticulum/interfaces"
+      },
+      {
+        "file": "src/frontend/components/interfaces/InterfacesPage.vue",
+        "line": 139,
+        "method": "GET",
+        "pathExpression": "/api/v1/interface-stats"
+      },
+      {
+        "file": "src/frontend/components/interfaces/InterfacesPage.vue",
+        "line": 155,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/interfaces/enable"
+      },
+      {
+        "file": "src/frontend/components/interfaces/InterfacesPage.vue",
+        "line": 171,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/interfaces/disable"
+      },
+      {
+        "file": "src/frontend/components/interfaces/InterfacesPage.vue",
+        "line": 200,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/interfaces/delete"
+      },
+      {
+        "file": "src/frontend/components/interfaces/InterfacesPage.vue",
+        "line": 216,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/interfaces/export"
+      },
+      {
+        "file": "src/frontend/components/interfaces/InterfacesPage.vue",
+        "line": 230,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/interfaces/export"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationDropDownMenu.vue",
+        "line": 82,
+        "method": "DELETE",
+        "pathExpression": "/api/v1/lxmf-messages/conversation/${this.peer.destination_hash}"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationDropDownMenu.vue",
+        "line": 99,
+        "method": "GET",
+        "pathExpression": "/api/v1/ping/${this.peer.destination_hash}/lxmf.delivery"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 539,
+        "method": "GET",
+        "pathExpression": "/api/v1/lxmf-messages/conversation/${this.selectedPeer.destination_hash}"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 687,
+        "method": "GET",
+        "pathExpression": "/api/v1/destination/${this.selectedPeer.destination_hash}/path"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 706,
+        "method": "GET",
+        "pathExpression": "/api/v1/destination/${this.selectedPeer.destination_hash}/lxmf-stamp-info"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 726,
+        "method": "GET",
+        "pathExpression": "/api/v1/destination/${this.selectedPeer.destination_hash}/signal-metrics"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 806,
+        "method": "GET",
+        "pathExpression": "/api/v1/destination/${this.selectedPeer.destination_hash}/custom-display-name"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 832,
+        "method": "POST",
+        "pathExpression": "/api/v1/destination/${this.selectedPeer.destination_hash}/custom-display-name/update"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 1010,
+        "method": "DELETE",
+        "pathExpression": "/api/v1/lxmf-messages/${chatItem.lxmf_message.hash}"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 1091,
+        "method": "POST",
+        "pathExpression": "/api/v1/lxmf-messages/send"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 1143,
+        "method": "POST",
+        "pathExpression": "/api/v1/lxmf-messages/${lxmfMessageHash}/cancel"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 1172,
+        "method": "POST",
+        "pathExpression": "/api/v1/lxmf-messages/send"
+      },
+      {
+        "file": "src/frontend/components/messages/ConversationViewer.vue",
+        "line": 1457,
+        "method": "GET",
+        "pathExpression": "/api/v1/lxmf/conversations/${conversation.destination_hash}/mark-as-read"
+      },
+      {
+        "file": "src/frontend/components/messages/MessagesPage.vue",
+        "line": 129,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/messages/MessagesPage.vue",
+        "line": 161,
+        "method": "GET",
+        "pathExpression": "/api/v1/announces"
+      },
+      {
+        "file": "src/frontend/components/messages/MessagesPage.vue",
+        "line": 183,
+        "method": "GET",
+        "pathExpression": "/api/v1/announces"
+      },
+      {
+        "file": "src/frontend/components/messages/MessagesPage.vue",
+        "line": 203,
+        "method": "GET",
+        "pathExpression": "/api/v1/lxmf/conversations"
+      },
+      {
+        "file": "src/frontend/components/network-visualiser/NetworkVisualiser.vue",
+        "line": 82,
+        "method": "GET",
+        "pathExpression": "/api/v1/interface-stats"
+      },
+      {
+        "file": "src/frontend/components/network-visualiser/NetworkVisualiser.vue",
+        "line": 90,
+        "method": "GET",
+        "pathExpression": "/api/v1/path-table"
+      },
+      {
+        "file": "src/frontend/components/network-visualiser/NetworkVisualiser.vue",
+        "line": 98,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/network-visualiser/NetworkVisualiser.vue",
+        "line": 108,
+        "method": "GET",
+        "pathExpression": "/api/v1/announces"
+      },
+      {
+        "file": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "line": 365,
+        "method": "GET",
+        "pathExpression": "/api/v1/favourites"
+      },
+      {
+        "file": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "line": 385,
+        "method": "POST",
+        "pathExpression": "/api/v1/favourites/add"
+      },
+      {
+        "file": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "line": 402,
+        "method": "DELETE",
+        "pathExpression": "/api/v1/favourites/${node.destination_hash}"
+      },
+      {
+        "file": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "line": 415,
+        "method": "GET",
+        "pathExpression": "/api/v1/announces"
+      },
+      {
+        "file": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "line": 437,
+        "method": "GET",
+        "pathExpression": "/api/v1/announces"
+      },
+      {
+        "file": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "line": 852,
+        "method": "POST",
+        "pathExpression": "/api/v1/favourites/${favourite.destination_hash}/rename"
+      },
+      {
+        "file": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "line": 900,
+        "method": "GET",
+        "pathExpression": "/api/v1/destination/${destinationHash}/path"
+      },
+      {
+        "file": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "line": 919,
+        "method": "POST",
+        "pathExpression": "/api/v1/nomadnetwork/${destinationHash}/identify"
+      },
+      {
+        "file": "src/frontend/components/ping/PingPage.vue",
+        "line": 133,
+        "method": "GET",
+        "pathExpression": "/api/v1/ping/${this.destinationHash}/lxmf.delivery"
+      },
+      {
+        "file": "src/frontend/components/ping/PingPage.vue",
+        "line": 196,
+        "method": "POST",
+        "pathExpression": "/api/v1/destination/${this.destinationHash}/drop-path"
+      },
+      {
+        "file": "src/frontend/components/profile/ProfileIconPage.vue",
+        "line": 117,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/profile/ProfileIconPage.vue",
+        "line": 126,
+        "method": "PATCH",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/propagation-nodes/PropagationNodesPage.vue",
+        "line": 119,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/propagation-nodes/PropagationNodesPage.vue",
+        "line": 128,
+        "method": "PATCH",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/propagation-nodes/PropagationNodesPage.vue",
+        "line": 137,
+        "method": "GET",
+        "pathExpression": "/api/v1/lxmf/propagation-nodes"
+      },
+      {
+        "file": "src/frontend/components/settings/SettingsPage.vue",
+        "line": 214,
+        "method": "GET",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/settings/SettingsPage.vue",
+        "line": 223,
+        "method": "PATCH",
+        "pathExpression": "/api/v1/config"
+      },
+      {
+        "file": "src/frontend/components/settings/SettingsPage.vue",
+        "line": 273,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/enable-transport"
+      },
+      {
+        "file": "src/frontend/components/settings/SettingsPage.vue",
+        "line": 281,
+        "method": "POST",
+        "pathExpression": "/api/v1/reticulum/disable-transport"
+      }
+    ],
+    "responseBranches": [
+      {
+        "method": "GET",
+        "path": "/api/v1/status",
+        "status": 200,
+        "line": 308,
+        "keys": [
+          "status"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/comports",
+        "status": 200,
+        "line": 324,
+        "keys": [
+          "comports"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/reticulum/interfaces",
+        "status": 200,
+        "line": 357,
+        "keys": [
+          "interfaces"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/enable",
+        "status": 200,
+        "line": 380,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Interface is now enabled"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/disable",
+        "status": 200,
+        "line": 403,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Interface is now disabled"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/delete",
+        "status": 200,
+        "line": 422,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Interface has been deleted"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 438,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Name is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 444,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Type is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 455,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Name is already in use by another interface"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 200,
+        "line": 767,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Interface has been saved. Please restart MeshChat for these changes to take effect."
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 200,
+        "line": 771,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Interface has been added. Please restart MeshChat for these changes to take effect."
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 489,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Target Host is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 496,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Target Port is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 519,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Listen IP is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 526,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Listen Port is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 544,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Listen IP is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 551,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Listen Port is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 558,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Forward IP is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 565,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Forward Port is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 584,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Port is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 591,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Frequency is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 598,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Bandwidth is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 605,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "TX power is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 612,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Spreading Factor is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 619,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Coding Rate is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 646,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Port is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 652,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "At least one sub-interface is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 700,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Port is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 737,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Command is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 744,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Respawn delay is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/add",
+        "status": 422,
+        "line": 677,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/export",
+        "status": 500,
+        "line": 826,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/import-preview",
+        "status": 200,
+        "line": 842,
+        "keys": [
+          "interfaces"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/import-preview",
+        "status": 500,
+        "line": 847,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/import",
+        "status": 200,
+        "line": 894,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Interfaces imported successfully"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/interfaces/import",
+        "status": 500,
+        "line": 899,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/app/info",
+        "status": 200,
+        "line": 943,
+        "keys": [
+          "app_info"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/config",
+        "status": 200,
+        "line": 961,
+        "keys": [
+          "config"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/v1/config",
+        "status": 200,
+        "line": 975,
+        "keys": [
+          "config"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/enable-transport",
+        "status": 200,
+        "line": 987,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Transport has been enabled. MeshChat must be restarted for this change to take effect."
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/reticulum/disable-transport",
+        "status": 200,
+        "line": 999,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Transport has been disabled. MeshChat must be restarted for this change to take effect."
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls",
+        "status": 200,
+        "line": 1012,
+        "keys": [
+          "audio_calls"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/calls/clear-call-history",
+        "status": 200,
+        "line": 1025,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Call history has been cleared"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls/hangup-all",
+        "status": 200,
+        "line": 1033,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "All calls have been hungup"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls/{audio_call_link_hash}",
+        "status": 200,
+        "line": 1054,
+        "keys": [
+          "audio_call"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls/{audio_call_link_hash}",
+        "status": 404,
+        "line": 1050,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "audio call not found"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/v1/calls/{audio_call_link_hash}",
+        "status": 200,
+        "line": 1071,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "audio call deleted"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls/initiate/{destination_hash}",
+        "status": 200,
+        "line": 1090,
+        "keys": [
+          "audio_call"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls/initiate/{destination_hash}",
+        "status": 503,
+        "line": 1096,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls/{audio_call_link_hash}/audio",
+        "status": 404,
+        "line": 1114,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "audio call not found"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls/{audio_call_link_hash}/hangup",
+        "status": 200,
+        "line": 1184,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Call has been hungup"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/calls/{audio_call_link_hash}/hangup",
+        "status": 404,
+        "line": 1177,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "audio call not found"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/announce",
+        "status": 200,
+        "line": 1194,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "announcing"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/announces",
+        "status": 200,
+        "line": 1235,
+        "keys": [
+          "announces"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/favourites",
+        "status": 200,
+        "line": 1261,
+        "keys": [
+          "favourites"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/favourites/add",
+        "status": 200,
+        "line": 1295,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Favourite has been added!"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/favourites/add",
+        "status": 422,
+        "line": 1277,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "destination_hash is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/favourites/add",
+        "status": 422,
+        "line": 1283,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "display_name is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/favourites/add",
+        "status": 422,
+        "line": 1289,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "aspect is required"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/favourites/{destination_hash}/rename",
+        "status": 200,
+        "line": 1314,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Favourite has been renamed"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/v1/favourites/{destination_hash}",
+        "status": 200,
+        "line": 1327,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Favourite has been added!"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/lxmf/propagation-node/status",
+        "status": 200,
+        "line": 1334,
+        "keys": [
+          "propagation_node_status"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/lxmf/propagation-node/sync",
+        "status": 200,
+        "line": 1355,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Sync is starting"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/lxmf/propagation-node/sync",
+        "status": 400,
+        "line": 1348,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "A propagation node must be configured to sync messages."
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/lxmf/propagation-node/stop-sync",
+        "status": 200,
+        "line": 1365,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Sync is stopping"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/lxmf/propagation-nodes",
+        "status": 200,
+        "line": 1427,
+        "keys": [
+          "lxmf_propagation_nodes"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/destination/{destination_hash}/path",
+        "status": 200,
+        "line": 1477,
+        "keys": [
+          "path"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/destination/{destination_hash}/path",
+        "status": 200,
+        "line": 1460,
+        "keys": [
+          "path"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/destination/{destination_hash}/path",
+        "status": 200,
+        "line": 1470,
+        "keys": [
+          "path"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/destination/{destination_hash}/drop-path",
+        "status": 200,
+        "line": 1498,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Path has been dropped"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/destination/{destination_hash}/signal-metrics",
+        "status": 200,
+        "line": 1553,
+        "keys": [
+          "signal_metrics"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/ping/{destination_hash}/lxmf.delivery",
+        "status": 200,
+        "line": 1642,
+        "keys": [
+          "message",
+          "ping_result"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/ping/{destination_hash}/lxmf.delivery",
+        "status": 503,
+        "line": 1591,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Ping failed. Could not find path to destination."
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/ping/{destination_hash}/lxmf.delivery",
+        "status": 503,
+        "line": 1614,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/destination/{destination_hash}/custom-display-name",
+        "status": 200,
+        "line": 1662,
+        "keys": [
+          "custom_display_name"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/destination/{destination_hash}/custom-display-name/update",
+        "status": 200,
+        "line": 1680,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Custom display name has been updated"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/destination/{destination_hash}/custom-display-name/update",
+        "status": 200,
+        "line": 1687,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Custom display name has been removed"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/destination/{destination_hash}/lxmf-stamp-info",
+        "status": 200,
+        "line": 1710,
+        "keys": [
+          "lxmf_stamp_info"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/interface-stats",
+        "status": 200,
+        "line": 1751,
+        "keys": [
+          "interface_stats"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/path-table",
+        "status": 200,
+        "line": 1766,
+        "keys": [
+          "path_table"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/lxmf-messages/send",
+        "status": 200,
+        "line": 1827,
+        "keys": [
+          "lxmf_message"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/lxmf-messages/send",
+        "status": 503,
+        "line": 1832,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/lxmf-messages/{hash}/cancel",
+        "status": 200,
+        "line": 1855,
+        "keys": [
+          "lxmf_message",
+          "message"
+        ],
+        "literalMessage": "ok"
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/nomadnetwork/{destination_hash}/identify",
+        "status": 500,
+        "line": 1880,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Failed to identify. No active link to destination."
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/nomadnetwork/{destination_hash}/identify",
+        "status": 200,
+        "line": 1875,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "Identity has been sent!"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/v1/lxmf-messages/{hash}",
+        "status": 200,
+        "line": 1900,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "ok"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/v1/lxmf-messages/{hash}",
+        "status": 422,
+        "line": 1893,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "hash is required"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/lxmf-messages/conversation/{destination_hash}",
+        "status": 200,
+        "line": 1939,
+        "keys": [
+          "lxmf_messages"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/v1/lxmf-messages/conversation/{destination_hash}",
+        "status": 200,
+        "line": 1959,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "ok"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/lxmf/conversations",
+        "status": 200,
+        "line": 2026,
+        "keys": [
+          "conversations"
+        ],
+        "literalMessage": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/lxmf/conversations/{destination_hash}/mark-as-read",
+        "status": 200,
+        "line": 2040,
+        "keys": [
+          "message"
+        ],
+        "literalMessage": "ok"
+      }
+    ],
+    "sourceFiles": [
+      {
+        "path": "database.py",
+        "sha256": "72a5ffeb0cbd493b0f1a66209d7f48f6e85e9e91aeae25b933f985b1025f9edb",
+        "lines": 167,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/database.py"
+      },
+      {
+        "path": "meshchat.py",
+        "sha256": "0a6f2dcde71b427ca7cb7c1a442bd4a55a7940893da0dc6509458e383ed77b90",
+        "lines": 3675,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/meshchat.py"
+      },
+      {
+        "path": "package.json",
+        "sha256": "085e5be0cc12bc9eda1f2ceec0f09ede7a2b73517d6f6eb7ef93a896a7a4d863",
+        "lines": 118,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/package.json"
+      },
+      {
+        "path": "requirements.txt",
+        "sha256": "65e506162b73c46600bc49893ba7f3a4d9ff1c34a9a0d84d237edb4a1d4ded29",
+        "lines": 6,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/requirements.txt"
+      },
+      {
+        "path": "src/backend/audio_call_manager.py",
+        "sha256": "c747dff69cd496227599698b31c8b758ab4be757eb05950202b5844390302988",
+        "lines": 235,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/backend/audio_call_manager.py"
+      },
+      {
+        "path": "src/backend/interface_config_parser.py",
+        "sha256": "2e65c72de3d87915f4e7a0ce429ebefcee30ade070d599f1f61f0476d2e2ab64",
+        "lines": 31,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/backend/interface_config_parser.py"
+      },
+      {
+        "path": "src/backend/interface_editor.py",
+        "sha256": "3c332ba883a121d78cf58b1338aeda19cadf7598b73b4dcaf5091e39205c615d",
+        "lines": 14,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/backend/interface_editor.py"
+      },
+      {
+        "path": "src/frontend/components/App.vue",
+        "sha256": "81460e70e4b12e704478066c487fad01a22cfc517dbe9bd88148b3f88c17c2fd",
+        "lines": 589,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/App.vue"
+      },
+      {
+        "path": "src/frontend/components/about/AboutPage.vue",
+        "sha256": "43c850c4caad8409bc8d4473d65bc931310d01bbed5d1d1d8ad485ae1a609e57",
+        "lines": 176,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/about/AboutPage.vue"
+      },
+      {
+        "path": "src/frontend/components/call/CallPage.vue",
+        "sha256": "a147eebdb07b758e7abc017ff7b839483780240b3c0787994b6131e98c613cdc",
+        "lines": 744,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/call/CallPage.vue"
+      },
+      {
+        "path": "src/frontend/components/interfaces/AddInterfacePage.vue",
+        "sha256": "276925ca9b6226a203aa9187bb8fabcf9777b2d00d2aa6e018347449f00c5a25",
+        "lines": 1319,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/interfaces/AddInterfacePage.vue"
+      },
+      {
+        "path": "src/frontend/components/interfaces/ImportInterfacesModal.vue",
+        "sha256": "79bbb19d67a059bf04c2a49aa9ba303ba8b9e2b6b5669da6775752fbbac33409",
+        "lines": 240,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/interfaces/ImportInterfacesModal.vue"
+      },
+      {
+        "path": "src/frontend/components/interfaces/InterfacesPage.vue",
+        "sha256": "057ac1db914d578a93eda76329fbb62f308e2ce61b10f443d546b4954e27f72b",
+        "lines": 273,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/interfaces/InterfacesPage.vue"
+      },
+      {
+        "path": "src/frontend/components/messages/ConversationDropDownMenu.vue",
+        "sha256": "d61c49364c4c111245d331c54a3744f6a4235b4018fb63c5c33bd9b8ef7bc02e",
+        "lines": 142,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/messages/ConversationDropDownMenu.vue"
+      },
+      {
+        "path": "src/frontend/components/messages/ConversationViewer.vue",
+        "sha256": "596b4b1a84bd95e559f56db6d8c8bf81a8678c719b22fc463b683ace1a2767ea",
+        "lines": 1620,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/messages/ConversationViewer.vue"
+      },
+      {
+        "path": "src/frontend/components/messages/MessagesPage.vue",
+        "sha256": "037d5861f031e163b8bb01d05737c60ab281a363e5ae7d981e0ba0aa1652de2d",
+        "lines": 259,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/messages/MessagesPage.vue"
+      },
+      {
+        "path": "src/frontend/components/network-visualiser/NetworkVisualiser.vue",
+        "sha256": "b0c2da12cafd6c9b24af5e1b61cd899ecccef4f169008b3619c6233732458c4f",
+        "lines": 506,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/network-visualiser/NetworkVisualiser.vue"
+      },
+      {
+        "path": "src/frontend/components/nomadnetwork/NomadNetworkPage.vue",
+        "sha256": "d42e87ca4d7d446e43364d4ea6e5aeec35975360d2f176a9432a0be9e336b82a",
+        "lines": 980,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/nomadnetwork/NomadNetworkPage.vue"
+      },
+      {
+        "path": "src/frontend/components/ping/PingPage.vue",
+        "sha256": "3b1a088c11793b8fd149f7bf3700d9ff3a0b64b0a636542b8ef87b5491dd2f79",
+        "lines": 223,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/ping/PingPage.vue"
+      },
+      {
+        "path": "src/frontend/components/profile/ProfileIconPage.vue",
+        "sha256": "38eaa2552d0286e3910ada235da9caecc4629c0ebdc6ac186b2be8cebd23ea54",
+        "lines": 192,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/profile/ProfileIconPage.vue"
+      },
+      {
+        "path": "src/frontend/components/propagation-nodes/PropagationNodesPage.vue",
+        "sha256": "75f840be3ada01f2131d71716f1d1f77bd4f5cc3050f661ad1e2d3d18fe96234",
+        "lines": 172,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/propagation-nodes/PropagationNodesPage.vue"
+      },
+      {
+        "path": "src/frontend/components/settings/SettingsPage.vue",
+        "sha256": "75e094821913166d58886ede35c7c62ac59aee8245ee74268aeef4d575a081dc",
+        "lines": 294,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/components/settings/SettingsPage.vue"
+      },
+      {
+        "path": "src/frontend/js/WebSocketConnection.js",
+        "sha256": "72167cefb7ffea2d1c52123c50a0dad31db9070ee0b61aa0d27e2a0b9575e22e",
+        "lines": 72,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/js/WebSocketConnection.js"
+      },
+      {
+        "path": "src/frontend/public/assets/proto/audio_call.proto",
+        "sha256": "db67d003f56bf1f8317913deeac6ecb55760c573c82f350cacfd6450da4260fa",
+        "lines": 31,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/src/frontend/public/assets/proto/audio_call.proto"
+      },
+      {
+        "path": "vite.config.js",
+        "sha256": "58818e52f2d44cd1183db2d9435d8a1b61fcf15fdbd1404cc7f2801f61d9a46e",
+        "lines": 34,
+        "url": "https://github.com/liamcottle/reticulum-meshchat/blob/df5aea94eab7f4be1cdfef494446e9d6979aed77/vite.config.js"
+      }
+    ]
+  },
+  "notPerformed": [
+    "Starting MeshChat",
+    "Rust daemon integration",
+    "Network peer interoperability",
+    "Audio playback/codec verification",
+    "Exhaustive dependency-specific error testing"
+  ]
+}

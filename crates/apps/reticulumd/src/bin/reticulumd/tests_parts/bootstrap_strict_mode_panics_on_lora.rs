@@ -135,5 +135,7 @@ fn test_args(
         zmq_rpc_command: None,
         #[cfg(feature = "zmq-pipeline-rpc")]
         zmq_rpc_endpoint: None,
+        meshchat_bind: None,
+        meshchat_assets: None,
     }
 }

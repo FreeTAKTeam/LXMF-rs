@@ -35,7 +35,7 @@ fn run_propagation_remote_import_success_side_effect_case(method: &str, case_tag
     let bridge_result = match method {
         "propagation_remote_sync" => json!({ "synced": true, "messages": messages }),
         "propagation_remote_fetch" => {
-            json!({ "available_count": 2, "fetched_count": 2, "messages": messages })
+            json!({ "available_count": 2, "fetched_count": 2, "imported_count": 2, "messages": messages })
         }
         "propagation_remote_download" => json!({ "downloaded_count": 2, "messages": messages }),
         _ => unreachable!("remote import matrix method: {method}"),
@@ -56,6 +56,9 @@ fn run_propagation_remote_import_success_side_effect_case(method: &str, case_tag
         .expect("remote propagation result");
     let result = &response["result"];
     assert_eq!(result["imported_count"].as_u64(), Some(1), "{method}");
+    if method == "propagation_remote_fetch" {
+        assert_eq!(result["local_imported_count"].as_u64(), Some(2));
+    }
     assert_eq!(result["duplicate_count"].as_u64(), Some(1), "{method}");
     assert_eq!(result["imported_ids"], json!([transient_id.as_str()]), "{method}");
     assert_eq!(result["transferred_bytes"].as_u64(), Some(payload.len() as u64), "{method}");

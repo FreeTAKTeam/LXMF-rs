@@ -1,6 +1,7 @@
 # Reticulum Parity Matrix
 
 Last reassessed: 2026-09-25
+MeshChat POC evidence added: 2026-09-27
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -52,6 +53,24 @@ and reproduced by `cargo xtask interop`. It is intentionally a bounded
 encoded-wire/negative corpus and does not replace the live compatibility matrix
 or the separate Resource, utility, restart, multi-hop, platform, and hardware
 evidence axes.
+
+## MeshChat TCP/RNode proof of concept (separate evidence axis)
+
+The opt-in MeshChat API adds no forwarding algorithm. This branch makes RNode
+serial preflight accept the device's 508-byte payload configuration and exposes
+the live `enable_transport` value in daemon status. The companion MeshChat
+launcher enables transport and configures one TCP client plus one serial RNode;
+its measured radio bitrate and 2% announce cap pace rebroadcasts for the
+tested profile. Those launcher settings are outside this repository.
+
+In one manual session, TCP stayed connected, the RNode stayed online, and the
+route to the LoRa peer remained one hop over the RNode during about four idle
+minutes. The next message was reported delivered. This is physical-device
+evidence for one configuration, but it does not isolate or prove end-to-end
+forwarding between the TCP and LoRa interfaces, long-running reliability, or
+other RNode firmware/radio profiles. The Transport and Interfaces row statuses
+below remain unchanged. See the [runbook](../runbooks/meshchat-api.md) and
+[field-evidence record](real-world-interoperability.md).
 
 ## RNS 1.5.2 baseline update
 
@@ -1064,8 +1083,13 @@ Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. Python `RNodeInterface` alias configs now
 have daemon parse-to-bootstrap/status coverage as `lora` with
-`_runtime.lora.rnode_status`. An opt-in prepared-host smoke harness now
-records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/` with
+`_runtime.lora.rnode_status`.
+Serial RNode preflight uses the RNode-specific validator for its 508-byte
+payload limit, with a focused regression; the manual MeshChat POC exercised
+that path on one attached device. This does not change the broader
+`hardware-unverified` interface-matrix boundary. An opt-in prepared-host smoke
+harness now records serial/TCP/BLE RNode lifecycle evidence under
+`target/rnode-hil/` with
 bearer-scoped `evidence_scope` values (`prepared_host_serial_rnode`,
 `prepared_host_tcp_rnode`, and `prepared_host_ble_rnode`) so one prepared
 endpoint is not mistaken for broad hardware parity. The prepared-host gate also

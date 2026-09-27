@@ -1,6 +1,7 @@
 # Current Roadmap Status
 
 Last reassessed: 2026-09-26
+MeshChat POC evidence added: 2026-09-27
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -15,6 +16,33 @@ external-client evidence.
 
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
+
+## MeshChat application API (development)
+
+The opt-in loopback `meshchat-api` crate exposes a partial MeshChat 2.4.0
+HTTP/WebSocket compatibility layer from `reticulumd`. Text and file/image
+messaging, conversation/history reads, cancellation, deletion, local
+preferences, remote propagation fetch, and control-socket basics are
+implemented and locally tested. The current development POC ran with
+`rmap.world:4242` and a serial RNode on `/dev/ttyUSB1` at 915 MHz, 500 kHz,
+SF10, 4/5, and 22 dBm, with Reticulum transport enabled. The user confirmed
+two-way LoRa text and delivery of one message after about four idle minutes;
+small images were eventually received through propagation. These are manual
+observations for one setup, not a sustained delivery or verified
+TCP-to-LoRa-to-TCP forwarding test. A roughly 271 KB attachment failed in the
+earlier trial, and receipt of three other messages that Columba reported as
+"in propagation" was not confirmed. The full application contract remains
+incomplete, especially audio send/calls, NomadNet, interface editing, and
+propagation transfer state. This adapter does not change the Python RNS/LXMF
+callable-parity counts. See the [MeshChat API runbook](../runbooks/meshchat-api.md),
+[LXMF matrix](lxmf-parity-matrix.md), [Reticulum matrix](reticulum-parity-matrix.md),
+and [field-evidence record](real-world-interoperability.md) for the exact
+scope and remaining checks.
+
+The next POC checks are a captured message and receipt in each forwarding
+direction (TCP to LoRa and LoRa to TCP), repeated sends after an idle interval,
+and a bounded file-size trial. They are operational evidence gates, not new
+Python callable-parity work items.
 
 ## Current Position
 
