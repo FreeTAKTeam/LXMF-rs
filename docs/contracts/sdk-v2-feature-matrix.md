@@ -81,15 +81,22 @@ This table is the source of truth for constrained-device portability planning.
 
 | Crate | std_required | alloc_target | status | removal_plan |
 | --- | --- | --- | --- | --- |
-| `lxmf-wire` | `wire_fields` JSON bridge only (`std`-gated module) | message encode/decode primitives and msgpack payload model | `alloc-ready` | keep JSON conversion in `std` module and preserve alloc-only protocol core |
-| `reticulum-rs-core` | host entropy sources for random key generation (`rand_core/getrandom`) | packet/hash/destination/ratchet primitives | `alloc-ready` | follow-up hardening: injectable entropy adapter for `no_std` targets without OS RNG |
+| `lxmf-wire` | MessagePack dependencies and the std-coupled Reticulum dependency graph; default feature also enables JSON/file helpers, clock timestamps, and standard error impls | future candidate: message encode/decode primitives and msgpack payload model | `std-first` | real `no_std` + `alloc` support deferred in #646 pending capacity or contributor help; no serializer or entropy migration scheduled |
+| `reticulum-rs-core` | MessagePack and inherited dependency std defaults, plus std-gated APIs; OS RNG selection is an additional bare-metal target constraint | future candidate: packet/hash/destination/ratchet primitives | `std-first` | std-free dependency configuration and device-supplied entropy remain future work; no bare-metal support claimed for the current dependency graph |
 | `rns-embedded-ffi` | host-only C ABI boundary with documented unsafe sites | firmware-facing create/tick/ble-wire/message queue entrypoints | `std-first` | keep unsafe isolated to FFI crate and migrate ESP call sites onto native Rust when toolchain is ready |
 | `rns-embedded-runtime` | no host-only requirement in current scaffold | announce scheduler, outbound queueing, replay-aware inbound dispatch | `alloc-ready` | keep transport and store behind traits so ESP bindings stay out of the core runtime |
 
 Status legend:
-- `std-first`: currently std-coupled with documented `alloc` migration plan.
+- `std-first`: currently requires std; `no_std` support is deferred.
 - `alloc-ready`: compile-tested in `alloc` mode.
 - `planned`: identified but not yet audited.
+
+For `lxmf-wire` and its `reticulum-rs-core` dependency, a passing host build with
+`--no-default-features --features alloc` is only a feature-configuration check,
+not evidence of a std-free or bare-metal build. The empty `lxmf-wire/alloc`
+feature is retained for compatibility. Full support is deferred because current
+maintainer time is limited; contributors who can implement, review, and maintain
+it are welcome in [#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646).
 
 ## Security Feature Matrix
 

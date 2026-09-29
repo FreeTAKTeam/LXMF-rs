@@ -32,7 +32,10 @@ x25519-dalek.workspace = true
 
 [features]
 default = ["std"]
+# Controls JSON/file helpers, system-clock timestamps, and standard error impls.
+# The crate still requires the standard library when this feature is disabled.
 std = ["dep:serde_json", "serde_json/std"]
+# Empty compatibility flag; does not provide alloc-only or no_std support.
 alloc = []
 
 [dev-dependencies]

@@ -17,6 +17,17 @@ external-client evidence.
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
 
+## Core-library portability (#646, 2026-09-28)
+
+`lxmf-wire` currently requires `std`, including when built with
+`--no-default-features --features alloc`. Its MessagePack and Reticulum dependency
+graph is not suitable for `no_std`-only targets. The support declaration and
+[capability audit](../contracts/sdk-v2-feature-matrix.md#no_std--alloc-capability-audit)
+state this explicitly without changing default APIs or wire behavior. Full
+`no_std` + `alloc` support is deferred due to limited maintainer time and may be
+revisited with contributor help. [#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646)
+remains open as deferred capability work, not a completed bare-metal fix.
+
 ## MeshChat application API (development)
 
 The opt-in loopback `meshchat-api` crate exposes a partial MeshChat 2.4.0
