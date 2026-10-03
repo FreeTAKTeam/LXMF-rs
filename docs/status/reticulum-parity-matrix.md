@@ -18,10 +18,11 @@ Parity is recorded on two independent axes:
 Evidence labels describe validation scope independently of implementation status;
 they do not downgrade a complete software surface.
 
-## Reticulum 1.5.5 changed-feature candidate
+## Reticulum 1.5.5 changed-feature release
 
-The v0.13.0 candidate adds partial discovery, named interface management, and rngit behavior against the
-separate, exact 1.5.5 feature tag; it does **not** change the generated 1.5.2
+The v0.13.0 release adds partial discovery, named interface management, and
+rngit behavior against the separate, exact 1.5.5 feature tag; it does
+**not** change the generated 1.5.2
 baseline callable counts below. Discovery announce metadata, IFAC `None`
 sanitation, safe-default Backbone auto-connect planning, and `rnstatus`
 stale/unknown display filtering have focused Rust tests. Auto-connect is not
@@ -30,9 +31,10 @@ workdoc counts have focused Rust tests; a pinned Python 1.5.5 Link verified one
 converted download and filename. The built-in Markdown converter is currently
 a common-syntax subset, not full Python MarkdownToMicron parity. Named live
 controls are bounded to four existing hot-apply kinds, with focused local
-attach/detach/reload, child teardown, failure, rollback, RPC, and CLI tests;
-other kinds and exact-head hosted/release-publication gates remain open. The
-local release check passed. See
+attach/detach/reload, child teardown, failure, rollback, RPC, and CLI tests.
+Other kinds remain open; exact-head CI, Verify, and tag-level independent
+interoperability passed, and the GitHub release is public. The local release
+check passed on the code-identical candidate. See
 [`rns-1.5.5-delta.md`](rns-1.5.5-delta.md).
 
 Forward-candidate #610 Resource boundary evidence: pinned Python treats 64 MiB

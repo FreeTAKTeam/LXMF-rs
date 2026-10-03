@@ -9,7 +9,7 @@ separate until their reference policy is deliberately changed.
 
 | Changed upstream behavior | Existing Rust owner | v0.13.0 work |
 | --- | --- | --- |
-| `rnstatus` named attach/detach/reload and `enable_interface_management` switch | `rns-tools` `rnstatus`; `reticulumd` configuration and hot-apply bridge; `rns-rpc` | Candidate implements named operations for `tcp_client`, `tcp_server`, `udp`, and `pipe`, with local-start readiness, child-worker teardown, failure/rollback reporting, and focused CLI/RPC/loopback regressions. Other interface kinds remain explicit follow-ups. |
+| `rnstatus` named attach/detach/reload and `enable_interface_management` switch | `rns-tools` `rnstatus`; `reticulumd` configuration and hot-apply bridge; `rns-rpc` | v0.13.0 implements named operations for `tcp_client`, `tcp_server`, `udp`, and `pipe`, with local-start readiness, child-worker teardown, failure/rollback reporting, and focused CLI/RPC/loopback regressions. Other interface kinds remain explicit follow-ups. |
 | Discovery auto-connect accepts only Backbone announcements from verified `RNS` 1.5.2+ by default, with explicit unverified override; `rnstatus` stale/unknown display is opt-in | `rns-transport` discovery; `reticulumd` policy; `rns-tools` `rnstatus` | Add implementation/version retention, safe qualification, override, display flags, and focused tests. |
 | Empty/ambiguous `None` IFAC values are not published or adopted; I2P discovery config adds `.b32.i2p` | `rns-transport` discovery; `reticulumd` publish/config examples | Add IFAC sanitation and legacy-record regression. Rust I2P example already uses `.b32.i2p`; retain its test. |
 | rngit permits Markdown download converted to `.mu`, and counts readable work documents in scope links | `rns-tools` `rngit_parts` page media and work pages | Add bounded conversion and permission-filtered counts/links with pinned-Python Link evidence. |
@@ -17,7 +17,7 @@ separate until their reference policy is deliberately changed.
 | Link request timeout and rejection can fail receipts still in `SENT` state | `rns-transport` Link/request path | Audit for equivalent Rust receipt states and add a focused regression or record API non-equivalence. |
 | Default announce cap is a percentage, including virtual children | `rns-transport` interface manager | Existing 2% default and child inheritance are present; verify with focused tests. |
 
-## Candidate evidence and remaining gaps
+## Release evidence and remaining gaps
 
 The focused Rust `rns_1_5_5` tests pass for discovery metadata, legacy IFAC
 sanitation, Backbone auto-connect qualification, converted rngit downloads, and
@@ -54,13 +54,18 @@ presented as the new feature. HTTP and both ZeroMQ ingress paths dispatch the
 synchronous completion wait off Tokio's reactor; single-thread ZeroMQ
 regressions cover the two paths. The built-in rngit
 Markdown converter covers common syntax but not Python's full table and
-syntax-highlighting behavior. The coordinated v0.13.0 version bump is prepared;
-the earlier candidate passed normal CI, independent interoperability, and
-Verify. The newer named-management candidate passed an uninterrupted local
-`cargo xtask release-check`, including 3,019 nextest tests. The final PR head
-must pass those three hosted checks before merge, and the integrated commit
-must pass its normal checks before publication. Follow the live status on
-[PR #651](https://github.com/FreeTAKTeam/LXMF-rs/pull/651).
+syntax-highlighting behavior. The code-identical release candidate passed an
+uninterrupted local `cargo xtask release-check`, including 3,021 nextest
+tests. [PR #651](https://github.com/FreeTAKTeam/LXMF-rs/pull/651) merged; its
+exact head passed normal CI, independent interoperability, and Verify.
+The integrated commit `fbc75b86e15550722923b366398f0a4116182894`
+passed [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456558)
+and [Verify](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456451).
+The annotated `v0.13.0` tag peels to that commit. The
+[GitHub release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.13.0)
+is public, and tag-level
+[independent interoperability](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37126480810)
+passed with its bounded, published evidence.
 
 The official [Reticulum changelog](https://github.com/markqvist/Reticulum/blob/1.5.5/Changelog.md)
 highlights live interface management, rngit converted downloads/counts, corrected

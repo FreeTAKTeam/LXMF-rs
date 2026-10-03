@@ -1,4 +1,4 @@
-# LXMF-rs v0.13.0 (draft)
+# LXMF-rs v0.13.0
 
 v0.13.0 updates the tested RNS 1.5.2-compatible system with selected changed
 behavior from the exact Python Reticulum 1.5.5 tag
@@ -39,16 +39,27 @@ The discovery planner is not yet a production daemon auto-connect worker.
 The built-in Markdown converter covers common syntax, not all Python tables or
 syntax highlighting. Named management is limited to the four hot-apply kinds;
 the existing `set_interfaces` RPC only queues changes and must not be treated
-as completion-acknowledged management. The full local release check passed;
-fresh exact-head hosted CI is still required before publication. See the
+as completion-acknowledged management. The full local release check passed
+on the code-identical candidate; exact-head CI and Verify passed on the
+integrated release commit. See the
 [1.5.5 delta ledger](status/rns-1.5.5-delta.md) for affected-path evidence and
 the [roadmap](status/current-roadmap.md) for remaining parity work.
 
 #616 physical, client, and public-network acceptance remains separate from this
 software feature update.
 
-## Release verification
+## Published release
 
-Publish only after the final candidate passes local release checks and normal
-exact-head CI. Verify the immutable GitHub tag, assets, checksums, provenance,
-container image, and matching crates.io versions independently after release.
+The annotated [v0.13.0 tag](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.13.0)
+peels to integrated commit `fbc75b86e15550722923b366398f0a4116182894`.
+That commit passed normal [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456558)
+and [Verify](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456451);
+tag-level [independent interoperability](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37126480810)
+also passed and published its bounded evidence. Fresh downloads of all 31
+public assets matched GitHub's SHA-256 metadata; the 18 distribution and SBOM
+files passed `SHA256SUMS.txt`. The Linux x86_64 archive and OCI image passed
+tag/commit-bound provenance checks. The OCI index contains linux/amd64 and
+linux/arm64 images. Crates.io
+[publication](https://github.com/FreeTAKTeam/LXMF-rs/actions/workflows/crates-io-publish.yml)
+and tag-level [release performance](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37126480838)
+are tracked separately.

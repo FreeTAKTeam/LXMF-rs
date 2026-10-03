@@ -149,15 +149,29 @@ jobs:
           wait_for_crate_version() {
             local package="$1"
             local version="$2"
+            local index_path
+
+            case ${#package} in
+              1) index_path="1/$package" ;;
+              2) index_path="2/$package" ;;
+              3) index_path="3/${package:0:1}/$package" ;;
+              *) index_path="${package:0:2}/${package:2:2}/$package" ;;
+            esac
 
             for _ in {1..20}; do
-              if crate_version_exists "$package" "$version"; then
+              # The crates.io API can expose an uploaded version before Cargo's
+              # sparse index does. The next workspace crate needs both.
+              if crate_version_exists "$package" "$version" \
+                && curl --silent --fail --header "Cache-Control: no-cache" \
+                  "https://index.crates.io/$index_path" \
+                  | jq -e --arg version "$version" \
+                    'select(.vers == $version and .yanked == false)' > /dev/null; then
                 return 0
               fi
               sleep 15
             done
 
-            echo "::error::Timed out waiting for ${package} ${version} to appear on crates.io"
+            echo "::error::Timed out waiting for ${package} ${version} to appear in the crates.io API and sparse index"
             return 1
           }
 
@@ -178,6 +192,7 @@ jobs:
 
             if crate_version_exists "$package" "$version"; then
               echo "${package} ${version} already exists on crates.io; skipping"
+              wait_for_crate_version "$package" "$version"
               continue
             fi
 
