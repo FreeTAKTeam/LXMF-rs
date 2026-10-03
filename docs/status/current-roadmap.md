@@ -17,22 +17,31 @@ external-client evidence.
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
 
-## Reticulum 1.5.5 feature update (v0.13.0 candidate, not released)
+## Reticulum 1.5.5 feature update (v0.13.0 released)
 
-The next feature target is the exact Python Reticulum 1.5.5 tag at
+The feature update targets the exact Python Reticulum 1.5.5 tag at
 `7f2b3b9b524c9386316379af1313b43a5e4f7a5d`, separate from the tested
-1.5.2 release baseline and #605's historical 1.5.4-dev pin. The candidate has
+1.5.2 release baseline and #605's historical 1.5.4-dev pin. The release has
 focused Rust regressions for discovery metadata, safe Backbone auto-connect
 planning, IFAC sanitation, `rnstatus` discovery display and named management,
-and rngit Markdown
-downloads/work-scope counts. A Python 1.5.5 Link requested a converted `.mu`
-download from the Rust rngit service and matched the tagged converter for the
-tested Markdown fixture. The discovery planner is a library path; the daemon
+and rngit Markdown downloads/work-scope counts. A Python 1.5.5 Link requested
+a converted `.mu` download from the Rust rngit service and matched the tagged
+converter for the tested Markdown fixture. The discovery planner is a library
+path; the daemon
 does not yet activate auto-connect from it. Named attach/detach/reload covers
 only existing TCP client/server, UDP, and Pipe hot-apply paths; the separate
 `set_interfaces` RPC still acknowledges queue admission. Broader Markdown
-rendering, final exact-head CI, and publication remain open. An uninterrupted
-local `cargo xtask release-check` passed on the named-management candidate.
+rendering and pending Link request-receipt states remain open. An uninterrupted
+local `cargo xtask release-check` passed on the code-identical candidate.
+The exact integrated commit `fbc75b86e15550722923b366398f0a4116182894`
+passed [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456558),
+[Verify](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456451),
+and tag-level [independent interoperability](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37126480810).
+The [v0.13.0 release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.13.0)
+is public with a tag peeled to that commit; crates.io
+[publication](https://github.com/FreeTAKTeam/LXMF-rs/actions/workflows/crates-io-publish.yml)
+and tag-level [performance verification](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37126480838)
+are tracked separately.
 See [the delta ledger](rns-1.5.5-delta.md) for the exact boundary.
 
 ## Core-library portability (#646, 2026-09-28)
