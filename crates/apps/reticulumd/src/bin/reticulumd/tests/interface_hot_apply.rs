@@ -20,6 +20,8 @@ use tokio::time::{timeout, Duration};
 
 #[path = "interface_hot_apply/issue_608_udp_bind_retry.rs"]
 mod issue_608_udp_bind_retry;
+#[path = "interface_hot_apply/named_management.rs"]
+mod named_management;
 
 fn tcp_record(name: &str, host: &str, port: u16) -> InterfaceRecord {
     InterfaceRecord {
@@ -108,6 +110,8 @@ fn test_bridge(
 ) -> InterfaceHotApplyBridge {
     InterfaceHotApplyBridge {
         tx,
+        config_path: None,
+        management_enabled: true,
         tcp_listener_refreshes: tcp_listener_refreshes(),
         udp_refreshes: udp_refreshes(),
         pipe_refreshes: pipe_refreshes(),
@@ -429,7 +433,11 @@ async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
     };
     let mut managed = HashMap::from([(
         "loopback".to_string(),
-        ManagedHotApplyInterface { record: tcp_record("loopback", "127.0.0.1", 1), address },
+        ManagedHotApplyInterface {
+            record: tcp_record("loopback", "127.0.0.1", 1),
+            address,
+            runtime_status: None,
+        },
     )]);
     let mut record = tcp_record("loopback", "127.0.0.1", 1);
     record.settings = Some(json!({
@@ -789,6 +797,7 @@ async fn hot_apply_replaces_startup_seeded_udp_when_bind_changes() {
         ManagedHotApplyInterface {
             record: udp_record("udp-loopback", "127.0.0.1", 4242),
             address: first,
+            runtime_status: None,
         },
     )]);
 
@@ -821,7 +830,11 @@ async fn hot_apply_removes_startup_seeded_udp_when_disabled() {
     };
     let mut managed = HashMap::from([(
         "udp-loopback".to_string(),
-        ManagedHotApplyInterface { record: udp_record("udp-loopback", "127.0.0.1", 4242), address },
+        ManagedHotApplyInterface {
+            record: udp_record("udp-loopback", "127.0.0.1", 4242),
+            address,
+            runtime_status: None,
+        },
     )]);
     let mut disabled = udp_record("udp-loopback", "127.0.0.1", 4242);
     disabled.enabled = false;

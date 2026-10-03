@@ -280,3 +280,8 @@ impl ReticulumGitNode {
         self.identity_aliases.insert(alias.into(), identity);
     }
 }
+
+pub fn program_setup(mut node: ReticulumGitNode) -> ReticulumGitNode {
+    node.start();
+    node
+}

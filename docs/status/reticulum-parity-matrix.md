@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-09-25
+Last reassessed: 2026-10-03
 MeshChat POC evidence added: 2026-09-27
 
 This is the maintained row-level status for Python Reticulum compatibility.
@@ -17,6 +17,23 @@ Parity is recorded on two independent axes:
 `hardware-unverified` is an evidence boundary, not an implementation failure.
 Evidence labels describe validation scope independently of implementation status;
 they do not downgrade a complete software surface.
+
+## Reticulum 1.5.5 changed-feature candidate
+
+The v0.13.0 candidate adds partial discovery, named interface management, and rngit behavior against the
+separate, exact 1.5.5 feature tag; it does **not** change the generated 1.5.2
+baseline callable counts below. Discovery announce metadata, IFAC `None`
+sanitation, safe-default Backbone auto-connect planning, and `rnstatus`
+stale/unknown display filtering have focused Rust tests. Auto-connect is not
+wired into the production daemon. Rngit `.md` to `.mu` download and readable
+workdoc counts have focused Rust tests; a pinned Python 1.5.5 Link verified one
+converted download and filename. The built-in Markdown converter is currently
+a common-syntax subset, not full Python MarkdownToMicron parity. Named live
+controls are bounded to four existing hot-apply kinds, with focused local
+attach/detach/reload, child teardown, failure, rollback, RPC, and CLI tests;
+other kinds and exact-head hosted/release-publication gates remain open. The
+local release check passed. See
+[`rns-1.5.5-delta.md`](rns-1.5.5-delta.md).
 
 Forward-candidate #610 Resource boundary evidence: pinned Python treats 64 MiB
 as its automatic-compression limit, not an outbound admission limit. The Rust

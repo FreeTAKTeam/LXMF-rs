@@ -106,6 +106,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stop_interface_cancels_inherited_children_and_waits_for_workers() {
+        struct TestInterface;
+
+        impl Interface for TestInterface {
+            fn mtu() -> usize {
+                64
+            }
+        }
+
+        let mut manager = InterfaceManager::new(16);
+        let parent = *manager.new_channel(8).address();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let child = manager
+            .spawn_inheriting(parent, TestInterface, |context| async move {
+                context.cancel.cancelled().await;
+                tx.send(()).expect("child stop observer remains connected");
+            })
+            .expect("spawn inherited child");
+        let workers = manager.take_worker_tree(parent);
+        assert_eq!(workers.len(), 1);
+        assert!(manager.stop_interface(parent));
+        assert_eq!(manager.role(&child), None);
+        assert!(manager.interface_hashes().is_empty());
+        tokio::time::timeout(std::time::Duration::from_secs(1), rx)
+            .await
+            .expect("child cancellation")
+            .expect("child worker result");
+        for worker in workers {
+            tokio::time::timeout(std::time::Duration::from_secs(1), worker)
+                .await
+                .expect("child worker completion")
+                .expect("child worker join");
+        }
+    }
+
+    #[tokio::test]
     async fn direct_packet_over_configured_mtu_is_not_queued() {
         let mut mgr = InterfaceManager::new(16);
         let mut rx = mgr

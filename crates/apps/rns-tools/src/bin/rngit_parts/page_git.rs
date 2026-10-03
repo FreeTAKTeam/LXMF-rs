@@ -301,6 +301,13 @@ impl ReticulumGitNode {
             );
         };
         let mut content = format!("> {file_path}\n\n");
+        if file_path.to_ascii_lowercase().ends_with(".md") {
+            let encoded_path = percent_encode_plus(&file_path);
+            let _ = writeln!(
+                content,
+                "`_[as micron`:/file/download|g={group}|r={repository}|ref={reference}|path={encoded_path}|fmt=mu]`_\n"
+            );
+        }
         match String::from_utf8(blob) {
             Ok(text) => content.push_str(&text),
             Err(_) => {

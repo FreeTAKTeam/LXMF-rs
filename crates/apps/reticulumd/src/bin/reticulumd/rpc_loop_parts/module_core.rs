@@ -135,7 +135,7 @@ async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: 
                 let (stream, _) = accepted.expect("accept rpc unix socket");
                 let daemon = daemon.clone();
                 tokio::spawn(async move {
-                    handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
+                    handle_connection(stream, peer_addr, daemon, None).await;
                 });
             }
         }
@@ -155,7 +155,7 @@ async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>, _shutdown: Sh
 async fn handle_connection<S>(
     mut stream: S,
     peer_addr: SocketAddr,
-    daemon: &RpcDaemon,
+    daemon: Arc<RpcDaemon>,
     transport_auth: Option<http::TransportAuthContext>,
 ) where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -181,25 +181,34 @@ async fn handle_connection<S>(
 
     if let Ok((method, path, headers)) = http::request_method_path_headers(&buffer) {
         if method == "GET" && path.split('?').next() == Some("/events/stream") {
-            handle_event_stream(stream, peer_addr, daemon, path, headers, transport_auth).await;
+            handle_event_stream(stream, peer_addr, daemon.as_ref(), path, headers, transport_auth).await;
             return;
         }
     }
 
     let request_meta = parse_request_log_meta(&buffer);
     let started_at = std::time::Instant::now();
-    let response_result = http::handle_http_request_with_transport_auth(
-        daemon,
-        &buffer,
-        Some(peer_addr),
-        transport_auth,
-    );
+    // Named interface management waits for the async worker to confirm startup
+    // or teardown. Keep synchronous RPC dispatch off the reactor thread.
+    let response_result = tokio::task::spawn_blocking(move || {
+        http::handle_http_request_with_transport_auth(
+            daemon.as_ref(),
+            &buffer,
+            Some(peer_addr),
+            transport_auth,
+        )
+    })
+    .await;
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
     let (response, error_text) = match response_result {
-        Ok(response) => (response, None),
-        Err(err) => {
+        Ok(Ok(response)) => (response, None),
+        Ok(Err(err)) => {
             let err_text = err.to_string();
             (http::build_error_response(&format!("rpc error: {err_text}")), Some(err_text))
+        }
+        Err(err) => {
+            let err_text = err.to_string();
+            (http::build_error_response(&format!("rpc task error: {err_text}")), Some(err_text))
         }
     };
     emit_rpc_access_log(peer_addr, &request_meta, &response, elapsed_ms, error_text.as_deref());

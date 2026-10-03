@@ -28,6 +28,10 @@ pub struct DiscoveredInterface {
     #[serde(rename = "type")]
     pub interface_type: String,
     pub transport: bool,
+    #[serde(default)]
+    pub impl_name: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
     pub name: String,
     pub received: f64,
     #[serde(default)]
@@ -139,6 +143,8 @@ impl InterfaceDiscoveryStore {
                     continue;
                 }
             };
+            info.ifac_netname = normalized_ifac(info.ifac_netname.as_deref());
+            info.ifac_netkey = normalized_ifac(info.ifac_netkey.as_deref());
             let heard_delta = (now - info.last_heard).max(0.0);
             let source_allowed = allowed_network_ids.is_empty()
                 || allowed_network_ids.iter().any(|source| source == &info.network_id);
@@ -185,6 +191,12 @@ impl InterfaceDiscoveryStore {
     fn record_path(&self, discovery_hash: &[u8]) -> PathBuf {
         self.directory.join(hex::encode(discovery_hash))
     }
+}
+
+pub(crate) fn normalized_ifac(value: Option<&str>) -> Option<String> {
+    let value = value?.replace(['\n', '\r'], "");
+    let value = value.trim();
+    (!value.is_empty() && value != "None").then(|| value.to_string())
 }
 
 fn validate_record(info: &DiscoveredInterface) -> io::Result<()> {
@@ -268,6 +280,8 @@ mod tests {
             discovery_hash: vec![hash; 32],
             interface_type: "BackboneInterface".to_string(),
             transport: true,
+            impl_name: Some("RNS".to_string()),
+            version: Some("1.5.5".to_string()),
             name: format!("peer-{hash}"),
             received,
             stamp: vec![hash; 32],
@@ -323,5 +337,19 @@ mod tests {
         assert_eq!(updated.discovered, 10.0);
         assert_eq!(updated.last_heard, 20.0);
         assert_eq!(updated.heard_count, 1);
+    }
+
+    #[test]
+    fn rns_1_5_5_legacy_none_ifac_strings_are_not_exposed_from_store() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store = InterfaceDiscoveryStore::new(temp.path());
+        let mut row = record(1, 10.0);
+        row.ifac_netname = Some("None".to_string());
+        row.ifac_netkey = Some(" ".to_string());
+        store.observe(row).expect("persist legacy record");
+        let rows = store.list(11.0, &[], DiscoveryListFilter::default()).expect("list");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].ifac_netname, None);
+        assert_eq!(rows[0].ifac_netkey, None);
     }
 }

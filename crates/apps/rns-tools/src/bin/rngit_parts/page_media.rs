@@ -296,15 +296,59 @@ impl ReticulumGitNode {
         &mut self,
         map: &[(rmpv::Value, rmpv::Value)],
         remote: [u8; 16],
+        link_id: [u8; 16],
     ) -> Option<PageResponse> {
         let group = Self::decoded_request_field(map, "var_g")?;
         let repository = Self::decoded_request_field(map, "var_r")?;
         let reference = Self::decoded_request_field(map, "var_ref").unwrap_or_else(|| "HEAD".to_string());
         let file_path = Self::decoded_request_field(map, "var_path")?;
+        let format = if map_value(map, &rmpv::Value::String("var_fmt".into())).is_some() {
+            match Self::decoded_request_field(map, "var_fmt") {
+                Some(format) => format,
+                None => {
+                    eprintln!("rngit: malformed download format parameter");
+                    return None;
+                }
+            }
+        } else {
+            String::new()
+        };
+        if !format.is_empty() && (format != "mu" || !file_path.to_ascii_lowercase().ends_with(".md")) {
+            return None;
+        }
         let record = self.accessible_repository(&remote, &group, &repository)?;
         let resolved = Self::resolve_page_ref(&record.path, &reference)?;
         let file_name = filename(&file_path)?;
         let blob = Self::page_blob(&record.path, &resolved, &file_path, MEDIA_BLOB_LIMIT)?;
+        if format == "mu" {
+            // PageResponse owns its bytes, so no spool file outlives this request.
+            // The link check still matches Python's conversion authorization.
+            if !self.active_page_links.contains_key(&link_id) {
+                return None;
+            }
+            let markdown = match String::from_utf8(blob) {
+                Ok(markdown) => markdown,
+                Err(error) => {
+                    eprintln!(
+                        "rngit: cannot convert non-UTF-8 Markdown file {group}/{repository}/{file_path}: {error}"
+                    );
+                    return None;
+                }
+            };
+            let parent = Path::new(&file_path)
+                .parent()
+                .and_then(|path| path.to_str())
+                .filter(|path| !path.is_empty())
+                .map(|path| format!("{path}/"))
+                .unwrap_or_default();
+            let url_scope = format!(
+                ":/page/blob.mu`g={group}|r={repository}|ref={reference}|path={parent}"
+            );
+            let converted = markdown_to_micron::convert(&markdown, &url_scope)?;
+            let stem = Path::new(&file_name).file_stem()?.to_str()?;
+            self.download_succeeded(&group, &repository, false);
+            return Self::file_response(converted, &format!("{stem}.mu"));
+        }
         self.download_succeeded(&group, &repository, false);
         Self::file_response(blob, &file_name)
     }

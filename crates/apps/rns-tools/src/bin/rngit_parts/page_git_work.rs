@@ -1,4 +1,47 @@
 impl ReticulumGitNode {
+    fn visible_work_count(
+        &self,
+        root: &Path,
+        scope: &str,
+        remote: &[u8; 16],
+        group: &str,
+        repository: &str,
+    ) -> usize {
+        let directory = root.join(scope);
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return 0,
+            Err(error) => {
+                eprintln!("rngit: cannot list work scope {}: {error}", directory.display());
+                return 0;
+            }
+        };
+        let mut count = 0;
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    eprintln!("rngit: cannot read work entry in {}: {error}", directory.display());
+                    continue;
+                }
+            };
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let Some(id) = entry.file_name().to_str().and_then(|name| name.parse::<u64>().ok())
+            else {
+                continue;
+            };
+            if path.join("root").is_file()
+                && self.resolve_doc_permission(remote, group, repository, id, Self::PERM_READ)
+            {
+                count += 1;
+            }
+        }
+        count
+    }
+
     fn serve_releases(
         &mut self,
         map: &[(rmpv::Value, rmpv::Value)],
@@ -82,17 +125,39 @@ impl ReticulumGitNode {
             return self.not_found("", "The requested repository was not found");
         };
         let root = companion_path(&record.path, "work");
+        let scope = page_param(map, "scope").unwrap_or_else(|| "active".to_string());
+        let scope = if matches!(scope.as_str(), "active" | "completed" | "proposed" | "all") {
+            scope.as_str()
+        } else {
+            "active"
+        };
+        let scopes = ["active", "completed", "proposed"];
+        let counts = scopes.map(|item| self.visible_work_count(&root, item, &remote, &group, &repository));
+        let total = counts.iter().sum::<usize>();
         let mut content = String::from("> Work\n\n");
-        for scope in ["active", "completed", "proposed"] {
-            let count = fs::read_dir(root.join(scope))
-                .into_iter()
-                .flatten()
-                .filter_map(Result::ok)
-                .filter(|entry| entry.path().is_dir())
-                .filter_map(|entry| entry.file_name().to_str().and_then(|name| name.parse::<u64>().ok()))
-                .filter(|id| self.resolve_doc_permission(&remote, &group, &repository, *id, Self::PERM_READ))
-                .count();
-            let _ = writeln!(content, "{scope}: {count}");
+        for (index, (label, item, count)) in [
+            ("Active", "active", counts[0]),
+            ("Completed", "completed", counts[1]),
+            ("Proposed", "proposed", counts[2]),
+            ("All", "all", total),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if index > 0 {
+                content.push_str(" • ");
+            }
+            let selected = if scope == item { "`_" } else { "" };
+            let _ = write!(
+                content,
+                "{selected}`[{label}`:/page/work.mu|g={group}|r={repository}|scope={item}]{selected} ({count})"
+            );
+        }
+        content.push_str("\n\n");
+        for (item, count) in scopes.into_iter().zip(counts) {
+            if scope == "all" || scope == item {
+                let _ = writeln!(content, "{item}: {count}");
+            }
         }
         self.page_render("work", content, Some(&group), Some(&repository))
     }
