@@ -24,6 +24,9 @@ unchanged. This is a scoped feature update, not full Reticulum parity.
   restore the previous working interface. Listener teardown includes accepted
   child workers.
 - Workspace package and path-dependency versions advance together to 0.13.0.
+- Crates.io publication includes the new `meshchat-api` crate as the 18th
+  published workspace crate; its opt-in, partial proof-of-concept scope is
+  unchanged.
 
 ## Compatibility and remaining work
 
