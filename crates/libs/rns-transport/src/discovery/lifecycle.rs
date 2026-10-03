@@ -96,6 +96,7 @@ pub struct AutoconnectInterfacePolicy<'a> {
     pub mode: Option<&'a str>,
     pub gravity: i64,
     pub announces_to_internal: bool,
+    pub allow_unverified: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -254,10 +255,9 @@ pub fn plan_autoconnect_with_policy(
     existing: &[RuntimeInterfaceState],
     policy: AutoconnectInterfacePolicy<'_>,
 ) -> Option<AutoconnectPlan> {
-    if !matches!(
-        info.interface_type.as_str(),
-        "BackboneInterface" | "TCPServerInterface" | "TCPClientInterface"
-    ) || interface_exists(info, existing)
+    if info.interface_type != "BackboneInterface"
+        || interface_exists(info, existing)
+        || (!policy.allow_unverified && !verified_autoconnect_implementation(info))
     {
         return None;
     }
@@ -274,6 +274,28 @@ pub fn plan_autoconnect_with_policy(
         gravity: policy.gravity,
         announces_to_internal: policy.announces_to_internal,
     })
+}
+
+fn verified_autoconnect_implementation(info: &DiscoveredInterface) -> bool {
+    if info.impl_name.as_deref() != Some("RNS") {
+        return false;
+    }
+    let Some(version) = info.version.as_deref().and_then(version_tuple) else {
+        return false;
+    };
+    version.as_slice() >= &[1, 5, 2]
+}
+
+fn version_tuple(value: &str) -> Option<Vec<u32>> {
+    let mut components = Vec::new();
+    for component in value.trim().split('.') {
+        let digits = component.chars().take_while(char::is_ascii_digit).collect::<String>();
+        if digits.is_empty() {
+            break;
+        }
+        components.push(digits.parse().ok()?);
+    }
+    (!components.is_empty()).then_some(components)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

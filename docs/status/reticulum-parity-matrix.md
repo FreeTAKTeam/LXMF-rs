@@ -18,6 +18,20 @@ Parity is recorded on two independent axes:
 Evidence labels describe validation scope independently of implementation status;
 they do not downgrade a complete software surface.
 
+## Reticulum 1.5.5 changed-feature candidate
+
+The v0.13.0 candidate adds partial discovery and rngit behavior against the
+separate, exact 1.5.5 feature tag; it does **not** change the generated 1.5.2
+baseline callable counts below. Discovery announce metadata, IFAC `None`
+sanitation, safe-default Backbone auto-connect planning, and `rnstatus`
+stale/unknown display filtering have focused Rust tests. Auto-connect is not
+wired into the production daemon. Rngit `.md` to `.mu` download and readable
+workdoc counts have focused Rust tests; a pinned Python 1.5.5 Link verified one
+converted download and filename. The built-in Markdown converter is currently
+a common-syntax subset, not full Python MarkdownToMicron parity. Named live
+interface controls and release gates remain incomplete. See
+[`rns-1.5.5-delta.md`](rns-1.5.5-delta.md).
+
 Forward-candidate #610 Resource boundary evidence: pinned Python treats 64 MiB
 as its automatic-compression limit, not an outbound admission limit. The Rust
 reader-backed sender now follows that boundary, advertises a 64 MiB + 1 source

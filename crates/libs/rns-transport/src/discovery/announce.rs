@@ -12,6 +12,8 @@ pub const FLAG_ENCRYPTED: u8 = 0b0000_0010;
 
 const NAME: i64 = 0xff;
 const TRANSPORT_ID: i64 = 0xfe;
+const TRANSPORT_IMPL: i64 = 0xfd;
+const TRANSPORT_VERS: i64 = 0xfc;
 const INTERFACE_TYPE: i64 = 0x00;
 const TRANSPORT: i64 = 0x01;
 const REACHABLE_ON: i64 = 0x02;
@@ -225,6 +227,8 @@ fn encode_interface(interface: &DiscoverableInterface) -> Result<Vec<u8>, Discov
         field(INTERFACE_TYPE, Value::from(interface_type)),
         field(TRANSPORT, Value::from(interface.transport)),
         field(TRANSPORT_ID, Value::Binary(interface.transport_id.to_vec())),
+        field(TRANSPORT_IMPL, Value::from("LXMF-rs")),
+        field(TRANSPORT_VERS, Value::from(env!("CARGO_PKG_VERSION"))),
         field(NAME, Value::from(sanitize(&interface.name))),
         field(LATITUDE, option_f64(interface.latitude)),
         field(LONGITUDE, option_f64(interface.longitude)),
@@ -247,11 +251,11 @@ fn encode_interface(interface: &DiscoverableInterface) -> Result<Vec<u8>, Discov
             Value::from(interface.port.ok_or(DiscoveryAnnounceError::MissingEndpoint)?),
         ));
     }
-    if let Some(value) = &interface.ifac_netname {
-        fields.push(field(IFAC_NETNAME, Value::from(sanitize(value))));
+    if let Some(value) = super::normalized_ifac(interface.ifac_netname.as_deref()) {
+        fields.push(field(IFAC_NETNAME, Value::from(value)));
     }
-    if let Some(value) = &interface.ifac_netkey {
-        fields.push(field(IFAC_NETKEY, Value::from(sanitize(value))));
+    if let Some(value) = super::normalized_ifac(interface.ifac_netkey.as_deref()) {
+        fields.push(field(IFAC_NETKEY, Value::from(value)));
     }
     if let Some(address) = interface.operator_lxmf_address {
         fields.push(field(OPERATOR_LXMF_ADDRESS, Value::Binary(address.to_vec())));
@@ -318,6 +322,8 @@ fn decode_interface(
         discovery_hash,
         interface_type,
         transport: boolean(map, TRANSPORT)?,
+        impl_name: optional(map, TRANSPORT_IMPL).and_then(Value::as_str).map(ToOwned::to_owned),
+        version: optional(map, TRANSPORT_VERS).and_then(Value::as_str).map(ToOwned::to_owned),
         name,
         received,
         stamp: stamp.to_vec(),
@@ -331,8 +337,8 @@ fn decode_interface(
         operator_lxmf_address: optional_binary(map, OPERATOR_LXMF_ADDRESS)?.map(hex::encode),
         reachable_on,
         port: optional_u64(map, PORT)?.map(|port| port as u16),
-        ifac_netname: optional_string(map, IFAC_NETNAME)?,
-        ifac_netkey: optional_string(map, IFAC_NETKEY)?,
+        ifac_netname: super::normalized_ifac(optional(map, IFAC_NETNAME).and_then(Value::as_str)),
+        ifac_netkey: super::normalized_ifac(optional(map, IFAC_NETKEY).and_then(Value::as_str)),
         config_entry: None,
         discovered: 0.0,
         last_heard: 0.0,

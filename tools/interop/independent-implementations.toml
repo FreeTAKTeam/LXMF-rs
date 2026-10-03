@@ -16,6 +16,13 @@ revision = "99de23c040d507e3fefca19e87b182302902725d"
 scope = "issue-605-forward-parity"
 owner_issue = 605
 
+[feature_update_target]
+implementation = "Reticulum-Python"
+repository = "https://github.com/markqvist/Reticulum.git"
+version = "1.5.5"
+revision = "7f2b3b9b524c9386316379af1313b43a5e4f7a5d"
+scope = "v0.13.0-changed-features"
+
 [peers.rns_rs]
 implementation = "rns-rs"
 repository = "https://github.com/lelloman/rns-rs.git"

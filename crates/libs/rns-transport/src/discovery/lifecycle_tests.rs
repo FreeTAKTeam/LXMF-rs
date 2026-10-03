@@ -6,6 +6,8 @@ fn discovered(name: &str, host: &str, port: u16) -> DiscoveredInterface {
         discovery_hash: vec![1; 32],
         interface_type: "BackboneInterface".to_string(),
         transport: true,
+        impl_name: Some("RNS".to_string()),
+        version: Some("1.5.5".to_string()),
         name: name.to_string(),
         received: 1.0,
         stamp: vec![2; 32],
@@ -62,12 +64,39 @@ fn autoconnect_policy_carries_mode_gravity_and_internal_announce_flag() {
             mode: Some("gateway"),
             gravity: 7,
             announces_to_internal: true,
+            allow_unverified: false,
         },
     )
     .expect("eligible discovered interface");
     assert_eq!(plan.interface_mode.as_deref(), Some("gateway"));
     assert_eq!(plan.gravity, 7);
     assert!(plan.announces_to_internal);
+}
+
+#[test]
+fn rns_1_5_5_autoconnect_requires_verified_backbone_unless_overridden() {
+    let mut info = discovered("relay", "relay.example", 4242);
+    assert!(plan_autoconnect(&info, &[]).is_some());
+
+    info.impl_name = None;
+    assert!(plan_autoconnect(&info, &[]).is_none());
+    info.impl_name = Some("other-stack".to_string());
+    assert!(plan_autoconnect(&info, &[]).is_none());
+    info.impl_name = Some("RNS".to_string());
+    info.version = Some("1.5.1".to_string());
+    assert!(plan_autoconnect(&info, &[]).is_none());
+    info.version = Some("1.5.2".to_string());
+    assert!(plan_autoconnect(&info, &[]).is_some());
+
+    info.interface_type = "TCPServerInterface".to_string();
+    assert!(plan_autoconnect(&info, &[]).is_none());
+    info.interface_type = "BackboneInterface".to_string();
+    info.impl_name = None;
+    let override_policy = AutoconnectInterfacePolicy {
+        allow_unverified: true,
+        ..AutoconnectInterfacePolicy::default()
+    };
+    assert!(plan_autoconnect_with_policy(&info, &[], override_policy).is_some());
 }
 
 #[test]

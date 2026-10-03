@@ -11,6 +11,9 @@ mod page_git_output;
 #[path = "rngit_parts/media_config.rs"]
 mod media_config;
 
+#[path = "rngit_parts/markdown_to_micron.rs"]
+mod markdown_to_micron;
+
 mod rngit_network {
     include!("rngit_parts/network.rs");
 }
@@ -171,11 +174,6 @@ pub fn escape_for_stdout(value: &[u8]) -> String {
     }
     escaped.push('"');
     escaped
-}
-
-pub fn program_setup(mut node: ReticulumGitNode) -> ReticulumGitNode {
-    node.start();
-    node
 }
 
 include!("rngit_parts/compat.rs");
@@ -401,6 +399,7 @@ mod tests {
     include!("rngit_parts/issue_612_concurrency_tests.rs");
     include!("rngit_parts/issue_612_wire_schema_tests.rs");
     include!("rngit_parts/issue_613_tests.rs");
+    include!("rngit_parts/rns_1_5_5_work_page_tests.rs");
     include!("rngit_parts/issue_613_pagination_tests.rs");
     include!("rngit_parts/page_git_output_tests.rs");
 

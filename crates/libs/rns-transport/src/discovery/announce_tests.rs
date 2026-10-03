@@ -52,6 +52,51 @@ fn plain_announce_roundtrip_validates_stamp_and_python_fields() {
     assert_eq!(decoded.port, Some(4242));
     assert_eq!(decoded.hops, 2);
     assert!(decoded.value >= 5);
+    assert_eq!(decoded.impl_name.as_deref(), Some("LXMF-rs"));
+    assert_eq!(decoded.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn rns_1_5_5_ifac_announcement_omits_empty_and_ambiguous_values() {
+    let mut interface = backbone();
+    interface.ifac_netname = Some("None".to_string());
+    interface.ifac_netkey = Some("  ".to_string());
+    let packed = encode_interface(&interface).expect("encode interface");
+    let decoded = rmpv::decode::read_value(&mut std::io::Cursor::new(packed))
+        .expect("decode interface map");
+    let fields = decoded.as_map().expect("interface map");
+    assert!(!fields.iter().any(|(key, _)| key.as_i64() == Some(IFAC_NETNAME)));
+    assert!(!fields.iter().any(|(key, _)| key.as_i64() == Some(IFAC_NETKEY)));
+
+    let mut legacy = fields.to_vec();
+    legacy.push((Value::from(IFAC_NETNAME), Value::from("None")));
+    legacy.push((Value::from(IFAC_NETKEY), Value::from(42)));
+    let mut legacy_packed = Vec::new();
+    rmpv::encode::write_value(&mut legacy_packed, &Value::Map(legacy)).expect("encode legacy");
+    let record = decode_interface(&legacy_packed, &[0; STAMP_SIZE], 4, "22", 1, 1.0)
+        .expect("legacy IFAC fields must not invalidate discovery");
+    assert_eq!(record.ifac_netname, None);
+    assert_eq!(record.ifac_netkey, None);
+}
+
+#[test]
+fn rns_1_5_5_python_discovery_map_decodes_verified_metadata_and_legacy_none() {
+    // Packed with msgpack and RNS.Discovery constants from the exact Python
+    // 1.5.5 tag (7f2b3b9b524c9386316379af1313b43a5e4f7a5d).
+    let packed = hex::decode(concat!(
+        "8c00b14261636b626f6e65496e7465726661636501c3ccfec410",
+        "11111111111111111111111111111111ccfda3524e53ccfca5312e352e35",
+        "ccffac507974686f6e20312e352e3503c004c005c002ad72656c61792e",
+        "6578616d706c6506cd109207a44e6f6e65"
+    ))
+    .expect("pinned Python discovery map hex");
+    let decoded = decode_interface(&packed, &[0; STAMP_SIZE], 4, "network", 1, 1.0)
+        .expect("decode Python discovery map");
+    assert_eq!(decoded.impl_name.as_deref(), Some("RNS"));
+    assert_eq!(decoded.version.as_deref(), Some("1.5.5"));
+    assert_eq!(decoded.interface_type, "BackboneInterface");
+    assert_eq!(decoded.ifac_netname, None);
+    assert!(crate::discovery::lifecycle::plan_autoconnect(&decoded, &[]).is_some());
 }
 
 #[test]

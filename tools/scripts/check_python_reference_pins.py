@@ -52,6 +52,21 @@ def parity_target_pin(manifest_path: Path = MANIFEST) -> tuple[str, str]:
     return version, revision
 
 
+def feature_update_pin(manifest_path: Path = MANIFEST) -> tuple[str, str]:
+    target = manifest_data(manifest_path).get("feature_update_target")
+    if not isinstance(target, dict):
+        raise ValueError("canonical manifest is missing feature_update_target")
+    version = target.get("version")
+    revision = target.get("revision")
+    if version != "1.5.5" or not isinstance(revision, str) or not revision:
+        raise ValueError("feature_update_target must pin Reticulum 1.5.5")
+    if target.get("implementation") != "Reticulum-Python":
+        raise ValueError("feature_update_target implementation must be Reticulum-Python")
+    if target.get("repository") != "https://github.com/markqvist/Reticulum.git":
+        raise ValueError("feature_update_target repository is not canonical")
+    return version, revision
+
+
 def active_mirrors() -> dict[str, tuple[str, ...]]:
     return {
         "crates/libs/lxmf-reference/src/lib.rs": (
@@ -127,10 +142,23 @@ def parity_target_mirrors() -> dict[str, tuple[str, ...]]:
     }
 
 
+def feature_update_mirrors() -> dict[str, tuple[str, ...]]:
+    return {
+        ".github/workflows/verify.yml": ("PYTHON_RETICULUM_FEATURE_REF: {revision}",),
+        "docs/status/rns-1.5.5-delta.md": (
+            "official Python Reticulum `{version}` tag, peeled to\n`{revision}`",
+        ),
+        "crates/apps/rns-tools/tests/rngit_python_interop/rns_1_5_5_markdown_download.rs": (
+            'PYTHON_RETICULUM_FEATURE_REF: &str = "{revision}"',
+        ),
+    }
+
+
 def verify(root: Path = ROOT, manifest_path: Path = MANIFEST) -> list[str]:
     try:
         version, revision = canonical_pin(manifest_path)
         target_version, target_revision = parity_target_pin(manifest_path)
+        feature_version, feature_revision = feature_update_pin(manifest_path)
     except (KeyError, OSError, ValueError, tomllib.TOMLDecodeError) as error:
         return [f"cannot read canonical pin: {error}"]
 
@@ -141,6 +169,8 @@ def verify(root: Path = ROOT, manifest_path: Path = MANIFEST) -> list[str]:
         errors.append(f"parity target revision is not a full Git commit: {target_revision}")
     if target_revision == revision:
         errors.append("parity target must remain distinct from the active release baseline")
+    if not re.fullmatch(r"[0-9a-f]{40}", feature_revision):
+        errors.append(f"feature update revision is not a full Git commit: {feature_revision}")
 
     for relative, needles in active_mirrors().items():
         path = root / relative
@@ -164,26 +194,40 @@ def verify(root: Path = ROOT, manifest_path: Path = MANIFEST) -> list[str]:
             needle = template.format(version=target_version, revision=target_revision)
             if needle not in content:
                 errors.append(f"{relative}: missing parity-target mirror {needle!r}")
+    for relative, needles in feature_update_mirrors().items():
+        path = root / relative
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as error:
+            errors.append(f"{relative}: cannot read feature-update mirror: {error}")
+            continue
+        for template in needles:
+            needle = template.format(version=feature_version, revision=feature_revision)
+            if needle not in content:
+                errors.append(f"{relative}: missing feature-update mirror {needle!r}")
     return errors
 
 
 def self_test() -> None:
     assert "{version}" in active_mirrors()["crates/libs/lxmf-reference/src/lib.rs"][0]
     assert "{revision}" in parity_target_mirrors()[".github/workflows/verify.yml"][0]
+    assert "{revision}" in feature_update_mirrors()[".github/workflows/verify.yml"][0]
     assert "{revision}" in parity_target_mirrors()["docs/status/rns-1.5.4-delta.md"][0]
     assert ROOT.name == "LXMF-rs-rns-1.5-alignment" or (ROOT / "Cargo.toml").is_file()
 
     version, revision = canonical_pin()
     target_version, target_revision = parity_target_pin()
+    feature_version, feature_revision = feature_update_pin()
     active = active_mirrors()
     target = parity_target_mirrors()
+    feature = feature_update_mirrors()
     with tempfile.TemporaryDirectory(prefix="python-reference-pin-self-test-") as temp_dir:
         fixture_root = Path(temp_dir)
         fixture_manifest = fixture_root / "tools/interop/independent-implementations.toml"
         fixture_manifest.parent.mkdir(parents=True)
         fixture_manifest.write_bytes(MANIFEST.read_bytes())
 
-        for relative in active.keys() | target.keys():
+        for relative in active.keys() | target.keys() | feature.keys():
             lines = [
                 template.format(version=version, revision=revision)
                 for template in active.get(relative, ())
@@ -191,6 +235,10 @@ def self_test() -> None:
             lines.extend(
                 template.format(version=target_version, revision=target_revision)
                 for template in target.get(relative, ())
+            )
+            lines.extend(
+                template.format(version=feature_version, revision=feature_revision)
+                for template in feature.get(relative, ())
             )
             path = fixture_root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,6 +260,17 @@ def self_test() -> None:
         target_errors = verify(fixture_root, fixture_manifest)
         assert any(target_marker in error for error in target_errors), (
             "corrupt parity-target workflow pin must fail verification"
+        )
+
+        target_mirror.write_text(target_content, encoding="utf-8")
+        feature_marker = f"PYTHON_RETICULUM_FEATURE_REF: {feature_revision}"
+        target_mirror.write_text(
+            target_content.replace(feature_marker, f"PYTHON_RETICULUM_FEATURE_REF: {'0' * 40}", 1),
+            encoding="utf-8",
+        )
+        feature_errors = verify(fixture_root, fixture_manifest)
+        assert any(feature_marker in error for error in feature_errors), (
+            "corrupt feature-update workflow pin must fail verification"
         )
 
         target_mirror.write_text(target_content, encoding="utf-8")
@@ -245,10 +304,12 @@ def main() -> int:
         return 1
     version, revision = canonical_pin()
     target_version, target_revision = parity_target_pin()
+    feature_version, feature_revision = feature_update_pin()
     print(
         "python-reference-pins: ok "
         f"baseline RNS {version} {revision}; "
-        f"parity target RNS {target_version} {target_revision}"
+        f"parity target RNS {target_version} {target_revision}; "
+        f"feature target RNS {feature_version} {feature_revision}"
     )
     return 0
 

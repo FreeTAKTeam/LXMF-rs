@@ -337,7 +337,7 @@ impl ReticulumGitNode {
             return self.serve_artifact(map, remote_identity);
         }
         if path == FILE_DOWNLOAD {
-            return self.serve_download(map, remote_identity);
+            return self.serve_download(map, remote_identity, link_id);
         }
         if path == FILE_WORKDOC {
             return self.serve_workdoc(map, remote_identity);

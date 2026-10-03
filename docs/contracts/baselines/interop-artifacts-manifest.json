@@ -62,6 +62,61 @@
       "sha256": "68948353601bf5f9c4736ff0a5081255af6208a87750a304cfaa4fb757e56640"
     },
     {
+      "path": "docs/contracts/meshchat/README.md",
+      "bytes": 3592,
+      "sha256": "effa647b924015db6bc6e816b3c3c54a78b917616f4a5116369041b81071da20"
+    },
+    {
+      "path": "docs/contracts/meshchat/SHA256SUMS",
+      "bytes": 878,
+      "sha256": "9303a3a6720bbc6784109ab724c49f66a8352891a189c404de6f3517c5669465"
+    },
+    {
+      "path": "docs/contracts/meshchat/audit-notes.md",
+      "bytes": 13445,
+      "sha256": "253a96e1059a79da9a498b3db661bc8d565e33ef541ff5af3a9636c920236fd5"
+    },
+    {
+      "path": "docs/contracts/meshchat/contract-fixtures.json",
+      "bytes": 16951,
+      "sha256": "e6c8c1cbb3dadf4726b1ff1854861524cdb16407bd3670293d89c873a0faa2dd"
+    },
+    {
+      "path": "docs/contracts/meshchat/meshchat-openapi.json",
+      "bytes": 202559,
+      "sha256": "0c5b3aa9929bee1bba165c0ab9e2976abd29781cd5ae6260ac08bd5270dfa93c"
+    },
+    {
+      "path": "docs/contracts/meshchat/meshchat-openapi.yaml",
+      "bytes": 150469,
+      "sha256": "405e333fe766c1ea26748506e484b1d924cc60aa79f145b6e717d84eb29d22d1"
+    },
+    {
+      "path": "docs/contracts/meshchat/meshchat-websocket.protocol.json",
+      "bytes": 22724,
+      "sha256": "c7a4835997f31beb9244f78e3e0e70c3426103c0b5f9c7034ccfb792c81e8f04"
+    },
+    {
+      "path": "docs/contracts/meshchat/meshchat-websocket.schema.json",
+      "bytes": 91677,
+      "sha256": "5df02bccda98c241c2724819dcb303583a4f422cb9d956a9d0417c03517f8cbb"
+    },
+    {
+      "path": "docs/contracts/meshchat/route-inventory.json",
+      "bytes": 21617,
+      "sha256": "23ce3860a152c3cb78e9e5f7b085e6a4e4fe4f816657a91684037bd72aa2d522"
+    },
+    {
+      "path": "docs/contracts/meshchat/validate_specs.py",
+      "bytes": 15358,
+      "sha256": "4f7fd43117706d9dc0bc059d646d39671a07c95150760ca5fac2a4f8357f3429"
+    },
+    {
+      "path": "docs/contracts/meshchat/validation-report.json",
+      "bytes": 50003,
+      "sha256": "75f996b3c5269835d4d42d05bdbdf88ae778519efc1c539a9a7d75bbc22b404d"
+    },
+    {
       "path": "docs/contracts/metrics-cardinality-contract.md",
       "bytes": 1098,
       "sha256": "60f0c6cf4c971b500ef30ffb6b82579b823df3d8cce27085f4e60f223dd011d5"
@@ -173,8 +228,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-feature-matrix.md",
-      "bytes": 10564,
-      "sha256": "81563f8d770b4295d0174b13238b36fe793ec8346c2738b0b0b8aac2f1abc989"
+      "bytes": 11359,
+      "sha256": "2a2f89cfebe2624764d696744a4b405c08374187e22d42982cae35c61493e39c"
     },
     {
       "path": "docs/contracts/sdk-v2-identity.md",

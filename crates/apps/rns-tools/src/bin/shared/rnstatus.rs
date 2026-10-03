@@ -9,6 +9,8 @@ use clap::Parser;
 use rns_rpc::e2e_harness::{build_http_post, build_rpc_frame, parse_http_response_body};
 use serde_json::{json, Value};
 
+include!("rnstatus_discovery.rs");
+
 const DEFAULT_RPC_ADDR: &str = "127.0.0.1:4243";
 
 #[derive(Debug, Parser)]
@@ -23,6 +25,15 @@ struct Cli {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(short = 'd', long, conflicts_with = "weave_display")]
+    discovered: bool,
+
+    #[arg(long, requires = "discovered", help = "Include stale discovery entries")]
+    show_stale: bool,
+
+    #[arg(long, requires = "discovered", help = "Include discovery entries without implementation/version information")]
+    show_unknown: bool,
 
     #[arg(short = 's', long, value_name = "FIELD", help = "Sort interfaces by gravity (or g)")]
     sort: Option<String>,
@@ -46,6 +57,12 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
+    if cli.discovered {
+        let response = rpc_call(cli, 1, "discovered_interfaces")?;
+        let rows = ensure_rpc_ok(response, "discovered_interfaces")?
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing discovery rows"))?;
+        return write_discovered_status(output, &rows, cli.json, cli.show_stale, cli.show_unknown);
+    }
     let response = rpc_call(cli, 1, "daemon_status_ex")?;
     let mut status = ensure_rpc_ok(response, "daemon_status_ex")?
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing daemon status"))?;
