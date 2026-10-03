@@ -53,11 +53,12 @@ still acknowledges queue admission before startup readiness and must not be
 presented as the new feature. The built-in rngit
 Markdown converter covers common syntax but not Python's full table and
 syntax-highlighting behavior. The coordinated v0.13.0 version bump is prepared;
-the full local release check passed on the code-identical parent of PR head
-`ce8fc8da`, and normal CI, independent interoperability, and Verify passed on
-that head. The newer named-management candidate passed an uninterrupted local
-`cargo xtask release-check`, including 3,019 nextest tests, but has not yet
-passed exact-head hosted CI; publication remains pending.
+the earlier candidate passed normal CI, independent interoperability, and
+Verify. The newer named-management candidate passed an uninterrupted local
+`cargo xtask release-check`, including 3,019 nextest tests. The final PR head
+must pass those three hosted checks before merge, and the integrated commit
+must pass its normal checks before publication. Follow the live status on
+[PR #651](https://github.com/FreeTAKTeam/LXMF-rs/pull/651).
 
 The official [Reticulum changelog](https://github.com/markqvist/Reticulum/blob/1.5.5/Changelog.md)
 highlights live interface management, rngit converted downloads/counts, corrected
