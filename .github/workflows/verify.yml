@@ -311,6 +311,7 @@ jobs:
           cat >> .git/info/exclude <<'EOF'
           /LXMF/
           /Reticulum/
+          /Reticulum-feature/
           /Reticulum-parity/
           /reticulum-conformance/
           EOF
