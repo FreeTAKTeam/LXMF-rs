@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-26
+Last reassessed: 2026-10-03
 MeshChat POC evidence added: 2026-09-27
 
 This file is the repository-level source of truth for parity posture, release
@@ -23,13 +23,17 @@ The next feature target is the exact Python Reticulum 1.5.5 tag at
 `7f2b3b9b524c9386316379af1313b43a5e4f7a5d`, separate from the tested
 1.5.2 release baseline and #605's historical 1.5.4-dev pin. The candidate has
 focused Rust regressions for discovery metadata, safe Backbone auto-connect
-planning, IFAC sanitation, `rnstatus` discovery display, and rngit Markdown
+planning, IFAC sanitation, `rnstatus` discovery display and named management,
+and rngit Markdown
 downloads/work-scope counts. A Python 1.5.5 Link requested a converted `.mu`
 download from the Rust rngit service and matched the tagged converter for the
 tested Markdown fixture. The discovery planner is a library path; the daemon
-does not yet activate auto-connect from it. Named interface attach/detach/reload,
-broader Markdown rendering, final exact-head CI, and release publication remain
-open. See [the delta ledger](rns-1.5.5-delta.md) for the exact boundary.
+does not yet activate auto-connect from it. Named attach/detach/reload covers
+only existing TCP client/server, UDP, and Pipe hot-apply paths; the separate
+`set_interfaces` RPC still acknowledges queue admission. Broader Markdown
+rendering, final exact-head CI, and publication remain open. An uninterrupted
+local `cargo xtask release-check` passed on the named-management candidate.
+See [the delta ledger](rns-1.5.5-delta.md) for the exact boundary.
 
 ## Core-library portability (#646, 2026-09-28)
 

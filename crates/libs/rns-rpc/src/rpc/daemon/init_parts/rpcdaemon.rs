@@ -2,6 +2,7 @@ include!("rpcdaemon_sections/default_ticket_expiry_secs.rs");
 include!("rpcdaemon_sections/sdk_custom_operations.rs");
 include!("rpcdaemon_sections/ticket_helpers.rs");
 include!("rpcdaemon_sections/issue_ticket.rs");
+include!("rpcdaemon_sections/interface_records.rs");
 include!("rpcdaemon_sections/configure_propagation_node.rs");
 include!("rpcdaemon_sections/propagation_destination_cost.rs");
 include!("rpcdaemon_sections/daemon_status_snapshot.rs");

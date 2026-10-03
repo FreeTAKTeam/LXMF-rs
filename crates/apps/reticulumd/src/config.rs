@@ -76,4 +76,16 @@ peering_cost = 21
         assert_eq!(configured.inbound_queue_limits().path_request, 12);
         assert_eq!(configured.inbound_queue_limits().ingress_limited, 13);
     }
+
+    #[test]
+    fn rns_1_5_5_interface_management_defaults_on_and_can_be_disabled() {
+        let defaults =
+            ReticulumRuntimePolicy::from_toml("[reticulum]").expect("parse default policy");
+        assert!(defaults.interface_management_enabled);
+
+        let disabled =
+            ReticulumRuntimePolicy::from_toml("[reticulum]\nenable_interface_management = false")
+                .expect("parse disabled policy");
+        assert!(!disabled.interface_management_enabled);
+    }
 }

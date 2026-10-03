@@ -23,6 +23,7 @@ mod tests {
     include!("tests/event_sink_bridges.rs");
     include!("tests/interface_mutation_policy.rs");
     include!("tests/interface_mutation_policy_reload.rs");
+    include!("tests/interface_named_management.rs");
     include!("tests/path_rpc.rs");
     include!("tests/blackhole_rpc.rs");
     include!("tests/router_management.rs");

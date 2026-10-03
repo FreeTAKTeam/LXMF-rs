@@ -12,6 +12,7 @@ impl RpcDaemon {
             | "list_interfaces"
             | "set_interfaces"
             | "reload_config" => self.handle_rpc_legacy_message_catalog(request),
+            "manage_interface" => self.handle_rpc_named_interface_management(request),
             "peer_sync" => self.handle_rpc_legacy_peer_sync(request),
             "peer_unpeer"
             | "sdk_send_batch_v2"

@@ -17,6 +17,12 @@ unchanged. This is a scoped feature update, not full Reticulum parity.
   and shows permission-filtered Active, Completed, Proposed, and All workdoc
   counts. A Python Reticulum 1.5.5 Link received one converted download and
   matching filename/bytes for the tested fixture.
+- `rnstatus-rs --attach`, `--detach`, and `--reload` manage named TCP client,
+  TCP server, UDP, and Pipe interfaces through completion-acknowledged RPC.
+  `[reticulum].enable_interface_management` defaults to enabled and can disable
+  these actions. Failed startup or reload returns an error; reload attempts to
+  restore the previous working interface. Listener teardown includes accepted
+  child workers.
 - Workspace package and path-dependency versions advance together to 0.13.0.
 
 ## Compatibility and remaining work
@@ -28,10 +34,10 @@ Persisted discovery rows without those metadata fields still deserialize.
 
 The discovery planner is not yet a production daemon auto-connect worker.
 The built-in Markdown converter covers common syntax, not all Python tables or
-syntax highlighting. Named `rnstatus` attach/detach/reload and its management
-policy are not yet implemented; the existing `set_interfaces` RPC only queues
-changes and must not be treated as equivalent. These omissions must be
-reconciled with the release scope before publication. See the
+syntax highlighting. Named management is limited to the four hot-apply kinds;
+the existing `set_interfaces` RPC only queues changes and must not be treated
+as completion-acknowledged management. The full local release check passed;
+fresh exact-head hosted CI is still required before publication. See the
 [1.5.5 delta ledger](status/rns-1.5.5-delta.md) for affected-path evidence and
 the [roadmap](status/current-roadmap.md) for remaining parity work.
 

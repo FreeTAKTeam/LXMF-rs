@@ -13,6 +13,7 @@ impl RpcDaemon {
             | "list_peers"
             | "list_interfaces"
             | "set_interfaces"
+            | "manage_interface"
             | "reload_config"
             | "peer_sync"
             | "peer_unpeer"

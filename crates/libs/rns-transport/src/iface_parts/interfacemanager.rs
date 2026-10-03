@@ -3,7 +3,13 @@ impl InterfaceManager {
         let (rx_send, rx_recv) = InterfaceChannel::make_rx_channel(rx_cap);
         let rx_recv = Arc::new(tokio::sync::Mutex::new(rx_recv));
 
-        Self { counter: 0, rx_recv, rx_send, ifaces: Vec::new() }
+        Self {
+            counter: 0,
+            rx_recv,
+            rx_send,
+            ifaces: Vec::new(),
+            worker_tasks: std::collections::HashMap::new(),
+        }
     }
 
     pub fn new_channel(&mut self, tx_cap: usize) -> InterfaceChannel {
@@ -179,7 +185,7 @@ impl InterfaceManager {
         let context = self.new_context_with_role_and_mode(inner, role, mode);
         let address = *context.channel.address();
 
-        task::spawn(worker(context));
+        self.worker_tasks.insert(address, task::spawn(worker(context)));
 
         address
     }
@@ -200,7 +206,7 @@ impl InterfaceManager {
         let address = *context.channel.address();
         let handle = context.inner.clone();
 
-        task::spawn(worker(context));
+        self.worker_tasks.insert(address, task::spawn(worker(context)));
 
         (address, handle)
     }

@@ -120,6 +120,17 @@ pub trait InterfaceMutationBridge: Send + Sync {
         &self,
         interfaces: Vec<InterfaceRecord>,
     ) -> Result<Vec<InterfaceRecord>, std::io::Error>;
+
+    fn manage_named_interface(
+        &self,
+        _operation: &str,
+        _name: &str,
+    ) -> Result<JsonValue, std::io::Error> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "named interface management is not configured",
+        ))
+    }
 }
 
 /// Typed marker for IFAC configuration failures from an interface mutation.

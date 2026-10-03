@@ -32,6 +32,8 @@ struct ReticulumConfigRaw {
     #[serde(default)]
     enable_remote_management: Option<bool>,
     #[serde(default)]
+    enable_interface_management: Option<bool>,
+    #[serde(default)]
     respond_to_probes: Option<bool>,
     #[serde(default)]
     use_implicit_proof: Option<bool>,

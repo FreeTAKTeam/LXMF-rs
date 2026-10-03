@@ -45,7 +45,7 @@ pub(super) fn configure_startup_rpc_token_auth(args: &Args, daemon: &RpcDaemon) 
         .unwrap_or_else(|err| panic!("invalid startup token auth configuration: {}", err.message));
 }
 
-fn interface_record_from_config(iface: &InterfaceConfig) -> InterfaceRecord {
+pub(super) fn interface_record_from_config(iface: &InterfaceConfig) -> InterfaceRecord {
     InterfaceRecord {
         kind: iface.kind.clone(),
         enabled: iface.enabled(),

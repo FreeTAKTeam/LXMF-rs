@@ -9,7 +9,7 @@ separate until their reference policy is deliberately changed.
 
 | Changed upstream behavior | Existing Rust owner | v0.13.0 work |
 | --- | --- | --- |
-| `rnstatus` named attach/detach/reload and `enable_interface_management` switch | `rns-tools` `rnstatus`; `reticulumd` configuration and hot-apply bridge; `rns-rpc` | Add bounded named operations for existing hot-apply kinds with startup acknowledgment, error/rollback reporting, and CLI/process regressions. Other interface kinds remain explicit follow-ups. |
+| `rnstatus` named attach/detach/reload and `enable_interface_management` switch | `rns-tools` `rnstatus`; `reticulumd` configuration and hot-apply bridge; `rns-rpc` | Candidate implements named operations for `tcp_client`, `tcp_server`, `udp`, and `pipe`, with local-start readiness, child-worker teardown, failure/rollback reporting, and focused CLI/RPC/loopback regressions. Other interface kinds remain explicit follow-ups. |
 | Discovery auto-connect accepts only Backbone announcements from verified `RNS` 1.5.2+ by default, with explicit unverified override; `rnstatus` stale/unknown display is opt-in | `rns-transport` discovery; `reticulumd` policy; `rns-tools` `rnstatus` | Add implementation/version retention, safe qualification, override, display flags, and focused tests. |
 | Empty/ambiguous `None` IFAC values are not published or adopted; I2P discovery config adds `.b32.i2p` | `rns-transport` discovery; `reticulumd` publish/config examples | Add IFAC sanitation and legacy-record regression. Rust I2P example already uses `.b32.i2p`; retain its test. |
 | rngit permits Markdown download converted to `.mu`, and counts readable work documents in scope links | `rns-tools` `rngit_parts` page media and work pages | Add bounded conversion and permission-filtered counts/links with pinned-Python Link evidence. |
@@ -21,7 +21,7 @@ separate until their reference policy is deliberately changed.
 
 The focused Rust `rns_1_5_5` tests pass for discovery metadata, legacy IFAC
 sanitation, Backbone auto-connect qualification, converted rngit downloads, and
-readable workdoc counts. The full rngit binary suite passed (95 passed, 43
+readable workdoc counts. The full rngit binary suite passed (96 passed, 43
 pre-existing pinned-reference tests ignored). The ignored, exact-tag Python
 1.5.5 Link test was run locally against commit
 `7f2b3b9b524c9386316379af1313b43a5e4f7a5d`: it received `README.mu` from
@@ -45,12 +45,19 @@ that remains a broader API gap. Live changes to a parent's announce pacing do
 not currently propagate to existing virtual children. Neither gap is hidden by
 the 1.5.5 feature pin.
 
-Named attach/detach/reload and its configurable management policy have not
-landed. Existing `set_interfaces` acknowledges queue admission before startup
-readiness and must not be presented as the new feature. The built-in rngit
+Named attach/detach/reload now has focused local tests for real TCP listener
+operations, failed bind and pipe spawn, reload rollback, disabled policy,
+duplicate/missing/unsupported names, RPC completion, and CLI error exits. The
+new `manage_interface` RPC waits for completion; existing `set_interfaces`
+still acknowledges queue admission before startup readiness and must not be
+presented as the new feature. The built-in rngit
 Markdown converter covers common syntax but not Python's full table and
 syntax-highlighting behavior. The coordinated v0.13.0 version bump is prepared;
-final local/hosted release checks and publication are pending.
+the full local release check passed on the code-identical parent of PR head
+`ce8fc8da`, and normal CI, independent interoperability, and Verify passed on
+that head. The newer named-management candidate passed an uninterrupted local
+`cargo xtask release-check`, including 3,019 nextest tests, but has not yet
+passed exact-head hosted CI; publication remains pending.
 
 The official [Reticulum changelog](https://github.com/markqvist/Reticulum/blob/1.5.5/Changelog.md)
 highlights live interface management, rngit converted downloads/counts, corrected

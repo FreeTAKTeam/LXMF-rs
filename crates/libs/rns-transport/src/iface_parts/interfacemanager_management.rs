@@ -5,17 +5,50 @@ impl InterfaceManager {
 
     pub fn cleanup(&mut self) {
         self.ifaces.retain(|iface| !iface.stop.is_cancelled());
+        let active = self.interface_hashes();
+        self.worker_tasks.retain(|address, task| active.contains(address) && !task.is_finished());
+    }
+
+    fn interface_tree_hashes(&self, address: AddressHash) -> std::collections::HashSet<AddressHash> {
+        let mut tree = std::collections::HashSet::from([address]);
+        loop {
+            let previous_len = tree.len();
+            for iface in &self.ifaces {
+                if iface.parent.is_some_and(|parent| tree.contains(&parent)) {
+                    tree.insert(iface.address);
+                }
+            }
+            if tree.len() == previous_len {
+                return tree;
+            }
+        }
+    }
+
+    /// Take worker handles before cancellation so a caller can confirm the
+    /// listener and any accepted children have released their resources.
+    pub fn take_worker_tree(
+        &mut self,
+        address: AddressHash,
+    ) -> Vec<tokio::task::JoinHandle<()>> {
+        self.interface_tree_hashes(address)
+            .into_iter()
+            .filter_map(|address| self.worker_tasks.remove(&address))
+            .collect()
     }
 
     pub fn stop_interface(&mut self, address: AddressHash) -> bool {
+        let tree = self.interface_tree_hashes(address);
         let mut stopped = false;
         for iface in &self.ifaces {
-            if iface.address == address {
+            if tree.contains(&iface.address) {
                 iface.stop.cancel();
                 stopped = true;
             }
         }
         self.cleanup();
+        for address in tree {
+            self.worker_tasks.remove(&address);
+        }
         stopped
     }
 

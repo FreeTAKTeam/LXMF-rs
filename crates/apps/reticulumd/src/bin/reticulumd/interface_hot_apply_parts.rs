@@ -1,3 +1,5 @@
+#[path = "interface_hot_apply_parts/ifac_validation.rs"]
+pub(super) mod ifac_validation;
 #[path = "interface_hot_apply_parts/pipe_runtime_refresh.rs"]
 pub(super) mod pipe_runtime_refresh;
 #[path = "interface_hot_apply_parts/record_hot_apply.rs"]

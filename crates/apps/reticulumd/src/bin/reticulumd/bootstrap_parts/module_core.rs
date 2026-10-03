@@ -405,6 +405,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 transport.clone(),
                 seeded_hot_apply_interfaces,
                 Arc::downgrade(&daemon),
+            )
+            .with_management_config(
+                args.config.clone(),
+                reticulum_runtime_policy.interface_management_enabled,
             ),
         ));
     }

@@ -54,7 +54,7 @@ impl InterfaceManager {
             self.stop_interface(address);
             return None;
         }
-        task::spawn(worker(context));
+        self.worker_tasks.insert(address, task::spawn(worker(context)));
         Some(address)
     }
 }

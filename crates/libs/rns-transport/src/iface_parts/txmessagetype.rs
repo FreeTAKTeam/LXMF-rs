@@ -334,4 +334,5 @@ pub struct InterfaceManager {
     rx_recv: Arc<tokio::sync::Mutex<InterfaceRxReceiver>>,
     rx_send: InterfaceRxSender,
     ifaces: Vec<LocalInterface>,
+    worker_tasks: std::collections::HashMap<AddressHash, tokio::task::JoinHandle<()>>,
 }

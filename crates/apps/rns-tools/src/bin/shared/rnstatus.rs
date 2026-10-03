@@ -10,6 +10,7 @@ use rns_rpc::e2e_harness::{build_http_post, build_rpc_frame, parse_http_response
 use serde_json::{json, Value};
 
 include!("rnstatus_discovery.rs");
+include!("rnstatus_management.rs");
 
 const DEFAULT_RPC_ADDR: &str = "127.0.0.1:4243";
 
@@ -26,7 +27,7 @@ struct Cli {
     #[arg(long)]
     json: bool,
 
-    #[arg(short = 'd', long, conflicts_with = "weave_display")]
+    #[arg(short = 'd', long, conflicts_with_all = ["weave_display", "interface_management"])]
     discovered: bool,
 
     #[arg(long, requires = "discovered", help = "Include stale discovery entries")]
@@ -35,14 +36,23 @@ struct Cli {
     #[arg(long, requires = "discovered", help = "Include discovery entries without implementation/version information")]
     show_unknown: bool,
 
-    #[arg(short = 's', long, value_name = "FIELD", help = "Sort interfaces by gravity (or g)")]
+    #[arg(short = 's', long, value_name = "FIELD", conflicts_with = "interface_management", help = "Sort interfaces by gravity (or g)")]
     sort: Option<String>,
 
-    #[arg(short = 'r', long, help = "Reverse interface sorting")]
+    #[arg(short = 'r', long, conflicts_with = "interface_management", help = "Reverse interface sorting")]
     reverse: bool,
 
-    #[arg(long, value_name = "INTERFACE")]
+    #[arg(long, value_name = "INTERFACE", conflicts_with = "interface_management")]
     weave_display: Option<String>,
+
+    #[arg(long, group = "interface_management", value_name = "INTERFACE")]
+    attach: Option<String>,
+
+    #[arg(long, group = "interface_management", value_name = "INTERFACE")]
+    detach: Option<String>,
+
+    #[arg(long, group = "interface_management", value_name = "INTERFACE")]
+    reload: Option<String>,
 }
 
 fn main() -> std::process::ExitCode {
@@ -57,6 +67,9 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
+    if let Some((operation, name)) = management_action(cli) {
+        return run_management(cli, output, operation, name);
+    }
     if cli.discovered {
         let response = rpc_call(cli, 1, "discovered_interfaces")?;
         let rows = ensure_rpc_ok(response, "discovered_interfaces")?
@@ -190,7 +203,16 @@ fn append_optional_str_line(
 }
 
 fn rpc_call(cli: &Cli, id: u64, method: &str) -> io::Result<rns_rpc::RpcResponse> {
-    let frame = build_rpc_frame(id, method, None)?;
+    rpc_call_with_params(cli, id, method, None)
+}
+
+fn rpc_call_with_params(
+    cli: &Cli,
+    id: u64,
+    method: &str,
+    params: Option<Value>,
+) -> io::Result<rns_rpc::RpcResponse> {
+    let frame = build_rpc_frame(id, method, params)?;
     #[cfg(unix)]
     if let Some(path) = cli.rpc_unix.as_ref() {
         let request = build_http_post("/rpc", "localhost", &frame);

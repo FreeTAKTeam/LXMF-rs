@@ -34,7 +34,7 @@ async fn run_plain_rpc_loop(
                 let daemon = daemon.clone();
                 tokio::spawn(async move {
                     let _connection_permit = connection_permit;
-                    handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
+                    handle_connection(stream, peer_addr, daemon, None).await;
                 });
             }
         }
@@ -86,7 +86,7 @@ async fn run_tls_rpc_loop(
                             handle_connection(
                                 tls_stream,
                                 peer_addr,
-                                daemon.as_ref(),
+                                daemon,
                                 Some(transport_auth),
                             )
                             .await;
