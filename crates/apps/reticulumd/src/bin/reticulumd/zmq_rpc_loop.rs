@@ -62,14 +62,18 @@ pub(super) async fn run_zmq_rpc_loop_until(
                     let Ok(_permit) = rpc_permits.acquire_owned().await else {
                         return;
                     };
-                    if let Ok(response) = handle_zmq_command_message(
-                        daemon.as_ref(),
-                        message,
-                        command_endpoint_requires_auth,
-                    ) {
+                    // Management requests can wait for the async interface worker.
+                    let response = tokio::task::spawn_blocking(move || {
+                        handle_zmq_command_message(
+                            daemon.as_ref(), message, command_endpoint_requires_auth,
+                        )
+                    }).await;
+                    if let Ok(Ok(response)) = response {
                         if response_tx.send(response).await.is_err() {
                             log::warn!("[daemon] zmq rpc response writer stopped");
                         }
+                    } else if let Err(error) = response {
+                        log::error!("[daemon] zmq rpc dispatch task failed: {error}");
                     }
                 });
             }

@@ -50,7 +50,9 @@ operations, failed bind and pipe spawn, reload rollback, disabled policy,
 duplicate/missing/unsupported names, RPC completion, and CLI error exits. The
 new `manage_interface` RPC waits for completion; existing `set_interfaces`
 still acknowledges queue admission before startup readiness and must not be
-presented as the new feature. The built-in rngit
+presented as the new feature. HTTP and both ZeroMQ ingress paths dispatch the
+synchronous completion wait off Tokio's reactor; single-thread ZeroMQ
+regressions cover the two paths. The built-in rngit
 Markdown converter covers common syntax but not Python's full table and
 syntax-highlighting behavior. The coordinated v0.13.0 version bump is prepared;
 the earlier candidate passed normal CI, independent interoperability, and
