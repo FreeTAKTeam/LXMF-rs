@@ -56,7 +56,8 @@ fn run_embedded_core_check() -> Result<()> {
         "| `rns-embedded-ffi` |",
         "| `rns-embedded-runtime` |",
         "`alloc-ready`",
-        "`wire_fields` JSON bridge only (`std`-gated module)",
+        "real `no_std` + `alloc` support deferred in #646",
+        "not evidence of a std-free or bare-metal build",
     ] {
         if !matrix.contains(marker) {
             bail!("embedded feature matrix is missing required marker '{marker}'");

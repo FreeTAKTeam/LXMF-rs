@@ -49,8 +49,8 @@ Named attach/detach/reload and its configurable management policy have not
 landed. Existing `set_interfaces` acknowledges queue admission before startup
 readiness and must not be presented as the new feature. The built-in rngit
 Markdown converter covers common syntax but not Python's full table and
-syntax-highlighting behavior. Full local/hosted release checks, version bump,
-and publication are pending.
+syntax-highlighting behavior. The coordinated v0.13.0 version bump is prepared;
+final local/hosted release checks and publication are pending.
 
 The official [Reticulum changelog](https://github.com/markqvist/Reticulum/blob/1.5.5/Changelog.md)
 highlights live interface management, rngit converted downloads/counts, corrected
