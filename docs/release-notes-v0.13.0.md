@@ -55,9 +55,10 @@ peels to integrated commit `fbc75b86e15550722923b366398f0a4116182894`.
 That commit passed normal [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456558)
 and [Verify](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456451);
 tag-level [independent interoperability](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37126480810)
-also passed and published its bounded evidence. Fresh downloads of all 31
-public assets matched GitHub's SHA-256 metadata; the 18 distribution and SBOM
-files passed `SHA256SUMS.txt`. The Linux x86_64 archive and OCI image passed
+also passed and published its bounded evidence. Fresh downloads of the
+initial release and interoperability assets matched GitHub's SHA-256
+metadata; the 18 distribution and SBOM files passed `SHA256SUMS.txt`.
+The Linux x86_64 archive and OCI image passed
 tag/commit-bound provenance checks. The OCI index contains linux/amd64 and
 linux/arm64 images. Crates.io
 [publication](https://github.com/FreeTAKTeam/LXMF-rs/actions/workflows/crates-io-publish.yml)
