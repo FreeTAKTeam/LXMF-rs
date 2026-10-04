@@ -25,7 +25,9 @@ pub(super) fn spawn_python_listener_capturing_stdout(
             save_root: root,
             allowed_identities,
             no_compress,
-            announce_interval_seconds: 0,
+            // TCP readiness does not guarantee the startup announce reaches the fetcher.
+            // Keep discovery available if its first path-request exchange is missed.
+            announce_interval_seconds: 1,
             verbose: false,
             capture_stdout: true,
         },
