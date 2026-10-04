@@ -1,5 +1,5 @@
 use super::*;
-use rns_rpc::rpc::zmq::ZmqRpcEnvelopeKind;
+use rns_rpc::rpc::zmq::{self, ZmqRpcEnvelope, ZmqRpcEnvelopeKind};
 use rns_rpc::rpc::{RpcRequest, RpcResponse};
 use std::collections::BTreeMap;
 use std::sync::{mpsc, Arc, Mutex};
@@ -7,6 +7,7 @@ use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage}
 
 mod batch;
 mod cancel;
+mod connection_deadline;
 mod delivery_stamp_policy;
 mod delivery_trace;
 mod destination;

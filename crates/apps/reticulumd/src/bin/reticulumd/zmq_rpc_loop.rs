@@ -1,18 +1,20 @@
 #![allow(dead_code)]
 
+mod response_writer;
 mod router;
 mod support;
+use response_writer::run_zmq_response_writer;
 
 pub(super) use router::run_zmq_router_loop_until;
 use support::*;
 
 use rns_rpc::rpc::zmq::{self, ZmqRpcEnvelope, ZmqRpcEnvelopeKind};
 use rns_rpc::{RpcDaemon, RpcError, RpcResponse};
-use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch, Semaphore};
-use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
+use tokio::task::JoinSet;
+use zeromq::{PullSocket, Socket, SocketRecv, ZmqMessage};
 
 const ZMQ_RPC_WORKER_CONCURRENCY: usize = 32;
 const ZMQ_RPC_RESPONSE_QUEUE_CAPACITY: usize = 1024;
@@ -35,30 +37,41 @@ pub(super) async fn run_zmq_rpc_loop_until(
     commands.bind(config.command_endpoint.as_str()).await.map_err(zmq_io_error)?;
     let (response_tx, response_rx) =
         mpsc::channel::<ZmqOutboundResponse>(ZMQ_RPC_RESPONSE_QUEUE_CAPACITY);
-    let response_writer = tokio::spawn(run_zmq_response_writer(response_rx));
+    let (writer_shutdown_tx, writer_shutdown_rx) = watch::channel(false);
+    let response_writer = tokio::spawn(run_zmq_response_writer(response_rx, writer_shutdown_rx));
     let rpc_permits = Arc::new(Semaphore::new(ZMQ_RPC_WORKER_CONCURRENCY));
+    let mut rpc_workers = JoinSet::new();
     log::info!("reticulumd listening on zmq {}", config.command_endpoint);
 
-    loop {
+    let loop_result = loop {
+        if *shutdown.borrow() {
+            break Ok(());
+        }
         tokio::select! {
+            biased;
             changed = shutdown.changed() => {
                 if changed.is_err() || *shutdown.borrow() {
-                    break;
+                    break Ok(());
                 }
             }
-            message = commands.recv() => {
+            completed = rpc_workers.join_next(), if !rpc_workers.is_empty() => {
+                if let Some(Err(error)) = completed {
+                    log::error!("[daemon] zmq rpc worker task failed: {error}");
+                }
+            }
+            message = commands.recv(), if rpc_workers.len() < ZMQ_RPC_WORKER_CONCURRENCY => {
                 let message = match message {
                     Ok(message) => message,
                     Err(err) if is_recoverable_zmq_transport_error(&err) => {
                         log::warn!("[daemon] zmq rpc receive dropped client connection: {}", err);
                         continue;
                     }
-                    Err(err) => return Err(zmq_io_error(err)),
+                    Err(err) => break Err(zmq_io_error(err)),
                 };
                 let daemon = Arc::clone(&daemon);
                 let response_tx = response_tx.clone();
                 let rpc_permits = Arc::clone(&rpc_permits);
-                tokio::spawn(async move {
+                rpc_workers.spawn(async move {
                     let Ok(_permit) = rpc_permits.acquire_owned().await else {
                         return;
                     };
@@ -78,48 +91,28 @@ pub(super) async fn run_zmq_rpc_loop_until(
                 });
             }
         }
-    }
+    };
+    rpc_permits.close();
     drop(response_tx);
+    if writer_shutdown_tx.send(true).is_err() {
+        log::warn!("[daemon] zmq rpc response writer stopped before shutdown");
+    }
+    // Dispatch jobs own synchronous mutations until they finish. Cancelling only
+    // response sockets must not detach an in-progress spawn_blocking mutation.
+    while let Some(completed) = rpc_workers.join_next().await {
+        if let Err(error) = completed {
+            log::error!("[daemon] zmq rpc shutdown worker failed: {error}");
+        }
+    }
     response_writer
         .await
         .map_err(|err| io::Error::other(format!("zmq response writer task failed: {err}")))?;
-    Ok(())
+    loop_result
 }
 
 struct ZmqOutboundResponse {
     endpoint: String,
     envelope: ZmqRpcEnvelope,
-}
-
-async fn send_zmq_response(
-    _responses: &mut HashMap<String, PushSocket>,
-    response: ZmqOutboundResponse,
-) -> io::Result<()> {
-    let connect_endpoint = zmq_response_connect_endpoint(response.endpoint.as_str());
-    let mut socket = PushSocket::new();
-    log::debug!(
-        "[daemon] zmq rpc response connect advertised_endpoint={} connect_endpoint={}",
-        response.endpoint,
-        connect_endpoint
-    );
-    socket.connect(connect_endpoint.as_ref()).await.map_err(|err| {
-        io::Error::other(format!(
-            "zmq response connect advertised_endpoint={} connect_endpoint={} failed: {err}",
-            response.endpoint, connect_endpoint
-        ))
-    })?;
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    let encoded = zmq::encode_envelope(&response.envelope)?;
-    socket.send(ZmqMessage::from(encoded)).await.map_err(zmq_io_error)
-}
-
-async fn run_zmq_response_writer(mut responses_rx: mpsc::Receiver<ZmqOutboundResponse>) {
-    let mut responses = HashMap::new();
-    while let Some(response) = responses_rx.recv().await {
-        if let Err(err) = send_zmq_response(&mut responses, response).await {
-            log::warn!("[daemon] zmq rpc response dropped client connection: {}", err);
-        }
-    }
 }
 
 fn handle_zmq_command_message(
@@ -493,3 +486,7 @@ mod tests {
         hex::encode(mac.finalize().into_bytes())
     }
 }
+
+#[cfg(test)]
+#[path = "zmq_rpc_loop_parts/response_writer_tests.rs"]
+mod response_writer_tests;
