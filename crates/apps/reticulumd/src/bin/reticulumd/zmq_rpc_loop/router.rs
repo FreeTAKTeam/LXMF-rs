@@ -267,6 +267,55 @@ mod tests {
         server.await.expect("command task join").expect("command shutdown");
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn command_shutdown_joins_active_blocking_management() {
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").expect("port");
+        let endpoint = format!("tcp://{}", reserved.local_addr().expect("address"));
+        drop(reserved);
+        let daemon = Arc::new(RpcDaemon::test_instance());
+        let (requests, mut mutations) = tokio::sync::mpsc::unbounded_channel();
+        daemon.set_interface_mutation_bridge(Arc::new(AsyncManagedBridge { requests }));
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let mut server = tokio::spawn(super::super::run_zmq_rpc_loop_until(
+            super::super::ZmqRpcLoopConfig {
+                command_endpoint: endpoint.clone(),
+                require_auth_for_remote: true,
+            },
+            daemon,
+            shutdown_rx,
+        ));
+        let mut commands = PushSocket::new();
+        commands.connect(&endpoint).await.expect("commands");
+        let payload = build_rpc_frame(
+            99,
+            "manage_interface",
+            Some(serde_json::json!({"operation": "attach", "name": "uplink"})),
+        )
+        .expect("management");
+        let envelope =
+            ZmqRpcEnvelope::request("shutdown-mutation", 99, "tcp://127.0.0.1:1", payload, None);
+        commands
+            .send(ZmqMessage::from(zmq::encode_envelope(&envelope).expect("encode")))
+            .await
+            .expect("request");
+        let reply = tokio::time::timeout(std::time::Duration::from_secs(1), mutations.recv())
+            .await
+            .expect("mutation starts")
+            .expect("mutation owner");
+        shutdown_tx.send(true).expect("shutdown");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut server).await.is_err(),
+            "loop must keep ownership of the active mutation"
+        );
+        reply.send(Ok(serde_json::json!({"complete": true}))).expect("release mutation");
+        tokio::time::timeout(std::time::Duration::from_secs(1), server)
+            .await
+            .expect("joined mutation shutdown")
+            .expect("server task")
+            .expect("clean shutdown");
+        assert!(mutations.try_recv().is_err());
+    }
+
     async fn snapshot(endpoint: &str, request_id: u64) -> Result<serde_json::Value, String> {
         let mut client = DealerSocket::new();
         client.connect(endpoint).await.map_err(|error| error.to_string())?;

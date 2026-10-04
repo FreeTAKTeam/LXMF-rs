@@ -14,8 +14,7 @@ use crate::types::{
     Ack, CancelResult, ConfigPatch, DeliverySnapshot, DeliveryState, MessageId, RuntimeSnapshot,
     SendRequest, ShutdownMode,
 };
-use rns_rpc::e2e_harness::{build_rpc_frame, parse_rpc_frame};
-use rns_rpc::rpc::zmq::{self, ZmqRpcAuthMetadata, ZmqRpcEnvelope};
+use rns_rpc::rpc::zmq::ZmqRpcAuthMetadata;
 use serde_json::{json, Value as JsonValue};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
@@ -148,37 +147,10 @@ impl ZmqPipelineBackendClient {
     }
 
     fn call_rpc(&self, method: &str, params: Option<JsonValue>) -> Result<JsonValue, SdkError> {
-        let request_id = self.next_request_id();
-        let payload = build_rpc_frame(request_id, method, params)
-            .map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
-        let auth = self.auth_metadata_for_request(request_id).ok().flatten();
         let runtime = self.runtime.as_ref().ok_or_else(|| {
             sdk_error(ErrorCategory::Internal, "sync call attempted on async-only zmq client")
         })?;
-        let response_endpoint = runtime.block_on(self.response_endpoint())?;
-        let envelope = ZmqRpcEnvelope::request(
-            self.session_id.clone(),
-            request_id,
-            response_endpoint,
-            payload,
-            auth,
-        );
-        let encoded = zmq::encode_envelope(&envelope)
-            .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-        if encoded.len() > self.config.max_envelope_bytes {
-            return Err(sdk_error(
-                ErrorCategory::Transport,
-                "zmq rpc envelope exceeded configured limit",
-            ));
-        }
-
-        let response = runtime.block_on(self.send_and_recv(encoded, request_id))?;
-        let rpc_response = parse_rpc_frame(&response.payload)
-            .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-        if let Some(error) = rpc_response.error {
-            return Err(map_rpc_error(error));
-        }
-        Ok(rpc_response.result.unwrap_or(JsonValue::Null))
+        runtime.block_on(self.call_rpc_async(method, params))
     }
 
     fn auth_metadata_for_request(

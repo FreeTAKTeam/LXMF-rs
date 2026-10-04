@@ -41,57 +41,31 @@ impl ZmqPipelineTransport {
 }
 
 impl ZmqPipelineBackendClient {
-    pub(super) async fn response_endpoint(&self) -> Result<String, SdkError> {
-        if self.config.is_single_endpoint() {
-            return Ok(self.config.response_endpoint.clone());
-        }
-        let mut transport = self.transport.lock().await;
-        if transport.is_none() {
-            *transport = Some(ZmqPipelineTransport::connect(&self.config).await?);
-        }
-        transport
-            .as_ref()
-            .map(|transport| transport.response_endpoint.clone())
-            .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))
-    }
-
     pub(super) async fn call_rpc_async(
         &self,
         method: &str,
         params: Option<JsonValue>,
     ) -> Result<JsonValue, SdkError> {
+        // The deadline includes contention, connection retries and the ZMTP handshake,
+        // not only the send/receive phase. Socket defaults can otherwise take 30 seconds.
+        let deadline = tokio::time::Instant::now() + self.config.request_timeout;
         let request_id = self.next_request_id();
         let payload = build_rpc_frame(request_id, method, params)
             .map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
-        let auth = self.auth_metadata_for_request(request_id).ok().flatten();
-        let response_endpoint = self.response_endpoint().await?;
+        let auth = self.auth_metadata_for_request(request_id).map_err(|err| {
+            sdk_error(ErrorCategory::Internal, format!("zmq request authentication clock: {err}"))
+        })?;
         let envelope = ZmqRpcEnvelope::request(
             self.session_id.clone(),
             request_id,
-            response_endpoint,
+            String::new(),
             payload,
             auth,
         );
-        let mut envelope = envelope;
-        if self.config.is_single_endpoint() {
-            envelope.response_endpoint = None;
-        }
-        let encoded = zmq::encode_envelope(&envelope)
-            .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-        if encoded.len() > self.config.max_envelope_bytes {
-            return Err(sdk_error(
-                ErrorCategory::Transport,
-                "zmq rpc envelope exceeded configured limit",
-            ));
-        }
-        let response = match self.send_and_recv(encoded, request_id).await {
-            Ok(response) => response,
-            Err(error) => {
-                if !self.config.is_single_endpoint() {
-                    *self.transport.lock().await = None;
-                }
-                return Err(error);
-            }
+        let response = if self.config.is_single_endpoint() {
+            self.send_and_recv_single_endpoint(envelope, deadline).await?
+        } else {
+            self.send_and_recv_pipeline(envelope, deadline).await?
         };
         let rpc_response = parse_rpc_frame(&response.payload)
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
@@ -101,127 +75,127 @@ impl ZmqPipelineBackendClient {
         Ok(rpc_response.result.unwrap_or(JsonValue::Null))
     }
 
-    pub(super) async fn send_and_recv(
+    fn encode_request(&self, envelope: &ZmqRpcEnvelope) -> Result<Vec<u8>, SdkError> {
+        let encoded = zmq::encode_envelope(envelope)
+            .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
+        if encoded.len() > self.config.max_envelope_bytes {
+            return Err(sdk_error(
+                ErrorCategory::Transport,
+                "zmq rpc envelope exceeded configured limit",
+            ));
+        }
+        Ok(encoded)
+    }
+
+    async fn send_and_recv_pipeline(
         &self,
-        encoded: Vec<u8>,
-        request_id: u64,
+        mut envelope: ZmqRpcEnvelope,
+        deadline: tokio::time::Instant,
     ) -> Result<ZmqRpcEnvelope, SdkError> {
-        if self.config.is_single_endpoint() {
-            return self.send_and_recv_single_endpoint(encoded, request_id).await;
-        }
-        let mut transport = self.transport.lock().await;
-        if transport.is_none() {
-            *transport = Some(ZmqPipelineTransport::connect(&self.config).await?);
-        }
-        let transport = transport
-            .as_mut()
-            .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))?;
-
-        // Bound the command send and response wait by one deadline. A PUSH
-        // socket can itself await indefinitely when the peer or its receive
-        // queue is wedged; starting the timeout only after `send` completed
-        // lets the actor retain stale work until the application queue fills.
-        let deadline = tokio::time::Instant::now() + self.config.request_timeout;
-        let timeout_error = || {
-            SdkError::new(
-                "SDK_TRANSPORT_ZMQ_TIMEOUT",
-                ErrorCategory::Timeout,
-                "zmq rpc request timed out waiting for send or correlated response",
-            )
-        };
-        async {
-            let send_result = tokio::select! {
-                biased;
-                _ = tokio::time::sleep_until(deadline) => Err(timeout_error()),
-                result = transport.command.send(ZmqMessage::from(encoded)) => result
-                    .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string())),
-            };
-            send_result?;
-
+        let mut guard = tokio::time::timeout_at(deadline, self.transport.lock())
+            .await
+            .map_err(|_| request_timeout())?;
+        // Keep the advertised endpoint, socket exchange and failed-transport reset
+        // under the same owner. Another caller must never use a replaced endpoint.
+        let result = tokio::time::timeout_at(deadline, async {
+            if guard.is_none() {
+                *guard = Some(ZmqPipelineTransport::connect(&self.config).await?);
+            }
+            let transport = guard
+                .as_mut()
+                .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))?;
+            envelope.response_endpoint = Some(transport.response_endpoint.clone());
+            let encoded = self.encode_request(&envelope)?;
+            transport
+                .command
+                .send(ZmqMessage::from(encoded))
+                .await
+                .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
             loop {
-                let message = tokio::select! {
-                    biased;
-                    _ = tokio::time::sleep_until(deadline) => return Err(timeout_error()),
-                    result = transport.responses.recv() => result
-                        .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?,
-                };
-                let bytes = Vec::<u8>::try_from(message)
+                let message = transport
+                    .responses
+                    .recv()
+                    .await
                     .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-                let envelope = zmq::decode_envelope(&bytes)
-                    .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-                if envelope.kind == ZmqRpcEnvelopeKind::Response
-                    && envelope.session_id == self.session_id
-                    && envelope.request_id == request_id
+                let response = decode_response(message)?;
+                if response.kind == ZmqRpcEnvelopeKind::Response
+                    && response.session_id == self.session_id
+                    && response.request_id == envelope.request_id
                 {
-                    return Ok(envelope);
+                    return Ok(response);
                 }
             }
-        }
+        })
         .await
+        .unwrap_or_else(|_| Err(request_timeout()));
+        if result.is_err() {
+            *guard = None;
+        }
+        result
     }
 
     async fn send_and_recv_single_endpoint(
         &self,
-        encoded: Vec<u8>,
-        request_id: u64,
+        mut envelope: ZmqRpcEnvelope,
+        deadline: tokio::time::Instant,
     ) -> Result<ZmqRpcEnvelope, SdkError> {
-        // A bounded persistent DEALER pool permits correlated requests on one client to proceed
-        // concurrently without paying connection setup on every operation.
-        let slot = request_id as usize % self.dealer_pool.len();
-        let mut slot_guard = self.dealer_pool[slot].lock().await;
-        if slot_guard.is_none() {
-            *slot_guard = Some(ZmqDealerTransport::connect(&self.config).await?);
-        }
-        // Apply the same deadline to DEALER sends as to response receives. A
-        // blocked send must not hold this pool slot forever or leave a caller
-        // retrying while the original request is still in flight.
-        let result = tokio::time::timeout(self.config.request_timeout, async {
-            let transport = slot_guard.as_mut().ok_or_else(|| {
+        envelope.response_endpoint = None;
+        let encoded = self.encode_request(&envelope)?;
+        let slot = envelope.request_id as usize % self.dealer_pool.len();
+        let mut guard = tokio::time::timeout_at(deadline, self.dealer_pool[slot].lock())
+            .await
+            .map_err(|_| request_timeout())?;
+        let result = tokio::time::timeout_at(deadline, async {
+            if guard.is_none() {
+                *guard = Some(ZmqDealerTransport::connect(&self.config).await?);
+            }
+            let transport = guard.as_mut().ok_or_else(|| {
                 sdk_error(ErrorCategory::Internal, "missing zmq dealer transport")
             })?;
             transport
                 .socket
                 .send(ZmqMessage::from(encoded))
                 .await
-                .map_err(|error| sdk_error(ErrorCategory::Transport, error.to_string()))?;
-            transport
+                .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
+            let message = transport
                 .socket
                 .recv()
                 .await
-                .map_err(|error| sdk_error(ErrorCategory::Transport, error.to_string()))
-        })
-        .await;
-        let message = match result {
-            Err(_) => {
-                *slot_guard = None;
+                .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
+            let response = decode_response(message)?;
+            if response.kind != ZmqRpcEnvelopeKind::Response
+                || response.session_id != self.session_id
+                || response.request_id != envelope.request_id
+            {
                 return Err(SdkError::new(
-                    "SDK_TRANSPORT_ZMQ_TIMEOUT",
-                    ErrorCategory::Timeout,
-                    "zmq rpc request timed out waiting for send or correlated response",
+                    "SDK_TRANSPORT_ZMQ_CORRELATION_MISMATCH",
+                    ErrorCategory::Transport,
+                    "zmq rpc response did not match the active session and request",
                 ));
             }
-            Ok(Err(error)) => {
-                *slot_guard = None;
-                return Err(error);
-            }
-            Ok(Ok(message)) => message,
-        };
-        let bytes = Vec::<u8>::try_from(message)
-            .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-        let envelope = zmq::decode_envelope(&bytes)
-            .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-        if envelope.kind != ZmqRpcEnvelopeKind::Response
-            || envelope.session_id != self.session_id
-            || envelope.request_id != request_id
-        {
-            return Err(SdkError::new(
-                "SDK_TRANSPORT_ZMQ_CORRELATION_MISMATCH",
-                ErrorCategory::Transport,
-                "zmq rpc response did not match the active session and request",
-            ));
+            Ok(response)
+        })
+        .await
+        .unwrap_or_else(|_| Err(request_timeout()));
+        if result.is_err() {
+            *guard = None;
         }
-        Ok(envelope)
+        result
     }
+}
+
+fn request_timeout() -> SdkError {
+    SdkError::new(
+        "SDK_TRANSPORT_ZMQ_TIMEOUT",
+        ErrorCategory::Timeout,
+        "zmq rpc request timed out waiting for connection, send or correlated response",
+    )
+}
+
+fn decode_response(message: ZmqMessage) -> Result<ZmqRpcEnvelope, SdkError> {
+    let bytes = Vec::<u8>::try_from(message)
+        .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
+    zmq::decode_envelope(&bytes).map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))
 }
 
 async fn apply_role<S>(
