@@ -48,6 +48,7 @@ vrn76-kiss-ble = ["rns_transport/vrn76-kiss-ble"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
+rusqlite = { workspace = true }
 
 [[bin]]
 name = "reticulumd"
