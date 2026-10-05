@@ -78,6 +78,10 @@ Rules:
 3. Out-of-scope cursor fails with `SDK_RUNTIME_INVALID_CURSOR`.
 4. Expired cursor fails with `SDK_RUNTIME_CURSOR_EXPIRED`.
 5. Cursor must never silently reset to head or tail.
+6. A cursor ahead of the current process's assigned sequence watermark fails
+   with `SDK_RUNTIME_INVALID_CURSOR`, including after a same-identity daemon
+   restart. The client explicitly resets its cursor to resume polling; this
+   does not replay all events lost across a restart.
 
 ## Snapshot Boundary Contract
 

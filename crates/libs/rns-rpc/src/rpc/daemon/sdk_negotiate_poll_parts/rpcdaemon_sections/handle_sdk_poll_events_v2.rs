@@ -51,6 +51,19 @@ impl RpcDaemon {
             }
         };
 
+        // A preserved cursor can outlive a restart with the same identity scope.
+        // Use the assigned sequence counter: concurrent insertion may reorder
+        // the retained log, so its tail is not an authoritative upper bound.
+        let stream_position =
+            *self.sdk_next_event_seq.lock().expect("sdk_next_event_seq mutex poisoned");
+        if cursor_seq.is_some_and(|seq_no| seq_no > stream_position) {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_RUNTIME_INVALID_CURSOR",
+                "cursor is ahead of the current event stream; reset cursor to recover",
+            ));
+        }
+
         let log_lock_started = std::time::Instant::now();
         let log_guard = self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
         let log_lock_wait_ns =
