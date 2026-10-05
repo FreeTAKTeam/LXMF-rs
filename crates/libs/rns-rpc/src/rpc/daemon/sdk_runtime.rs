@@ -163,6 +163,8 @@ impl RpcDaemon {
 
         let _apply_guard =
             self.sdk_config_apply_lock.lock().expect("sdk_config_apply_lock mutex poisoned");
+        // Restore before applying the patch, then keep the domain owner through persistence.
+        let domain_guard = self.lock_and_restore_sdk_domain_snapshot()?;
         let mut revision_guard =
             self.sdk_config_revision.lock().expect("sdk_config_revision mutex poisoned");
         if parsed.expected_revision != *revision_guard {
@@ -189,10 +191,8 @@ impl RpcDaemon {
         let revision = *revision_guard;
         drop(revision_guard);
 
-        {
-            let _domain_guard = self.lock_and_restore_sdk_domain_snapshot()?;
-            self.persist_sdk_domain_snapshot()?;
-        }
+        self.persist_sdk_domain_snapshot()?;
+        drop(domain_guard);
 
         let event = RpcEvent {
             event_type: "config_updated".into(),
