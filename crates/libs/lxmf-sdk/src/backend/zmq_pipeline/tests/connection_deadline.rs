@@ -27,6 +27,7 @@ async fn async_connection_and_handshake_obey_request_deadline() {
         .expect("connection must obey SDK deadline")
         .expect_err("stalled peer times out");
         assert_eq!(error.machine_code, "SDK_TRANSPORT_ZMQ_TIMEOUT");
+        assert!(error.message.contains("connection"));
     }
 }
 
@@ -47,6 +48,7 @@ fn sync_connection_and_handshake_obey_request_deadline() {
             .expect("connection must obey SDK deadline")
             .expect_err("stalled peer times out");
         assert_eq!(error.machine_code, "SDK_TRANSPORT_ZMQ_TIMEOUT");
+        assert!(error.message.contains("connection"));
         worker.join().expect("bounded worker");
     }
 }
@@ -64,6 +66,7 @@ async fn pipeline_lock_wait_is_bounded_without_resetting_another_owner() {
     .expect("waiting caller has its own deadline")
     .expect_err("busy owner");
     assert_eq!(error.machine_code, "SDK_TRANSPORT_ZMQ_TIMEOUT");
+    assert!(error.message.contains("transport lock"));
     assert!(owner.is_none());
 }
 
@@ -106,6 +109,7 @@ async fn pipeline_timeout_rebinds_and_filters_wrong_session_and_request_response
         .await
         .expect_err("first response absent");
     assert_eq!(first.machine_code, "SDK_TRANSPORT_ZMQ_TIMEOUT");
+    assert!(first.message.contains("correlated response"));
     assert!(client.transport.lock().await.is_none());
     let recovered = client
         .call_rpc_async("sdk_poll_events_v2", Some(json!({"max": 1})))

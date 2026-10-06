@@ -27,6 +27,7 @@ mod tests {
     include!("tests/path_rpc.rs");
     include!("tests/blackhole_rpc.rs");
     include!("tests/router_management.rs");
+    include!("tests/propagation_resource_usage.rs");
     include!("tests/rnode_management.rs");
     include!("tests/weave_display_control.rs");
     include!("tests/status_snapshot.rs");

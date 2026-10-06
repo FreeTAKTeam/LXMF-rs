@@ -1,5 +1,4 @@
 impl RpcDaemon {
-
     #[allow(clippy::result_large_err)]
     pub(super) fn handle_sdk_poll_events_v2(
         &self,
@@ -64,28 +63,70 @@ impl RpcDaemon {
             ));
         }
 
+        // Identity lookup may perform storage IO. It must not own the event-log
+        // lock, which producers need in order to publish new events.
+        let delivery_destinations =
+            self.service_identity_bridge().map(|_| self.current_session_delivery_destinations());
         let log_lock_started = std::time::Instant::now();
-        let log_guard = self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
-        let log_lock_wait_ns =
-            log_lock_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        let (
+            log_lock_wait_ns,
+            dropped_count,
+            oldest_seq,
+            latest_seq,
+            gap_meta,
+            selected,
+            last_scanned_seq,
+        ) = {
+            let log_guard = self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
+            let wait_ns = log_lock_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+            let dropped_count = *self
+                .sdk_dropped_event_count
+                .lock()
+                .expect("sdk_dropped_event_count mutex poisoned");
+            let oldest_seq = log_guard.front().map(|entry| entry.seq_no);
+            let latest_seq = log_guard.back().map(|entry| entry.seq_no);
+            let gap_meta = if parsed.cursor.is_none() {
+                compute_stream_gap(dropped_count, oldest_seq)
+            } else {
+                Ok(None)
+            };
+            let remaining_slots =
+                parsed.max.saturating_sub(usize::from(matches!(&gap_meta, Ok(Some(_)))));
+            let start_seq =
+                cursor_seq.map(|value| value.saturating_add(1)).or(oldest_seq).unwrap_or(0);
+            let mut selected = Vec::new();
+            let mut last_scanned_seq = cursor_seq;
+            if remaining_slots > 0 && !cursor_is_expired(cursor_seq, oldest_seq) {
+                for entry in log_guard
+                    .iter()
+                    .filter(|entry| entry.seq_no >= start_seq)
+                    .filter(|entry| entry.event.event_type != "sdk_lifecycle_trace")
+                {
+                    last_scanned_seq = Some(entry.seq_no);
+                    if delivery_destinations.as_ref().is_some_and(|destinations| {
+                        !self.event_visible_to_current_identity_session(&entry.event, destinations)
+                    }) {
+                        continue;
+                    }
+                    selected.push(entry.clone());
+                    if selected.len() >= remaining_slots {
+                        break;
+                    }
+                }
+            }
+            (wait_ns, dropped_count, oldest_seq, latest_seq, gap_meta, selected, last_scanned_seq)
+        };
+        // Snapshot at most the requested visible events. Encode and inspect
+        // payloads after releasing the log; do not copy the whole retained tail.
         self.metrics_record_sdk_poll_event_log_lock_wait(log_lock_wait_ns);
-        let dropped_count =
-            *self.sdk_dropped_event_count.lock().expect("sdk_dropped_event_count mutex poisoned");
-        let oldest_seq = log_guard.front().map(|entry| entry.seq_no);
-        let latest_seq = log_guard.back().map(|entry| entry.seq_no);
-
         if cursor_is_expired(cursor_seq, oldest_seq) {
-            let mut degraded =
-                self.sdk_stream_degraded.lock().expect("sdk_stream_degraded mutex poisoned");
-            *degraded = true;
+            *self.sdk_stream_degraded.lock().expect("sdk_stream_degraded mutex poisoned") = true;
             return Ok(self.sdk_error_response(
                 request.id,
                 "SDK_RUNTIME_CURSOR_EXPIRED",
                 "cursor is outside retained event window",
             ));
         }
-
-        let start_seq = cursor_seq.map(|value| value.saturating_add(1)).or(oldest_seq).unwrap_or(0);
         let mut event_rows = Vec::new();
         let mut batch_bytes = 0_usize;
         let mut gap_seq = None;
@@ -128,7 +169,7 @@ impl RpcDaemon {
             };
 
         if parsed.cursor.is_none() && event_rows.len() < parsed.max {
-            let gap_meta = match compute_stream_gap(dropped_count, oldest_seq) {
+            let gap_meta = match gap_meta {
                 Ok(gap_meta) => gap_meta,
                 Err(reason) => {
                     log::warn!("sdk poll: stream gap computation skipped: {reason}");
@@ -160,50 +201,25 @@ impl RpcDaemon {
             }
         }
 
-        let delivery_destinations = self
-            .service_identity_bridge()
-            .map(|_| self.current_session_delivery_destinations());
-        let remaining_slots = parsed.max.saturating_sub(event_rows.len());
-        let mut last_scanned_seq = cursor_seq;
-        if remaining_slots > 0 {
-            for entry in log_guard
-                .iter()
-                .filter(|entry| entry.seq_no >= start_seq)
-                .filter(|entry| entry.event.event_type != "sdk_lifecycle_trace")
-            {
-                last_scanned_seq = Some(entry.seq_no);
-                if delivery_destinations.as_ref().is_some_and(|destinations| {
-                    !self.event_visible_to_current_identity_session(&entry.event, destinations)
-                }) {
-                    continue;
-                }
-                let event_row = json!({
-                    "event_id": format!("evt-{}", entry.seq_no),
-                    "runtime_id": self.identity_hash,
-                    "stream_id": SDK_STREAM_ID,
-                    "seq_no": entry.seq_no,
-                    "contract_version": self.active_contract_version(),
-                    "ts_ms": (now_i64().max(0) as u64) * 1000,
-                    "event_type": entry.event.event_type.clone(),
-                    "severity": Self::event_severity(entry.event.event_type.as_str()),
-                    "source_component": "rns-rpc",
-                    "payload": entry.event.payload.clone(),
-                });
-                if let Err(response) =
-                    append_event_row(event_row, &mut event_rows, &mut batch_bytes)
-                {
-                    return Ok(response);
-                }
-                if event_rows.len() >= parsed.max {
-                    break;
-                }
+        for entry in selected {
+            let event_row = json!({
+                "event_id": format!("evt-{}", entry.seq_no),
+                "runtime_id": self.identity_hash,
+                "stream_id": SDK_STREAM_ID,
+                "seq_no": entry.seq_no,
+                "contract_version": self.active_contract_version(),
+                "ts_ms": (now_i64().max(0) as u64) * 1000,
+                "event_type": entry.event.event_type.clone(),
+                "severity": Self::event_severity(entry.event.event_type.as_str()),
+                "source_component": "rns-rpc",
+                "payload": entry.event.payload.clone(),
+            });
+            if let Err(response) = append_event_row(event_row, &mut event_rows, &mut batch_bytes) {
+                return Ok(response);
             }
         }
 
-        let next_seq = last_scanned_seq
-            .or(gap_seq)
-            .or(latest_seq)
-            .unwrap_or(0);
+        let next_seq = last_scanned_seq.or(gap_seq).or(latest_seq).unwrap_or(0);
         let next_cursor = self.sdk_encode_cursor(next_seq);
 
         if clear_degraded_on_success {

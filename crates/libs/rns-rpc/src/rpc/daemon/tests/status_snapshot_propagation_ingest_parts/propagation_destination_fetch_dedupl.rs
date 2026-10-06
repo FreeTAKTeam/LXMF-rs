@@ -113,7 +113,10 @@ fn propagation_ingest_rejects_ignored_destination_before_queueing() {
     assert_eq!(event.event_type, "inbound_dropped");
     assert_eq!(event.payload["reason"], json!("delivery_policy_rejected"));
     assert_eq!(event.payload["delivery_kind"], json!("propagation"));
-    assert_ingest_redacted_identifier(&event.payload["raw_destination_hash"], destination_hex.as_str());
+    assert_ingest_redacted_identifier(
+        &event.payload["raw_destination_hash"],
+        destination_hex.as_str(),
+    );
     assert_ingest_redacted_identifier(
         &event.payload["resolved_destination_hash"],
         destination_hex.as_str(),
@@ -179,11 +182,7 @@ fn propagation_alias_ingest_rejects_ignored_destination_emits_drop_event() {
         "ignored destination payload must not be stored by transient id"
     );
     assert!(
-        daemon
-            .store
-            .get_propagation_entry(alias)
-            .expect("load alias propagation entry")
-            .is_none(),
+        daemon.store.get_propagation_entry(alias).expect("load alias propagation entry").is_none(),
         "ignored destination payload must not be stored by alias"
     );
     assert!(
@@ -209,7 +208,10 @@ fn propagation_alias_ingest_rejects_ignored_destination_emits_drop_event() {
     assert_eq!(event.event_type, "inbound_dropped");
     assert_eq!(event.payload["reason"], json!("delivery_policy_rejected"));
     assert_eq!(event.payload["delivery_kind"], json!("propagation"));
-    assert_ingest_redacted_identifier(&event.payload["raw_destination_hash"], destination_hex.as_str());
+    assert_ingest_redacted_identifier(
+        &event.payload["raw_destination_hash"],
+        destination_hex.as_str(),
+    );
     assert_ingest_redacted_identifier(
         &event.payload["resolved_destination_hash"],
         destination_hex.as_str(),
@@ -230,10 +232,7 @@ fn propagation_alias_ingest_rejects_ignored_destination_emits_drop_event() {
         .iter()
         .find(|event| event["event_type"] == json!("inbound_dropped"))
         .expect("sdk inbound_dropped event");
-    assert_eq!(
-        sdk_drop["payload"]["operation"],
-        json!("ingest_propagation_payload_with_aliases")
-    );
+    assert_eq!(sdk_drop["payload"]["operation"], json!("ingest_propagation_payload_with_aliases"));
     assert_eq!(sdk_drop["payload"]["transient_id"], json!(transient_id));
 }
 
@@ -244,7 +243,7 @@ fn assert_ingest_redacted_identifier(value: &JsonValue, raw: &str) {
 }
 
 #[test]
-fn propagation_destination_fetch_combines_store_and_memory_payloads() {
+fn propagation_destination_fetch_obeys_durable_store_deletion() {
     use sha2::{Digest, Sha256};
 
     let daemon = RpcDaemon::test_instance();
@@ -271,6 +270,14 @@ fn propagation_destination_fetch_combines_store_and_memory_payloads() {
             &[],
         )
         .expect("ingest cached payload");
+    assert_eq!(
+        daemon.fetch_propagation_payloads_for_destination(
+            &destination,
+            &[stored_transient_id.clone(), cached_transient_id.clone()],
+            None
+        ),
+        vec![stored_payload.clone(), cached_payload.clone()]
+    );
     daemon
         .store
         .purge_propagation_entries_for_destination(
@@ -285,7 +292,17 @@ fn propagation_destination_fetch_combines_store_and_memory_payloads() {
         None,
     );
 
-    assert_eq!(fetched, vec![stored_payload, cached_payload]);
+    assert_eq!(fetched, vec![stored_payload]);
+    assert!(!daemon.has_propagation_payload(&cached_transient_hex));
+    assert_eq!(daemon.list_propagation_payloads_for_destination(&destination).len(), 1);
+    let err = daemon
+        .handle_rpc(rpc_request(
+            1,
+            "propagation_fetch",
+            json!({"transient_id": cached_transient_hex}),
+        ))
+        .expect_err("deleted payload must not be resurrected from RAM");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
 
 #[test]
@@ -328,10 +345,7 @@ fn propagation_ingest_without_payload_does_not_increment_counts_or_store_payload
         .expect("daemon status result");
     assert_eq!(snapshot["propagation"]["last_ingest_count"].as_u64(), Some(0));
     assert_eq!(snapshot["propagation"]["total_ingested"].as_u64(), Some(0));
-    assert_eq!(
-        snapshot["propagation"]["client_propagation_messages_received"].as_u64(),
-        Some(0)
-    );
+    assert_eq!(snapshot["propagation"]["client_propagation_messages_received"].as_u64(), Some(0));
 
     let err = daemon
         .handle_rpc(rpc_request(
@@ -410,8 +424,10 @@ fn purged_propagation_ingest_does_not_recount_processed_transient() {
         .expect("first propagation ingest result");
     assert_eq!(first["ingested_count"].as_u64(), Some(1));
 
-    let purged = daemon
-        .purge_propagation_payloads_for_destination(&destination, std::slice::from_ref(&transient_id));
+    let purged = daemon.purge_propagation_payloads_for_destination(
+        &destination,
+        std::slice::from_ref(&transient_id),
+    );
     assert!(purged > 0);
 
     let second = daemon
@@ -501,7 +517,8 @@ fn propagation_ingest_prunes_oldest_payload_when_storage_limit_is_exceeded() {
         .expect("second propagation ingest")
         .result
         .expect("second ingest result");
-    let second_transient = second["transient_id"].as_str().expect("second transient id").to_string();
+    let second_transient =
+        second["transient_id"].as_str().expect("second transient id").to_string();
 
     assert!(
         !daemon.has_propagation_payload(first_transient.as_str()),

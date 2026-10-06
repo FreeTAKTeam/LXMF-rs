@@ -1,5 +1,4 @@
 impl RpcDaemon {
-
     pub fn ingest_propagation_payload_hex_at_cost(
         &self,
         payload_hex: &str,
@@ -64,10 +63,6 @@ impl RpcDaemon {
             }
             self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
             self.queue_propagation_entry_for_active_peers(transient_id.as_str())?;
-            self.propagation_payloads
-                .lock()
-                .expect("propagation payload mutex poisoned")
-                .insert(transient_id.clone(), payload_hex);
             self.store
                 .mark_local_propagation_processed(transient_id.as_str())
                 .map_err(std::io::Error::other)?;
@@ -143,10 +138,6 @@ impl RpcDaemon {
                 .map_err(std::io::Error::other)?;
         let payload_hex = hex::encode(normalized_payload);
         self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
-        self.propagation_payloads
-            .lock()
-            .expect("propagation payload mutex poisoned")
-            .insert(transient_id.clone(), payload_hex);
         self.store
             .mark_local_propagation_processed(transient_id.as_str())
             .map_err(std::io::Error::other)?;
@@ -230,10 +221,6 @@ impl RpcDaemon {
                 self.record_unpeered_propagation_attempt(normalized_payload.len());
             }
         }
-        self.propagation_payloads
-            .lock()
-            .expect("propagation payload mutex poisoned")
-            .insert(transient_id.clone(), payload_hex);
         self.prune_propagation_payloads_to_storage_limit()?;
         Ok(transient_id)
     }
@@ -284,10 +271,6 @@ impl RpcDaemon {
             source_peer.as_str(),
             transient_id.as_str(),
         )?;
-        self.propagation_payloads
-            .lock()
-            .expect("propagation payload mutex poisoned")
-            .insert(transient_id.clone(), payload_hex);
         self.prune_propagation_payloads_to_storage_limit()?;
         Ok(transient_id)
     }
@@ -303,13 +286,7 @@ impl RpcDaemon {
                 false
             }
         };
-        if stored {
-            return true;
-        }
-        self.propagation_payloads
-            .lock()
-            .expect("propagation payload mutex poisoned")
-            .contains_key(normalized.as_str())
+        stored
     }
 
     fn peer_store_key_or_input(&self, peer: &str) -> String {
@@ -433,7 +410,7 @@ impl RpcDaemon {
         let destination_hex = hex::encode(destination);
         let stored_entries = match self
             .store
-            .list_propagation_entries_for_destination(destination_hex.as_str())
+            .list_propagation_entry_metadata_for_destination(destination_hex.as_str())
         {
             Ok(entries) => entries,
             Err(error) => {
@@ -445,8 +422,8 @@ impl RpcDaemon {
         };
         let mut entries = stored_entries
             .into_iter()
-            .filter_map(|entry| {
-                let transient_id = match hex::decode(entry.transient_id.as_str()) {
+            .filter_map(|(id, size_bytes)| {
+                let transient_id = match hex::decode(id.as_str()) {
                     Ok(transient_id) if transient_id.len() == 32 => transient_id,
                     Ok(transient_id) => {
                         log::error!(
@@ -463,7 +440,7 @@ impl RpcDaemon {
                         return None;
                     }
                 };
-                let size = usize::try_from(entry.size_bytes).unwrap_or_else(|_| {
+                let size = usize::try_from(size_bytes).unwrap_or_else(|_| {
                     log::error!(
                         "stored propagation payload size exceeds platform range transient_id={}",
                         hex::encode(transient_id.as_slice())
@@ -473,28 +450,6 @@ impl RpcDaemon {
                 Some((transient_id, size))
             })
             .collect::<Vec<_>>();
-        let known = entries
-            .iter()
-            .map(|(transient_id, _)| hex::encode(transient_id))
-            .collect::<HashSet<_>>();
-        entries.extend(
-            self.propagation_payloads
-                .lock()
-                .expect("propagation payload mutex poisoned")
-                .iter()
-                .filter_map(|(transient_id, payload_hex)| {
-                    if known.contains(transient_id) {
-                        return None;
-                    }
-                    let transient_id = hex::decode(transient_id).ok()?;
-                    if transient_id.len() != 32 {
-                        return None;
-                    }
-                    let payload = hex::decode(payload_hex).ok()?;
-                    propagation_payload_matches_destination(payload.as_slice(), destination)
-                        .then_some((transient_id, payload.len()))
-                }),
-        );
         entries.sort_by_key(|(_transient_id, size)| *size);
         entries
     }

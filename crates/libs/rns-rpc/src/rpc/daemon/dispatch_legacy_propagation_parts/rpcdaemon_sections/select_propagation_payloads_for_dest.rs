@@ -1,5 +1,4 @@
 impl RpcDaemon {
-
     fn select_propagation_payloads_for_destination_with_budget_outcome(
         &self,
         destination: &[u8; 16],
@@ -41,25 +40,7 @@ impl RpcDaemon {
                     }
                 }) {
                 Some(payload) => payload,
-                None => {
-                    let payload_hex = {
-                        let guard = self
-                            .propagation_payloads
-                            .lock()
-                            .expect("propagation payload mutex poisoned");
-                        let Some(payload_hex) = guard.get(transient_hex.as_str()) else {
-                            continue;
-                        };
-                        payload_hex.clone()
-                    };
-                    let Ok(payload) = hex::decode(payload_hex) else {
-                        continue;
-                    };
-                    if !propagation_payload_matches_destination(payload.as_slice(), destination) {
-                        continue;
-                    }
-                    payload
-                }
+                None => continue,
             };
             let stored_size = payload.len().saturating_add(PROPAGATION_STAMP_SIZE);
             let transfer_size = stored_size.saturating_add(per_message_overhead);
@@ -102,7 +83,7 @@ impl RpcDaemon {
                 removed_snapshot_ids.push(transient_hex.clone());
             }
         }
-        let mut purged = match self
+        let purged = match self
             .store
             .purge_propagation_entries_for_destination(destination_hex.as_str(), &haves_hex)
         {
@@ -114,31 +95,6 @@ impl RpcDaemon {
                 0
             }
         };
-        {
-            let mut guard =
-                self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
-            for transient_id in haves {
-                if transient_id.len() != 32 {
-                    continue;
-                }
-                let transient_hex = hex::encode(transient_id);
-                let should_remove = guard
-                    .get(transient_hex.as_str())
-                    .and_then(|payload_hex| hex::decode(payload_hex).ok())
-                    .is_some_and(|payload| {
-                        propagation_payload_matches_destination(payload.as_slice(), destination)
-                    });
-                if should_remove && guard.remove(transient_hex.as_str()).is_some() {
-                    purged += 1;
-                    if !removed_snapshot_ids
-                        .iter()
-                        .any(|id| id.eq_ignore_ascii_case(&transient_hex))
-                    {
-                        removed_snapshot_ids.push(transient_hex);
-                    }
-                }
-            }
-        }
         for transient_id in removed_snapshot_ids {
             self.remove_peer_queue_snapshot_id(transient_id.as_str());
         }

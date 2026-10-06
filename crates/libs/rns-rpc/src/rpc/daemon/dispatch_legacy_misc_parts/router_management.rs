@@ -17,6 +17,8 @@ impl RpcDaemon {
 
     fn handle_router_stats(&self, id: u64) -> Result<RpcResponse, std::io::Error> {
         let storage = self.store.message_storage_stats().map_err(std::io::Error::other)?;
+        let propagation_storage =
+            self.store.propagation_entry_stats().map_err(std::io::Error::other)?;
         let (propagation_enabled, propagation_node_enabled) = {
             let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
             (propagation.enabled, propagation.propagation_node_enabled)
@@ -27,7 +29,7 @@ impl RpcDaemon {
             "peers": self.peers.lock().expect("peers mutex poisoned").len(),
             "interfaces": self.interfaces.lock().expect("interfaces mutex poisoned").len(),
             "tickets": self.ticket_cache.lock().expect("ticket cache mutex poisoned").len(),
-            "propagation_payloads": self.propagation_payloads.lock().expect("propagation payloads mutex poisoned").len(),
+            "propagation_payloads": propagation_storage.entries,
             "outbound_inflight": self.outbound_delivery_handoffs.lock().expect("outbound handoffs mutex poisoned").len(),
             "propagation_enabled": propagation_enabled,
             "propagation_node_enabled": propagation_node_enabled,
@@ -60,11 +62,7 @@ impl RpcDaemon {
         if let Some(retain) = policy.retain_node_lxms {
             *self.router_retain_node_lxms.lock().expect("retain node lxms mutex poisoned") = retain;
         }
-        Ok(RpcResponse {
-            id: request.id,
-            result: Some(self.router_storage_policy()),
-            error: None,
-        })
+        Ok(RpcResponse { id: request.id, result: Some(self.router_storage_policy()), error: None })
     }
 
     fn router_storage_policy(&self) -> JsonValue {

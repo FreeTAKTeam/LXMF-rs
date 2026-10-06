@@ -135,6 +135,7 @@ impl RpcDaemon {
         policy: &str,
         block_timeout_ms: u64,
     ) -> bool {
+        let sequenced_event = Arc::new(sequenced_event);
         match policy {
             "reject" => {
                 let mut log_guard =

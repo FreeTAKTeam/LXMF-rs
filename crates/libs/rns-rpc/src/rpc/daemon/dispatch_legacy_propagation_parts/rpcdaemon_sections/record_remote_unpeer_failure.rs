@@ -351,13 +351,6 @@ impl RpcDaemon {
         if pruned.is_empty() {
             return Ok(());
         }
-        {
-            let mut guard =
-                self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
-            for transient_id in &pruned {
-                guard.remove(transient_id.as_str());
-            }
-        }
         for transient_id in pruned {
             self.remove_peer_queue_snapshot_id(transient_id.as_str());
         }

@@ -88,10 +88,6 @@ impl RpcDaemon {
                         payload_hex.as_str(),
                     )?;
                     self.queue_propagation_entry_for_active_peers(transient_id.as_str())?;
-                    self.propagation_payloads
-                        .lock()
-                        .expect("propagation payload mutex poisoned")
-                        .insert(transient_id.clone(), payload_hex);
                     self.store
                         .mark_local_propagation_processed(transient_id.as_str())
                         .map_err(std::io::Error::other)?;
@@ -133,20 +129,11 @@ impl RpcDaemon {
 
                 let normalized_transient_id =
                     normalize_propagation_transient_key(parsed.transient_id.as_str());
-                let in_memory_payload = self
-                    .propagation_payloads
-                    .lock()
-                    .expect("propagation payload mutex poisoned")
-                    .get(normalized_transient_id.as_str())
-                    .cloned();
-                let payload = match in_memory_payload {
-                    Some(payload) => Some(payload),
-                    None => self
-                        .store
-                        .get_propagation_entry(normalized_transient_id.as_str())
-                        .map_err(std::io::Error::other)?
-                        .map(|entry| entry.payload_hex),
-                }
+                let payload = self
+                    .store
+                    .get_propagation_entry(normalized_transient_id.as_str())
+                    .map_err(std::io::Error::other)?
+                    .map(|entry| entry.payload_hex)
                     .ok_or_else(|| {
                         std::io::Error::new(std::io::ErrorKind::NotFound, "transient_id not found")
                     })?;
@@ -158,7 +145,6 @@ impl RpcDaemon {
                     guard.client_propagation_messages_served =
                         guard.client_propagation_messages_served.saturating_add(1);
                     let state = guard.clone();
-                    drop(guard);
                     self.update_daemon_status_snapshot(|snapshot| {
                         snapshot.propagation = state.clone();
                     });
@@ -198,8 +184,9 @@ impl RpcDaemon {
                     .map(serde_json::from_value::<SetOutboundPropagationNodeParams>)
                     .transpose()
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-                let (peer, target_cost, source) =
-                    self.outbound_propagation_cost_lookup(parsed.as_ref().and_then(|value| value.peer.as_deref()));
+                let (peer, target_cost, source) = self.outbound_propagation_cost_lookup(
+                    parsed.as_ref().and_then(|value| value.peer.as_deref()),
+                );
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({

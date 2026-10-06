@@ -2,6 +2,7 @@ use super::*;
 use rmpv::Value as RmpValue;
 use std::io;
 use std::path::{Path, PathBuf};
+use tokio::io::AsyncReadExt;
 
 pub(super) struct ReticulumAnnounceCache {
     dir: PathBuf,
@@ -23,7 +24,22 @@ impl ReticulumAnnounceCache {
         packet: Packet,
     ) -> io::Result<()> {
         let payload = encode_cached_announce(iface, packet)?;
-        tokio::fs::write(self.path(packet_hash), payload).await
+        let path = self.path(packet_hash);
+        // Path-table saves revisit every cached announce. Compare exact bytes:
+        // a hash alone does not bind the interface reference or mutable headers.
+        match tokio::fs::File::open(&path).await {
+            Ok(file) => {
+                let mut existing = Vec::with_capacity(payload.len() + 1);
+                // Bound reads even if an existing cache file is corrupt/oversized.
+                file.take((payload.len() + 1) as u64).read_to_end(&mut existing).await?;
+                if existing == payload {
+                    return Ok(());
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        tokio::fs::write(path, payload).await
     }
 
     pub(super) async fn restore_classified(
@@ -109,3 +125,6 @@ fn rmp_bytes(value: &RmpValue) -> Option<&[u8]> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -48,7 +48,6 @@ fn propagation_remote_sync_ignores_payload_byte_count_rows_during_import() {
     assert_eq!(result["result"]["imported_ids"], json!([transient_id]));
     assert_eq!(result["result"]["transferred_bytes"].as_u64(), Some(payload.len() as u64));
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             74,
@@ -175,7 +174,6 @@ fn propagation_remote_fetch_imports_payloads_into_local_store() {
     assert_eq!(result["result"]["imported_ids"], json!([transient_id]));
     assert_eq!(result["result"]["transferred_bytes"].as_u64(), Some(payload.len() as u64));
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             74,

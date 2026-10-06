@@ -241,7 +241,6 @@ fn propagation_remote_sync_imports_payloads_into_local_store() {
     assert_eq!(result["result"]["imported_ids"], json!([transient_id]));
     assert_eq!(result["result"]["transferred_bytes"].as_u64(), Some(payload.len() as u64));
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             74,
@@ -303,7 +302,6 @@ fn propagation_remote_sync_imports_nested_peer_sync_messages_like_python() {
         Some(1)
     );
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             74,
@@ -362,7 +360,6 @@ fn propagation_remote_sync_imports_binary_peer_sync_payloads_from_msgpack() {
     assert_eq!(result["result"]["imported_ids"], json!([transient_id]));
     assert_eq!(result["result"]["transferred_bytes"].as_u64(), Some(payload.len() as u64));
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             74,
