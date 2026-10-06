@@ -94,9 +94,11 @@ impl ZmqPipelineBackendClient {
     ) -> Result<ZmqRpcEnvelope, SdkError> {
         let mut guard = tokio::time::timeout_at(deadline, self.transport.lock())
             .await
-            .map_err(|_| request_timeout())?;
+            .map_err(|_| request_timeout("transport lock", envelope.request_id))?;
         // Keep the advertised endpoint, socket exchange and failed-transport reset
         // under the same owner. Another caller must never use a replaced endpoint.
+        let request_id = envelope.request_id;
+        let mut stage = "connection";
         let result = tokio::time::timeout_at(deadline, async {
             if guard.is_none() {
                 *guard = Some(ZmqPipelineTransport::connect(&self.config).await?);
@@ -106,11 +108,13 @@ impl ZmqPipelineBackendClient {
                 .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))?;
             envelope.response_endpoint = Some(transport.response_endpoint.clone());
             let encoded = self.encode_request(&envelope)?;
+            stage = "send";
             transport
                 .command
                 .send(ZmqMessage::from(encoded))
                 .await
                 .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
+            stage = "correlated response";
             loop {
                 let message = transport
                     .responses
@@ -127,7 +131,7 @@ impl ZmqPipelineBackendClient {
             }
         })
         .await
-        .unwrap_or_else(|_| Err(request_timeout()));
+        .unwrap_or_else(|_| Err(request_timeout(stage, request_id)));
         if result.is_err() {
             *guard = None;
         }
@@ -144,7 +148,9 @@ impl ZmqPipelineBackendClient {
         let slot = envelope.request_id as usize % self.dealer_pool.len();
         let mut guard = tokio::time::timeout_at(deadline, self.dealer_pool[slot].lock())
             .await
-            .map_err(|_| request_timeout())?;
+            .map_err(|_| request_timeout("transport lock", envelope.request_id))?;
+        let request_id = envelope.request_id;
+        let mut stage = "connection";
         let result = tokio::time::timeout_at(deadline, async {
             if guard.is_none() {
                 *guard = Some(ZmqDealerTransport::connect(&self.config).await?);
@@ -152,11 +158,13 @@ impl ZmqPipelineBackendClient {
             let transport = guard.as_mut().ok_or_else(|| {
                 sdk_error(ErrorCategory::Internal, "missing zmq dealer transport")
             })?;
+            stage = "send";
             transport
                 .socket
                 .send(ZmqMessage::from(encoded))
                 .await
                 .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
+            stage = "correlated response";
             let message = transport
                 .socket
                 .recv()
@@ -176,7 +184,7 @@ impl ZmqPipelineBackendClient {
             Ok(response)
         })
         .await
-        .unwrap_or_else(|_| Err(request_timeout()));
+        .unwrap_or_else(|_| Err(request_timeout(stage, request_id)));
         if result.is_err() {
             *guard = None;
         }
@@ -184,11 +192,11 @@ impl ZmqPipelineBackendClient {
     }
 }
 
-fn request_timeout() -> SdkError {
+fn request_timeout(stage: &str, request_id: u64) -> SdkError {
     SdkError::new(
         "SDK_TRANSPORT_ZMQ_TIMEOUT",
         ErrorCategory::Timeout,
-        "zmq rpc request timed out waiting for connection, send or correlated response",
+        format!("zmq rpc request {request_id} timed out during {stage}"),
     )
 }
 

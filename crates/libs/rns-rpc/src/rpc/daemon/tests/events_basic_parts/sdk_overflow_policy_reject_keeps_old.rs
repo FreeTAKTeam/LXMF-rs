@@ -354,3 +354,57 @@ fn native_stream_gap_frame_matches_poll_gap_metadata_shape() {
     assert_eq!(frame["payload"]["dropped_count"].as_u64(), Some(5));
     assert_eq!(frame["payload"]["recovery_required"].as_bool(), Some(true));
 }
+
+#[test]
+fn sdk_negotiated_retention_survives_domain_restore() {
+    for (saved_policy, negotiated_policy) in [("reject", "drop_oldest"), ("drop_oldest", "reject")] {
+        let daemon = RpcDaemon::test_instance();
+        let configure = daemon.handle_rpc(rpc_request(1, "sdk_configure_v2", json!({
+            "expected_revision": 0, "patch": {"overflow_policy": saved_policy}
+        }))).expect("seed persisted config");
+        assert!(configure.error.is_none());
+        daemon.persist_sdk_domain_snapshot().expect("save previous policy");
+        let negotiation = daemon.handle_rpc(rpc_request(2, "sdk_negotiate_v2", json!({
+            "supported_contract_versions": [2], "requested_capabilities": ["sdk.capability.identity_multi"],
+            "config": {"profile": "desktop-full", "overflow_policy": negotiated_policy}
+        }))).expect("negotiate");
+        assert!(negotiation.error.is_none());
+        let identities = daemon.handle_rpc(rpc_request(3, "sdk_identity_list_v2", json!({})))
+            .expect("domain restore through identity listing");
+        assert!(identities.error.is_none(), "{:?}", identities.error);
+        for idx in 0..=SDK_EVENT_LOG_CAPACITY {
+            daemon.emit_event(RpcEvent {event_type: "inbound".into(), payload: json!({"idx": idx})});
+        }
+        let mut cursor = JsonValue::Null;
+        let mut indices = Vec::new();
+        for _ in 0..10 {
+            let response = daemon.handle_rpc(rpc_request(4, "sdk_poll_events_v2", json!({
+                "cursor": cursor, "max": 256
+            }))).expect("poll");
+            assert!(response.error.is_none());
+            let result = response.result.expect("batch");
+            let events = result["events"].as_array().expect("events");
+            indices.extend(events.iter().filter_map(|event| event["payload"]["idx"].as_u64()));
+            cursor = result["next_cursor"].clone();
+            if events.is_empty() {break;}
+        }
+        assert_eq!(indices.contains(&(SDK_EVENT_LOG_CAPACITY as u64)), negotiated_policy == "drop_oldest",
+            "domain restoration must retain the newly negotiated policy");
+        assert_eq!(indices.contains(&0), negotiated_policy == "reject");
+    }
+}
+
+#[test]
+fn sdk_configure_retention_updates_existing_snapshot_revision() {
+    let daemon = RpcDaemon::test_instance();
+    for (expected_revision, policy) in [(0, "reject"), (1, "drop_oldest")] {
+        let response = daemon.handle_rpc(rpc_request(1, "sdk_configure_v2", json!({
+            "expected_revision": expected_revision, "patch": {"overflow_policy": policy}
+        }))).expect("configure");
+        assert!(response.error.is_none());
+        assert_eq!(response.result.expect("result")["revision"], expected_revision + 1);
+        daemon.restore_sdk_domain_snapshot().expect("restore saved config");
+        assert_eq!(daemon.sdk_overflow_policy(), policy);
+        assert_eq!(*daemon.sdk_config_revision.lock().expect("revision"), expected_revision + 1);
+    }
+}

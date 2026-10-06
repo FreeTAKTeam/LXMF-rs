@@ -268,10 +268,6 @@ pub(super) fn split_propagation_stamp(transient_data: &[u8]) -> Option<(&[u8], &
     Some((&transient_data[..split_at], &transient_data[split_at..]))
 }
 
-fn propagation_payload_matches_destination(payload: &[u8], destination: &[u8; 16]) -> bool {
-    payload.len() >= 16 && &payload[..16] == destination
-}
-
 pub(super) fn propagation_stamp_workblock(material: &[u8]) -> Vec<u8> {
     let mut workblock = Vec::with_capacity(PROPAGATION_STAMP_WORKBLOCK_ROUNDS * 256);
     for round in 0..PROPAGATION_STAMP_WORKBLOCK_ROUNDS {

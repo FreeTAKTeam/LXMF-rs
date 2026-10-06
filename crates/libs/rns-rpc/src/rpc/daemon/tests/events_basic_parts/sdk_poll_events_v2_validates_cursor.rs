@@ -1,4 +1,86 @@
 #[test]
+fn sdk_poll_events_rejects_cursor_from_same_identity_before_restart() {
+    for populated in [false, true] {
+        let old_daemon = RpcDaemon::test_instance();
+        for idx in 0..2 {
+            old_daemon.emit_event(RpcEvent {
+                event_type: "inbound".to_string(),
+                payload: json!({ "before_restart": idx }),
+            });
+        }
+        let before = old_daemon
+            .handle_rpc(rpc_request(1, "sdk_poll_events_v2", json!({"cursor": null, "max": 4})))
+            .expect("poll before restart");
+        let old_cursor = before.result.expect("before result")["next_cursor"].clone();
+        drop(old_daemon);
+
+        let restarted = RpcDaemon::test_instance();
+        if populated {
+            restarted.emit_event(RpcEvent {
+                event_type: "inbound".to_string(),
+                payload: json!({ "after_restart": true }),
+            });
+        }
+        let stale = restarted
+            .handle_rpc(rpc_request(2, "sdk_poll_events_v2", json!({"cursor": old_cursor, "max": 4})))
+            .expect("poll preserved cursor");
+        assert_eq!(stale.error.expect("explicit stale cursor error").code, "SDK_RUNTIME_INVALID_CURSOR");
+
+        let recovered = restarted
+            .handle_rpc(rpc_request(3, "sdk_poll_events_v2", json!({"cursor": null, "max": 4})))
+            .expect("reset cursor");
+        assert!(recovered.error.is_none());
+        let result = recovered.result.expect("reset result");
+        let events = result["events"].as_array().expect("events");
+        assert_eq!(events.len(), usize::from(populated));
+        if populated {
+            assert_eq!(events[0]["payload"]["after_restart"], true);
+        }
+        let idle = restarted
+            .handle_rpc(rpc_request(4, "sdk_poll_events_v2", json!({"cursor": result["next_cursor"], "max": 4})))
+            .expect("idle poll at current watermark");
+        assert!(idle.error.is_none());
+        assert_eq!(idle.result.expect("idle result")["next_cursor"], result["next_cursor"]);
+    }
+}
+
+#[test]
+fn sdk_poll_events_accepts_returned_cursor_above_reordered_log_tail() {
+    let daemon = RpcDaemon::test_instance();
+    for idx in 0..2 {
+        daemon.emit_event(RpcEvent { event_type: "inbound".to_string(), payload: json!({"idx": idx}) });
+    }
+    let first = daemon
+        .handle_rpc(rpc_request(1, "sdk_poll_events_v2", json!({"cursor": null, "max": 4})))
+        .expect("initial poll");
+    let cursor = first.result.expect("result")["next_cursor"].clone();
+    // Publication assigns sequences before independently inserting into the log.
+    // Model a delayed sequence 1 insertion after sequence 2 was already returned.
+    daemon.sdk_event_log.lock().expect("event log").rotate_left(1);
+    let idle = daemon
+        .handle_rpc(rpc_request(2, "sdk_poll_events_v2", json!({"cursor": cursor, "max": 4})))
+        .expect("idle poll");
+    assert!(idle.error.is_none());
+    assert_eq!(idle.result.expect("idle result")["next_cursor"], cursor);
+}
+
+#[test]
+fn sdk_poll_events_accepts_watermark_for_filtered_lifecycle_trace() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.emit_event(RpcEvent { event_type: "sdk_lifecycle_trace".to_string(), payload: json!({}) });
+    let first = daemon
+        .handle_rpc(rpc_request(1, "sdk_poll_events_v2", json!({"cursor": null, "max": 4})))
+        .expect("initial poll");
+    let result = first.result.expect("result");
+    assert!(result["events"].as_array().expect("filtered events").is_empty());
+    let idle = daemon
+        .handle_rpc(rpc_request(2, "sdk_poll_events_v2", json!({"cursor": result["next_cursor"], "max": 4})))
+        .expect("idle poll");
+    assert!(idle.error.is_none());
+    assert_eq!(idle.result.expect("idle result")["next_cursor"], result["next_cursor"]);
+}
+
+#[test]
 fn sdk_poll_events_v2_validates_cursor_and_expires_stale_tokens() {
     let daemon = RpcDaemon::test_instance();
     daemon.emit_event(RpcEvent {

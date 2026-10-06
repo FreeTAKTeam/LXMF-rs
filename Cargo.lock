@@ -2590,6 +2590,7 @@ dependencies = [
  "reticulum-rs-transport",
  "rmp-serde",
  "rmpv",
+ "rusqlite",
  "rustls",
  "rustls-pki-types",
  "serde",

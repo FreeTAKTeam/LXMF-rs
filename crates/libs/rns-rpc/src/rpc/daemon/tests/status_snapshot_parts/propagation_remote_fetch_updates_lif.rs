@@ -67,7 +67,6 @@ fn propagation_remote_fetch_derives_missing_transient_id_from_payload_bytes() {
         ))
         .expect("remote fetch");
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             75,
@@ -112,7 +111,6 @@ fn propagation_remote_fetch_accepts_stamped_payload_with_canonical_transient_id(
         ))
         .expect("remote fetch");
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             77,
@@ -210,14 +208,6 @@ fn propagation_remote_fetch_rejects_mixed_batch_without_partial_import_side_effe
             .expect("load valid transient id")
             .is_none(),
         "valid payload preceding an invalid payload must not be persisted"
-    );
-    assert!(
-        !daemon
-            .propagation_payloads
-            .lock()
-            .expect("propagation payload mutex poisoned")
-            .contains_key(valid_transient_id.as_str()),
-        "valid payload preceding an invalid payload must not be cached in memory"
     );
     assert!(
         daemon
@@ -337,7 +327,6 @@ fn propagation_remote_download_imports_payloads_into_local_store() {
     assert_eq!(result["result"]["imported_ids"], json!([transient_id]));
     assert_eq!(result["result"]["transferred_bytes"].as_u64(), Some(payload.len() as u64));
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             77,

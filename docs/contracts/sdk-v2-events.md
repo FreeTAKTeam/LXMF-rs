@@ -78,6 +78,10 @@ Rules:
 3. Out-of-scope cursor fails with `SDK_RUNTIME_INVALID_CURSOR`.
 4. Expired cursor fails with `SDK_RUNTIME_CURSOR_EXPIRED`.
 5. Cursor must never silently reset to head or tail.
+6. A cursor ahead of the current process's assigned sequence watermark fails
+   with `SDK_RUNTIME_INVALID_CURSOR`, including after a same-identity daemon
+   restart. The client explicitly resets its cursor to resume polling; this
+   does not replay all events lost across a restart.
 
 ## Snapshot Boundary Contract
 
@@ -168,3 +172,12 @@ Deterministic baseline mapping:
 1. Use namespaced event types (`vendor.domain.event_name`).
 2. Names beginning with `sdk.` are reserved.
 3. Unknown extension events must not break consumer parsing.
+
+### Retention configuration and domain snapshots
+
+Negotiated retention policy is saved under the same domain-state owner used by
+identity and other SDK domain operations. Restoring a saved domain snapshot must
+preserve the latest successful negotiation or configuration patch; it must not
+restore an older overflow policy or configuration revision. Negotiation still
+updates shared daemon configuration, so a later client's explicit policy choice
+can replace it. This does not change the SDK client defaults.

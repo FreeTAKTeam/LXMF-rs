@@ -1,5 +1,4 @@
 impl RpcDaemon {
-
     fn import_remote_propagation_payloads(
         &self,
         result: &JsonValue,
@@ -72,12 +71,13 @@ impl RpcDaemon {
                         (raw_transient_id, payload_hex.trim().to_ascii_lowercase(), payload.len())
                     }
                 };
-            let normalized_payload = hex::decode(normalized_payload_hex.as_str()).map_err(|err| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("invalid remote propagation payload hex: {err}"),
-                )
-            })?;
+            let normalized_payload =
+                hex::decode(normalized_payload_hex.as_str()).map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("invalid remote propagation payload hex: {err}"),
+                    )
+                })?;
             if self.propagation_payload_destination_is_ignored(normalized_payload.as_slice()) {
                 self.emit_ignored_propagation_drop_event(
                     normalized_payload.as_slice(),
@@ -157,10 +157,6 @@ impl RpcDaemon {
             self.store
                 .mark_local_propagation_processed(record.transient_id.as_str())
                 .map_err(std::io::Error::other)?;
-            self.propagation_payloads
-                .lock()
-                .expect("propagation payload mutex poisoned")
-                .insert(record.transient_id, record.payload_hex);
         }
         self.prune_propagation_payloads_to_storage_limit()?;
         if !messages.is_empty() {
@@ -305,9 +301,7 @@ impl RpcDaemon {
         &self,
         transient_id: &str,
     ) -> Result<bool, std::io::Error> {
-        self.store
-            .mark_local_propagation_processed(transient_id)
-            .map_err(std::io::Error::other)
+        self.store.mark_local_propagation_processed(transient_id).map_err(std::io::Error::other)
     }
 
     pub fn local_propagation_processed_mark_exists(
@@ -453,17 +447,12 @@ impl RpcDaemon {
             let payload_hex = hex::encode(payload);
             self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
             self.queue_propagation_entry_for_active_peers(transient_id.as_str())?;
-            let mut guard =
-                self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
-            guard.insert(transient_id.clone(), payload_hex.clone());
             for alias in aliases {
                 self.store_propagation_payload_hex(alias, payload_hex.as_str())?;
-                guard.insert(normalize_propagation_transient_key(alias), payload_hex.clone());
             }
             self.store
                 .mark_local_propagation_processed(transient_id.as_str())
                 .map_err(std::io::Error::other)?;
-            drop(guard);
             self.prune_propagation_payloads_to_storage_limit()?;
         }
 

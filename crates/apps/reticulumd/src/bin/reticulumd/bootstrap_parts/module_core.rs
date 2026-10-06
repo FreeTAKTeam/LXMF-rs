@@ -698,15 +698,25 @@ fn spawn_propagation_storage_maintenance(daemon: Arc<RpcDaemon>) {
 
             let now = tokio::time::Instant::now();
             if now >= next_maintenance {
-                match daemon.maintain_propagation_storage() {
-                    Ok(pruned) if pruned > 0 => {
+                let maintenance_daemon = Arc::clone(&daemon);
+                // Join each storage operation before scheduling another one;
+                // database contention must not block the network reactor.
+                match tokio::task::spawn_blocking(move || {
+                    maintenance_daemon.maintain_propagation_storage()
+                })
+                .await
+                {
+                    Ok(Ok(pruned)) if pruned > 0 => {
                         log::info!(
                             "[daemon] propagation storage maintenance pruned peer entries={pruned}"
                         );
                     }
-                    Ok(_) => {}
-                    Err(error) => {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(error)) => {
                         log::error!("[daemon] propagation storage maintenance failed: {error}");
+                    }
+                    Err(error) => {
+                        log::error!("[daemon] propagation storage maintenance worker failed: {error}");
                     }
                 }
                 next_maintenance = tokio::time::Instant::now()

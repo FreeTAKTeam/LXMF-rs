@@ -1,5 +1,4 @@
 impl MessagesStore {
-
     pub fn remove_stale_peer_unhandled_propagation_ids(
         &self,
         peer: &str,
@@ -379,6 +378,24 @@ impl MessagesStore {
                 offered_bytes: offered_bytes.unwrap_or(0).max(0) as u64,
                 unhandled_bytes: unhandled_bytes.unwrap_or(0).max(0) as u64,
             })
+        })
+    }
+
+    /// Destination offers need IDs and sizes, not retained payload contents.
+    pub fn list_propagation_entry_metadata_for_destination(
+        &self,
+        destination: &str,
+    ) -> rusqlite::Result<Vec<(String, u64)>> {
+        self.with_read_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT transient_id, size_bytes FROM propagation_entries
+                 WHERE destination = ?1 ORDER BY size_bytes ASC, transient_id ASC",
+            )?;
+            let rows = stmt.query_map(params![normalize_hex_key(destination)], |row| {
+                let size: i64 = row.get(1)?;
+                Ok((row.get(0)?, size.max(0) as u64))
+            })?;
+            rows.collect()
         })
     }
 

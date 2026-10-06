@@ -375,9 +375,14 @@ impl RpcDaemon {
             if let Err(error) = self.validate_sdk_runtime_config(&next_runtime_config) {
                 return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
             }
-            let mut guard =
-                self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
-            *guard = next_runtime_config;
+            // Domain operations restore this snapshot; save negotiation under the same owner.
+            let _domain_guard = self.lock_and_restore_sdk_domain_snapshot()?;
+            {
+                let mut guard =
+                    self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
+                *guard = next_runtime_config;
+            }
+            self.persist_sdk_domain_snapshot()?;
         }
         {
             let mut guard =

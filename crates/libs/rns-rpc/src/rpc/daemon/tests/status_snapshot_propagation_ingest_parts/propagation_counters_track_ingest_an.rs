@@ -217,7 +217,6 @@ fn propagation_rpc_ingest_persists_payloads_to_store_for_fetch_after_cache_clear
         .expect("propagation entry persisted");
     assert_eq!(stored.payload_hex, payload_hex);
 
-    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
     let fetched = daemon
         .handle_rpc(rpc_request(
             73,

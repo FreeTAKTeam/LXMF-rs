@@ -8,10 +8,10 @@ use rns_rpc::RpcDaemon;
 use rns_transport::time::now_epoch_secs_i64;
 use rns_transport::transport::AnnounceEvent;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub(super) async fn ingest_announce_event(
-    daemon: &RpcDaemon,
+    daemon: &Arc<RpcDaemon>,
     event: AnnounceEvent,
     peer_crypto: &Mutex<HashMap<String, PeerCrypto>>,
 ) {
@@ -41,6 +41,7 @@ pub(super) async fn ingest_announce_event(
     let app_data = event.app_data.as_slice();
     let app_data_hex = (!app_data.is_empty()).then(|| hex::encode(app_data));
     let aspect = lxmf_aspect_from_name_hash(dest.desc.name.as_name_hash_slice());
+    drop(dest);
     let hops = Some(u32::from(event.hops));
     let interface = Some(hex::encode(event.interface.as_slice()));
     let stamp_cost = match announce_stamp_cost(aspect.as_deref(), app_data) {
@@ -64,35 +65,45 @@ pub(super) async fn ingest_announce_event(
             None
         }
     };
-    if let Err(err) = daemon.accept_announce_with_metadata(
-        peer.clone(),
-        timestamp,
-        peer_name,
-        peer_name_source,
-        app_data_hex,
-        None,
-        None,
-        None,
-        None,
-        stamp_cost,
-        Some(pn_flexibility),
-        Some(pn_peering),
-        aspect,
-        hops,
-        interface,
-        None,
-        None,
-        None,
-    ) {
-        log::error!("[daemon] failed to persist announce peer={peer}: {err}");
-    }
-    if let Err(err) = daemon.record_announce_identity(
-        peer.as_str(),
-        hex::encode(identity.public_key_bytes()).as_str(),
-        hex::encode(identity.verifying_key_bytes()).as_str(),
-        timestamp,
-    ) {
-        log::error!("[daemon] failed to persist announce identity peer={peer}: {err}");
+    let daemon = Arc::clone(daemon);
+    let persistence_peer = peer.clone();
+    // Await the existing sequential persistence owner without parking a reactor
+    // worker on SQLite, its write mutex, or the native writer's reply channel.
+    if let Err(error) = tokio::task::spawn_blocking(move || {
+        if let Err(err) = daemon.accept_announce_with_metadata(
+            peer.clone(),
+            timestamp,
+            peer_name,
+            peer_name_source,
+            app_data_hex,
+            None,
+            None,
+            None,
+            None,
+            stamp_cost,
+            Some(pn_flexibility),
+            Some(pn_peering),
+            aspect,
+            hops,
+            interface,
+            None,
+            None,
+            None,
+        ) {
+            log::error!("[daemon] failed to persist announce peer={peer}: {err}");
+        }
+        if let Err(err) = daemon.record_announce_identity(
+            peer.as_str(),
+            hex::encode(identity.public_key_bytes()).as_str(),
+            hex::encode(identity.verifying_key_bytes()).as_str(),
+            timestamp,
+        ) {
+            log::error!("[daemon] failed to persist announce identity peer={peer}: {err}");
+        }
+    })
+    .await
+    {
+        log::error!("[daemon] announce persistence worker failed peer={persistence_peer}: {error}");
     }
 }
 
