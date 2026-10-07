@@ -237,6 +237,9 @@ fn propagation_peer_maintenance_cull_replays_restored_queue_before_cleanup_like_
     }
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
 
+    // The injected legacy snapshot belongs to the startup import phase.
+    daemon.peer_queue_imports.lock().expect("queue imports").clear();
+
     let result = daemon
         .handle_rpc(rpc_request(44, "propagation_peer_maintenance", json!({})))
         .expect("peer maintenance")

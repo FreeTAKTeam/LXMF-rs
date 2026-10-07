@@ -34,7 +34,7 @@ impl RpcDaemon {
 
         let mut peer_stats = Vec::with_capacity(active_peers.len());
         for record in active_peers {
-            self.restore_peer_record_queue_marks(&record)?;
+            self.restore_peer_record_queue_marks(record.peer.as_str())?;
             let stats = self
                 .store
                 .peer_propagation_message_stats(record.peer.as_str())
@@ -116,7 +116,7 @@ impl RpcDaemon {
             if timestamp > record.last_seen.saturating_add(LXMF_PEER_MAX_UNREACHABLE_SECS) {
                 continue;
             }
-            self.restore_peer_record_queue_marks(&record)?;
+            self.restore_peer_record_queue_marks(record.peer.as_str())?;
             let stats = self
                 .store
                 .peer_propagation_message_stats(record.peer.as_str())
@@ -281,6 +281,7 @@ impl RpcDaemon {
             .store
             .list_peer_unhandled_propagation_ids(peer_key.as_str())
             .map_err(std::io::Error::other)?;
+        let mut imported = self.peer_queue_imports.lock().expect("peer_queue_imports mutex poisoned");
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         let should_remove = guard
             .get(peer_key.as_str())
@@ -292,8 +293,10 @@ impl RpcDaemon {
         if !removed {
             return Ok(());
         }
+        imported.remove(&peer_key.to_ascii_lowercase());
         let peer_count = Self::active_peer_count_from_guard(&guard);
         drop(guard);
+        drop(imported);
         self.update_daemon_status_snapshot(|snapshot| {
             snapshot.peer_count = peer_count;
         });

@@ -49,7 +49,7 @@ impl RpcDaemon {
             );
         }
         if let Some(record) = existing_peer.as_ref() {
-            self.restore_peer_record_queue_marks(record)?;
+            self.restore_peer_record_queue_marks(record.peer.as_str())?;
             let (transfer_limit_bytes, sync_limit_bytes) =
                 peer_sync_limits(record, requested_transfer_limit_bytes);
             if !parsed.maintenance_claimed

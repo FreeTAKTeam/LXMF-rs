@@ -203,7 +203,10 @@ impl RpcDaemon {
     }
 
     fn push_sequenced_event(&self, event: RpcEvent) -> SequencedRpcEvent {
-        let event = self.redact_event(event);
+        let mut event = self.redact_event(event);
+        if event.event_type == "peer_sync" {
+            compact_peer_sync_event(&mut event.payload);
+        }
         let policy = self.sdk_overflow_policy();
         let block_timeout_ms = self.sdk_block_timeout_ms();
 
@@ -383,5 +386,26 @@ impl RpcDaemon {
             payload: json!({ "link_id": "test-link" }),
         };
         self.publish_event(event);
+    }
+}
+
+/// Peer sync notifications carry counters/state, not repeated queue inventories
+/// or transferred payloads. Detailed inventories remain in explicit RPC replies.
+fn compact_peer_sync_event(value: &mut JsonValue) {
+    match value {
+        JsonValue::Object(fields) => {
+            fields.retain(|key, value| {
+                !(value.is_array() && (key.ends_with("_ids") || key == "messages"))
+            });
+            for value in fields.values_mut() {
+                compact_peer_sync_event(value);
+            }
+        }
+        JsonValue::Array(values) => {
+            for value in values {
+                compact_peer_sync_event(value);
+            }
+        }
+        _ => {}
     }
 }

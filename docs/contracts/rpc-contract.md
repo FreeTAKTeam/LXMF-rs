@@ -153,6 +153,12 @@ All methods below are required for full CLI feature coverage.
   `0xf5` (`ERROR_INVALID_STAMP`), `0xfd` (`ERROR_NOT_FOUND`), and `0xfe`
   (`ERROR_TIMEOUT`), preserve the peer and queued offers for retry, record the
   sync attempt, and avoid generic backoff or unpeer cleanup.
+  `peer_sync` events are summary notifications: they retain peer identity,
+  scheduling/failure state, message/transfer counters and byte counts, but omit
+  queue/transfer `*_ids` arrays and propagated message payload arrays at every
+  nesting level. This applies to local, remote, successful and postponed syncs
+  on both legacy and SDK event streams. Detailed inventories remain available in
+  explicit `list_peers` and `peer_sync` RPC replies; their reply schema is unchanged.
 - `peer_unpeer`
 : Params keys: `peer`. Result and `peer_unpeer` event include `removed`,
   `propagation_cleared`, `propagation_cleared_bytes`, top-level aggregate

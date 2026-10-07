@@ -73,6 +73,9 @@ fn propagation_peer_maintenance_rotation_replays_restored_queue_before_drop_like
     }
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
 
+    // The injected legacy snapshot belongs to the startup import phase.
+    daemon.peer_queue_imports.lock().expect("queue imports").clear();
+
     let result = daemon
         .handle_rpc(rpc_request(46, "propagation_peer_maintenance", json!({})))
         .expect("peer maintenance")
@@ -365,6 +368,9 @@ fn propagation_peer_maintenance_replays_restored_unhandled_queue_like_python() {
         record.restored_unhandled_ids.push(entry.transient_id.clone());
     }
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    // The injected legacy snapshot belongs to the startup import phase.
+    daemon.peer_queue_imports.lock().expect("queue imports").clear();
 
     let result = daemon
         .handle_rpc(rpc_request(53, "propagation_peer_maintenance", json!({})))

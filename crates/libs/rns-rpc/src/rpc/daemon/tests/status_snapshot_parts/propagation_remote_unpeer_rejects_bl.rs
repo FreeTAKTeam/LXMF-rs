@@ -233,12 +233,7 @@ fn propagation_remote_sync_updates_peer_runtime_state() {
     assert_eq!(event.payload["propagation"]["transfer_limit"].as_u64(), Some(42_500));
     assert_eq!(event.payload["propagation"]["sync_limit"].as_u64(), Some(84_000));
     assert_eq!(event.payload["propagation"]["rejected"].as_u64(), Some(0));
-    assert_eq!(
-        event.payload["propagation"]["rejected_ids"]
-            .as_array()
-            .expect("event rejected ids"),
-        &[] as &[JsonValue]
-    );
+    assert!(event.payload["propagation"].get("rejected_ids").is_none());
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
     assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
     assert_eq!(event.payload["rx_bytes"].as_u64(), Some(payload.len() as u64));

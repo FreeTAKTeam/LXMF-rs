@@ -242,14 +242,8 @@ fn peer_sync_reports_propagation_transfer_accounting() {
     assert_eq!(event.payload["messages"]["outgoing"].as_u64(), Some(1));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["acceptance_rate"].as_f64(), Some(1.0));
-    assert_eq!(
-        event.payload["propagation"]["handled_ids"].as_array().expect("event handled ids"),
-        &[json!(small.transient_id.as_str())]
-    );
-    assert_eq!(
-        event.payload["propagation"]["skipped_ids"].as_array().expect("event skipped ids"),
-        &[json!(large.transient_id.as_str())]
-    );
+    assert!(event.payload["propagation"].get("handled_ids").is_none());
+    assert!(event.payload["propagation"].get("skipped_ids").is_none());
 
     let peers = daemon
         .handle_rpc(RpcRequest { id: 62, method: "list_peers".to_string(), params: None })

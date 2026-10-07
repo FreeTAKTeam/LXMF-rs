@@ -390,10 +390,7 @@ fn peer_sync_retryable_offer_response_advances_backoff_and_reports_failure_kind_
         event.payload["next_sync_attempt"].as_i64(),
         Some(last_sync_attempt + 12 * 60)
     );
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
-        &[json!(pending.transient_id.as_str())]
-    );
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
 }
 
 #[test]

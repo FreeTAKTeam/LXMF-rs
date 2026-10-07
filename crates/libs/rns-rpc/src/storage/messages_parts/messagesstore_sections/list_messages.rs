@@ -304,31 +304,6 @@ impl MessagesStore {
         })
     }
 
-    pub fn mark_recent_propagation_unhandled_for_peer(
-        &self,
-        peer: &str,
-        limit: u64,
-    ) -> rusqlite::Result<usize> {
-        self.with_write_conn(|conn| {
-            let peer = normalize_peer_key(peer);
-            conn.execute(
-                "INSERT OR IGNORE INTO propagation_peer_entries
-                    (peer, transient_id, state, updated_at)
-                 SELECT ?1, transient_id, 'unhandled', ?2
-                 FROM propagation_entries
-                 WHERE NOT EXISTS (
-                     SELECT 1
-                     FROM propagation_peer_entries existing
-                     WHERE LOWER(existing.peer) = LOWER(?1)
-                       AND existing.transient_id = propagation_entries.transient_id
-                 )
-                 ORDER BY received_at DESC, transient_id DESC
-                 LIMIT ?3",
-                params![peer, now_unix_secs(), limit.max(1)],
-            )
-        })
-    }
-
     pub fn merge_case_insensitive_peer_propagation_marks(
         &self,
         peer: &str,

@@ -62,12 +62,7 @@ fn peer_sync_deduplicates_duplicate_wanted_ids_before_transfer_accounting() {
     assert_eq!(event.payload["propagation"]["transferred"].as_u64(), Some(1));
     assert_eq!(event.payload["messages"]["outgoing"].as_u64(), Some(1));
     assert_eq!(event.payload["acceptance_rate"].as_f64(), Some(1.0));
-    assert_eq!(
-        event.payload["propagation"]["transferred_ids"]
-            .as_array()
-            .expect("event transferred ids"),
-        &[json!(wanted.transient_id.as_str())]
-    );
+    assert!(event.payload["propagation"].get("transferred_ids").is_none());
     let peers = daemon
         .handle_rpc(RpcRequest { id: 57, method: "list_peers".to_string(), params: None })
         .expect("list peers")

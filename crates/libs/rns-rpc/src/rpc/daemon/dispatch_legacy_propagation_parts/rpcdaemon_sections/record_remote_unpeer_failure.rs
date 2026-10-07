@@ -358,9 +358,18 @@ impl RpcDaemon {
     }
 
     pub fn maintain_propagation_storage(&self) -> Result<usize, std::io::Error> {
-        let state = self.propagation_state.lock().map_err(|error| {
-            std::io::Error::other(format!("propagation mutex poisoned: {error}"))
-        })?.clone();
+        let state = self
+            .propagation_state
+            .lock()
+            .map_err(|error| std::io::Error::other(format!("propagation mutex poisoned: {error}")))?
+            .clone();
+        // Import legacy restart state before pruning, once per peer. Subsequent
+        // readers treat the persisted marks as authoritative.
+        let peer_ids =
+            self.peers.lock().expect("peers mutex poisoned").keys().cloned().collect::<Vec<_>>();
+        for peer in peer_ids {
+            self.ensure_peer_queue_import(&peer)?;
+        }
         let now = now_i64();
         let pruned_peer_entries = self
             .store
