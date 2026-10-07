@@ -28,7 +28,7 @@ impl RpcDaemon {
                 });
                 self.publish_event(RpcEvent {
                     event_type: "peer_unpeer".into(),
-                    payload: payload.clone(),
+                    payload: Self::propagation_event_summary(&payload),
                 });
                 Ok(RpcResponse {
                     id: request_id,

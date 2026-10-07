@@ -391,11 +391,11 @@ impl RpcDaemon {
                                 "messages": messages,
                                 "propagation": propagation,
                             });
-                            peer_sync_result = peer_sync.clone();
                             self.publish_event(RpcEvent {
                                 event_type: "peer_sync".into(),
-                                payload: peer_sync,
+                                payload: Self::propagation_event_summary(&peer_sync),
                             });
+                            peer_sync_result = peer_sync;
                         }
                         result
                     }

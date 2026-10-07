@@ -204,8 +204,8 @@ impl RpcDaemon {
 
     fn push_sequenced_event(&self, event: RpcEvent) -> SequencedRpcEvent {
         let mut event = self.redact_event(event);
-        if event.event_type == "peer_sync" {
-            compact_peer_sync_event(&mut event.payload);
+        if matches!(event.event_type.as_str(), "peer_sync" | "peer_unpeer") {
+            compact_propagation_event(&mut event.payload);
         }
         let policy = self.sdk_overflow_policy();
         let block_timeout_ms = self.sdk_block_timeout_ms();
@@ -243,6 +243,24 @@ impl RpcDaemon {
 
     pub fn push_event(&self, event: RpcEvent) -> RpcEvent {
         self.push_sequenced_event(event).event
+    }
+
+    /// Copy notification metadata without first cloning large inventories or
+    /// payload arrays from the detailed RPC response.
+    pub(super) fn propagation_event_summary(value: &JsonValue) -> JsonValue {
+        match value {
+            JsonValue::Object(fields) => JsonValue::Object(
+                fields
+                    .iter()
+                    .filter(|(key, value)| !is_propagation_inventory(key, value))
+                    .map(|(key, value)| (key.clone(), Self::propagation_event_summary(value)))
+                    .collect(),
+            ),
+            JsonValue::Array(values) => {
+                JsonValue::Array(values.iter().map(Self::propagation_event_summary).collect())
+            }
+            _ => value.clone(),
+        }
     }
 
     pub fn publish_event(&self, event: RpcEvent) {
@@ -389,23 +407,25 @@ impl RpcDaemon {
     }
 }
 
-/// Peer sync notifications carry counters/state, not repeated queue inventories
+/// Propagation notifications carry counters/state, not repeated queue inventories
 /// or transferred payloads. Detailed inventories remain in explicit RPC replies.
-fn compact_peer_sync_event(value: &mut JsonValue) {
+fn compact_propagation_event(value: &mut JsonValue) {
     match value {
         JsonValue::Object(fields) => {
-            fields.retain(|key, value| {
-                !(value.is_array() && (key.ends_with("_ids") || key == "messages"))
-            });
+            fields.retain(|key, value| !is_propagation_inventory(key, value));
             for value in fields.values_mut() {
-                compact_peer_sync_event(value);
+                compact_propagation_event(value);
             }
         }
         JsonValue::Array(values) => {
             for value in values {
-                compact_peer_sync_event(value);
+                compact_propagation_event(value);
             }
         }
         _ => {}
     }
+}
+
+fn is_propagation_inventory(key: &str, value: &JsonValue) -> bool {
+    value.is_array() && (key.ends_with("_ids") || key == "messages")
 }

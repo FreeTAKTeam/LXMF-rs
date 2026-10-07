@@ -4,7 +4,7 @@ Investigation date: 7 October 2026. [Issue #657](https://github.com/FreeTAKTeam/
 reports propagation bookkeeping growth, private memory/swap growth and correlated
 ZeroMQ response timeouts after deploying RCH preview.17.
 
-Five isolated release-mode probes reproduce framework-side queue expansion,
+Isolated release-mode probes reproduce framework-side queue expansion,
 stale-snapshot replay, payload-loading overhead, queue-copy overhead and event
 retention. RCH is absent from these probes. They identify concrete allocation
 and bookkeeping mechanisms; they do not attribute the entire reported 1.41 GiB
@@ -19,8 +19,12 @@ databases were not touched. No release has been published for this correction.
 
 ## Implemented correction
 
-- Fanout selection copies only peer ID, last-seen timestamp and static rank,
-  preserving the existing selection and ordering rules.
+- Fanout selection copies only peer ID, last-seen timestamp and static rank.
+  Maintenance selection and rotation also use metadata without inventories;
+  ranking, tie-breaking, pool composition and backoff claims are preserved.
+- Paginated SDK presence listing sorts borrowed peer records and copies only
+  the requested page of presence metadata. Contact enrichment reads only those
+  rows; neither complete peer inventories nor the entire contacts map is cloned.
 - Replenishment subtracts existing logical pending marks from the configured
   per-peer capacity inside the insertion SQL statement. Concurrent callers
   cannot add separate full batches; completed marks are not reopened.
@@ -32,16 +36,20 @@ databases were not touched. No release has been published for this correction.
 - Queue refresh reads IDs and completed/pending classification in a single
   SQLite query. It neither loads payload hex nor performs per-ID queries or
   quadratic deduplication.
-- All local/remote `peer_sync` events omit inventory ID arrays and transferred
+- All local/remote `peer_sync` and `peer_unpeer` events omit inventory ID arrays and transferred
   payload arrays before legacy/SDK retention, sinks and broadcasts. Counters,
   peer identity, scheduling and failure information remain. Explicit RPC replies
   keep their detailed inventories and existing schema. The event contract is
-  documented in `docs/contracts/rpc-contract.md`.
+  documented in `docs/contracts/rpc-contract.md`. Notification construction
+  also skips inventories before copying detailed replies, rather than cloning
+  large arrays only to discard them at publication. Event-only failure/removal
+  paths do not query inventories that the notification would omit.
 
 Correctness regressions cover repeated/concurrent refills, case-variant peers,
 completed-state precedence and completion age, a freed queue slot, stale
 snapshots, peer-removal cleanup, read operations
-without queue writes after import, event summaries and fanout ordering. Three
+without queue writes after import, event summaries, presence pagination and
+fanout ordering. Three
 new regressions were first run against the baseline and failed as expected.
 Existing restart fixtures now explicitly model the initial import phase;
 subsequent runtime snapshots cannot regain authority over durable state.
@@ -68,8 +76,8 @@ assertions now check the corrected behavior.
 
 ## Corrected fresh-process measurements
 
-The same isolated fixtures were rerun against the corrected source using the
-same RPC-only release build configuration as the baseline.
+The same isolated fixtures were rerun against initial correction `d8015ce`
+using the same RPC-only release build configuration as the baseline.
 
 | Probe | Corrected result |
 | --- | --- |
@@ -180,7 +188,7 @@ run during maintenance for ordinary ingress. Replenishment now respects the
 per-peer limit immediately. Completed retention is separate from the pending
 cap. This change does not introduce a new global byte budget for arbitrary
 SDK events, reply queues or in-flight replies; event compaction removes the
-confirmed peer-sync inventory/payload amplification.
+confirmed propagation-notification inventory/payload amplification.
 
 The current probes do not establish bounded production memory under one million
 associations, realistic traffic and the server's CPU/RAM/swap limits. A sustained
@@ -205,29 +213,125 @@ cargo test --release --locked --offline -p reticulum-rs-rpc --lib diagnose_issue
 
 Baseline local evidence is saved in `/tmp/lxmf-657-evidence/results.json` and
 one log per probe. Installed locked dependencies and GCC were used. Corrected
-measurements and validation results are recorded below. Hosted CI, live
-production profiling and a long-running constrained daemon test have not run.
+measurements and validation results are recorded below. Hosted CI is tracked
+separately in PR #658; local results do not imply hosted acceptance. No live
+production profiling or long-running constrained daemon test was run here.
 
 ## Validation of the correction
 
 - `cargo test --release --locked --offline -p reticulum-rs-rpc -p lxmf-sdk -p reticulumd --tests`:
-  **1,806 passed, zero failed, 115 ignored, across 42 suites**. This includes
+  **1,808 passed, zero failed, 119 ignored, across 42 suites**. This includes
   SDK/ZeroMQ behavior, daemon response-writer tests, real restart recovery tests
   and the issue #369 error-handling scanner. Local TCP/Unix socket access was
   enabled after sandbox-only permission failures in the first attempted run.
-- RPC-only `issue_657_` regression run: **eight passed**, with the three memory
-  qualification probes explicitly ignored in that default invocation. All five
-  fresh-process logical/memory probes were subsequently executed and passed.
+- Ten ordinary issue-specific regressions are covered by affected-package
+  acceptance. Seven Linux memory diagnostics are opt-in and run separately
+  in fresh processes; RSS is reported, not asserted as a portable allocator SLA.
 - `cargo clippy --release --locked --offline -p reticulum-rs-rpc -p lxmf-sdk -p reticulumd --all-targets --all-features --no-deps -- -D warnings`: passed.
-- `cargo fmt --all -- --check`, Git whitespace checks, dependency boundaries and
-  module-size checks: passed. `cargo run --locked --offline -p xtask -- architecture-checks` also passed.
+- `cargo fmt --all -- --check`, Git whitespace checks, dependency boundaries,
+  module-size and architecture checks: passed. The unchanged installed xtask
+  executable was reused for the follow-up architecture check.
+- The exact previously failing `rncp_mixed_runtime_compression_matrix_roundtrips_binary_files`
+  interoperability test passed locally against pinned Python Reticulum
+  `99de23c040d507e3fefca19e87b182302902725d`. This is separate from hosted HIL acceptance.
 
 The default-feature test build reports pre-existing dead-code warnings for two
 BLE runtime-status helpers in the unchanged transport crate. Strict Clippy with
 all features passes. Ignored live/stress/reference/hardware tests were not
-silently converted to passes; only the three issue-specific memory probes were
-run explicitly here. This is affected-package acceptance, not full workspace
+silently converted to passes; issue-specific memory probes are run explicitly
+and reported separately. This is affected-package acceptance, not full workspace
 or hosted CI acceptance, and no production service was restarted or upgraded.
 
 Corrected raw evidence: `/tmp/lxmf-657-evidence/fixed-results.json` and
 `fixed-*.log`; acceptance log: `/tmp/lxmf-657-acceptance.log`.
+
+
+## Allocator evidence and the follow-up correction
+
+The [additional live evidence](https://github.com/FreeTAKTeam/LXMF-rs/issues/657#issuecomment-6044412133)
+classifies approximately 95.9% of sampled swapped heap-page bytes as wholly
+inside validated allocator-free chunks. This is a bounded, non-atomic glibc
+2.42 observation, not a complete heap census. It supports allocator retention
+as a major contributor, without identifying the initiating allocation stacks
+or proving a causal link to transport timeouts.
+
+A local replay uses the reported largest received queue (27,542 identifiers),
+tiny synthetic payloads, and 384 real postponed-sync responses. At deployed
+source `81344ae1`, its retained events raise RSS from about 35 to 1,274 MiB;
+one notification serializes to 1,846,984 bytes. Three polls fail with
+`SDK_VALIDATION_EVENT_TOO_LARGE` without a cursor advance. With the initial
+correction `d8015ce`, RSS reaches about 47 MiB, the notification is 1,543 bytes,
+and the three polls succeed. These are short local synthetic runs; no
+production event rate or event-size distribution was measured.
+
+A local-only C interposer samples `mallinfo2` immediately before the replay's
+memory readings, without trimming or tuning the allocator. After clearing
+both retained event logs, while the test thread and seeded database remain
+alive:
+
+| glibc 2.43 local allocator counter | Deployed source | Initial correction |
+| --- | ---: | ---: |
+| Arena bytes | 890.21 MiB | 37.93 MiB |
+| Free arena bytes | 865.42 MiB | 13.14 MiB |
+| In-use arena bytes | 24.79 MiB | 24.79 MiB |
+
+Thus this controlled workload reproduces allocator-free retention after large
+event copies, and reducing the copies reduces that retention. The allocator's
+in-use counter is not an exact live Rust-object census. Counters after test
+thread teardown are much smaller and must not be substituted for these active
+stage readings. Instrumentation is confined to newly launched local test
+processes; it is neither linked into the daemon nor injected into production.
+
+The follow-up removes further full-inventory copies in maintenance selection,
+rotation and SDK presence listing. An identical 512-peer fixture owns
+1,049,600 synthetic cached identifiers throughout each operation. Maintenance
+selection rejects these expired peers; rotation has sufficient headroom and
+returns no removals; presence requests just one row. Comparing `d8015ce`
+with the follow-up source in separate RPC-only release test processes:
+
+| Operation | Additional peak RSS before | Additional peak RSS after |
+| --- | ---: | ---: |
+| Maintenance selection | 103.63 MiB | 0.20 MiB |
+| Rotation with no removals required | 103.98 MiB | 0.20 MiB |
+| One-row SDK presence page | 105.24 MiB | 0.57 MiB |
+
+The presence replay's allocator-free arena bytes after the request fall from
+104.92 MiB to 0.37 MiB while its original cached inventories remain alive.
+These are measured single-run peaks, not a throughput benchmark or a universal
+process-memory budget. The data shows the avoided allocation mechanism; it
+does not establish a multi-hour production RAM-plus-swap plateau.
+
+The follow-up also makes unpeer notifications summaries before retention and
+broadcast. A normal regression seeds 1,024 completed entries, verifies that
+the explicit unpeer reply still contains all identifiers, and verifies that
+both event streams remain small and the SDK poll advances. This regression
+failed before the change. Existing cleanup tests still verify cleared counts,
+bytes, persistent marks and peer removal, while expecting summary events.
+
+Additional diagnostics are in
+`crates/libs/rns-rpc/src/rpc/daemon/tests/issue_657_allocation_peaks.rs`:
+
+```sh
+cargo test --release --locked --offline -p reticulum-rs-rpc --lib diagnose_issue_657_maintenance_selection_allocation -- --ignored --nocapture --test-threads=1
+cargo test --release --locked --offline -p reticulum-rs-rpc --lib diagnose_issue_657_peer_rotation_allocation -- --ignored --nocapture --test-threads=1
+cargo test --release --locked --offline -p reticulum-rs-rpc --lib diagnose_issue_657_presence_page_allocation -- --ignored --nocapture --test-threads=1
+cargo test --release --locked --offline -p reticulum-rs-rpc --lib diagnose_issue_657_live_shaped_event_retention -- --ignored --nocapture --test-threads=1
+```
+
+Local raw evidence is under `/tmp/lxmf-657-evidence/`: `allocator-results.json`,
+`followup-baseline-results.json`, `followup-fixed-results.json`, and per-probe
+logs. The saved baseline/follow-up executable hashes are respectively
+`4708da65df422f6213e552eba66957f68f17154af404c8d88615b16b855747ca`
+and `738ca2d148318196a9a89a6194d9c73afb722a96ffeb8c08270e3cfc4923b5a8`.
+The source correction does not impose allocator tuning, periodic trimming,
+service restarts, retention reductions or propagation-history deletion.
+
+
+The final follow-up source also passes the large-history replay: 384 retained
+notifications, 1,543 bytes per event, approximately 46.7 MiB RSS after publishing,
+and three successful non-draining polls. After clearing the logs, active-stage
+allocator counters are 33.91 MiB arena, 9.11 MiB free and 24.80 MiB in use.
+Evidence: `followup-final-live-shape.json`; executable SHA-256
+`7902038afb7218001d600bde227160be509b2a82fb8f838f42b0ec1c51a98553`.
+Final acceptance and Clippy logs are `followup-acceptance-final.log` and
+`followup-clippy.log` in the same local evidence directory.

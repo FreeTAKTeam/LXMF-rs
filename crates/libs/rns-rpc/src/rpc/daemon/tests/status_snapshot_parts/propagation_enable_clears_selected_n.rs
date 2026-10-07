@@ -255,18 +255,8 @@ fn propagation_enable_static_only_removed_static_peer_counts_all_queue_marks_lik
     assert_eq!(event.payload["reason"].as_str(), Some("static_only_policy"));
     assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(4));
     assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(100));
-    assert_eq!(
-        event.payload["messages"]["handled_ids"].as_array().expect("event handled ids"),
-        &[
-            json!(handled.transient_id.as_str()),
-            json!(received.transient_id.as_str()),
-            json!(transfer_limited.transient_id.as_str()),
-        ]
-    );
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
-        &[json!(unhandled.transient_id.as_str())]
-    );
+    assert!(event.payload["messages"].get("handled_ids").is_none());
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
     assert_eq!(
         daemon
             .store

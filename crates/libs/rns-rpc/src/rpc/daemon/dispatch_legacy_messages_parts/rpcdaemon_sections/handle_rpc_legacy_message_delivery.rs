@@ -32,7 +32,7 @@ impl RpcDaemon {
                         "offered": offered,
                         "outgoing": outgoing,
                         "incoming": incoming,
-                        "messages": cleanup.messages,
+                        "messages": Self::propagation_event_summary(&cleanup.messages),
                     }),
                 };
                 self.publish_event(event);

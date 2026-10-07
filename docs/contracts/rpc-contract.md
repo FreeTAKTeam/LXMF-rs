@@ -163,8 +163,11 @@ All methods below are required for full CLI feature coverage.
 : Params keys: `peer`. Result and `peer_unpeer` event include `removed`,
   `propagation_cleared`, `propagation_cleared_bytes`, top-level aggregate
   peer counters `offered`, `outgoing`, `incoming`, and `messages` with
-  `offered`, `outgoing`, `incoming`, `unhandled`, byte counts, and handled /
-  unhandled propagation IDs.
+  `offered`, `outgoing`, `incoming`, `unhandled`, and byte counts.
+  The explicit RPC result also includes handled / unhandled propagation IDs.
+  `peer_unpeer` events use the same summary policy as `peer_sync`: queue/transfer
+  `*_ids` and payload arrays are omitted at every nesting level before retention,
+  broadcast and event-sink delivery, including automatic policy removals.
 - `clear_peers` (no params)
 - `list_interfaces` (no params)
 - `set_interfaces`

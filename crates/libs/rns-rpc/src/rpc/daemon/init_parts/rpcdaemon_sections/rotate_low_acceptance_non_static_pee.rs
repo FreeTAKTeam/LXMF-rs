@@ -19,7 +19,7 @@ impl RpcDaemon {
             guard
                 .values()
                 .filter(|record| record.peer_type.as_deref() != Some("unpeered"))
-                .cloned()
+                .map(PeerMaintenanceCandidate::from)
                 .collect::<Vec<_>>()
         };
         let required_drops = active_peers.len().saturating_sub(max_peers.saturating_sub(headroom));
@@ -70,14 +70,14 @@ impl RpcDaemon {
             drop_pool.extend(waiting);
         }
         drop_pool.sort_by(|left, right| {
-            peer_rotation_acceptance_rate(left)
-                .total_cmp(&peer_rotation_acceptance_rate(right))
+            left.rotation_acceptance_rate
+                .total_cmp(&right.rotation_acceptance_rate)
                 .then_with(|| left.peer.cmp(&right.peer))
         });
 
         let mut removed = Vec::new();
         for record in drop_pool.into_iter().take(required_drops) {
-            if peer_rotation_acceptance_rate(&record) >= LXMF_PEER_ROTATION_ACCEPTANCE_RATE_MAX {
+            if record.rotation_acceptance_rate >= LXMF_PEER_ROTATION_ACCEPTANCE_RATE_MAX {
                 continue;
             }
             let cleanup = self.unpeer_local_state(record.peer.as_str())?;
@@ -106,7 +106,7 @@ impl RpcDaemon {
             guard
                 .values()
                 .filter(|record| record.peer_type.as_deref() != Some("unpeered"))
-                .cloned()
+                .map(PeerMaintenanceCandidate::from)
                 .collect::<Vec<_>>()
         };
 
@@ -142,16 +142,15 @@ impl RpcDaemon {
                     .then_with(|| left.peer.cmp(&right.peer))
             });
             let fastest_count = LXMF_PEER_FASTEST_RANDOM_POOL.min(waiting.len());
-            let mut peer_pool = waiting.iter().take(fastest_count).cloned().collect::<Vec<_>>();
+            let mut peer_pool = waiting.iter().take(fastest_count).collect::<Vec<_>>();
             peer_pool.extend(
                 waiting
                     .iter()
                     .filter(|record| record.sync_transfer_rate == 0.0)
                     .take(fastest_count)
-                    .cloned(),
             );
             let selected_index = timestamp.rem_euclid(peer_pool.len() as i64) as usize;
-            let selected = peer_pool.into_iter().nth(selected_index).map(|record| record.peer);
+            let selected = peer_pool.get(selected_index).map(|record| record.peer.clone());
             self.claim_peer_for_maintenance_sync(selected.as_deref(), timestamp);
             return Ok(selected);
         }
@@ -273,14 +272,6 @@ impl RpcDaemon {
             .store
             .peer_propagation_message_stats(peer_key.as_str())
             .map_err(std::io::Error::other)?;
-        let handled_ids = self
-            .store
-            .list_peer_handled_propagation_ids(peer_key.as_str())
-            .map_err(std::io::Error::other)?;
-        let unhandled_ids = self
-            .store
-            .list_peer_unhandled_propagation_ids(peer_key.as_str())
-            .map_err(std::io::Error::other)?;
         let mut imported = self.peer_queue_imports.lock().expect("peer_queue_imports mutex poisoned");
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         let should_remove = guard
@@ -308,8 +299,6 @@ impl RpcDaemon {
             "unhandled": propagation_stats.unhandled,
             "offered_bytes": propagation_stats.offered_bytes,
             "unhandled_bytes": propagation_stats.unhandled_bytes,
-            "handled_ids": handled_ids,
-            "unhandled_ids": unhandled_ids,
         });
         self.publish_event(RpcEvent {
             event_type: "peer_unpeer".into(),

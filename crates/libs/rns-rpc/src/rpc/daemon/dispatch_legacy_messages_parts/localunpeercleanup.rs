@@ -20,12 +20,8 @@ impl RpcDaemon {
             .find(|record| record.peer.eq_ignore_ascii_case(peer_id))
             .map(|record| record.peer.clone())
             .unwrap_or_else(|| peer_id.to_string());
-        let record = {
-            let peers = self.peers.lock().expect("peers mutex poisoned");
-            peers.get(peer_key.as_str()).cloned()
-        };
-        if let Some(record) = record {
-            self.restore_peer_record_queue_marks(record.peer.as_str())?;
+        if self.peers.lock().expect("peers mutex poisoned").contains_key(peer_key.as_str()) {
+            self.restore_peer_record_queue_marks(peer_key.as_str())?;
         }
         let propagation_mark_stats = self
             .store
