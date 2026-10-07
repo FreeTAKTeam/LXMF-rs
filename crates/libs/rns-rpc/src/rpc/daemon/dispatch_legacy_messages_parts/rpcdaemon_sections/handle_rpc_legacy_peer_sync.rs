@@ -49,7 +49,7 @@ impl RpcDaemon {
             );
         }
         if let Some(record) = existing_peer.as_ref() {
-            self.restore_peer_record_queue_marks(record)?;
+            self.restore_peer_record_queue_marks(record.peer.as_str())?;
             let (transfer_limit_bytes, sync_limit_bytes) =
                 peer_sync_limits(record, requested_transfer_limit_bytes);
             if !parsed.maintenance_claimed
@@ -484,7 +484,7 @@ impl RpcDaemon {
         }
         let event = RpcEvent {
             event_type: "peer_sync".into(),
-            payload: json!({ "peer": &record.peer, "peer_type": peer_type_value, "type": peer_status_type, "timestamp": timestamp, "name": &record.name, "name_source": &record.name_source, "last_heard": status.last_heard, "first_seen": record.first_seen, "seen_count": status.seen_count, "state": 0, "sync_strategy": record.sync_strategy, "ler": 0, "peering_timebase": record.peering_timebase, "network_distance": record.network_distance, "rx_bytes": record.rx_bytes, "tx_bytes": status.tx_bytes, "alive": status.alive, "acceptance_rate": acceptance_rate, "last_sync_attempt": status.last_sync_attempt, "next_sync_attempt": status.next_sync_attempt, "sync_backoff": status.sync_backoff, "sync_transfer_rate": status.sync_transfer_rate, "str": status.sync_transfer_rate as u64, "synced": true, "propagation_transfer_limit": record.propagation_transfer_limit, "propagation_sync_limit": record.propagation_sync_limit, "propagation_stamp_cost": record.propagation_stamp_cost, "propagation_stamp_cost_flexibility": record.propagation_stamp_cost_flexibility, "peering_key": peering_key, "peering_key_status": peering_key_status, "transfer_limit": transfer_limit_bytes, "sync_limit": sync_limit_bytes, "target_stamp_cost": record.propagation_stamp_cost, "stamp_cost_flexibility": record.propagation_stamp_cost_flexibility, "offered": offered, "outgoing": outgoing, "incoming": incoming, "messages": messages, "propagation": propagation_sync.clone(), }),
+            payload: json!({ "peer": &record.peer, "peer_type": peer_type_value, "type": peer_status_type, "timestamp": timestamp, "name": &record.name, "name_source": &record.name_source, "last_heard": status.last_heard, "first_seen": record.first_seen, "seen_count": status.seen_count, "state": 0, "sync_strategy": record.sync_strategy, "ler": 0, "peering_timebase": record.peering_timebase, "network_distance": record.network_distance, "rx_bytes": record.rx_bytes, "tx_bytes": status.tx_bytes, "alive": status.alive, "acceptance_rate": acceptance_rate, "last_sync_attempt": status.last_sync_attempt, "next_sync_attempt": status.next_sync_attempt, "sync_backoff": status.sync_backoff, "sync_transfer_rate": status.sync_transfer_rate, "str": status.sync_transfer_rate as u64, "synced": true, "propagation_transfer_limit": record.propagation_transfer_limit, "propagation_sync_limit": record.propagation_sync_limit, "propagation_stamp_cost": record.propagation_stamp_cost, "propagation_stamp_cost_flexibility": record.propagation_stamp_cost_flexibility, "peering_key": peering_key, "peering_key_status": peering_key_status, "transfer_limit": transfer_limit_bytes, "sync_limit": sync_limit_bytes, "target_stamp_cost": record.propagation_stamp_cost, "stamp_cost_flexibility": record.propagation_stamp_cost_flexibility, "offered": offered, "outgoing": outgoing, "incoming": incoming, "messages": Self::propagation_event_summary(&messages), "propagation": Self::propagation_event_summary(&propagation_sync), }),
         };
         self.publish_event(event);
         Ok(RpcResponse {

@@ -206,6 +206,9 @@ fn retryable_propagation_remote_sync_replays_restored_queue_snapshot_like_python
         record.restored_unhandled_ids.push(pending.transient_id.clone());
     }
 
+    // The injected legacy snapshot belongs to the startup import phase.
+    daemon.peer_queue_imports.lock().expect("queue imports").clear();
+
     let err = daemon
         .handle_rpc(rpc_request(
             97,

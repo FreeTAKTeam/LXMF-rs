@@ -15,7 +15,7 @@ fn policy_unpeer_event_payload(
         "offered": offered,
         "outgoing": outgoing,
         "incoming": incoming,
-        "messages": cleanup.messages.clone(),
+        "messages": RpcDaemon::propagation_event_summary(&cleanup.messages),
     })
 }
 

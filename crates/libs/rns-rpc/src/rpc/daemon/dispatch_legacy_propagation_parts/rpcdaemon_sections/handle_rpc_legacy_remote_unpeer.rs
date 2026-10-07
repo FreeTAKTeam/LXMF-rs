@@ -137,8 +137,8 @@ impl RpcDaemon {
                         "offered": offered,
                         "outgoing": outgoing,
                         "incoming": incoming,
-                        "messages": cleanup.messages,
-                        "result": result,
+                        "messages": Self::propagation_event_summary(&cleanup.messages),
+                        "result": Self::propagation_event_summary(&result),
                     }),
                 });
                 Ok(RpcResponse {

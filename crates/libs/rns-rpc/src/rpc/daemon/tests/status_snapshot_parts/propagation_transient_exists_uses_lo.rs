@@ -237,6 +237,9 @@ fn propagation_peer_maintenance_cull_replays_restored_queue_before_cleanup_like_
     }
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
 
+    // The injected legacy snapshot belongs to the startup import phase.
+    daemon.peer_queue_imports.lock().expect("queue imports").clear();
+
     let result = daemon
         .handle_rpc(rpc_request(44, "propagation_peer_maintenance", json!({})))
         .expect("peer maintenance")
@@ -265,12 +268,7 @@ fn propagation_peer_maintenance_cull_replays_restored_queue_before_cleanup_like_
     assert_eq!(event.payload["reason"].as_str(), Some("max_unreachable"));
     assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(1));
     assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(24));
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"]
-            .as_array()
-            .expect("event unhandled ids"),
-        &[json!(entry.transient_id.as_str())]
-    );
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
     assert!(
         daemon
             .store

@@ -191,12 +191,7 @@ fn unavailable_propagation_remote_unpeer_records_existing_queue_snapshot_like_py
         event.payload["propagation"]["error"].as_str(),
         Some("remote control bridge unavailable")
     );
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"]
-            .as_array()
-            .expect("event unhandled ids"),
-        &[json!(entry.transient_id.as_str())]
-    );
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
     assert_eq!(
         event.payload["propagation"]["failure_kind"].as_str(),
         Some("failed")

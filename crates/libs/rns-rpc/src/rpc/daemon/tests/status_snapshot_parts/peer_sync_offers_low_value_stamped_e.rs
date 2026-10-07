@@ -68,10 +68,7 @@ fn peer_sync_offers_low_value_stamped_entries_like_python() {
         .expect("peer sync event");
     assert_eq!(event.payload["propagation"]["transferred"].as_u64(), Some(2));
     assert_eq!(event.payload["propagation"]["rejected"].as_u64(), Some(0));
-    assert_eq!(
-        event.payload["propagation"]["rejected_ids"].as_array().expect("event rejected ids"),
-        &[] as &[JsonValue]
-    );
+    assert!(event.payload["propagation"].get("rejected_ids").is_none());
 
     let pending = daemon
         .store
@@ -357,12 +354,6 @@ fn peer_sync_result_and_event_report_message_accounting() {
     assert_eq!(event.payload["messages"]["unhandled"].as_u64(), Some(0));
     assert_eq!(event.payload["messages"]["offered_bytes"].as_u64(), Some(24));
     assert_eq!(event.payload["messages"]["unhandled_bytes"].as_u64(), Some(0));
-    assert_eq!(
-        event.payload["messages"]["handled_ids"].as_array().expect("event handled ids"),
-        &[json!(entry.transient_id.as_str())]
-    );
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
-        &[] as &[JsonValue]
-    );
+    assert!(event.payload["messages"].get("handled_ids").is_none());
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
 }

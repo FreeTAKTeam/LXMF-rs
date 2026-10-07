@@ -43,6 +43,7 @@ pub struct RpcDaemon {
     sdk_remote_commands: Mutex<HashMap<String, SdkRemoteCommandRecord>>,
     sdk_voice_sessions: Mutex<HashMap<String, SdkVoiceSessionRecord>>,
     peers: Mutex<HashMap<String, PeerRecord>>,
+    peer_queue_imports: Mutex<HashSet<String>>,
     interfaces: Mutex<Vec<InterfaceRecord>>,
     delivery_policy: Mutex<DeliveryPolicy>,
     blackholed_identities: Mutex<HashMap<String, JsonValue>>,

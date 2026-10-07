@@ -153,12 +153,21 @@ All methods below are required for full CLI feature coverage.
   `0xf5` (`ERROR_INVALID_STAMP`), `0xfd` (`ERROR_NOT_FOUND`), and `0xfe`
   (`ERROR_TIMEOUT`), preserve the peer and queued offers for retry, record the
   sync attempt, and avoid generic backoff or unpeer cleanup.
+  `peer_sync` events are summary notifications: they retain peer identity,
+  scheduling/failure state, message/transfer counters and byte counts, but omit
+  queue/transfer `*_ids` arrays and propagated message payload arrays at every
+  nesting level. This applies to local, remote, successful and postponed syncs
+  on both legacy and SDK event streams. Detailed inventories remain available in
+  explicit `list_peers` and `peer_sync` RPC replies; their reply schema is unchanged.
 - `peer_unpeer`
 : Params keys: `peer`. Result and `peer_unpeer` event include `removed`,
   `propagation_cleared`, `propagation_cleared_bytes`, top-level aggregate
   peer counters `offered`, `outgoing`, `incoming`, and `messages` with
-  `offered`, `outgoing`, `incoming`, `unhandled`, byte counts, and handled /
-  unhandled propagation IDs.
+  `offered`, `outgoing`, `incoming`, `unhandled`, and byte counts.
+  The explicit RPC result also includes handled / unhandled propagation IDs.
+  `peer_unpeer` events use the same summary policy as `peer_sync`: queue/transfer
+  `*_ids` and payload arrays are omitted at every nesting level before retention,
+  broadcast and event-sink delivery, including automatic policy removals.
 - `clear_peers` (no params)
 - `list_interfaces` (no params)
 - `set_interfaces`

@@ -198,8 +198,8 @@ impl RpcDaemon {
             "offered": offered,
             "outgoing": outgoing,
             "incoming": incoming,
-            "messages": messages,
-            "propagation": propagation_sync.clone(),
+            "messages": Self::propagation_event_summary(&messages),
+            "propagation": Self::propagation_event_summary(&propagation_sync),
         });
         event_payload["state_name"] = json!("idle");
         event_payload["sync_schedule_state"] = json!(sync_schedule_state);
@@ -372,7 +372,7 @@ impl RpcDaemon {
         payload["state_name"] = json!("failed");
         payload["failure_kind"] = json!(failure_kind);
         payload["propagation"]["failure_kind"] = json!(failure_kind);
-        self.publish_event(RpcEvent { event_type: "peer_sync".into(), payload: payload.clone() });
+        self.publish_event(RpcEvent { event_type: "peer_sync".into(), payload: Self::propagation_event_summary(&payload) });
 
         RpcResponse { id: request_id, result: Some(payload), error: None }
     }

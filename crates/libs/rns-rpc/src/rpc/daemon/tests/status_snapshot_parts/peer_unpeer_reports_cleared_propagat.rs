@@ -109,14 +109,8 @@ fn peer_unpeer_reports_cleared_propagation_queue_accounting() {
     assert_eq!(event.payload["offered"].as_u64(), Some(2));
     assert_eq!(event.payload["outgoing"].as_u64(), Some(1));
     assert_eq!(event.payload["incoming"].as_u64(), Some(1));
-    assert_eq!(
-        event.payload["messages"]["handled_ids"].as_array().expect("event handled ids"),
-        &[json!(handled.transient_id.as_str())]
-    );
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
-        &[json!(unhandled.transient_id.as_str())]
-    );
+    assert!(event.payload["messages"].get("handled_ids").is_none());
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
 }
 
 #[test]
@@ -188,14 +182,8 @@ fn peer_unpeer_reports_case_variant_live_queue_accounting_like_python() {
         .expect("peer unpeer event");
     assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(2));
     assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(36));
-    assert_eq!(
-        event.payload["messages"]["handled_ids"].as_array().expect("event handled ids"),
-        &[json!(handled.transient_id.as_str())]
-    );
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
-        &[json!(unhandled.transient_id.as_str())]
-    );
+    assert!(event.payload["messages"].get("handled_ids").is_none());
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
     assert!(
         daemon
             .store

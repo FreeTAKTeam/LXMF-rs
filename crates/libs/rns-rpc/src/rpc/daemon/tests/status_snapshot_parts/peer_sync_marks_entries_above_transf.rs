@@ -79,19 +79,11 @@ fn peer_sync_marks_entries_above_transfer_limit_handled_like_python() {
     assert_eq!(event.payload["propagation"]["handled"].as_u64(), Some(0));
     assert_eq!(event.payload["propagation"]["offered"].as_u64(), Some(0));
     assert_eq!(event.payload["propagation"]["transfer_limited"].as_u64(), Some(1));
-    assert_eq!(
-        event.payload["propagation"]["transfer_limited_ids"]
-            .as_array()
-            .expect("event transfer limited ids"),
-        &[json!(oversized_id.as_str())]
-    );
+    assert!(event.payload["propagation"].get("transfer_limited_ids").is_none());
     assert_eq!(event.payload["messages"]["offered"].as_u64(), Some(0));
     assert_eq!(event.payload["messages"]["unhandled"].as_u64(), Some(0));
     assert_eq!(event.payload["messages"]["offered_bytes"].as_u64(), Some(0));
-    assert_eq!(
-        event.payload["messages"]["handled_ids"].as_array().expect("event handled ids"),
-        &[json!(oversized_id.as_str())]
-    );
+    assert!(event.payload["messages"].get("handled_ids").is_none());
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));

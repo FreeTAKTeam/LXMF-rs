@@ -28,7 +28,7 @@ impl RpcDaemon {
                 });
                 self.publish_event(RpcEvent {
                     event_type: "peer_unpeer".into(),
-                    payload: payload.clone(),
+                    payload: Self::propagation_event_summary(&payload),
                 });
                 Ok(RpcResponse {
                     id: request_id,
@@ -37,7 +37,7 @@ impl RpcDaemon {
                 })
             }
             LXMF_PEER_ERROR_THROTTLED => {
-                self.restore_peer_record_queue_marks(record)?;
+                self.restore_peer_record_queue_marks(record.peer.as_str())?;
                 let (transfer_limit_bytes, sync_limit_bytes) =
                     peer_sync_limits(record, requested_transfer_limit_bytes);
                 {
@@ -57,7 +57,7 @@ impl RpcDaemon {
                 ))
             }
             _ => {
-                self.restore_peer_record_queue_marks(record)?;
+                self.restore_peer_record_queue_marks(record.peer.as_str())?;
                 let (transfer_limit_bytes, sync_limit_bytes) =
                     peer_sync_limits(record, requested_transfer_limit_bytes);
                 {

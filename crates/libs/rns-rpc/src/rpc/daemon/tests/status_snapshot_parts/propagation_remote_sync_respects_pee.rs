@@ -277,6 +277,9 @@ fn propagation_remote_sync_missing_bridge_replays_restored_queue_snapshot_like_p
         record.restored_unhandled_ids.push(pending.transient_id.clone());
     }
 
+    // The injected legacy snapshot belongs to the startup import phase.
+    daemon.peer_queue_imports.lock().expect("queue imports").clear();
+
     let err = daemon
         .handle_rpc(rpc_request(
             96,
@@ -396,10 +399,7 @@ fn propagation_remote_sync_missing_bridge_reports_existing_peer_failure_like_pyt
         event.payload["next_sync_attempt"].as_i64(),
         Some(last_sync_attempt + 12 * 60)
     );
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
-        &[json!(pending.transient_id.as_str())]
-    );
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
 }
 
 #[test]

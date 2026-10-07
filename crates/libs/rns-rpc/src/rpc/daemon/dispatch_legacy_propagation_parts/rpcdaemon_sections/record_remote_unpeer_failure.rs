@@ -57,8 +57,6 @@ impl RpcDaemon {
         };
         let (outgoing, incoming, offered, unhandled, offered_bytes, unhandled_bytes) =
             self.peer_message_stats_for_reporting(peer.peer.as_str());
-        let handled_ids = self.peer_handled_ids_for_reporting(peer.peer.as_str());
-        let unhandled_ids = self.peer_unhandled_ids_for_reporting(peer.peer.as_str());
         let peering_key = super::dispatch_legacy_messages::peer_peering_key_value(
             &peer,
             self.identity_hash.as_str(),
@@ -80,8 +78,6 @@ impl RpcDaemon {
             "unhandled": unhandled,
             "offered_bytes": offered_bytes,
             "unhandled_bytes": unhandled_bytes,
-            "handled_ids": handled_ids,
-            "unhandled_ids": unhandled_ids,
         });
         let mut propagation = json!({
             "remote_sync": true,
@@ -358,9 +354,18 @@ impl RpcDaemon {
     }
 
     pub fn maintain_propagation_storage(&self) -> Result<usize, std::io::Error> {
-        let state = self.propagation_state.lock().map_err(|error| {
-            std::io::Error::other(format!("propagation mutex poisoned: {error}"))
-        })?.clone();
+        let state = self
+            .propagation_state
+            .lock()
+            .map_err(|error| std::io::Error::other(format!("propagation mutex poisoned: {error}")))?
+            .clone();
+        // Import legacy restart state before pruning, once per peer. Subsequent
+        // readers treat the persisted marks as authoritative.
+        let peer_ids =
+            self.peers.lock().expect("peers mutex poisoned").keys().cloned().collect::<Vec<_>>();
+        for peer in peer_ids {
+            self.ensure_peer_queue_import(&peer)?;
+        }
         let now = now_i64();
         let pruned_peer_entries = self
             .store

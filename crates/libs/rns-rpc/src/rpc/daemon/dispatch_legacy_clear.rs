@@ -49,8 +49,11 @@ impl RpcDaemon {
             "clear_peers" => {
                 self.store.clear_all_peer_propagation_marks().map_err(std::io::Error::other)?;
                 {
+                    let mut imported =
+                        self.peer_queue_imports.lock().expect("peer_queue_imports mutex poisoned");
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
                     guard.clear();
+                    imported.clear();
                 }
                 self.clear_selected_propagation_node_after_peer_clear();
                 self.update_daemon_status_snapshot(|snapshot| {
@@ -69,8 +72,11 @@ impl RpcDaemon {
                 self.store.clear_announces().map_err(std::io::Error::other)?;
                 self.store.clear_all_peer_propagation_marks().map_err(std::io::Error::other)?;
                 {
+                    let mut imported =
+                        self.peer_queue_imports.lock().expect("peer_queue_imports mutex poisoned");
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
                     guard.clear();
+                    imported.clear();
                 }
                 self.clear_selected_propagation_node_after_peer_clear();
                 self.update_daemon_status_snapshot(|snapshot| {

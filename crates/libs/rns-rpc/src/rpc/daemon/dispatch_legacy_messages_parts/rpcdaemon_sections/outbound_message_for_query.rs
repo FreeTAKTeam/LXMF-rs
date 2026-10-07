@@ -194,90 +194,42 @@ impl RpcDaemon {
         }
     }
 
-    pub(super) fn restore_peer_record_queue_marks(
-        &self,
-        record: &PeerRecord,
-    ) -> Result<(), std::io::Error> {
-        fn push_unique(ids: &mut Vec<String>, transient_id: String) {
-            if !ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str())) {
-                ids.push(transient_id);
-            }
-        }
+    pub(super) fn restore_peer_record_queue_marks(&self, peer: &str) -> Result<(), std::io::Error> {
+        self.ensure_peer_queue_import(peer)?;
+        self.refresh_peer_queue_snapshot_from_storage(peer)
+    }
 
-        let mut restored_unhandled_ids = Vec::new();
-        for transient_id in &record.restored_unhandled_ids {
-            let transient_id = transient_id.trim().to_ascii_lowercase();
-            if self
-                .store
-                .get_propagation_entry(transient_id.as_str())
-                .map_err(std::io::Error::other)?
-                .is_some()
-            {
-                self.store
-                    .mark_peer_unhandled_propagation(record.peer.as_str(), transient_id.as_str())
-                    .map_err(std::io::Error::other)?;
-                push_unique(&mut restored_unhandled_ids, transient_id);
-            }
+    pub(super) fn ensure_peer_queue_import(&self, peer: &str) -> Result<(), std::io::Error> {
+        // Serialize the one-time legacy import. Only live peer state is eligible;
+        // snapshots held by an RPC must never write pruned queue marks back.
+        // Lock order: imports, then short peers/store scopes (no awaits).
+        let mut imported =
+            self.peer_queue_imports.lock().expect("peer_queue_imports mutex poisoned");
+        let key = peer.trim().to_ascii_lowercase();
+        if imported.contains(&key) {
+            return Ok(());
         }
-        for entry in self
-            .store
-            .list_peer_unhandled_propagation(record.peer.as_str())
-            .map_err(std::io::Error::other)?
-        {
-            push_unique(
-                &mut restored_unhandled_ids,
-                entry.transient_id.trim().to_ascii_lowercase(),
-            );
-        }
-
-        let mut restored_handled_ids = Vec::new();
-        for transient_id in &record.restored_handled_ids {
-            let transient_id = transient_id.trim().to_ascii_lowercase();
-            if self
-                .store
-                .get_propagation_entry(transient_id.as_str())
-                .map_err(std::io::Error::other)?
-                .is_some()
-            {
-                self.store
-                    .mark_peer_handled_propagation(record.peer.as_str(), transient_id.as_str())
-                    .map_err(std::io::Error::other)?;
-                push_unique(&mut restored_handled_ids, transient_id);
-            }
-        }
-        for transient_id in self
-            .store
-            .list_peer_handled_propagation_ids(record.peer.as_str())
-            .map_err(std::io::Error::other)?
-        {
-            let transient_id = transient_id.trim().to_ascii_lowercase();
-            if self
-                .store
-                .get_propagation_entry(transient_id.as_str())
-                .map_err(std::io::Error::other)?
-                .is_some()
-            {
-                push_unique(&mut restored_handled_ids, transient_id);
-            }
-        }
-        restored_unhandled_ids.retain(|transient_id| {
-            !restored_handled_ids
-                .iter()
-                .any(|handled_id| handled_id.eq_ignore_ascii_case(transient_id))
-        });
-
-        let mut guard = self.peers.lock().expect("peers mutex poisoned");
-        let existing_peer_key = guard
-            .keys()
-            .find(|existing| existing.eq_ignore_ascii_case(record.peer.as_str()))
+        let record = self
+            .peers
+            .lock()
+            .expect("peers mutex poisoned")
+            .values()
+            .find(|record| record.peer.eq_ignore_ascii_case(&key))
             .cloned();
-        if let Some(existing_peer_key) = existing_peer_key {
-            if let Some(existing) = guard.get_mut(&existing_peer_key) {
-                existing.restored_handled_ids = restored_handled_ids;
-                existing.restored_unhandled_ids = restored_unhandled_ids;
-            }
-        }
-
+        let Some(record) = record else {
+            return Ok(());
+        };
+        self.store
+            .merge_case_insensitive_peer_propagation_marks(&key)
+            .map_err(std::io::Error::other)?;
+        self.store
+            .import_peer_queue_marks(
+                &key,
+                &record.restored_handled_ids,
+                &record.restored_unhandled_ids,
+            )
+            .map_err(std::io::Error::other)?;
+        imported.insert(key);
         Ok(())
     }
 

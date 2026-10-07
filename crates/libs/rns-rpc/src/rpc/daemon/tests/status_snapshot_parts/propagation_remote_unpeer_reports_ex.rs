@@ -235,10 +235,7 @@ fn failed_propagation_remote_unpeer_preserves_local_peer_and_queue_state() {
     assert_eq!(event.payload["synced"].as_bool(), Some(false));
     assert_eq!(event.payload["state_name"].as_str(), Some("failed"));
     assert_eq!(event.payload["propagation"]["error"].as_str(), Some("remote unpeer failed"));
-    assert_eq!(
-        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
-        &[json!("e2".repeat(32))]
-    );
+    assert!(event.payload["messages"].get("unhandled_ids").is_none());
 }
 
 #[test]
@@ -422,6 +419,9 @@ fn failed_propagation_remote_unpeer_replays_restored_queue_snapshot_like_python(
         record.restored_handled_ids.push(handled_entry.transient_id.clone());
         record.restored_unhandled_ids.push(entry.transient_id.clone());
     }
+
+    // The injected legacy snapshot belongs to the startup import phase.
+    daemon.peer_queue_imports.lock().expect("queue imports").clear();
 
     let err = daemon
         .handle_rpc(rpc_request(

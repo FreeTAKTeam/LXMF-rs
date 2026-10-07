@@ -12,6 +12,34 @@ const LXMF_PEER_ROTATION_HEADROOM_PCT: usize = 10;
 
 const LXMF_PEER_ROTATION_ACCEPTANCE_RATE_MAX: f64 = 0.5;
 
+// Maintenance ranks peers by metadata; queue inventories remain owned by the
+// live records and must not be copied for each selection/rotation pass.
+struct PeerMaintenanceCandidate {
+    peer: String,
+    last_seen: i64,
+    last_sync_attempt: i64,
+    next_sync_attempt: i64,
+    alive: bool,
+    offered: u64,
+    sync_transfer_rate: f64,
+    rotation_acceptance_rate: f64,
+}
+
+impl From<&PeerRecord> for PeerMaintenanceCandidate {
+    fn from(peer: &PeerRecord) -> Self {
+        Self {
+            peer: peer.peer.clone(),
+            last_seen: peer.last_seen,
+            last_sync_attempt: peer.last_sync_attempt,
+            next_sync_attempt: peer.next_sync_attempt,
+            alive: peer.alive,
+            offered: peer.offered,
+            sync_transfer_rate: peer.sync_transfer_rate,
+            rotation_acceptance_rate: peer_rotation_acceptance_rate(peer),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PeerPropagationState {
     pub(super) transfer_limit: Option<u32>,
