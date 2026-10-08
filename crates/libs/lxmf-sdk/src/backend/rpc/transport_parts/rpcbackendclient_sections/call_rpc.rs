@@ -186,7 +186,7 @@ impl RpcBackendClient {
                     SdkError::new(
                         code::INTERNAL,
                         ErrorCategory::Transport,
-                        format!("invalid mtls client certificate/key configuration: {}", err),
+                        format!("invalid mtls client certificate/key configuration: {err}"),
                     )
                 })?
             }
@@ -205,7 +205,7 @@ impl RpcBackendClient {
                 SdkError::new(
                     code::INTERNAL,
                     ErrorCategory::Transport,
-                    format!("failed to start tls client connection: {}", err),
+                    format!("failed to start tls client connection: {err}"),
                 )
             })?;
         let stream = TcpStream::connect(authority).map_err(|err| {
@@ -273,7 +273,7 @@ impl RpcBackendClient {
                     SdkError::new(
                         code::INTERNAL,
                         ErrorCategory::Transport,
-                        format!("invalid mtls client certificate/key configuration: {}", err),
+                        format!("invalid mtls client certificate/key configuration: {err}"),
                     )
                 })?
             }
@@ -295,7 +295,7 @@ impl RpcBackendClient {
             SdkError::new(
                 code::INTERNAL,
                 ErrorCategory::Transport,
-                format!("failed to start tls client connection: {}", err),
+                format!("failed to start tls client connection: {err}"),
             )
         })?;
         stream.write_all(request).await.map_err(|err| {
@@ -317,7 +317,7 @@ impl RpcBackendClient {
             return Err(SdkError::new(
                 code::INTERNAL,
                 ErrorCategory::Transport,
-                format!("rpc response exceeded {} bytes", RPC_HTTP_RESPONSE_MAX_BYTES),
+                format!("rpc response exceeded {RPC_HTTP_RESPONSE_MAX_BYTES} bytes"),
             ));
         }
         Ok(response)
@@ -342,7 +342,7 @@ impl RpcBackendClient {
                 return Err(SdkError::new(
                     code::INTERNAL,
                     ErrorCategory::Transport,
-                    format!("rpc response exceeded {} bytes", RPC_HTTP_RESPONSE_MAX_BYTES),
+                    format!("rpc response exceeded {RPC_HTTP_RESPONSE_MAX_BYTES} bytes"),
                 ));
             }
         }

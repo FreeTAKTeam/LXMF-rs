@@ -9,7 +9,7 @@ pub(super) fn new_session_id() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
-    format!("zmq-sdk-{:032x}", now)
+    format!("zmq-sdk-{now:032x}")
 }
 
 impl ZmqPipelineBackendClient {

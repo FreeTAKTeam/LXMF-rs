@@ -13,7 +13,7 @@ where
         return Err(SdkError::new(
             code::INTERNAL,
             ErrorCategory::Transport,
-            format!("event stream frame exceeded {} bytes", RPC_EVENT_STREAM_MAX_FRAME_BYTES),
+            format!("event stream frame exceeded {RPC_EVENT_STREAM_MAX_FRAME_BYTES} bytes"),
         ));
     }
     let mut frame = Vec::with_capacity(4 + len);

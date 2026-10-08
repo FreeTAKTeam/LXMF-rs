@@ -322,7 +322,7 @@ async fn connect_tcp_rpc_http_event_stream(
                         SdkError::new(
                             code::INTERNAL,
                             ErrorCategory::Transport,
-                            format!("invalid mtls client certificate/key configuration: {}", err),
+                            format!("invalid mtls client certificate/key configuration: {err}"),
                         )
                     })?
                 }
@@ -341,7 +341,7 @@ async fn connect_tcp_rpc_http_event_stream(
             SdkError::new(
                 code::INTERNAL,
                 ErrorCategory::Transport,
-                format!("failed to start event stream tls connection: {}", err),
+                format!("failed to start event stream tls connection: {err}"),
             )
         })?;
         stream.write_all(request).await.map_err(|err| {
@@ -437,10 +437,7 @@ where
         return Err(SdkError::new(
             code::INTERNAL,
             ErrorCategory::Transport,
-            format!(
-                "event stream rejection body exceeded {} bytes",
-                RPC_EVENT_STREAM_MAX_FRAME_BYTES
-            ),
+            format!("event stream rejection body exceeded {RPC_EVENT_STREAM_MAX_FRAME_BYTES} bytes"),
         ));
     }
     let mut body = vec![0_u8; content_length];

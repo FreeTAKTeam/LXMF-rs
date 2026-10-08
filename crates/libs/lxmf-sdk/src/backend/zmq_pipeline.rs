@@ -173,7 +173,7 @@ impl ZmqPipelineBackendClient {
         let sig = token_signature(auth.shared_secret.as_str(), payload.as_str());
         Ok(Some(ZmqRpcAuthMetadata {
             scheme: "bearer".to_string(),
-            value: format!("{};sig={}", payload, sig),
+            value: format!("{payload};sig={sig}"),
         }))
     }
 }
