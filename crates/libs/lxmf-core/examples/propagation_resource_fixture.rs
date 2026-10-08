@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let count = args[0].parse::<usize>()?;
     let content_bytes = args[1].parse::<usize>()?;
-    if count == 0 || content_bytes < 32 || content_bytes > 65_536 {
+    if count == 0 || !(32..=65_536).contains(&content_bytes) {
         return Err("count must be positive; content bytes must be 32..=65536".into());
     }
     let sender = PrivateIdentity::new_from_name("rch-resource-fixture-sender-public-test-key");
