@@ -47,3 +47,7 @@ harness = false
 
 [lints]
 workspace = true
+
+[[example]]
+name = "propagation_resource_fixture"
+required-features = ["std"]
