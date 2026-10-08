@@ -387,3 +387,33 @@ Local raw comparison evidence is under `/tmp/rch-res-diag1/` and
 manifests. Focused evidence under `/tmp/rch-resource-stability/evidence/` includes
 `rpc-issue657-independent-verifier.log`, `zmq-stage-unit.log`,
 `zmq-stage-pipeline.log`, `zmq-stage-writer.log`, and `zmq-stage-issue369.log`.
+
+### SDK failure correlation checkpoint
+
+The latest production evidence has requested RCH polls failing while the daemon's
+actual poll count remains flat and negotiation/import counts increase. Request
+ID alone therefore cannot identify which RPC stalled. Failed SDK ZeroMQ calls
+now carry call-local session, request, actual method, stage, elapsed milliseconds,
+local-send completion and ignored-unrelated-reply count. This context is added
+once to the existing error message and a `sdk_zmq_exchange` detail object. A
+pre-existing detail with that name is preserved; in that exceptional case local
+context is available only in the suffix, and the existing object is not trusted
+as local diagnostics. Method/session representations are bounded to 128 ASCII
+characters. New context excludes parameters, tokens, endpoints, response bodies
+and unrelated peers' session IDs. It does not sanitize pre-existing error text.
+
+The bookkeeping borrows call-owned identifiers and keeps no successful-call
+record, registry, event, log or background task. Send completion means the local
+ZeroMQ send returned success, not daemon receipt or handler execution. Existing
+deadlines, lock ownership, transport reset boundaries and endpoint-specific
+correlation behavior are unchanged. The already-mapped SDK error's semantic
+fields and existing details/extensions remain intact. The existing ZeroMQ
+`map_rpc_error` still drops raw remote retry/actionability/cause/details/extensions;
+that is a separate contract gap and was not changed by these diagnostics.
+
+Focused tests cover both endpoint modes' cold connection and held-lock timeouts,
+actual negotiation/import/poll method distinction, post-send ignored-reply
+timeouts and successful recovery, envelope/RPC decode failures, DEALER mismatch,
+mapped error metadata and a colliding detail key. These diagnostics are partial
+attribution only: the frozen RCH delivery experiments still use their recorded
+SDK dependency and do not establish production recovery or resource stability.

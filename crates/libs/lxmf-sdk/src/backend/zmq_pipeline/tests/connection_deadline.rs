@@ -17,17 +17,32 @@ fn stalled_config(single_endpoint: bool) -> (std::net::TcpListener, ZmqPipelineB
 #[tokio::test]
 async fn async_connection_and_handshake_obey_request_deadline() {
     for single_endpoint in [false, true] {
-        let (_peer, config) = stalled_config(single_endpoint);
-        let client = ZmqPipelineBackendClient::new_async_only(config).expect("client");
-        let error = tokio::time::timeout(
-            Duration::from_millis(600),
-            client.call_rpc_async("sdk_poll_events_v2", Some(json!({"cursor": null, "max": 1}))),
-        )
-        .await
-        .expect("connection must obey SDK deadline")
-        .expect_err("stalled peer times out");
-        assert_eq!(error.machine_code, "SDK_TRANSPORT_ZMQ_TIMEOUT");
-        assert!(error.message.contains("connection"));
+        for method in ["sdk_negotiate_v2", "sdk_identity_import_v2", "sdk_poll_events_v2"] {
+            let (_peer, config) = stalled_config(single_endpoint);
+            let client = ZmqPipelineBackendClient::new_async_only(config).expect("client");
+            let error = tokio::time::timeout(
+                Duration::from_millis(600),
+                client.call_rpc_async(
+                    method,
+                    Some(json!({"private_fixture_parameter": "never-log-this"})),
+                ),
+            )
+            .await
+            .expect("connection must obey SDK deadline")
+            .expect_err("stalled peer times out");
+            assert_eq!(error.machine_code, "SDK_TRANSPORT_ZMQ_TIMEOUT");
+            assert!(error.message.contains("connection"));
+            let context = &error.details["sdk_zmq_exchange"];
+            assert_eq!(context["method"], method);
+            assert_eq!(context["session_id"], client.session_id());
+            assert_eq!(context["request_id"], 1);
+            assert_eq!(context["stage"], "connection");
+            assert_eq!(context["send_completed"], false);
+            assert_eq!(context["ignored_replies"], 0);
+            assert!(context["elapsed_ms"].as_u64().expect("elapsed") >= 100);
+            assert!(!error.message.contains("never-log-this"));
+            assert!(!context.to_string().contains("private_fixture_parameter"));
+        }
     }
 }
 
@@ -67,6 +82,8 @@ async fn pipeline_lock_wait_is_bounded_without_resetting_another_owner() {
     .expect_err("busy owner");
     assert_eq!(error.machine_code, "SDK_TRANSPORT_ZMQ_TIMEOUT");
     assert!(error.message.contains("transport lock"));
+    assert_eq!(error.details["sdk_zmq_exchange"]["stage"], "transport lock");
+    assert_eq!(error.details["sdk_zmq_exchange"]["send_completed"], false);
     assert!(owner.is_none());
 }
 
@@ -110,6 +127,8 @@ async fn pipeline_timeout_rebinds_and_filters_wrong_session_and_request_response
         .expect_err("first response absent");
     assert_eq!(first.machine_code, "SDK_TRANSPORT_ZMQ_TIMEOUT");
     assert!(first.message.contains("correlated response"));
+    assert_eq!(first.details["sdk_zmq_exchange"]["send_completed"], true);
+    assert_eq!(first.details["sdk_zmq_exchange"]["ignored_replies"], 0);
     assert!(client.transport.lock().await.is_none());
     let recovered = client
         .call_rpc_async("sdk_poll_events_v2", Some(json!({"max": 1})))

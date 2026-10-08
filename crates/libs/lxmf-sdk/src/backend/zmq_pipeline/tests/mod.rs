@@ -12,6 +12,7 @@ mod delivery_stamp_policy;
 mod delivery_trace;
 mod destination;
 mod domains;
+mod exchange_diagnostics;
 mod history;
 mod identity;
 mod propagation;

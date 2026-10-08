@@ -34,6 +34,8 @@ mod destination;
 mod discovery;
 #[path = "zmq_pipeline/domains.rs"]
 mod domains;
+#[path = "zmq_pipeline/failure_context.rs"]
+mod failure_context;
 #[path = "zmq_pipeline/history.rs"]
 mod history;
 #[path = "zmq_pipeline/identity.rs"]
