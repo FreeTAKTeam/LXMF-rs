@@ -76,6 +76,13 @@ Update these documents when their corresponding behavior changes:
 - [Meshtastic tunnel interface](interfaces/meshtastic.md)
 - [RNode Bluetooth Classic/SPP interface](interfaces/rnode-spp.md)
 
+## Planned work
+
+- [ZeroMQ / RCH durable broker](goals/zmq-rch-durable-broker/PLAN.md):
+  reviewed v2 implementation plan for SDK recovery, durable handoff,
+  transactional RCH processing, and failure testing. Proposed work, not a
+  shipped guarantee.
+
 ## Contracts and architecture
 
 - [Architecture overview](architecture/overview.md)
