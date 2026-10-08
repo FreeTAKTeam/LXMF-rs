@@ -43,7 +43,7 @@ async fn main() -> Result<(), lxmf_sdk::app::Error> {
                 break;
             }
             EventKind::StreamGapDetected(gap) => {
-                eprintln!("event stream gap detected: {:?}", gap);
+                eprintln!("event stream gap detected: {gap:?}");
                 break;
             }
             _ => {}

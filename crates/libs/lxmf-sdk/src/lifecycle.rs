@@ -339,8 +339,7 @@ mod tests {
             let actual_ok = lifecycle.ensure_method_legal(method).is_ok();
             assert_eq!(
                 actual_ok, expected_ok,
-                "method legality mismatch for state {:?} and method {:?}",
-                model_state, method
+                "method legality mismatch for state {model_state:?} and method {method:?}"
             );
         }
     }
@@ -409,9 +408,7 @@ mod tests {
                 assert_eq!(
                     lifecycle.state(),
                     model_to_runtime(model_state),
-                    "state mismatch after op {:?} in sequence {:?}",
-                    op,
-                    sequence
+                    "state mismatch after op {op:?} in sequence {sequence:?}"
                 );
                 assert_method_legality_matches_model(&lifecycle, model_state);
             }
