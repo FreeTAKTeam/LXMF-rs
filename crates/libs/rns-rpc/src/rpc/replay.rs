@@ -183,10 +183,7 @@ fn validate_step_expectation(
             return Err(RpcReplayFailure {
                 step_index: index,
                 label: step.label.clone(),
-                reason: format!(
-                    "expected error code '{expected_code}', received {:?}",
-                    actual_code
-                ),
+                reason: format!("expected error code '{expected_code}', received {actual_code:?}"),
             });
         }
     }
@@ -202,8 +199,7 @@ fn validate_step_expectation(
                 step_index: index,
                 label: step.label.clone(),
                 reason: format!(
-                    "result subset mismatch; expected subset={}, actual={}",
-                    expected_subset, actual
+                    "result subset mismatch; expected subset={expected_subset}, actual={actual}"
                 ),
             });
         }
@@ -220,8 +216,7 @@ fn validate_step_expectation(
                 step_index: index,
                 label: step.label.clone(),
                 reason: format!(
-                    "response subset mismatch; expected subset={}, actual={}",
-                    expected_subset, actual
+                    "response subset mismatch; expected subset={expected_subset}, actual={actual}"
                 ),
             });
         }

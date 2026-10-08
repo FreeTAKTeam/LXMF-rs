@@ -86,9 +86,7 @@ impl RpcDaemon {
                             false,
                         ) {
                             log::error!(
-                                "[daemon] failed to roll back transport blackhole {}: {}",
-                                identity_hash,
-                                rollback_err
+                                "[daemon] failed to roll back transport blackhole {identity_hash}: {rollback_err}"
                             );
                         }
                     }

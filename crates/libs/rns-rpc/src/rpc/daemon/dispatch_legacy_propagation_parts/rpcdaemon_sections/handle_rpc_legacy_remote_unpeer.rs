@@ -52,8 +52,7 @@ impl RpcDaemon {
                             self.ensure_peer_queue_import(snapshot_peer.as_str())
                         {
                             log::error!(
-                                "failed to import legacy peer queue peer={}: {error}",
-                                snapshot_peer
+                                "failed to import legacy peer queue peer={snapshot_peer}: {error}"
                             );
                         }
                         if self.peer_record_exists(snapshot_peer.as_str(), false) {
@@ -105,8 +104,7 @@ impl RpcDaemon {
                                 .ensure_peer_queue_import(snapshot_peer.as_str())
                             {
                                 log::error!(
-                                    "failed to import legacy peer queue peer={}: {snapshot_error}",
-                                    snapshot_peer
+                                    "failed to import legacy peer queue peer={snapshot_peer}: {snapshot_error}"
                                 );
                             }
                             self.publish_failed_remote_peer_sync_event(

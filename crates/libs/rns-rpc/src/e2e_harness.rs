@@ -32,8 +32,8 @@ pub fn parse_rpc_frame(bytes: &[u8]) -> io::Result<crate::rpc::RpcResponse> {
 
 pub fn build_http_post(path: &str, host: &str, body: &[u8]) -> Vec<u8> {
     let mut request = Vec::new();
-    request.extend_from_slice(format!("POST {} HTTP/1.1\r\n", path).as_bytes());
-    request.extend_from_slice(format!("Host: {}\r\n", host).as_bytes());
+    request.extend_from_slice(format!("POST {path} HTTP/1.1\r\n").as_bytes());
+    request.extend_from_slice(format!("Host: {host}\r\n").as_bytes());
     request.extend_from_slice(b"Content-Type: application/msgpack\r\n");
     request.extend_from_slice(format!("Content-Length: {}\r\n", body.len()).as_bytes());
     request.extend_from_slice(b"\r\n");
@@ -110,8 +110,7 @@ pub fn build_send_params(
 
 pub fn build_tcp_client_config(host: &str, port: u16) -> String {
     format!(
-        "[[interfaces]]\ntype = \"tcp_client\"\nenabled = true\nhost = \"{}\"\nport = {}\n",
-        host, port
+        "[[interfaces]]\ntype = \"tcp_client\"\nenabled = true\nhost = \"{host}\"\nport = {port}\n"
     )
 }
 

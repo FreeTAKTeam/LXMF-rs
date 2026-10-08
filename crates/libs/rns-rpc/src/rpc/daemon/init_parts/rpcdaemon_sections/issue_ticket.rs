@@ -394,9 +394,7 @@ impl RpcDaemon {
                 bridge.set_identity_blackholed_until(identity.as_str(), true, until)
             {
                 log::warn!(
-                    "[daemon] failed to synchronize blackholed identity {} with transport: {}",
-                    identity,
-                    err
+                    "[daemon] failed to synchronize blackholed identity {identity} with transport: {err}"
                 );
             }
         }

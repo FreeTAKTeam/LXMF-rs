@@ -376,7 +376,7 @@ impl RpcDaemon {
     pub fn inject_inbound_test_message(&self, content: &str) {
         let timestamp = now_i64();
         let record = crate::storage::messages::MessageRecord {
-            id: format!("test-{}", timestamp),
+            id: format!("test-{timestamp}"),
             source: "test-peer".into(),
             destination: "local".into(),
             title: "".into(),
