@@ -319,10 +319,11 @@ fn propagation_remote_sync_success_records_existing_queue_snapshot_like_python()
             .expect("response unhandled ids"),
         &[json!(pending.transient_id.as_str())]
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]

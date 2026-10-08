@@ -188,6 +188,10 @@ impl RpcDaemon {
         let source_peer_key = source_active_peer.as_deref().unwrap_or(source_peer);
         let mut source_received_count = 0usize;
         let mut source_received_bytes = 0usize;
+        self.ensure_peer_queue_import(source_peer_key)?;
+        for peer in &fanout_peers {
+            self.ensure_peer_queue_import(peer)?;
+        }
         for transient_id in imported_ids {
             let already_received = self
                 .store
@@ -206,7 +210,6 @@ impl RpcDaemon {
             self.store
                 .mark_peer_received_propagation(source_peer_key, transient_id.as_str())
                 .map_err(std::io::Error::other)?;
-            self.record_peer_queue_handled_id(source_peer_key, transient_id.as_str());
             for peer in &fanout_peers {
                 if peer.eq_ignore_ascii_case(source_peer) {
                     continue;
@@ -214,7 +217,6 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_unhandled_propagation(peer.as_str(), transient_id.as_str())
                     .map_err(std::io::Error::other)?;
-                self.record_peer_queue_unhandled_id(peer.as_str(), transient_id.as_str());
             }
         }
         if source_received_count > 0 {
@@ -244,6 +246,10 @@ impl RpcDaemon {
         let source_peer_key = source_active_peer.as_deref().unwrap_or(source_peer);
         let mut source_received_count = 0usize;
         let mut source_received_bytes = 0usize;
+        self.ensure_peer_queue_import(source_peer_key)?;
+        for peer in &fanout_peers {
+            self.ensure_peer_queue_import(peer)?;
+        }
         for transient_id in imported_ids {
             let already_received = self
                 .store
@@ -262,7 +268,6 @@ impl RpcDaemon {
             self.store
                 .mark_peer_received_propagation(source_peer_key, transient_id.as_str())
                 .map_err(std::io::Error::other)?;
-            self.record_peer_queue_handled_id(source_peer_key, transient_id.as_str());
             for peer in &fanout_peers {
                 if peer.eq_ignore_ascii_case(source_peer) {
                     continue;
@@ -270,7 +275,6 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_unhandled_propagation(peer.as_str(), transient_id.as_str())
                     .map_err(std::io::Error::other)?;
-                self.record_peer_queue_unhandled_id(peer.as_str(), transient_id.as_str());
             }
         }
         if source_received_count > 0 {

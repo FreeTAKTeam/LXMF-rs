@@ -497,9 +497,11 @@ fn propagation_ingest_prunes_oldest_payload_when_storage_limit_is_exceeded() {
         vec![first_transient.clone()]
     );
     {
-        let peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let record = peers.get("peer-storage-prune-snapshot").expect("stored peer");
-        let serialized = serde_json::to_value(record).expect("serialize peer record");
+        let record = {
+            let peers = daemon.peers.lock().expect("peers mutex poisoned");
+            peers.get("peer-storage-prune-snapshot").expect("stored peer").clone()
+        };
+        let serialized = daemon.enriched_peer_status_row(record);
         assert_eq!(
             serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
             &[json!(first_transient.as_str())]
@@ -532,9 +534,11 @@ fn propagation_ingest_prunes_oldest_payload_when_storage_limit_is_exceeded() {
             .expect("pruned live unhandled ids"),
         vec![second_transient.clone()]
     );
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get("peer-storage-prune-snapshot").expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get("peer-storage-prune-snapshot").expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
         &[json!(second_transient.as_str())]

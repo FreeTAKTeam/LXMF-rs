@@ -1,31 +1,4 @@
 impl MessagesStore {
-    /// Read the payload-backed queue classification in one SQLite snapshot.
-    /// Only identifiers are selected; completed marks win across peer casing.
-    pub(crate) fn peer_queue_snapshot_ids(
-        &self,
-        peer: &str,
-    ) -> rusqlite::Result<(Vec<String>, Vec<String>)> {
-        self.with_read_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT marks.transient_id,
-                        MAX(marks.state IN ('handled', 'transferred', 'received', 'transfer_limited'))
-                 FROM propagation_peer_entries marks
-                 INNER JOIN propagation_entries e ON e.transient_id = marks.transient_id
-                 WHERE LOWER(marks.peer) = LOWER(?1)
-                 GROUP BY marks.transient_id
-                 ORDER BY marks.transient_id ASC",
-            )?;
-            let mut rows = stmt.query(params![peer])?;
-            let mut handled = Vec::new();
-            let mut unhandled = Vec::new();
-            while let Some(row) = rows.next()? {
-                let id = row.get(0)?;
-                if row.get::<_, bool>(1)? { handled.push(id); } else { unhandled.push(id); }
-            }
-            Ok((handled, unhandled))
-        })
-    }
-
     /// Fill only the remaining pending capacity. The count and insertion are a
     /// single SQLite statement, so concurrent refills cannot exceed the limit.
     pub fn mark_recent_propagation_unhandled_for_peer(

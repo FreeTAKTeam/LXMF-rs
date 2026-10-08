@@ -167,7 +167,7 @@ impl RpcDaemon {
             peer.next_sync_attempt = timestamp.saturating_add(PN_STAMP_THROTTLE_SECS);
         }
         drop(peers);
-        self.record_payload_backed_peer_queue_snapshot(peer_id)?;
+        self.ensure_peer_queue_import(peer_id)?;
         self.publish_failed_remote_peer_sync_event(
             peer_id,
             remote,
@@ -197,7 +197,7 @@ impl RpcDaemon {
             peer.next_sync_attempt = timestamp.saturating_add(i64::from(peer.sync_backoff));
         }
         drop(peers);
-        self.record_payload_backed_peer_queue_snapshot(peer_id)?;
+        self.ensure_peer_queue_import(peer_id)?;
         self.publish_failed_remote_peer_sync_event(
             peer_id,
             remote,
@@ -253,7 +253,7 @@ impl RpcDaemon {
         };
 
         self.record_outbound_peer_activity(source_peer_key.as_str(), 0, false);
-        self.record_payload_backed_peer_queue_snapshot(source_peer_key.as_str())?;
+        self.ensure_peer_queue_import(source_peer_key.as_str())?;
         self.publish_failed_remote_peer_sync_event(
             source_peer_key.as_str(),
             remote,
@@ -337,23 +337,18 @@ impl RpcDaemon {
             .expect("policy mutex poisoned")
             .prioritised_destinations
             .clone();
-        let pruned = self
+        self
             .store
             .prune_propagation_entries_to_limit_bytes_with_priorities(
                 limit_bytes,
                 prioritised_destinations.as_slice(),
             )
             .map_err(std::io::Error::other)?;
-        if pruned.is_empty() {
-            return Ok(());
-        }
-        for transient_id in pruned {
-            self.remove_peer_queue_snapshot_id(transient_id.as_str());
-        }
         Ok(())
     }
 
     pub fn maintain_propagation_storage(&self) -> Result<usize, std::io::Error> {
+        let started = std::time::Instant::now();
         let state = self
             .propagation_state
             .lock()
@@ -377,10 +372,8 @@ impl RpcDaemon {
                 state.peer_entry_limit_per_peer,
             )
             .map_err(std::io::Error::other)?;
-        if pruned_peer_entries > 0 {
-            self.refresh_all_peer_queue_snapshots()?;
-        }
         self.prune_propagation_payloads_to_storage_limit()?;
+        log::info!("[daemon] propagation storage maintenance complete elapsed_ms={} pruned_peer_entries={pruned_peer_entries}", started.elapsed().as_millis());
         Ok(pruned_peer_entries)
     }
 
@@ -389,10 +382,10 @@ impl RpcDaemon {
         transient_id: &str,
     ) -> Result<(), std::io::Error> {
         for peer in self.propagation_fanout_peer_ids() {
+            self.ensure_peer_queue_import(peer.as_str())?;
             self.store
                 .mark_peer_unhandled_propagation(peer.as_str(), transient_id)
                 .map_err(std::io::Error::other)?;
-            self.record_peer_queue_unhandled_id(peer.as_str(), transient_id);
         }
         Ok(())
     }
@@ -409,19 +402,17 @@ impl RpcDaemon {
             .find(|peer| peer.eq_ignore_ascii_case(source_peer.as_str()))
             .map(String::as_str)
             .unwrap_or(source_peer.as_str());
+        self.ensure_peer_queue_import(source_peer_key)?;
         self.store
             .mark_peer_received_propagation(source_peer_key, transient_id)
             .map_err(std::io::Error::other)?;
-        self.record_peer_queue_handled_id(source_peer_key, transient_id);
         for peer in self.propagation_fanout_peer_ids() {
-            if peer.eq_ignore_ascii_case(source_peer.as_str()) {
-                self.record_peer_queue_handled_id(peer.as_str(), transient_id);
-            } else {
+            if !peer.eq_ignore_ascii_case(source_peer.as_str()) {
+                self.ensure_peer_queue_import(peer.as_str())?;
                 self.store
                     .mark_peer_unhandled_propagation(peer.as_str(), transient_id)
                     .map_err(std::io::Error::other)?;
-                self.record_peer_queue_unhandled_id(peer.as_str(), transient_id);
-            }
+                }
         }
         Ok(())
     }

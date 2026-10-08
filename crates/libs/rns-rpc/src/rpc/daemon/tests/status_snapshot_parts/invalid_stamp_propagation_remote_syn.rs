@@ -154,10 +154,11 @@ fn retryable_propagation_remote_sync_records_existing_queue_snapshot_like_python
             .expect("pending propagation"),
         vec![pending.clone()]
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]
@@ -221,10 +222,11 @@ fn retryable_propagation_remote_sync_replays_restored_queue_snapshot_like_python
         .expect_err("retryable remote sync should return the bridge error");
     assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
     assert_eq!(err.to_string(), "propagation peer invalid stamp");
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[json!(handled.transient_id.as_str())]

@@ -163,10 +163,11 @@ fn peer_sync_prunes_stale_unhandled_peer_record_snapshot_ids() {
             .expect("result unhandled ids")
             .is_empty()
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert!(
         serialized["unhandled_ids"].as_array().expect("serialized unhandled ids").is_empty()
     );
@@ -243,10 +244,11 @@ fn peer_sync_prunes_stale_handled_peer_record_snapshot_ids() {
             .expect("result unhandled ids")
             .is_empty()
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert!(
         serialized["handled_ids"].as_array().expect("serialized handled ids").is_empty()
     );
@@ -295,18 +297,17 @@ fn peer_sync_prunes_case_variant_stale_live_queue_marks_like_python() {
             .expect("result unhandled ids")
             .is_empty()
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(stored_peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(stored_peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert!(
         serialized["handled_ids"].as_array().expect("serialized handled ids").is_empty()
     );
     assert!(
         serialized["unhandled_ids"].as_array().expect("serialized unhandled ids").is_empty()
     );
-    drop(peers);
-
     assert!(
         daemon
             .store

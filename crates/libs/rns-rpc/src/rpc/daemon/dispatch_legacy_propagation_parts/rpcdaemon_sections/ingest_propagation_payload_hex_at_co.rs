@@ -306,10 +306,10 @@ impl RpcDaemon {
     ) -> Result<(), std::io::Error> {
         let transient_id = normalize_propagation_transient_key(transient_id);
         let peer_key = self.peer_store_key_or_input(peer);
+        self.ensure_peer_queue_import(peer_key.as_str())?;
         self.store
             .mark_peer_received_propagation(peer_key.as_str(), transient_id.as_str())
             .map_err(std::io::Error::other)?;
-        self.record_peer_queue_handled_id(peer_key.as_str(), transient_id.as_str());
         Ok(())
     }
 
@@ -326,10 +326,10 @@ impl RpcDaemon {
         let Some(peer_key) = peer_key else {
             return Ok(false);
         };
+        self.ensure_peer_queue_import(peer_key.as_str())?;
         self.store
             .mark_peer_received_propagation(peer_key.as_str(), transient_id.as_str())
             .map_err(std::io::Error::other)?;
-        self.record_peer_queue_handled_id(peer_key.as_str(), transient_id.as_str());
         Ok(true)
     }
 
@@ -340,10 +340,10 @@ impl RpcDaemon {
     ) -> Result<(), std::io::Error> {
         let transient_id = normalize_propagation_transient_key(transient_id);
         let peer_key = self.peer_store_key_or_input(peer);
+        self.ensure_peer_queue_import(peer_key.as_str())?;
         self.store
             .mark_peer_unhandled_propagation(peer_key.as_str(), transient_id.as_str())
             .map_err(std::io::Error::other)?;
-        self.record_peer_queue_unhandled_id(peer_key.as_str(), transient_id.as_str());
         Ok(())
     }
 
@@ -382,10 +382,10 @@ impl RpcDaemon {
     ) -> Result<(), std::io::Error> {
         let transient_id = normalize_propagation_transient_key(transient_id);
         let peer_key = self.peer_store_key_or_input(peer);
+        self.ensure_peer_queue_import(peer_key.as_str())?;
         self.store
             .mark_peer_transferred_propagation(peer_key.as_str(), transient_id.as_str())
             .map_err(std::io::Error::other)?;
-        self.record_peer_queue_handled_id(peer_key.as_str(), transient_id.as_str());
         Ok(())
     }
 
@@ -396,10 +396,10 @@ impl RpcDaemon {
     ) -> Result<(), std::io::Error> {
         let transient_id = normalize_propagation_transient_key(transient_id);
         let peer_key = self.peer_store_key_or_input(peer);
+        self.ensure_peer_queue_import(peer_key.as_str())?;
         self.store
             .mark_peer_transfer_limited_propagation(peer_key.as_str(), transient_id.as_str())
             .map_err(std::io::Error::other)?;
-        self.record_peer_queue_handled_id(peer_key.as_str(), transient_id.as_str());
         Ok(())
     }
 

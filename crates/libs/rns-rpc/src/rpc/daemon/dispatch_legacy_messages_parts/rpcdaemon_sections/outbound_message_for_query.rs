@@ -194,11 +194,6 @@ impl RpcDaemon {
         }
     }
 
-    pub(super) fn restore_peer_record_queue_marks(&self, peer: &str) -> Result<(), std::io::Error> {
-        self.ensure_peer_queue_import(peer)?;
-        self.refresh_peer_queue_snapshot_from_storage(peer)
-    }
-
     pub(super) fn ensure_peer_queue_import(&self, peer: &str) -> Result<(), std::io::Error> {
         // Serialize the one-time legacy import. Only live peer state is eligible;
         // snapshots held by an RPC must never write pruned queue marks back.
@@ -209,13 +204,12 @@ impl RpcDaemon {
         if imported.contains(&key) {
             return Ok(());
         }
-        let record = self
-            .peers
-            .lock()
-            .expect("peers mutex poisoned")
-            .values()
-            .find(|record| record.peer.eq_ignore_ascii_case(&key))
-            .cloned();
+        // Legacy vectors are import input only. Hold the live-record guard until
+        // successful persistence, so a failed import retains its input and a
+        // concurrent peer removal/replacement cannot lose restored state.
+        // Lock order: imports -> peers -> store; no store callback takes peers.
+        let mut peers = self.peers.lock().expect("peers mutex poisoned");
+        let record = peers.values_mut().find(|record| record.peer.eq_ignore_ascii_case(&key));
         let Some(record) = record else {
             return Ok(());
         };
@@ -229,12 +223,22 @@ impl RpcDaemon {
                 &record.restored_unhandled_ids,
             )
             .map_err(std::io::Error::other)?;
+        record.restored_handled_ids = Vec::new();
+        record.restored_unhandled_ids = Vec::new();
         imported.insert(key);
         Ok(())
     }
 
-    fn record_peer_queue_handled(&self, peer: &str, transient_id: &str) {
-        self.record_peer_queue_handled_id(peer, transient_id);
+
+    pub(super) fn clear_peer_records_and_marks(&self) -> Result<(), std::io::Error> {
+        // Share the import barrier through durable clear and live removal. An
+        // in-flight first import cannot resurrect marks after this clear.
+        let mut imported = self.peer_queue_imports.lock().expect("peer_queue_imports mutex poisoned");
+        let mut peers = self.peers.lock().expect("peers mutex poisoned");
+        self.store.clear_all_peer_propagation_marks().map_err(std::io::Error::other)?;
+        peers.clear();
+        imported.clear();
+        Ok(())
     }
 
 }

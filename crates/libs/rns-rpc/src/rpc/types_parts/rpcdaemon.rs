@@ -309,7 +309,9 @@ pub struct PeerRecord {
     pub peering_cost: Option<u32>,
     pub peering_key_stamp: Option<Vec<u8>>,
     pub peering_key_value: Option<u32>,
+    /// Legacy deserialization/import input; released after successful SQLite import.
     pub restored_handled_ids: Vec<String>,
+    /// Legacy deserialization/import input; not a live propagation queue cache.
     pub restored_unhandled_ids: Vec<String>,
 }
 

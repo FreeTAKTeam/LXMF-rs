@@ -55,7 +55,9 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
     let response = daemon
         .handle_rpc(RpcRequest { id: 13, method: "daemon_status_ex".to_string(), params: None })
         .expect("daemon status");
-    let result = response.result.expect("daemon status result");
+    let mut result = response.result.expect("daemon status result");
+    let resources = result.as_object_mut().expect("status object").remove("resources").expect("explicit resource diagnostics");
+    assert_eq!(resources["peer_inventory"]["owned_buffer_bytes"], 0);
     assert_status_snapshot_fields(&result);
     assert_eq!(
         daemon.metrics_snapshot()["counters"]["daemon_status_calls_total"].as_u64(),

@@ -66,23 +66,6 @@ impl RpcDaemon {
     ) -> usize {
         let destination_hex = hex::encode(destination);
         let haves_hex = haves.iter().map(hex::encode).collect::<Vec<_>>();
-        let mut removed_snapshot_ids = Vec::new();
-        for transient_hex in &haves_hex {
-            let entry = match self.store.get_propagation_entry(transient_hex.as_str()) {
-                Ok(entry) => entry,
-                Err(error) => {
-                    log::error!(
-                        "failed to read propagation entry during purge transient_id={transient_hex}: {error}"
-                    );
-                    None
-                }
-            };
-            if entry.is_some_and(|entry| {
-                entry.destination.eq_ignore_ascii_case(destination_hex.as_str())
-            }) {
-                removed_snapshot_ids.push(transient_hex.clone());
-            }
-        }
         let purged = match self
             .store
             .purge_propagation_entries_for_destination(destination_hex.as_str(), &haves_hex)
@@ -95,9 +78,6 @@ impl RpcDaemon {
                 0
             }
         };
-        for transient_id in removed_snapshot_ids {
-            self.remove_peer_queue_snapshot_id(transient_id.as_str());
-        }
         purged
     }
 

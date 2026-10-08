@@ -37,7 +37,7 @@ impl RpcDaemon {
                 })
             }
             LXMF_PEER_ERROR_THROTTLED => {
-                self.restore_peer_record_queue_marks(record.peer.as_str())?;
+                self.ensure_peer_queue_import(record.peer.as_str())?;
                 let (transfer_limit_bytes, sync_limit_bytes) =
                     peer_sync_limits(record, requested_transfer_limit_bytes);
                 {
@@ -57,7 +57,7 @@ impl RpcDaemon {
                 ))
             }
             _ => {
-                self.restore_peer_record_queue_marks(record.peer.as_str())?;
+                self.ensure_peer_queue_import(record.peer.as_str())?;
                 let (transfer_limit_bytes, sync_limit_bytes) =
                     peer_sync_limits(record, requested_transfer_limit_bytes);
                 {

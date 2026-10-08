@@ -134,10 +134,11 @@ fn propagation_remote_sync_backoff_records_preexisting_live_queue_snapshot_like_
         result["messages"]["unhandled_ids"].as_array().expect("result unhandled ids"),
         &[json!(pending.transient_id.as_str())]
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]
@@ -228,10 +229,11 @@ fn propagation_remote_sync_missing_bridge_records_existing_queue_snapshot_like_p
         .expect_err("missing bridge should reject remote sync");
     assert_eq!(err.kind(), std::io::ErrorKind::Other);
     assert_eq!(err.to_string(), "remote control bridge unavailable");
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]
@@ -292,10 +294,11 @@ fn propagation_remote_sync_missing_bridge_replays_restored_queue_snapshot_like_p
         .expect_err("missing bridge should reject remote sync");
     assert_eq!(err.kind(), std::io::ErrorKind::Other);
     assert_eq!(err.to_string(), "remote control bridge unavailable");
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[json!(handled.transient_id.as_str())]
@@ -443,10 +446,11 @@ fn propagation_remote_sync_missing_bridge_records_case_insensitive_queue_snapsho
         .expect_err("missing bridge should reject remote sync");
     assert_eq!(err.kind(), std::io::ErrorKind::Other);
     assert_eq!(err.to_string(), "remote control bridge unavailable");
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(stored_peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(stored_peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]

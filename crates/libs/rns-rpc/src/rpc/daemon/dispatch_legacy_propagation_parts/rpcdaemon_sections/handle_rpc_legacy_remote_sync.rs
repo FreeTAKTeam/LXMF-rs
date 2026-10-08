@@ -51,7 +51,7 @@ impl RpcDaemon {
                         timestamp,
                         record.next_sync_attempt,
                     ) {
-                        self.record_payload_backed_peer_queue_snapshot(record.peer.as_str())?;
+                        self.ensure_peer_queue_import(record.peer.as_str())?;
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
                             record,
@@ -223,7 +223,7 @@ impl RpcDaemon {
                                     state.last_sync_error = Some(err.to_string());
                                 });
                                 self.record_outbound_peer_activity(peer_key.as_str(), 0, false);
-                                self.record_payload_backed_peer_queue_snapshot(peer_key.as_str())?;
+                                self.ensure_peer_queue_import(peer_key.as_str())?;
                                 self.publish_failed_remote_peer_sync_event(
                                     peer_key.as_str(),
                                     remote_id.as_str(),
@@ -256,7 +256,7 @@ impl RpcDaemon {
                             imported.transferred_bytes,
                         )?;
                         for active_peer in self.active_peer_ids() {
-                            self.record_payload_backed_peer_queue_snapshot(active_peer.as_str())?;
+                            self.ensure_peer_queue_import(active_peer.as_str())?;
                         }
                         self.update_propagation_sync_state(|state| {
                             state.sync_state = PR_COMPLETE;
@@ -431,7 +431,7 @@ impl RpcDaemon {
                             )?;
                         } else {
                             self.record_outbound_peer_activity(peer_key.as_str(), 0, false);
-                            self.record_payload_backed_peer_queue_snapshot(peer_key.as_str())?;
+                            self.ensure_peer_queue_import(peer_key.as_str())?;
                             self.publish_failed_remote_peer_sync_event(
                                 peer_key.as_str(),
                                 remote_id.as_str(),

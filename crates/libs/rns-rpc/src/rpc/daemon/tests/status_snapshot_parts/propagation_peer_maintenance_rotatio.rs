@@ -477,11 +477,6 @@ fn propagation_storage_maintenance_refreshes_peer_snapshot_after_policy_prune_li
             .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
             .expect("mark propagation entry unhandled");
     }
-    {
-        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let record = peers.get_mut(&peer).expect("peer record");
-        record.restored_unhandled_ids = vec![first.transient_id.clone(), second.transient_id.clone()];
-    }
 
     assert_eq!(daemon.maintain_propagation_storage().expect("maintain propagation storage"), 1);
 
@@ -497,5 +492,6 @@ fn propagation_storage_maintenance_refreshes_peer_snapshot_after_policy_prune_li
         .expect("peer record")
         .restored_unhandled_ids
         .clone();
-    assert_eq!(snapshot_ids, persisted_ids);
+    assert!(snapshot_ids.is_empty());
+    assert_eq!(persisted_ids.len(), 1);
 }

@@ -107,7 +107,9 @@ fn propagation_remote_sync_marks_source_handled_and_queues_other_peers() {
     let relay_record = peer_records
         .get(relay_peer.as_str())
         .expect("relay peer record after remote sync");
-    let serialized = serde_json::to_value(relay_record).expect("serialize relay peer");
+    let relay_record = relay_record.clone();
+    drop(peer_records);
+    let serialized = daemon.enriched_peer_status_row(relay_record);
     let restored_unhandled = serialized["unhandled_ids"]
         .as_array()
         .expect("serialized relay unhandled ids");

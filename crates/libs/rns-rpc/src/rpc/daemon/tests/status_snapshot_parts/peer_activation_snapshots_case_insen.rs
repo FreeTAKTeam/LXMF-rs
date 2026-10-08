@@ -29,9 +29,11 @@ fn peer_activation_snapshots_case_insensitive_preexisting_completed_marks_like_p
             .expect("unhandled propagation")
             .is_empty()
     );
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(stored_peer).expect("peer record");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(stored_peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[json!(entry.transient_id.as_str())]
@@ -147,9 +149,11 @@ fn peer_unpeer_clears_case_variant_completed_queue_marks_before_reactivation_lik
             .collect::<Vec<_>>(),
         vec![entry.transient_id.clone()]
     );
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(stored_peer).expect("peer record");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(stored_peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]

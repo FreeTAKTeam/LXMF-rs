@@ -305,7 +305,7 @@ fn peer_sync_invalid_response_payload_does_not_partially_mark_transferred_like_p
             .store
             .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
             .expect("mark unhandled");
-        daemon.record_peer_queue_unhandled_id(peer, entry.transient_id.as_str());
+        daemon.record_peer_unhandled_propagation(peer, entry.transient_id.as_str()).expect("durable pending mark");
     }
 
     let err = daemon
@@ -336,9 +336,11 @@ fn peer_sync_invalid_response_payload_does_not_partially_mark_transferred_like_p
             .expect("handled propagation")
             .is_empty()
     );
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("peer record");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert!(
         serialized["handled_ids"]
             .as_array()
@@ -388,7 +390,7 @@ fn peer_sync_invalid_full_offer_payload_does_not_partially_mark_transferred_like
             .store
             .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
             .expect("mark unhandled");
-        daemon.record_peer_queue_unhandled_id(peer, entry.transient_id.as_str());
+        daemon.record_peer_unhandled_propagation(peer, entry.transient_id.as_str()).expect("durable pending mark");
     }
 
     let err = daemon
@@ -412,9 +414,11 @@ fn peer_sync_invalid_full_offer_payload_does_not_partially_mark_transferred_like
             .expect("handled propagation")
             .is_empty()
     );
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("peer record");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert!(
         serialized["handled_ids"]
             .as_array()
@@ -462,7 +466,7 @@ fn peer_sync_true_response_invalid_payload_does_not_partially_mark_transferred_l
             .store
             .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
             .expect("mark unhandled");
-        daemon.record_peer_queue_unhandled_id(peer, entry.transient_id.as_str());
+        daemon.record_peer_unhandled_propagation(peer, entry.transient_id.as_str()).expect("durable pending mark");
     }
 
     let err = daemon
@@ -493,9 +497,11 @@ fn peer_sync_true_response_invalid_payload_does_not_partially_mark_transferred_l
             .expect("handled propagation")
             .is_empty()
     );
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("peer record");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert!(
         serialized["handled_ids"]
             .as_array()

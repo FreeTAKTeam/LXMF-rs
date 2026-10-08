@@ -135,7 +135,9 @@ fn run_propagation_remote_import_success_side_effect_case(method: &str, case_tag
 
     let peer_records = daemon.peers.lock().expect("peers mutex poisoned");
     let relay_record = peer_records.get(relay_peer.as_str()).expect("relay record");
-    let relay_snapshot = serde_json::to_value(relay_record).expect("serialize relay");
+    let relay_record = relay_record.clone();
+    drop(peer_records);
+    let relay_snapshot = daemon.enriched_peer_status_row(relay_record);
     assert_eq!(
         relay_snapshot["unhandled_ids"]
             .as_array()

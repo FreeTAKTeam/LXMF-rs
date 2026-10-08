@@ -222,10 +222,11 @@ fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     assert!(last_sync_attempt > 0);
     assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
     assert_eq!(row["messages"]["unhandled_ids"], json!([pending.transient_id.as_str()]));
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get("peer-timeout").expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get("peer-timeout").expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
         &[json!(pending.transient_id.as_str())]

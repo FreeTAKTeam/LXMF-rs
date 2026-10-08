@@ -41,10 +41,11 @@ fn failed_propagation_remote_unpeer_records_case_insensitive_queue_snapshot_like
         ))
         .expect_err("remote unpeer failure should be returned");
     assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(stored_peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(stored_peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]
@@ -85,12 +86,13 @@ fn payload_backed_peer_queue_snapshot_uses_stored_peer_case_like_python() {
         .expect("mark unhandled");
 
     daemon
-        .record_payload_backed_peer_queue_snapshot(request_peer.as_str())
+        .ensure_peer_queue_import(request_peer.as_str())
         .expect("record queue snapshot");
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(stored_peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(stored_peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]
@@ -158,10 +160,11 @@ fn unavailable_propagation_remote_unpeer_records_existing_queue_snapshot_like_py
         propagation["last_sync_error"].as_str(),
         Some("remote control bridge unavailable")
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get(peer).expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get(peer).expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[] as &[JsonValue]

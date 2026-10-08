@@ -221,7 +221,7 @@ impl RpcDaemon {
                     .cloned()
                     .collect::<Vec<_>>();
                 for peer in peer_ids {
-                    self.restore_peer_record_queue_marks(&peer)?;
+                    self.ensure_peer_queue_import(&peer)?;
                 }
                 let mut peers = self
                     .peers

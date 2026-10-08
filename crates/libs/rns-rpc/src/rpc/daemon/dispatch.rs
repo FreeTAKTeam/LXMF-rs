@@ -204,7 +204,7 @@ impl RpcDaemon {
                 std::io::Error::other(format!("live transport status unavailable: {error}"))
             })?;
 
-        Ok(json!({
+        let mut result = json!({
             "identity_hash": self.identity_hash,
             "delivery_destination_hash": self.local_delivery_hash(),
             "running": true,
@@ -222,7 +222,11 @@ impl RpcDaemon {
             "stamp_policy": snapshot.stamp_policy,
             "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
             "capabilities": Self::capabilities(),
-        }))
+        });
+        if record_wait_metrics {
+            result["resources"] = self.resource_usage_snapshot()?;
+        }
+        Ok(result)
     }
 
     fn shared_instance_status(interfaces: &[InterfaceRecord]) -> JsonValue {

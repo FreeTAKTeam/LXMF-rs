@@ -103,10 +103,11 @@ fn propagation_ingest_queues_new_entries_for_static_peers() {
         row["messages"]["unhandled_ids"].as_array().expect("message unhandled ids"),
         &[json!(transient_id)]
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get("peer-static-ingest-queue").expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get("peer-static-ingest-queue").expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
         &[json!(transient_id)]
@@ -135,9 +136,11 @@ fn propagation_purge_removes_deleted_entries_from_peer_record_snapshots() {
         .expect("ingest propagation");
 
     {
-        let peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let record = peers.get("peer-static-purge-queue").expect("stored peer");
-        let serialized = serde_json::to_value(record).expect("serialize peer record");
+        let record = {
+            let peers = daemon.peers.lock().expect("peers mutex poisoned");
+            peers.get("peer-static-purge-queue").expect("stored peer").clone()
+        };
+        let serialized = daemon.enriched_peer_status_row(record);
         assert_eq!(
             serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
             &[json!(transient_id.as_str())]
@@ -159,9 +162,11 @@ fn propagation_purge_removes_deleted_entries_from_peer_record_snapshots() {
             .is_empty(),
         "live store queue should not retain the purged entry"
     );
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get("peer-static-purge-queue").expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get("peer-static-purge-queue").expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
         &[] as &[JsonValue]
@@ -221,10 +226,11 @@ fn propagation_ingest_does_not_reopen_handled_peer_record_snapshot() {
             .expect("live handled ids"),
         vec![transient_id.clone()]
     );
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get("peer-static-duplicate-handled").expect("stored peer");
-    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get("peer-static-duplicate-handled").expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[json!(transient_id.as_str())]
@@ -299,10 +305,11 @@ fn peer_propagation_ingest_matches_source_peer_case_insensitively_like_python() 
         .find(|row| row["peer"].as_str() == Some("Peer-Case-Source"))
         .expect("source peer row");
     assert_eq!(source_row["rx_bytes"].as_u64(), Some(payload.len() as u64));
-
-    let peers = daemon.peers.lock().expect("peers mutex poisoned");
-    let record = peers.get("Peer-Case-Source").expect("stored source peer");
-    let serialized = serde_json::to_value(record).expect("serialize source peer");
+    let record = {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.get("Peer-Case-Source").expect("stored peer").clone()
+    };
+    let serialized = daemon.enriched_peer_status_row(record);
     assert_eq!(
         serialized["handled_ids"].as_array().expect("serialized handled ids"),
         &[json!(transient_id)]

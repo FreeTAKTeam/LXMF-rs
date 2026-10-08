@@ -44,13 +44,14 @@ fn issue_657_stale_snapshot_cannot_recreate_pruned_marks() {
         let entry = issue_657_entry(index, 16);
         daemon.store.upsert_propagation_entry(&entry).expect("seed");
         daemon.store.mark_peer_unhandled_propagation(&peer, &entry.transient_id).expect("mark");
-        daemon.record_peer_queue_unhandled_id(&peer, &entry.transient_id);
     }
+    daemon.peers.lock().expect("peers").get_mut(&peer).expect("peer").restored_unhandled_ids =
+        (1..=2).map(|index| issue_657_entry(index, 16).transient_id).collect();
     let stale = daemon.peers.lock().expect("peers").get(&peer).expect("peer").clone();
     assert_eq!(daemon.maintain_propagation_storage().expect("maintain"), 1);
     let after_prune = daemon.store.list_peer_unhandled_propagation_ids(&peer).expect("ids").len();
     // list_peers and peer_sync can hold this clone while maintenance runs.
-    daemon.restore_peer_record_queue_marks(stale.peer.as_str()).expect("replay stale clone");
+    daemon.ensure_peer_queue_import(stale.peer.as_str()).expect("replay stale clone");
     let after_replay = daemon.store.list_peer_unhandled_propagation_ids(&peer).expect("ids").len();
     println!("issue657 stale_snapshot_after_prune={after_prune} after_replay={after_replay}");
     assert_eq!(after_prune, 1);
@@ -93,15 +94,17 @@ fn diagnose_issue_657_refresh_payload_allocation() {
     }
     let before = issue_657_memory();
     let started = std::time::Instant::now();
-    daemon.refresh_all_peer_queue_snapshots().expect("refresh");
+    daemon.ensure_peer_queue_import(&peer).expect("import");
+    let durable_ids = daemon.store.list_peer_unhandled_propagation_ids(&peer).expect("durable IDs");
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
     let after = issue_657_memory();
     let ids =
         daemon.peers.lock().expect("peers").get(&peer).expect("peer").restored_unhandled_ids.len();
-    assert_eq!(ids, 256);
+    assert_eq!(ids, 0);
+    assert_eq!(durable_ids.len(), 256);
     println!(
         "{}",
-        json!({"probe":"issue657_refresh", "rows":ids,
+        json!({"probe":"issue657_refresh", "rows":durable_ids.len(), "resident_ids":ids,
         "seed_payload_hex_bytes":256*65_536*2, "before_kib":before,
         "after_kib":after, "elapsed_ms":elapsed_ms})
     );

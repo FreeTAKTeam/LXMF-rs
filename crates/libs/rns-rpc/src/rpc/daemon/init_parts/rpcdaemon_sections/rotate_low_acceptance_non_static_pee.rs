@@ -34,7 +34,7 @@ impl RpcDaemon {
 
         let mut peer_stats = Vec::with_capacity(active_peers.len());
         for record in active_peers {
-            self.restore_peer_record_queue_marks(record.peer.as_str())?;
+            self.ensure_peer_queue_import(record.peer.as_str())?;
             let stats = self
                 .store
                 .peer_propagation_message_stats(record.peer.as_str())
@@ -116,7 +116,7 @@ impl RpcDaemon {
             if timestamp > record.last_seen.saturating_add(LXMF_PEER_MAX_UNREACHABLE_SECS) {
                 continue;
             }
-            self.restore_peer_record_queue_marks(record.peer.as_str())?;
+            self.ensure_peer_queue_import(record.peer.as_str())?;
             let stats = self
                 .store
                 .peer_propagation_message_stats(record.peer.as_str())
@@ -280,6 +280,9 @@ impl RpcDaemon {
         if !should_remove {
             return Ok(());
         }
+        self.store
+            .clear_peer_propagation_marks(peer_key.as_str())
+            .map_err(std::io::Error::other)?;
         let removed = guard.remove(peer_key.as_str()).is_some();
         if !removed {
             return Ok(());
@@ -291,9 +294,6 @@ impl RpcDaemon {
         self.update_daemon_status_snapshot(|snapshot| {
             snapshot.peer_count = peer_count;
         });
-        self.store
-            .clear_peer_propagation_marks(peer_key.as_str())
-            .map_err(std::io::Error::other)?;
         let messages = json!({
             "offered": propagation_stats.offered,
             "unhandled": propagation_stats.unhandled,

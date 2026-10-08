@@ -49,10 +49,10 @@ impl RpcDaemon {
                             "remote control bridge unavailable".to_string(),
                         );
                         if let Err(error) =
-                            self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str())
+                            self.ensure_peer_queue_import(snapshot_peer.as_str())
                         {
                             log::error!(
-                                "failed to record peer queue snapshot peer={}: {error}",
+                                "failed to import legacy peer queue peer={}: {error}",
                                 snapshot_peer
                             );
                         }
@@ -102,10 +102,10 @@ impl RpcDaemon {
                             }
                             drop(peers);
                             if let Err(snapshot_error) = self
-                                .record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str())
+                                .ensure_peer_queue_import(snapshot_peer.as_str())
                             {
                                 log::error!(
-                                    "failed to record peer queue snapshot peer={}: {snapshot_error}",
+                                    "failed to import legacy peer queue peer={}: {snapshot_error}",
                                     snapshot_peer
                                 );
                             }

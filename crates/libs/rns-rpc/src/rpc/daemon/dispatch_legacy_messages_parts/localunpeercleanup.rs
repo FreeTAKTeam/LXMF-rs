@@ -21,7 +21,7 @@ impl RpcDaemon {
             .map(|record| record.peer.clone())
             .unwrap_or_else(|| peer_id.to_string());
         if self.peers.lock().expect("peers mutex poisoned").contains_key(peer_key.as_str()) {
-            self.restore_peer_record_queue_marks(peer_key.as_str())?;
+            self.ensure_peer_queue_import(peer_key.as_str())?;
         }
         let propagation_mark_stats = self
             .store
@@ -37,9 +37,6 @@ impl RpcDaemon {
             .store
             .list_peer_unhandled_propagation_ids(peer_key.as_str())
             .map_err(std::io::Error::other)?;
-        self.store
-            .clear_peer_propagation_marks(peer_key.as_str())
-            .map_err(std::io::Error::other)?;
         let messages = json!({
             "offered": offered,
             "outgoing": outgoing,
@@ -53,6 +50,9 @@ impl RpcDaemon {
         let removed = {
             let mut imported = self.peer_queue_imports.lock().expect("peer_queue_imports mutex poisoned");
             let mut guard = self.peers.lock().expect("peers mutex poisoned");
+            self.store
+                .clear_peer_propagation_marks(peer_key.as_str())
+                .map_err(std::io::Error::other)?;
             let remove_key =
                 guard.keys().find(|key| key.eq_ignore_ascii_case(peer_key.as_str())).cloned();
             let removed = remove_key.and_then(|key| guard.remove(&key)).is_some();

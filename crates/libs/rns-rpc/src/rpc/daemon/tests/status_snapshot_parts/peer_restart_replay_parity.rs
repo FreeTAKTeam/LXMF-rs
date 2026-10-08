@@ -252,8 +252,8 @@ fn list_peers_prunes_missing_restored_snapshot_ids_like_python() {
 
     let peers = daemon.peers.lock().expect("peers mutex poisoned");
     let record = peers.get(peer).expect("stored peer");
-    assert_eq!(record.restored_handled_ids, vec![handled.transient_id]);
-    assert_eq!(record.restored_unhandled_ids, vec![unhandled.transient_id]);
+    assert_eq!(record.restored_handled_ids.capacity(), 0);
+    assert_eq!(record.restored_unhandled_ids.capacity(), 0);
 }
 
 #[test]
@@ -602,6 +602,6 @@ fn restart_reloads_serialized_restored_queue_snapshot_before_list_peers() {
 
     let peers = daemon.peers.lock().expect("peers mutex poisoned");
     let record = peers.get(peer).expect("stored peer");
-    assert_eq!(record.restored_handled_ids, vec![handled.transient_id]);
-    assert_eq!(record.restored_unhandled_ids, vec![unhandled.transient_id]);
+    assert_eq!(record.restored_handled_ids.capacity(), 0);
+    assert_eq!(record.restored_unhandled_ids.capacity(), 0);
 }

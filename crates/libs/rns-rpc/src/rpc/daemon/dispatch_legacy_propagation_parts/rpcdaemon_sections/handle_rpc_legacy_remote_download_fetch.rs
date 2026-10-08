@@ -37,10 +37,10 @@ impl RpcDaemon {
                         });
                         for peer in self.active_peer_ids() {
                             if let Err(error) =
-                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())
+                                self.ensure_peer_queue_import(peer.as_str())
                             {
                                 log::error!(
-                                    "failed to record peer queue snapshot peer={peer}: {error}"
+                                    "failed to import legacy peer queue peer={peer}: {error}"
                                 );
                             }
                         }
@@ -78,7 +78,7 @@ impl RpcDaemon {
                                 &err,
                             )?;
                             for peer in self.active_peer_ids() {
-                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                                self.ensure_peer_queue_import(peer.as_str())?;
                             }
                             result
                         } else {
@@ -101,7 +101,7 @@ impl RpcDaemon {
                                         &err,
                                     )?;
                                     for peer in self.active_peer_ids() {
-                                        self.record_payload_backed_peer_queue_snapshot(
+                                        self.ensure_peer_queue_import(
                                             peer.as_str(),
                                         )?;
                                     }
@@ -132,7 +132,7 @@ impl RpcDaemon {
                                 imported.transferred_bytes,
                             )?;
                             for peer in self.active_peer_ids() {
-                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                                self.ensure_peer_queue_import(peer.as_str())?;
                             }
                             self.update_propagation_sync_state(|state| {
                                 state.sync_state = PR_COMPLETE;
@@ -165,7 +165,7 @@ impl RpcDaemon {
                                 &err,
                             )?;
                             for peer in self.active_peer_ids() {
-                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                                self.ensure_peer_queue_import(peer.as_str())?;
                             }
                         }
                         return Err(err);
@@ -245,7 +245,7 @@ impl RpcDaemon {
                                 Some("remote control bridge unavailable".to_string());
                         });
                         for peer in self.active_peer_ids() {
-                            self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                            self.ensure_peer_queue_import(peer.as_str())?;
                         }
                         return Err(std::io::Error::other("remote control bridge unavailable"));
                     }
@@ -287,7 +287,7 @@ impl RpcDaemon {
                                 &err,
                             )?;
                             for peer in self.active_peer_ids() {
-                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                                self.ensure_peer_queue_import(peer.as_str())?;
                             }
                         }
                         return Err(err);
@@ -308,7 +308,7 @@ impl RpcDaemon {
                         &err,
                     )?;
                     for peer in self.active_peer_ids() {
-                        self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                        self.ensure_peer_queue_import(peer.as_str())?;
                     }
                     let propagation =
                         self.propagation_state.lock().expect("propagation mutex poisoned").clone();
@@ -340,7 +340,7 @@ impl RpcDaemon {
                             &err,
                         )?;
                         for peer in self.active_peer_ids() {
-                            self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                            self.ensure_peer_queue_import(peer.as_str())?;
                         }
                         return Err(err);
                     }
@@ -361,7 +361,7 @@ impl RpcDaemon {
                     imported.transferred_bytes,
                 )?;
                 for peer in self.active_peer_ids() {
-                    self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                    self.ensure_peer_queue_import(peer.as_str())?;
                 }
                 self.update_propagation_sync_state(|state| {
                     state.sync_state = PR_COMPLETE;
