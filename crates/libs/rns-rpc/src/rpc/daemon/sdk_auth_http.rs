@@ -7,14 +7,11 @@ pub(super) const SDK_RATE_LIMIT_OVERFLOW_IP: &str = "<overflow>";
 impl RpcDaemon {
     pub(super) fn response_meta(&self) -> JsonValue {
         let profile = self.sdk_profile.lock().expect("sdk_profile mutex poisoned").clone();
-        let propagation = self.current_propagation_state();
-        json!({
-            "contract_version": format!("v{}", self.active_contract_version()),
-            "profile": profile,
-            "sdk_version": SDK_VERSION,
-            "python_reference": python_reference_meta(),
-            "rpc_endpoint": JsonValue::Null,
-            "propagation_node": {
+        // Metadata needs this projection, not a clone of every configured peer.
+        // Release the policy guard before reading other metadata locks below.
+        let propagation_node = {
+            let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
+            json!({
                 "enabled": propagation.propagation_node_enabled,
                 "peer_announce_at_start": propagation.peer_announce_at_start,
                 "peer_announce_interval_secs": propagation.peer_announce_interval_secs,
@@ -26,8 +23,20 @@ impl RpcDaemon {
                 "stamp_cost_flexibility": propagation.stamp_cost_flexibility,
                 "peering_cost": propagation.peering_cost.unwrap_or(18),
                 "control_allowed": propagation.control_allowed,
-            },
-        })
+            })
+        };
+        let mut metadata = json!({
+            "contract_version": format!("v{}", self.active_contract_version()),
+            "profile": profile,
+            "sdk_version": SDK_VERSION,
+            "python_reference": python_reference_meta(),
+            "rpc_endpoint": JsonValue::Null,
+        });
+        metadata
+            .as_object_mut()
+            .expect("response metadata is an object")
+            .insert("propagation_node".to_string(), propagation_node);
+        metadata
     }
 
     #[allow(clippy::result_large_err)]

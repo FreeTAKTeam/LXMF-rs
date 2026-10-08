@@ -417,3 +417,59 @@ timeouts and successful recovery, envelope/RPC decode failures, DEALER mismatch,
 mapped error metadata and a colliding detail key. These diagnostics are partial
 attribution only: the frozen RCH delivery experiments still use their recorded
 SDK dependency and do not establish production recovery or resource stability.
+
+
+## 8 October follow-up: durable inventories and poll metadata
+
+The resource-stability follow-up removes the resident handled/unhandled ID
+arrays after their one-time transactional import. Explicit inventory RPCs read
+SQLite; normal peer records retain only metadata. Tests cover failed imports,
+retry, completed-state precedence, import/clear races, concurrent maintenance
+and completion, and zero resident inventory capacity after successful import.
+ZeroMQ diagnostics now account for queued dispatch, handlers, queued responses
+and delivery, including bytes, elapsed time, cancellation and outcomes. These
+measure work; they do not implement an aggregate byte-admission limit.
+The SDK also attaches bounded, call-local failed-exchange context without
+retaining a registry of successful calls or changing deadlines.
+
+An independently verified, short populated run used 1,000,000 associations,
+135,893 signed/encrypted propagation payloads, 100,000 RCH announces and 25,000
+RCH messages. It completed 130 unique authenticated message/receipt chains,
+2,716 polls with no errors, a successful maintenance cycle, history-preservation
+checks and graceful cleanup. The 427-second observation is attribution evidence,
+not the several-hour memory-plus-swap qualification required by issue #657.
+
+A separately bounded heaptrack run completed the same 130 chains and all
+history/maintenance gates with 2,695 polls and no errors. Its sampled live heap
+peaked at 12,222,450 bytes and was 6,407,554 bytes at the last sample definitely
+before shutdown. This does not explain the production footprint. The report
+identified 1,380,352 transient string clones in poll response metadata: 512
+configured peer strings copied for each of 2,696 metadata constructions. These
+allocations consumed no bytes at the global heap peak; they are churn, not
+proof of a retained-memory leak.
+
+`response_meta` now constructs only its existing propagation-policy JSON fields
+under the authoritative policy lock, releases that lock, and moves that object
+into the response. It no longer clones unrelated peer lists, store paths or
+sync-error details. The public full-state reader is unchanged. Three actual RPC
+regressions preserve default/custom policy, control-list order, nullable and zero
+values, immediate policy changes and the unrelated full state.
+
+The original offline-analysis failure (a parser assuming integer milliseconds
+rather than the tool's decimal seconds) remains preserved. The corrected retry
+passed independent verification of all 48,853 samples, tool/artifact hashes,
+clock alignment and bounded analysis-worker cleanup. No production services,
+settings or databases were changed. Issue #657 remains open pending sustained
+memory-plus-swap, operational propagation and slow-consumer qualification.
+
+
+Finish validation: affected RPC/SDK/daemon tests with `zmq-pipeline-rpc` passed
+1,829 tests across 42 suites, with 119 explicit opt-in tests ignored. Strict
+RPC and SDK all-target/all-feature Clippy, workspace formatting, dependency
+boundaries, module-size policy and the issue-369 scanner passed. Independent
+execution rechecked the three metadata regressions and an existing node-policy
+case against the same compiled executable. The broader all-feature daemon
+Clippy attempt remains failed on 64 literal-format diagnostics (62 daemon and
+two compatibility-test diagnostics); their source predates the metadata change.
+This follow-up does not claim a clean full-workspace lint gate or final resource
+acceptance.
