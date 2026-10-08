@@ -464,7 +464,8 @@ memory-plus-swap, operational propagation and slow-consumer qualification.
 
 
 Finish validation: affected RPC/SDK/daemon tests with `zmq-pipeline-rpc` passed
-1,829 tests across 42 suites, with 119 explicit opt-in tests ignored. Strict
+1,828 top-level tests across 41 executables, plus a successful child-process
+regression, with 119 explicit opt-in tests ignored. Strict
 RPC and SDK all-target/all-feature Clippy, workspace formatting, dependency
 boundaries, module-size policy and the issue-369 scanner passed. Independent
 execution rechecked the three metadata regressions and an existing node-policy
