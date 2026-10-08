@@ -54,6 +54,10 @@ name = "zmq_pipeline_send"
 required-features = ["zmq-pipeline-backend"]
 
 [[example]]
+name = "resource_sdk_peer"
+required-features = ["zmq-pipeline-backend"]
+
+[[example]]
 name = "sdk_transport_benchmark"
 required-features = ["rpc-backend", "zmq-pipeline-backend"]
 
