@@ -10,8 +10,10 @@ async fn stalled_response_peer_does_not_block_healthy_event_poll() {
     let daemon = RpcDaemon::test_instance();
     let (tx, rx) = mpsc::channel(8);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
-    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx));
+    let metrics = Arc::new(ZmqPipelineMetrics::default());
+    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::clone(&metrics)));
     tx.send(ZmqOutboundResponse {
+        queue_stage: None,
         endpoint: stalled_endpoint,
         envelope: ZmqRpcEnvelope::response("departed-client".to_string(), 1, vec![]),
     })
@@ -56,6 +58,11 @@ async fn stalled_response_peer_does_not_block_healthy_event_poll() {
         .await
         .expect("writer drains within deadline")
         .expect("writer task");
+    let snapshot = metrics.snapshot();
+    assert_eq!(snapshot["delivery"]["succeeded"], 1);
+    assert_eq!(snapshot["delivery"]["timed_out"], 1);
+    assert_eq!(snapshot["delivery"]["active"], 0);
+    assert_eq!(snapshot["delivery"]["owned_wire_bytes"], 0);
 }
 
 #[tokio::test]
@@ -64,8 +71,10 @@ async fn response_writer_cancels_active_stalled_peers_on_shutdown() {
     let endpoint = format!("tcp://{}", stalled.local_addr().expect("address"));
     let (tx, rx) = mpsc::channel(8);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx));
+    let metrics = Arc::new(ZmqPipelineMetrics::default());
+    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::clone(&metrics)));
     tx.send(ZmqOutboundResponse {
+        queue_stage: None,
         endpoint,
         envelope: ZmqRpcEnvelope::response("shutdown-client".to_string(), 1, vec![]),
     })
@@ -81,4 +90,8 @@ async fn response_writer_cancels_active_stalled_peers_on_shutdown() {
         .expect("shutdown cancels stalled delivery")
         .expect("writer stopped");
     assert!(tx.is_closed());
+    let snapshot = metrics.snapshot();
+    assert_eq!(snapshot["delivery"]["cancelled"], 1);
+    assert_eq!(snapshot["delivery"]["active"], 0);
+    assert_eq!(snapshot["delivery"]["owned_wire_bytes"], 0);
 }

@@ -7,6 +7,7 @@ pub mod http;
 pub mod replay;
 mod send_request;
 pub mod zmq;
+pub mod zmq_metrics;
 
 use rmpv::Value as MsgPackValue;
 use serde::{Deserialize, Serialize};

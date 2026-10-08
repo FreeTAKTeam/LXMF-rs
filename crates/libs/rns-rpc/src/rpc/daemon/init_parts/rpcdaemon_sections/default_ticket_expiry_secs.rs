@@ -184,6 +184,7 @@ impl RpcDaemon {
             sdk_events,
             event_queue: Mutex::new(VecDeque::new()),
             sdk_event_log: Mutex::new(VecDeque::new()),
+            zmq_pipeline_metrics: Arc::default(),
             sdk_next_event_seq: Mutex::new(0),
             announce_next_seq: Mutex::new(0),
             sdk_dropped_event_count: Mutex::new(0),

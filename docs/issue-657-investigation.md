@@ -335,3 +335,55 @@ Evidence: `followup-final-live-shape.json`; executable SHA-256
 `7902038afb7218001d600bde227160be509b2a82fb8f838f42b0ec1c51a98553`.
 Final acceptance and Clippy logs are `followup-acceptance-final.log` and
 `followup-clippy.log` in the same local evidence directory.
+
+
+## Sustained-resource work, 8 October 2026
+
+A new isolated comparison uses 135,893 authenticated signed/encrypted LXMF
+payloads (71,751,504 payload bytes), 1,000,000 durable peer associations across
+940 histories, 512 activated peers, and real RCH SDK event polling. RCH also
+holds 100,000 announces and 25,000 terminal 4 KiB messages. Synthetic announce
+ingress and dashboard requests continue during observation; new independent
+message delivery and sustained browser traffic are not yet qualified.
+
+The inventory cutover at `540e449a` leaves SQLite as the runtime association
+owner. Public legacy PeerRecord codec fields remain import input, are imported
+once under an import/peer/store lock order, and release all vector capacity
+only after a successful transaction. Failed import retains its input for retry;
+concurrent peer clearing cannot resurrect marks. Explicit inventory replies
+continue to read the durable IDs. Normal synchronization and maintenance never
+repopulate the legacy vectors.
+
+A 600-second same-fixture comparison against diagnostic-only baseline source
+measured daemon RSS plus swap first/last-minute medians of 109.0/126.8 MiB before
+and 48.1/58.7 MiB after. Owned inventory buffers changed from about 52 MB to zero.
+The cutover retained all 135,893 payloads and 1,000,457 associations after
+maintenance/refill, completed 3,807 SDK polls with no poll errors, and verified
+graceful exit plus empty cgroups for both services. This short result supports
+removing redundant ownership; it does not prove a memory plateau, explain the
+remaining allocator/process growth, or establish production recovery.
+
+The `daemon_status_ex.resources` diagnostic reports borrowed inventory capacity
+and lower-bound retained event heap bytes. Pipeline diagnostics additionally
+distinguish dispatch waiting (including blocking-pool scheduling), synchronous
+handler execution, response enqueue/residency, and reply delivery. Each stage
+reports active/peak items and owned wire-buffer bytes, completed/failed/timed-out/
+cancelled outcomes, and total/maximum elapsed microseconds. Work taking at least
+250 ms increments a slow-stage counter and can emit a warning, rate-limited
+to one warning per stage per five seconds; suppressed warning counts remain
+visible. The existing correlated reply timeout warning remains. RAII guards move with work and queued buffers and release on task abort,
+failed send, queue disposal, and shutdown.
+
+These counters do not impose admission limits. Wire-buffer bytes exclude decoded
+JSON, temporary envelope encoding copies, allocator metadata and ZeroMQ-internal
+buffers. Atomic samples are observational rather than a coherent allocation
+census. Only the PUSH/PULL pipeline is currently instrumented; the canonical
+ROUTER/DEALER path is not. Event/reply byte budgets, RCH durable-history/cache
+changes, complete lifecycle fixes and the final constrained three-hour real
+delivery/browser workload remain outstanding.
+
+Local raw comparison evidence is under `/tmp/rch-res-diag1/` and
+`/tmp/rch-res-fixed1/`, with immutable binary, harness and fixture hashes in the
+manifests. Focused evidence under `/tmp/rch-resource-stability/evidence/` includes
+`rpc-issue657-independent-verifier.log`, `zmq-stage-unit.log`,
+`zmq-stage-pipeline.log`, `zmq-stage-writer.log`, and `zmq-stage-issue369.log`.

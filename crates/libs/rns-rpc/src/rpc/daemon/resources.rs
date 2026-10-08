@@ -27,6 +27,10 @@ fn json_heap_lower_bound(value: &JsonValue) -> usize {
 }
 
 impl RpcDaemon {
+    pub fn zmq_pipeline_metrics(&self) -> Arc<super::super::zmq_metrics::ZmqPipelineMetrics> {
+        Arc::clone(&self.zmq_pipeline_metrics)
+    }
+
     /// Explicit diagnostics only. Approximate owned buffers are separate from
     /// process RSS/swap; broadcast subscribers and SQLite caches are not included.
     pub fn resource_usage_snapshot(&self) -> Result<JsonValue, std::io::Error> {
@@ -77,6 +81,7 @@ impl RpcDaemon {
         };
         Ok(json!({
             "peer_records": peers,
+            "zmq_pipeline": self.zmq_pipeline_metrics.snapshot(),
             "peer_inventory": {"handled_ids": handled, "unhandled_ids": unhandled, "owned_buffer_bytes": inventory_bytes},
             "legacy_events": {"items": legacy_events, "heap_bytes_lower_bound": legacy_bytes},
             "sdk_events": {"items": sdk_events, "heap_bytes_lower_bound": sdk_bytes},

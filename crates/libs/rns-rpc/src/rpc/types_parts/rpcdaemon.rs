@@ -62,6 +62,7 @@ pub struct RpcDaemon {
     delivery_status_lock: Arc<Mutex<()>>,
     outbound_delivery_handoffs: Arc<Mutex<HashSet<String>>>,
     sdk_metrics: Arc<Mutex<RpcMetrics>>,
+    zmq_pipeline_metrics: Arc<zmq_metrics::ZmqPipelineMetrics>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
     outbound_delivery_tx: Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
     announce_bridge: Option<Arc<dyn AnnounceBridge>>,

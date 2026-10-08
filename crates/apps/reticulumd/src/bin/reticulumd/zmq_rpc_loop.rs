@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
+mod pipeline;
 mod response_writer;
+pub(super) use pipeline::run_zmq_rpc_loop_until;
 mod router;
 mod support;
 use response_writer::run_zmq_response_writer;
@@ -9,6 +11,7 @@ pub(super) use router::run_zmq_router_loop_until;
 use support::*;
 
 use rns_rpc::rpc::zmq::{self, ZmqRpcEnvelope, ZmqRpcEnvelopeKind};
+use rns_rpc::rpc::zmq_metrics::{ZmqPipelineMetrics, ZmqStage, ZmqStageGuard, ZmqStageOutcome};
 use rns_rpc::{RpcDaemon, RpcError, RpcResponse};
 use std::io;
 use std::sync::Arc;
@@ -25,94 +28,18 @@ pub(super) struct ZmqRpcLoopConfig {
     pub require_auth_for_remote: bool,
 }
 
-pub(super) async fn run_zmq_rpc_loop_until(
-    config: ZmqRpcLoopConfig,
-    daemon: Arc<RpcDaemon>,
-    mut shutdown: watch::Receiver<bool>,
-) -> io::Result<()> {
-    validate_zmq_loop_config(&config, daemon.as_ref())?;
-    let command_endpoint_requires_auth =
-        config.require_auth_for_remote && !is_local_zmq_endpoint(&config.command_endpoint);
-    let mut commands = PullSocket::new();
-    commands.bind(config.command_endpoint.as_str()).await.map_err(zmq_io_error)?;
-    let (response_tx, response_rx) =
-        mpsc::channel::<ZmqOutboundResponse>(ZMQ_RPC_RESPONSE_QUEUE_CAPACITY);
-    let (writer_shutdown_tx, writer_shutdown_rx) = watch::channel(false);
-    let response_writer = tokio::spawn(run_zmq_response_writer(response_rx, writer_shutdown_rx));
-    let rpc_permits = Arc::new(Semaphore::new(ZMQ_RPC_WORKER_CONCURRENCY));
-    let mut rpc_workers = JoinSet::new();
-    log::info!("reticulumd listening on zmq {}", config.command_endpoint);
-
-    let loop_result = loop {
-        if *shutdown.borrow() {
-            break Ok(());
-        }
-        tokio::select! {
-            biased;
-            changed = shutdown.changed() => {
-                if changed.is_err() || *shutdown.borrow() {
-                    break Ok(());
-                }
-            }
-            completed = rpc_workers.join_next(), if !rpc_workers.is_empty() => {
-                if let Some(Err(error)) = completed {
-                    log::error!("[daemon] zmq rpc worker task failed: {error}");
-                }
-            }
-            message = commands.recv(), if rpc_workers.len() < ZMQ_RPC_WORKER_CONCURRENCY => {
-                let message = match message {
-                    Ok(message) => message,
-                    Err(err) if is_recoverable_zmq_transport_error(&err) => {
-                        log::warn!("[daemon] zmq rpc receive dropped client connection: {}", err);
-                        continue;
-                    }
-                    Err(err) => break Err(zmq_io_error(err)),
-                };
-                let daemon = Arc::clone(&daemon);
-                let response_tx = response_tx.clone();
-                let rpc_permits = Arc::clone(&rpc_permits);
-                rpc_workers.spawn(async move {
-                    let Ok(_permit) = rpc_permits.acquire_owned().await else {
-                        return;
-                    };
-                    // Management requests can wait for the async interface worker.
-                    let response = tokio::task::spawn_blocking(move || {
-                        handle_zmq_command_message(
-                            daemon.as_ref(), message, command_endpoint_requires_auth,
-                        )
-                    }).await;
-                    if let Ok(Ok(response)) = response {
-                        if response_tx.send(response).await.is_err() {
-                            log::warn!("[daemon] zmq rpc response writer stopped");
-                        }
-                    } else if let Err(error) = response {
-                        log::error!("[daemon] zmq rpc dispatch task failed: {error}");
-                    }
-                });
-            }
-        }
-    };
-    rpc_permits.close();
-    drop(response_tx);
-    if writer_shutdown_tx.send(true).is_err() {
-        log::warn!("[daemon] zmq rpc response writer stopped before shutdown");
-    }
-    // Dispatch jobs own synchronous mutations until they finish. Cancelling only
-    // response sockets must not detach an in-progress spawn_blocking mutation.
-    while let Some(completed) = rpc_workers.join_next().await {
-        if let Err(error) = completed {
-            log::error!("[daemon] zmq rpc shutdown worker failed: {error}");
-        }
-    }
-    response_writer
-        .await
-        .map_err(|err| io::Error::other(format!("zmq response writer task failed: {err}")))?;
-    loop_result
-}
-
 struct ZmqOutboundResponse {
     endpoint: String,
     envelope: ZmqRpcEnvelope,
+    queue_stage: Option<ZmqStageGuard>,
+}
+
+impl ZmqOutboundResponse {
+    fn owned_wire_bytes(&self) -> usize {
+        self.endpoint.capacity()
+            + self.envelope.session_id.capacity()
+            + self.envelope.payload.capacity()
+    }
 }
 
 fn handle_zmq_command_message(
@@ -153,7 +80,7 @@ fn handle_zmq_command_message(
         command_endpoint_requires_auth,
         response_endpoint_is_local,
     )?;
-    Ok(ZmqOutboundResponse { endpoint: response_endpoint, envelope: response })
+    Ok(ZmqOutboundResponse { endpoint: response_endpoint, envelope: response, queue_stage: None })
 }
 
 fn handle_zmq_request_envelope(
@@ -490,3 +417,7 @@ mod tests {
 #[cfg(test)]
 #[path = "zmq_rpc_loop_parts/response_writer_tests.rs"]
 mod response_writer_tests;
+
+#[cfg(test)]
+#[path = "zmq_rpc_loop_parts/pipeline_metrics_tests.rs"]
+mod pipeline_metrics_tests;
