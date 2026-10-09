@@ -11,8 +11,18 @@ impl WriteSender {
         (Self { tx,used:Arc::new(AtomicU64::new(0)) },rx)
     }
     fn reserve(&self,bytes: u64) -> Result<WriteReservation,super::broker::BrokerError> {
-        self.used.fetch_update(Ordering::AcqRel,Ordering::Acquire,|used|used.checked_add(bytes).filter(|sum|*sum<=WRITE_QUEUE_BYTES))
-            .map_err(|_|super::broker::BrokerError {code:"SDK_STORAGE_WRITE_BUSY",message:"database writer byte capacity exhausted before admission".into()})?;
+        let mut used = self.used.load(Ordering::Acquire);
+        loop {
+            let next = used.checked_add(bytes).filter(|sum| *sum <= WRITE_QUEUE_BYTES)
+                .ok_or_else(|| super::broker::BrokerError {
+                    code: "SDK_STORAGE_WRITE_BUSY",
+                    message: "database writer byte capacity exhausted before admission".into(),
+                })?;
+            match self.used.compare_exchange_weak(used, next, Ordering::AcqRel, Ordering::Acquire) {
+                Ok(_) => break,
+                Err(actual) => used = actual,
+            }
+        }
         Ok(WriteReservation {bytes,used:Arc::clone(&self.used)})
     }
     fn send_reserved(&self,command: OutboundWriteCommand,reservation: WriteReservation) -> Result<(),super::broker::BrokerError> {
@@ -62,5 +72,65 @@ impl OutboundWriteCommand {
             Self::PruneExpiredTickets {..}|Self::PruneMessagesToLimitBytes {..}=>0,
         };
         bytes.saturating_add(512)
+    }
+}
+
+#[cfg(test)]
+mod writer_admission_tests {
+    use super::*;
+
+    #[test]
+    fn writer_admission_rejects_overflow_and_recovers_after_release() {
+        let (sender, _receiver) = WriteSender::channel();
+        let held = sender.reserve(WRITE_QUEUE_BYTES).expect("full byte reservation");
+        for bytes in [1, u64::MAX] {
+            let error = match sender.reserve(bytes) {
+                Ok(_) => panic!("writer admitted bytes beyond its capacity"),
+                Err(error) => error,
+            };
+            assert_eq!(error.code, "SDK_STORAGE_WRITE_BUSY");
+            assert_eq!(sender.used.load(Ordering::Acquire), WRITE_QUEUE_BYTES);
+        }
+        drop(held);
+        assert_eq!(sender.used.load(Ordering::Acquire), 0);
+        let recovered = sender.reserve(WRITE_QUEUE_BYTES).expect("capacity released");
+        drop(recovered);
+        assert_eq!(sender.used.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn writer_admission_bounds_concurrent_reservations() {
+        let (sender, _receiver) = WriteSender::channel();
+        let sender = Arc::new(sender);
+        let barrier = Arc::new(std::sync::Barrier::new(17));
+        let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        std::thread::scope(|scope| {
+            for _ in 0..16 {
+                let sender = Arc::clone(&sender);
+                let barrier = Arc::clone(&barrier);
+                let accepted = Arc::clone(&accepted);
+                scope.spawn(move || {
+                    barrier.wait();
+                    let held = sender.reserve(WRITE_QUEUE_BYTES / 8);
+                    if held.is_ok() {
+                        accepted.fetch_add(1, Ordering::AcqRel);
+                    }
+                    barrier.wait();
+                    barrier.wait();
+                    match held {
+                        Ok(reservation) => drop(reservation),
+                        Err(error) => assert_eq!(error.code, "SDK_STORAGE_WRITE_BUSY"),
+                    }
+                });
+            }
+            barrier.wait();
+            barrier.wait();
+            let admitted = accepted.load(Ordering::Acquire);
+            let retained = sender.used.load(Ordering::Acquire);
+            barrier.wait();
+            assert_eq!(admitted, 8);
+            assert_eq!(retained, WRITE_QUEUE_BYTES);
+        });
+        assert_eq!(sender.used.load(Ordering::Acquire), 0);
     }
 }
