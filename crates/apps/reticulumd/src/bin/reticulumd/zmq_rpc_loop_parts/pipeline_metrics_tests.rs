@@ -80,7 +80,7 @@ async fn real_pipeline_accounts_all_stages_and_rejected_ingress() {
     assert_eq!(response.request_id, 41);
     commands.send(ZmqMessage::from(vec![0])).await.expect("send malformed ingress");
     tokio::time::timeout(Duration::from_secs(1), async {
-        while metrics.snapshot()["handler"]["failed"] != 1
+        while metrics.snapshot()["dispatch_wait"]["failed"] != 1
             || metrics.snapshot()["delivery"]["succeeded"] != 1
         {
             tokio::time::sleep(Duration::from_millis(2)).await;
@@ -100,9 +100,10 @@ async fn real_pipeline_accounts_all_stages_and_rejected_ingress() {
         assert_eq!(snapshot[stage]["owned_wire_bytes"], 0, "{stage}");
         assert!(snapshot[stage]["peak_owned_wire_bytes"].as_u64().expect("bytes") > 0, "{stage}");
     }
-    assert_eq!(snapshot["dispatch_wait"]["succeeded"], 2);
+    assert_eq!(snapshot["dispatch_wait"]["succeeded"], 1);
+    assert_eq!(snapshot["dispatch_wait"]["failed"], 1);
     assert_eq!(snapshot["handler"]["succeeded"], 1);
-    assert_eq!(snapshot["handler"]["failed"], 1);
+    assert_eq!(snapshot["handler"]["failed"], 0);
     assert_eq!(snapshot["response_queue"]["succeeded"], 1);
     assert_eq!(daemon.resource_usage_snapshot().expect("resources")["zmq_pipeline"], snapshot);
 }

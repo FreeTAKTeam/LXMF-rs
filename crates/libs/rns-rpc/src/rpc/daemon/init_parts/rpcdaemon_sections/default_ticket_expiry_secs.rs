@@ -150,7 +150,7 @@ impl RpcDaemon {
         let delivery_traces = Arc::new(Mutex::new(HashMap::new()));
         let delivery_status_lock = Arc::new(Mutex::new(()));
         let outbound_delivery_handoffs = Arc::new(Mutex::new(HashSet::new()));
-        let outbound_delivery_tx = Self::spawn_outbound_delivery_worker(
+        let (outbound_delivery_tx,outbound_delivery_workers,outbound_delivery_stop) = Self::spawn_outbound_delivery_worker(
             outbound_bridge.clone(),
             Arc::clone(&store),
             Arc::clone(&delivery_traces),
@@ -171,6 +171,7 @@ impl RpcDaemon {
         sdk_identity_sessions.insert(
             super::LEGACY_RPC_SESSION_ID.to_owned(),
             SdkIdentitySession {
+                broker_negotiated: false,
                 authorized_identities: HashSet::from([identity_hash.clone()]),
                 active_identity: Some(identity_hash.clone()),
             },
@@ -242,6 +243,8 @@ impl RpcDaemon {
             sdk_metrics,
             outbound_bridge,
             outbound_delivery_tx,
+            outbound_delivery_workers:Mutex::new(outbound_delivery_workers),
+            outbound_delivery_stop,
             announce_bridge,
             service_identity_bridge: Mutex::new(None),
             event_sink_bridges,

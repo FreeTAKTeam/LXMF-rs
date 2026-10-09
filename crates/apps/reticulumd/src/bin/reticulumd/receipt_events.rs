@@ -31,18 +31,6 @@ impl ReceiptDeliveryState {
     }
 }
 
-pub(super) fn handle_receipt_update(
-    daemon: &RpcDaemon,
-    event: ReceiptEvent,
-    receipt_map: &Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: &OutboundResourceMap,
-) {
-    let message_id = event.message_id.clone();
-    if let Err(err) = persist_receipt_update(daemon, event, receipt_map, outbound_resource_map) {
-        log_delivery_trace(&message_id, "-", "receipt-persist", &format!("failed err={err}"));
-    }
-}
-
 pub(crate) fn persist_receipt_update(
     daemon: &RpcDaemon,
     event: ReceiptEvent,

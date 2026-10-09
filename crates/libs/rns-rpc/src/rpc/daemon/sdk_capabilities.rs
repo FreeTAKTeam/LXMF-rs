@@ -139,6 +139,9 @@ impl RpcDaemon {
     }
 
     pub(super) fn active_contract_version(&self) -> u16 {
+        if self.broker_session_negotiated() {
+            return 2;
+        }
         *self
             .sdk_active_contract_version
             .lock()

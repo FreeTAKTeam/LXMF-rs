@@ -43,6 +43,10 @@ impl RpcDaemon {
             .map_err(std::io::Error::other)?;
         let mut scheduled = 0_usize;
         for record in candidates {
+            // Durable dispatch reads persisted options and owns retries independently of announces.
+            if self.store.broker_owns_message(&record.id).map_err(std::io::Error::other)? {
+                continue;
+            }
             let Some(method) = method_filter(&record) else {
                 continue;
             };

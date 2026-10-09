@@ -28,6 +28,7 @@ impl RpcDaemon {
                 result: Some(self.daemon_status_result(false)?),
                 error: None,
             }),
+            method if method.starts_with("sdk_broker_") => self.handle_sdk_broker(request),
             "sdk_negotiate_v2" => self.handle_sdk_negotiate_v2(request),
             "daemon_status_ex" => Ok(RpcResponse {
                 id: request.id,

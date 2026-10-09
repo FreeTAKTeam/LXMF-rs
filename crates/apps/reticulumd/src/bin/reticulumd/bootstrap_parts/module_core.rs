@@ -113,6 +113,7 @@ pub(super) struct BootstrapContext {
     pub(super) rpc_unix: Option<PathBuf>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
+    pub(super) receipt_owner: Option<super::receipt_worker::ReceiptOwner>,
     pub(super) path_table_persistence: Option<PathTablePersistenceContext>,
     pub(super) auto_runtime_shutdowns: Vec<transport_startup::AutoRuntimeShutdown>,
 }
@@ -152,6 +153,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         args.rpc_tls_client_ca.clone(),
     );
     let store = MessagesStore::open(&args.db).expect("open sqlite");
+    if args.zmq_durable_broker { store.enable_durable_broker(512 * 1024 * 1024).expect("enable durable ZeroMQ broker"); }
+    if args.zmq_broker_restored {
+        store.declare_broker_backup_restore().expect("declare restored durable journal");
+        log::warn!("restored daemon journal has a new incarnation; old consumer checkpoints require explicit recovery");
+    }
 
     let identity_path = args.identity.clone().unwrap_or_else(|| {
         let mut path = args.db.clone();
@@ -227,6 +233,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let probe_receipts = Arc::new(ProbeReceiptRegistry::default());
     let outbound_resource_map: OutboundResourceMap = Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = channel(RECEIPT_EVENT_QUEUE_CAPACITY);
+    let receipt_tx=reticulum_daemon::receipt_bridge::ReceiptPublisher::from(receipt_tx);
     let propagation_node_config = resolve_propagation_node_config(daemon_config.as_ref());
     let propagation_control_enabled = propagation_node_config.enabled;
     let configured_control_identities =
@@ -582,14 +589,15 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         }
     }
 
-    if transport.is_some() {
-        spawn_receipt_worker(
+    let receipt_owner=if transport.is_some() {
+        Some(spawn_receipt_worker(
             daemon.clone(),
             receipt_rx,
             receipt_map.clone(),
             outbound_resource_map.clone(),
-        );
-    }
+            receipt_tx.clone(),
+        ))
+    } else {None};
 
     if args.announce_interval_secs > 0 {
         let _handle = daemon.clone().start_announce_scheduler_shared(args.announce_interval_secs);
@@ -660,6 +668,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         rpc_unix,
         daemon,
         rpc_tls,
+        receipt_owner,
         path_table_persistence,
         auto_runtime_shutdowns,
     }

@@ -48,6 +48,9 @@ pub(super) fn zmq_io_error(err: impl std::fmt::Display) -> io::Error {
 }
 
 pub(super) fn is_recoverable_zmq_transport_error(err: &zeromq::ZmqError) -> bool {
+    if matches!(err, zeromq::ZmqError::Codec(_)) {
+        return true;
+    }
     let text = err.to_string();
     text.contains("connection was aborted")
         || text.contains("connection was forcibly closed")

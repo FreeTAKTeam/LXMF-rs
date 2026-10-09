@@ -3,13 +3,16 @@ use super::delivery_task::{
 };
 use super::{log_delivery_trace, propagation, RequestedDeliveryMethod};
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
+use rns_core::destination_hash::parse_destination_hash_required;
+use rns_transport::hash::AddressHash;
 use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 
-const DEFAULT_DELIVERY_QUEUE_CAPACITY: usize = 16_384;
+const DEFAULT_DELIVERY_QUEUE_CAPACITY: usize = 64;
+const DELIVERY_RETAINED_BYTES: u32 = 128 * 1024 * 1024;
 const DEFAULT_GLOBAL_CONCURRENCY: usize = 32;
 const DEFAULT_PER_PEER_IN_FLIGHT: usize = 1;
 
@@ -217,6 +220,13 @@ impl DeliverySchedulerMetrics {
         let mut peers = self.peers.lock().expect("delivery scheduler peer metrics mutex poisoned");
         let counters = peers.entry(peer.to_string()).or_default();
         update(counters);
+        if counters.queued == 0
+            && counters.in_flight == 0
+            && counters.stamp_queued == 0
+            && counters.stamp_in_flight == 0
+        {
+            peers.remove(peer);
+        }
     }
 }
 
@@ -226,15 +236,26 @@ pub(super) struct DeliveryScheduler {
     tx: mpsc::Sender<ScheduledDelivery>,
     backlog_limit: Arc<Semaphore>,
     metrics: Arc<DeliverySchedulerMetrics>,
+    bytes: Arc<Semaphore>,
+    owner: Arc<DeliveryRuntimeOwner>,
 }
-
+struct DeliveryRuntimeOwner {
+    stop: tokio::sync::watch::Sender<bool>,
+    thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+pub(super) struct DeliveryReservation {
+    count: OwnedSemaphorePermit,
+    bytes: OwnedSemaphorePermit,
+}
 impl DeliveryScheduler {
     pub(super) fn spawn(config: DeliverySchedulerConfig) -> Self {
         let (tx, rx) = mpsc::channel(config.queue_capacity);
         let backlog_limit = Arc::new(Semaphore::new(config.queue_capacity));
         let metrics = Arc::new(DeliverySchedulerMetrics::default());
         let runtime_metrics = Arc::clone(&metrics);
-        std::thread::Builder::new()
+        let (stop, stopping) = tokio::sync::watch::channel(false);
+        let owner = Arc::new(DeliveryRuntimeOwner { stop, thread: Mutex::new(None) });
+        let thread = std::thread::Builder::new()
             .name("rpc-outbound-delivery-runtime".to_string())
             .spawn(move || {
                 let runtime = tokio::runtime::Builder::new_current_thread()
@@ -242,35 +263,76 @@ impl DeliveryScheduler {
                     .build()
                     .expect("build outbound delivery runtime");
                 let local = tokio::task::LocalSet::new();
-                local.block_on(&runtime, run_scheduler(rx, config, runtime_metrics));
+                local.block_on(&runtime, run_scheduler(rx, config, runtime_metrics, stopping));
             })
             .expect("spawn rpc outbound delivery runtime");
 
-        Self { config, tx, backlog_limit, metrics }
+        *owner.thread.lock().expect("delivery runtime handle poisoned") = Some(thread);
+        Self {
+            config,
+            tx,
+            backlog_limit,
+            metrics,
+            bytes: Arc::new(Semaphore::new(DELIVERY_RETAINED_BYTES as usize)),
+            owner,
+        }
     }
 
-    pub(super) fn enqueue(&self, task: DeliveryTask) -> Result<(), std::io::Error> {
-        let peer = task.destination_hex.clone();
-        let capacity_permit = self.backlog_limit.clone().try_acquire_owned().map_err(|_| {
+    pub(super) fn reserve(&self, bytes: usize) -> Result<DeliveryReservation, std::io::Error> {
+        validate_reservation_bytes(bytes)?;
+        if *self.owner.stop.borrow() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "delivery runtime stopping",
+            ));
+        }
+        let count = self.backlog_limit.clone().try_acquire_owned().map_err(|_| {
             self.metrics.record_queue_full();
-            std::io::Error::new(std::io::ErrorKind::WouldBlock, "outbound delivery queue full")
+            std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "outbound delivery count capacity exhausted",
+            )
         })?;
-        match self.tx.try_send(ScheduledDelivery { task, _capacity_permit: capacity_permit }) {
-            Ok(()) => {
-                self.metrics.record_admitted_for_peer(&peer);
-                Ok(())
-            }
+        let bytes = u32::try_from(bytes).map_err(std::io::Error::other)?;
+        let bytes = self.bytes.clone().try_acquire_many_owned(bytes).map_err(|_| {
+            self.metrics.record_queue_full();
+            std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "outbound delivery byte capacity exhausted",
+            )
+        })?;
+        Ok(DeliveryReservation { count, bytes })
+    }
+    pub(super) fn enqueue_reserved(
+        &self,
+        task: DeliveryTask,
+        reservation: DeliveryReservation,
+    ) -> Result<(), std::io::Error> {
+        let peer = task.destination_hex.clone();
+        self.metrics.record_admitted_for_peer(&peer);
+        match self.tx.try_send(ScheduledDelivery {
+            task,
+            _capacity_permit: reservation.count,
+            _bytes: reservation.bytes,
+        }) {
+            Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
+                self.metrics.accepted_total.fetch_sub(1, Ordering::Relaxed);
+                self.metrics.record_dequeued_for_peer(&peer);
                 self.metrics.record_queue_full();
                 Err(std::io::Error::new(
                     std::io::ErrorKind::WouldBlock,
                     "outbound delivery queue full",
                 ))
             }
-            Err(mpsc::error::TrySendError::Closed(_)) => Err(std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "outbound delivery runtime stopped",
-            )),
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                self.metrics.accepted_total.fetch_sub(1, Ordering::Relaxed);
+                self.metrics.record_dequeued_for_peer(&peer);
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "outbound delivery runtime stopped",
+                ))
+            }
         }
     }
 
@@ -300,18 +362,32 @@ impl DeliveryScheduler {
 struct ScheduledDelivery {
     task: DeliveryTask,
     _capacity_permit: OwnedSemaphorePermit,
+    _bytes: OwnedSemaphorePermit,
 }
 
 async fn run_scheduler(
     mut rx: mpsc::Receiver<ScheduledDelivery>,
     config: DeliverySchedulerConfig,
     metrics: Arc<DeliverySchedulerMetrics>,
+    mut stopping: tokio::sync::watch::Receiver<bool>,
 ) {
     let global_limit = Arc::new(Semaphore::new(config.global_concurrency));
     let stamp_limit = Arc::new(Semaphore::new(1));
     let mut peer_limits: HashMap<String, Arc<Semaphore>> = HashMap::new();
 
-    while let Some(delivery) = rx.recv().await {
+    let mut owners = tokio::task::JoinSet::new();
+    loop {
+        if *stopping.borrow() {
+            rx.close();
+        }
+        let delivery = tokio::select! {
+            biased;
+            changed=stopping.changed(),if !*stopping.borrow()=>{if changed.is_err() || *stopping.borrow() {rx.close();}continue;},
+            result=owners.join_next(),if !owners.is_empty()=>{if let Some(Err(error))=result {log::error!("delivery task failed: {error}");}continue;},
+            delivery=rx.recv()=>match delivery {Some(delivery)=>delivery,None=>break},
+        };
+        peer_limits.retain(|_, limit| Arc::strong_count(limit) > 1);
+
         let peer = delivery.task.destination_hex.clone();
         if delivery.task.requires_deferred_stamp_work() {
             delivery.task.record_deferred_stamp_queued_metadata();
@@ -324,7 +400,9 @@ async fn run_scheduler(
         let global_limit = Arc::clone(&global_limit);
         let stamp_limit = Arc::clone(&stamp_limit);
         let metrics = Arc::clone(&metrics);
-        tokio::task::spawn_local(async move {
+        owners.spawn_local(async move {
+            let _capacity = delivery._capacity_permit;
+            let _bytes = delivery._bytes;
             let prepared = prepare_payload(&delivery.task, &stamp_limit, &metrics, &peer).await;
             let Some(prepared) = prepared else {
                 metrics.record_finished_before_delivery_for_peer(&peer);
@@ -342,6 +420,11 @@ async fn run_scheduler(
             metrics.record_completed_for_peer(&peer);
         });
     }
+    while let Some(result) = owners.join_next().await {
+        if let Err(error) = result {
+            log::error!("delivery task failed during shutdown: {error}");
+        }
+    }
 }
 
 async fn prepare_payload(
@@ -350,6 +433,40 @@ async fn prepare_payload(
     metrics: &Arc<DeliverySchedulerMetrics>,
     peer: &str,
 ) -> Option<PreparedDeliveryPayload> {
+    let finish_queued_stamp = || {
+        if task.requires_deferred_stamp_work() {
+            metrics.record_stamp_started_for_peer(peer);
+            metrics.record_stamp_completed_for_peer(peer);
+        }
+    };
+    let durable = match task.daemon.durable_prepared_payload(&task.message_id) {
+        Ok(Some(Some(value))) => {
+            finish_queued_stamp();
+            return match decode_prepared(value) {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    log::error!(
+                        "corrupt durable prepared payload message_id={}: {error}",
+                        task.message_id
+                    );
+                    task.fail_payload_build(std::io::Error::other(
+                        "corrupt durable prepared payload",
+                    ));
+                    None
+                }
+            };
+        }
+        Ok(Some(None)) => true,
+        Ok(None) => false,
+        Err(error) => {
+            finish_queued_stamp();
+            log::error!("prepared payload lookup failed message_id={}: {error}", task.message_id);
+            if let Err(error) = task.daemon.defer_durable_dispatch(&task.message_id) {
+                log::error!("prepared payload lookup recovery could not be persisted: {error}");
+            }
+            return None;
+        }
+    };
     task.start_delivery_trace();
     if task.abort_if_cancelled("start") {
         task.record_deferred_stamp_cancelled_metadata();
@@ -369,7 +486,20 @@ async fn prepare_payload(
     } else {
         None
     };
-    Some(PreparedDeliveryPayload { lxmf_payload, propagation })
+    let prepared = PreparedDeliveryPayload { lxmf_payload, propagation };
+    if durable {
+        if let Err(error) = task
+            .daemon
+            .persist_durable_prepared_payload(&task.message_id, encode_prepared(&prepared))
+        {
+            log::error!("prepared wire payload was not committed; network send suppressed message_id={}: {error}",task.message_id);
+            if let Err(error) = task.daemon.defer_durable_dispatch(&task.message_id) {
+                log::error!("durable dispatch could not be deferred: {error}");
+            }
+            return None;
+        }
+    }
+    Some(prepared)
 }
 
 async fn prepare_lxmf_payload(
@@ -528,3 +658,80 @@ fn env_usize(name: &str) -> Result<Option<usize>, &'static str> {
 #[cfg(test)]
 #[path = "bridge_delivery_scheduler_tests.rs"]
 mod tests;
+
+// Durable signed LXMF bytes (and any prepared propagation envelope) precede the first network send.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct StoredPreparedPayload {
+    lxmf_hex: String,
+    propagation: Option<StoredPropagationPayload>,
+}
+#[derive(serde::Serialize, serde::Deserialize)]
+struct StoredPropagationPayload {
+    node: String,
+    target_cost: u32,
+    bytes_hex: String,
+    transient_id: [u8; 32],
+    stamp_value: u32,
+}
+pub(super) fn encode_prepared(value: &PreparedDeliveryPayload) -> serde_json::Value {
+    serde_json::to_value(StoredPreparedPayload {
+        lxmf_hex: hex::encode(&value.lxmf_payload),
+        propagation: value.propagation.as_ref().map(|p| StoredPropagationPayload {
+            node: p.propagation_node_hex.clone(),
+            target_cost: p.target_cost,
+            bytes_hex: hex::encode(&p.payload.bytes),
+            transient_id: p.payload.transient_id,
+            stamp_value: p.payload.stamp_value,
+        }),
+    })
+    .expect("serializable prepared bytes")
+}
+pub(super) fn decode_prepared(
+    value: serde_json::Value,
+) -> Result<PreparedDeliveryPayload, std::io::Error> {
+    let value: StoredPreparedPayload =
+        serde_json::from_value(value).map_err(std::io::Error::other)?;
+    let propagation = value
+        .propagation
+        .map(|p| {
+            Ok::<_, std::io::Error>(PreparedPropagationPayload {
+                propagation_hash: AddressHash::new(parse_destination_hash_required(&p.node)?),
+                propagation_node_hex: p.node,
+                target_cost: p.target_cost,
+                payload: propagation::PropagationPayload {
+                    bytes: hex::decode(p.bytes_hex).map_err(std::io::Error::other)?,
+                    transient_id: p.transient_id,
+                    stamp_value: p.stamp_value,
+                },
+            })
+        })
+        .transpose()?;
+    Ok(PreparedDeliveryPayload {
+        lxmf_payload: hex::decode(value.lxmf_hex).map_err(std::io::Error::other)?,
+        propagation,
+    })
+}
+
+impl DeliveryScheduler {
+    pub(super) fn shutdown(&self) {
+        self.owner.stop.send_replace(true);
+        if let Some(thread) =
+            self.owner.thread.lock().expect("delivery runtime handle poisoned").take()
+        {
+            if let Err(error) = thread.join() {
+                log::error!("delivery runtime panicked: {error:?}");
+            }
+        }
+    }
+}
+
+pub(super) fn validate_reservation_bytes(bytes: usize) -> Result<(), std::io::Error> {
+    if bytes > DELIVERY_RETAINED_BYTES as usize {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "outbound payload exceeds total retained-byte capacity",
+        ))
+    } else {
+        Ok(())
+    }
+}

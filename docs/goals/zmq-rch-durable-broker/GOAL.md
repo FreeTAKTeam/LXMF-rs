@@ -1,6 +1,7 @@
 # ZeroMQ / RCH durable message broker
 
-Status: proposed. This documentation change does not implement the goal.
+Status: paired local implementation candidate; deployment qualification remains open.
+See [PROGRESS.md](PROGRESS.md) for verified evidence and [OPERATIONS.md](OPERATIONS.md) for cutover and recovery.
 
 ## Outcome
 

@@ -27,6 +27,8 @@ fn startup_test_args() -> Args {
         rpc_unix: None,
         #[cfg(feature = "zmq-pipeline-rpc")]
         zmq_rpc_command: None,
+        zmq_durable_broker: false,
+        zmq_broker_restored: false,
         #[cfg(feature = "zmq-pipeline-rpc")]
         zmq_rpc_endpoint: None,
         meshchat_bind: None,

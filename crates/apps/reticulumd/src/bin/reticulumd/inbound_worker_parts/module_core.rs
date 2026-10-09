@@ -34,13 +34,14 @@ pub(super) fn spawn_inbound_worker(
     transport: Arc<Transport>,
     control: PropagationControlContext,
     direct_backchannel_links: Option<DirectBackchannelLinks>,
-    receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
+    receipt_tx: impl Into<reticulum_daemon::receipt_bridge::ReceiptPublisher>,
     outbound_resource_map: OutboundResourceMap,
 ) {
     if control.enabled {
         control::spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
     }
     let resource_control = control.clone();
+    let receipt_tx = receipt_tx.into();
     let resource_outbound_sources = direct_backchannel_links.clone();
     spawn_packet_inbound_worker(
         daemon.clone(),
@@ -269,7 +270,7 @@ fn propagation_destination_hash_for_identity(identity: &Identity) -> String {
 fn handle_outbound_resource_completion(
     daemon: &RpcDaemon,
     outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
     resource_hash: &Hash,
 ) {
     let resource_hash_hex = hex::encode(resource_hash.as_slice());
@@ -294,7 +295,7 @@ fn handle_outbound_resource_completion(
 fn handle_outbound_resource_failure(
     daemon: &RpcDaemon,
     outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
     resource_hash: &Hash,
 ) {
     let resource_hash_hex = hex::encode(resource_hash.as_slice());
@@ -318,7 +319,7 @@ fn handle_outbound_resource_failure(
 
 fn handle_outbound_resource_rejection(
     outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
     resource_hash: &Hash,
 ) {
     let resource_hash_hex = hex::encode(resource_hash.as_slice());

@@ -103,6 +103,7 @@
             },
         );
         let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+    let tx = reticulum_daemon::receipt_bridge::ReceiptPublisher::from(tx);
 
         super::handle_outbound_resource_completion(&daemon, &map, &tx, &resource_hash);
         super::handle_outbound_resource_completion(&daemon, &map, &tx, &resource_hash);
@@ -160,6 +161,7 @@
             },
         );
         let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+    let tx = reticulum_daemon::receipt_bridge::ReceiptPublisher::from(tx);
 
         super::handle_outbound_resource_failure(&daemon, &map, &tx, &resource_hash);
         super::handle_outbound_resource_failure(&daemon, &map, &tx, &resource_hash);

@@ -38,6 +38,12 @@ struct Args {
     rpc: Option<String>,
     #[arg(long, default_value = "reticulum.db")]
     db: PathBuf,
+    /// Enable durable ZeroMQ custody; creates a persistent, forward-only storage profile.
+    #[arg(long, default_value_t = false)]
+    zmq_durable_broker: bool,
+    /// Declare a consistent daemon backup restore; invalidate old custody receipts.
+    #[arg(long, default_value_t = false, requires = "zmq_durable_broker")]
+    zmq_broker_restored: bool,
     #[arg(long)]
     config: Option<PathBuf>,
     #[arg(long)]
@@ -114,14 +120,37 @@ async fn main() {
     }
     #[cfg(not(feature = "zmq-pipeline-rpc"))]
     {
+        let mut receipt_owner = context.receipt_owner;
+        let daemon = context.daemon.clone();
         let path_table_persistence = context.path_table_persistence;
         let auto_runtime_shutdowns = context.auto_runtime_shutdowns;
         spawn_meshchat_api(meshchat_bind, meshchat_assets, meshchat_state, context.daemon.clone());
-        rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls, context.rpc_unix)
-            .await;
+        tokio::select! {
+            _=rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls, context.rpc_unix)=>{},
+            error=async {match receipt_owner.as_mut(){Some(owner)=>owner.wait_failure().await,None=>std::future::pending::<String>().await}}=>log::error!("receipt persistence owner failed; stopping daemon: {error}"),
+        }
+        if let Some(owner) = &receipt_owner {
+            owner.stop_admission();
+        }
+        let shutdown_daemon = daemon.clone();
+        if let Err(error) =
+            tokio::task::spawn_blocking(move || shutdown_daemon.shutdown_outbound_workers()).await
+        {
+            log::error!("outbound shutdown owner failed: {error}");
+        }
         bootstrap::shutdown_auto_interfaces(auto_runtime_shutdowns).await;
+        let mut unclean_receipts = false;
+        if let Some(owner) = receipt_owner {
+            if let Err(error) = owner.drain().await {
+                log::error!("unclean receipt shutdown: {error}");
+                unclean_receipts = true;
+            }
+        }
         announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence)
             .await;
+        if unclean_receipts {
+            std::process::exit(1);
+        }
     }
 }
 
@@ -139,16 +168,18 @@ async fn run_daemon_loops(
         rpc_unix,
         daemon,
         rpc_tls,
+        mut receipt_owner,
         path_table_persistence,
         auto_runtime_shutdowns,
     } = context;
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     spawn_meshchat_api(meshchat_bind, meshchat_assets, meshchat_state, daemon.clone());
-    tokio::spawn(async move {
+    let signal_shutdown = shutdown_tx.clone();
+    let signal_task = tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
                 log::info!("[daemon] shutdown signal received");
-                shutdown_tx.send_replace(true);
+                signal_shutdown.send_replace(true);
             }
             Err(err) => {
                 log::error!("[daemon] failed to install shutdown signal handler: {}", err);
@@ -156,34 +187,69 @@ async fn run_daemon_loops(
         }
     });
 
+    let mut zmq_owners = Vec::new();
     if let Some(zmq_rpc_endpoint) = zmq_rpc_endpoint {
         let daemon = daemon.clone();
         let shutdown = shutdown_rx.clone();
-        tokio::spawn(async move {
+        zmq_owners.push(tokio::spawn(async move {
             if let Err(err) =
                 zmq_rpc_loop::run_zmq_router_loop_until(zmq_rpc_endpoint, true, daemon, shutdown)
                     .await
             {
                 log::error!("[daemon] canonical zmq rpc loop stopped: {}", err);
             }
-        });
+        }));
     }
 
     if let Some(command_endpoint) = zmq_rpc_command {
         let daemon = daemon.clone();
         let shutdown = shutdown_rx.clone();
-        tokio::spawn(async move {
+        zmq_owners.push(tokio::spawn(async move {
             let config =
                 zmq_rpc_loop::ZmqRpcLoopConfig { command_endpoint, require_auth_for_remote: true };
             if let Err(err) = zmq_rpc_loop::run_zmq_rpc_loop_until(config, daemon, shutdown).await {
                 log::error!("[daemon] zmq rpc loop stopped: {}", err);
             }
-        });
+        }));
     }
 
-    rpc_loop::run_rpc_loop_until(rpc_addr, daemon, rpc_tls, rpc_unix, shutdown_rx).await;
+    tokio::select! {
+        _=rpc_loop::run_rpc_loop_until(rpc_addr, daemon.clone(), rpc_tls, rpc_unix, shutdown_rx)=>{},
+        error=async {match receipt_owner.as_mut(){Some(owner)=>owner.wait_failure().await,None=>std::future::pending::<String>().await}}=>log::error!("receipt persistence owner failed; stopping daemon: {error}"),
+    }
+    shutdown_tx.send_replace(true);
+    for owner in zmq_owners {
+        if let Err(error) = owner.await {
+            log::error!("[daemon] ZeroMQ owner failed during shutdown: {error}");
+        }
+    }
+    if let Some(owner) = &receipt_owner {
+        owner.stop_admission();
+    }
+    let shutdown_daemon = daemon.clone();
+    if let Err(error) =
+        tokio::task::spawn_blocking(move || shutdown_daemon.shutdown_outbound_workers()).await
+    {
+        log::error!("outbound shutdown owner failed: {error}");
+    }
+    signal_task.abort();
+    if let Err(error) = signal_task.await {
+        if !error.is_cancelled() {
+            log::error!("[daemon] signal task failed: {error}");
+        }
+    }
     bootstrap::shutdown_auto_interfaces(auto_runtime_shutdowns).await;
+    let mut unclean_receipts = false;
+    if let Some(owner) = receipt_owner {
+        if let Err(error) = owner.drain().await {
+            log::error!("unclean receipt shutdown: {error}");
+            unclean_receipts = true;
+        }
+    }
     announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence).await;
+    if unclean_receipts {
+        std::process::exit(1);
+    }
 }
 
 fn spawn_meshchat_api(

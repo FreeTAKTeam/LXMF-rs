@@ -25,3 +25,7 @@ pub use rpc::{
     WeaveDisplayControlBridge,
 };
 pub use storage::messages::{AnnounceRecord, MessageRecord, MessagesStore};
+
+pub mod broker;
+
+pub use storage::broker::BrokerCommand;

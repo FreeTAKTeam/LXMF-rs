@@ -7,6 +7,7 @@ impl OutboundBridge for TransportBridge {
         record: &rns_rpc::MessageRecord,
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
+        super::delivery_scheduler::validate_reservation_bytes(delivery_reservation_bytes(record))?;
         let _destination = parse_destination_hash_required(&record.destination)?;
         if self.service_identity_for_destination(record.source.as_str()).is_none() {
             return Err(std::io::Error::new(
@@ -36,11 +37,17 @@ impl OutboundBridge for TransportBridge {
         paper::decode_paper_uri(self, uri)
     }
 
+    fn shutdown_delivery(&self) {
+        self.delivery_scheduler.shutdown();
+    }
+
     fn deliver(
         &self,
         record: &rns_rpc::MessageRecord,
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
+        // Reserve count and retained-byte capacity before cloning fields, signing or ticket work.
+        let reservation = self.delivery_scheduler.reserve(delivery_reservation_bytes(record))?;
         let destination = parse_destination_hash_required(&record.destination)?;
         let service_identity =
             self.service_identity_for_destination(record.source.as_str()).ok_or_else(|| {
@@ -175,6 +182,16 @@ impl OutboundBridge for TransportBridge {
             return Ok(());
         }
 
+        if daemon.owns_durable_message(&record.id)?
+            && self.receipt_tx.reserve_terminal(&record.id).is_err()
+        {
+            self.receipt_tx.retire_committed(|id| {
+                daemon.message_receipt_status(id).map(|s| {
+                    s.as_deref().is_some_and(reticulum_daemon::receipt_bridge::is_terminal)
+                })
+            })?;
+            self.receipt_tx.reserve_terminal(&record.id)?;
+        }
         let task = DeliveryTask {
             daemon,
             transport: self.transport.clone(),
@@ -203,7 +220,7 @@ impl OutboundBridge for TransportBridge {
             try_propagation_on_fail: options.try_propagation_on_fail,
             propagation_node_hex,
         };
-        self.delivery_scheduler.enqueue(task)
+        self.delivery_scheduler.enqueue_reserved(task, reservation)
     }
 
     fn delivery_pipeline_status(&self) -> Option<serde_json::Value> {
@@ -303,5 +320,71 @@ mod tests {
 
         assert_eq!(identity.public_key_bytes(), local.as_identity().public_key_bytes());
         assert_eq!(identity.verifying_key_bytes(), local.as_identity().verifying_key_bytes());
+    }
+}
+
+// Include expanded JSON objects, queued clones and signed/encoded preparation buffers.
+fn delivery_reservation_bytes(record: &rns_rpc::MessageRecord) -> usize {
+    fn json_bytes(value: &JsonValue) -> usize {
+        match value {
+            JsonValue::String(s) => s.capacity().saturating_add(32),
+            JsonValue::Array(a) => a
+                .iter()
+                .fold(a.capacity().saturating_mul(32), |n, v| n.saturating_add(json_bytes(v))),
+            JsonValue::Object(o) => o.iter().fold(0usize, |n, (k, v)| {
+                n.saturating_add(k.capacity()).saturating_add(128).saturating_add(json_bytes(v))
+            }),
+            _ => 32,
+        }
+    }
+    record
+        .content
+        .capacity()
+        .saturating_add(record.title.capacity())
+        .saturating_add(record.fields.as_ref().map(json_bytes).unwrap_or(0))
+        .saturating_mul(8)
+        .saturating_add(65536)
+}
+
+#[cfg(test)]
+mod capacity_tests {
+    use super::*;
+    #[test]
+    fn expanded_compact_json_is_rejected_before_durable_admission() {
+        let record = rns_rpc::MessageRecord {
+            id: "op".into(),
+            source: "local".into(),
+            destination: "remote".into(),
+            title: String::new(),
+            content: "Test1234".into(),
+            timestamp: 0,
+            direction: "out".into(),
+            fields: Some(serde_json::json!(vec![0; 400_000])),
+            receipt_status: None,
+        };
+        assert!(serde_json::to_vec(&record).unwrap().len() < 1024 * 1024);
+        let error = super::super::delivery_scheduler::validate_reservation_bytes(
+            delivery_reservation_bytes(&record),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+    #[test]
+    fn ordinary_large_text_fits_dispatch_reservation() {
+        let record = rns_rpc::MessageRecord {
+            id: "op".into(),
+            source: "local".into(),
+            destination: "remote".into(),
+            title: String::new(),
+            content: "x".repeat(1024 * 1024),
+            timestamp: 0,
+            direction: "out".into(),
+            fields: None,
+            receipt_status: None,
+        };
+        super::super::delivery_scheduler::validate_reservation_bytes(delivery_reservation_bytes(
+            &record,
+        ))
+        .unwrap();
     }
 }

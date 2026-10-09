@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MessageRecord {
     pub id: String,
     pub source: String,
@@ -42,7 +42,7 @@ pub struct AnnounceRecord {
 
 pub struct MessagesStore {
     write_state: Arc<WriteState>,
-    outbound_write_tx: mpsc::Sender<OutboundWriteCommand>,
+    outbound_write_tx: WriteSender,
     writer_thread: Option<JoinHandle<()>>,
     read_conn: Option<Mutex<Connection>>,
     read_lock_wait_ns_total: AtomicU64,
@@ -57,6 +57,10 @@ struct WriteState {
 }
 
 enum OutboundWriteCommand {
+    Broker {
+        command: Box<super::broker::BrokerCommand>,
+        reply: mpsc::Sender<rusqlite::Result<JsonValue>>,
+    },
     InsertMessage {
         record: MessageRecord,
         reply: mpsc::Sender<rusqlite::Result<()>>,
@@ -229,4 +233,8 @@ fn now_unix_secs() -> i64 {
         .unwrap_or_default()
         .as_secs()
         .min(i64::MAX as u64) as i64
+}
+
+fn sql_u64(value: u64) -> rusqlite::Result<i64> {
+    i64::try_from(value).map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))
 }

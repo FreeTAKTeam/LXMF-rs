@@ -167,7 +167,7 @@ impl RpcDaemon {
         })
     }
 
-    fn message_requested_ticket(message: &MessageRecord) -> bool {
+    pub(super) fn message_requested_ticket(message: &MessageRecord) -> bool {
         Self::message_lxmf(message)
             .and_then(|lxmf| lxmf.get("include_ticket"))
             .and_then(JsonValue::as_bool)

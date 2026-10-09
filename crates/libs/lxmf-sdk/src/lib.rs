@@ -37,7 +37,8 @@ pub use backend::mobile_ble::{
 pub use backend::rpc::RpcBackendClient;
 #[cfg(all(feature = "zmq-pipeline-backend", feature = "std"))]
 pub use backend::zmq_pipeline::{
-    ZmqEndpointRole, ZmqPipelineBackendClient, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth,
+    ExecutionCertainty, ZmqEndpointRole, ZmqPipelineBackendClient, ZmqPipelineBackendConfig,
+    ZmqPipelineTokenAuth, ZmqRecoveryDecision,
 };
 pub use backend::{
     KeyProviderClass, SdkBackend, SdkBackendAsyncEvents, SdkBackendKeyManagement, SdkKeyPurpose,
@@ -139,3 +140,6 @@ pub use lxmf_reference::{
 pub(crate) fn default_sdk_version() -> String {
     SDK_VERSION.to_owned()
 }
+
+#[cfg(feature = "zmq-pipeline-backend")]
+pub use rns_rpc::broker as durable_broker;

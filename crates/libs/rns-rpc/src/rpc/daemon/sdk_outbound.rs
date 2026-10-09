@@ -10,8 +10,17 @@ impl RpcDaemon {
         delivery_traces: Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
         delivery_status_lock: Arc<Mutex<()>>,
         outbound_delivery_handoffs: Arc<Mutex<HashSet<String>>>,
-    ) -> Option<mpsc::SyncSender<OutboundDeliveryCommand>> {
-        let bridge = bridge?;
+    ) -> (
+        Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
+        Vec<std::thread::JoinHandle<()>>,
+        Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let Some(bridge) = bridge else { return (None, Vec::new(), stop) };
+        if let Err(error) = store.broker_recover_dispatch() {
+            panic!("durable dispatch recovery failed: {error}");
+        }
+        let mut workers = Vec::new();
         let (tx, rx) =
             mpsc::sync_channel::<OutboundDeliveryCommand>(OUTBOUND_DELIVERY_QUEUE_CAPACITY);
         let rx = Arc::new(Mutex::new(rx));
@@ -22,28 +31,43 @@ impl RpcDaemon {
             let delivery_status_lock = Arc::clone(&delivery_status_lock);
             let outbound_delivery_handoffs = Arc::clone(&outbound_delivery_handoffs);
             let rx = Arc::clone(&rx);
-            std::thread::Builder::new()
-                .name(format!("rpc-outbound-delivery-worker-{lane}"))
-                .spawn(move || loop {
-                    let command = {
-                        let guard = rx.lock().expect("outbound delivery receiver mutex poisoned");
-                        guard.recv()
-                    };
-                    let Ok(command) = command else {
-                        break;
-                    };
-                    Self::process_outbound_delivery_command(
-                        &bridge,
-                        &store,
-                        &delivery_traces,
-                        &delivery_status_lock,
-                        &outbound_delivery_handoffs,
-                        command,
-                    );
-                })
-                .expect("spawn rpc outbound delivery worker");
+            let stop = Arc::clone(&stop);
+            workers.push(
+                std::thread::Builder::new()
+                    .name(format!("rpc-outbound-delivery-worker-{lane}"))
+                    .spawn(move || loop {
+                        if stop.load(std::sync::atomic::Ordering::Acquire) {
+                            break;
+                        }
+                        if lane == 0 {
+                            Self::pump_durable_dispatch(&store, &bridge);
+                        }
+                        let command = {
+                            let guard =
+                                rx.lock().expect("outbound delivery receiver mutex poisoned");
+                            guard.try_recv()
+                        };
+                        let command = match command {
+                            Ok(command) => command,
+                            Err(mpsc::TryRecvError::Empty) => {
+                                std::thread::sleep(std::time::Duration::from_millis(25));
+                                continue;
+                            }
+                            Err(mpsc::TryRecvError::Disconnected) => break,
+                        };
+                        Self::process_outbound_delivery_command(
+                            &bridge,
+                            &store,
+                            &delivery_traces,
+                            &delivery_status_lock,
+                            &outbound_delivery_handoffs,
+                            command,
+                        );
+                    })
+                    .expect("spawn rpc outbound delivery worker"),
+            );
         }
-        Some(tx)
+        (Some(tx), workers, stop)
     }
 
     #[allow(clippy::too_many_arguments)]

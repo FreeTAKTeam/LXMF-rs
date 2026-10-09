@@ -65,6 +65,8 @@ pub struct RpcDaemon {
     zmq_pipeline_metrics: Arc<zmq_metrics::ZmqPipelineMetrics>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
     outbound_delivery_tx: Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
+    outbound_delivery_workers: Mutex<Vec<std::thread::JoinHandle<()>>>,
+    outbound_delivery_stop: Arc<std::sync::atomic::AtomicBool>,
     announce_bridge: Option<Arc<dyn AnnounceBridge>>,
     service_identity_bridge: Mutex<Option<Arc<dyn ServiceIdentityBridge>>>,
     event_sink_bridges: Vec<Arc<dyn EventSinkBridge>>,
@@ -78,6 +80,7 @@ pub struct RpcDaemon {
 }
 
 pub trait OutboundBridge: Send + Sync {
+    fn shutdown_delivery(&self) {}
     fn validate_delivery(
         &self,
         _record: &MessageRecord,

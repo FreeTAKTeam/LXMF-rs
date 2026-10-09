@@ -23,6 +23,7 @@ x25519-dalek = { workspace = true }
 ed25519-dalek = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
+rusqlite = { workspace = true }
 rmpv = { workspace = true }
 rmp-serde = { workspace = true }
 sha2 = { workspace = true }
@@ -48,7 +49,6 @@ vrn76-kiss-ble = ["rns_transport/vrn76-kiss-ble"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
-rusqlite = { workspace = true }
 
 [[bin]]
 name = "reticulumd"

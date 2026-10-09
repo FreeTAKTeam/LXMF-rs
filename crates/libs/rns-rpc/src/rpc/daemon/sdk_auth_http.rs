@@ -55,8 +55,18 @@ impl RpcDaemon {
         peer_ip: Option<&str>,
         transport_auth: Option<&crate::rpc::http::TransportAuthContext>,
     ) -> Result<(), RpcError> {
+        self.authorize_http_principal(headers, peer_ip, transport_auth).map(|_| ())
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn authorize_http_principal(
+        &self,
+        headers: &[(String, String)],
+        peer_ip: Option<&str>,
+        transport_auth: Option<&crate::rpc::http::TransportAuthContext>,
+    ) -> Result<String, RpcError> {
         let auth_started = std::time::Instant::now();
-        let result: Result<(), RpcError> = (|| {
+        let result: Result<String, RpcError> = (|| {
             let (trust_forwarded, trusted_proxy_ips, bind_mode, auth_mode) = {
                 let config_guard =
                     self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
@@ -306,7 +316,11 @@ impl RpcDaemon {
                 }
             }
 
-            self.enforce_authenticated_principal_rate_limit(source_ip.as_str(), principal.as_str())
+            self.enforce_authenticated_principal_rate_limit(
+                source_ip.as_str(),
+                principal.as_str(),
+            )?;
+            Ok(principal)
         })();
 
         let elapsed_ms = auth_started.elapsed().as_millis() as u64;

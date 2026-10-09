@@ -53,7 +53,7 @@ impl MessagesStore {
                      )
                      WHERE peer_rank > ?1
                  )",
-                rusqlite::params![per_peer_limit],
+                rusqlite::params![sql_u64(per_peer_limit)?],
             )?);
 
             let total: i64 = tx.query_row(

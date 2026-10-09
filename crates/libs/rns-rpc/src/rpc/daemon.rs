@@ -39,3 +39,5 @@ mod sdk_topics;
 mod sdk_voice;
 
 include!("daemon/tests.rs");
+
+mod sdk_broker;

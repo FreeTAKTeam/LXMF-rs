@@ -22,7 +22,7 @@ pub(super) struct DeliveryTask {
     pub(super) outbound_resource_map: OutboundResourceMap,
     pub(super) outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     pub(super) direct_backchannel_links: DirectBackchannelLinks,
-    pub(super) receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
+    pub(super) receipt_tx: reticulum_daemon::receipt_bridge::ReceiptPublisher,
     pub(super) message_id: String,
     pub(super) source_hash: [u8; 16],
     pub(super) destination: [u8; 16],
@@ -62,7 +62,7 @@ pub(super) struct PropagationPreparationContext {
 }
 
 pub(crate) fn emit_receipt_event(
-    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
     event: ReceiptEvent,
 ) {
     if let Err(err) = receipt_tx.try_send(event) {

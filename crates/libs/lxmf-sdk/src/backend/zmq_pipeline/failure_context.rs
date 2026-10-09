@@ -9,6 +9,7 @@ pub(super) struct ExchangeContext<'a> {
     pub(super) request_id: u64,
     started: Instant,
     pub(super) stage: &'static str,
+    pub(super) send_started: bool,
     pub(super) send_completed: bool,
     pub(super) ignored_replies: u64,
 }
@@ -26,6 +27,7 @@ impl<'a> ExchangeContext<'a> {
             request_id,
             started,
             stage: "request encode",
+            send_started: false,
             send_completed: false,
             ignored_replies: 0,
         }
@@ -51,6 +53,14 @@ impl<'a> ExchangeContext<'a> {
             "stage": self.stage,
             "elapsed_ms": elapsed_ms,
             "send_completed": self.send_completed,
+            "send_started": self.send_started,
+            "execution_certainty": if !self.send_started {
+                super::recovery::ExecutionCertainty::NotSubmitted
+            } else if self.stage == "rpc response" && super::recovery::explicitly_rejected(&error) {
+                super::recovery::ExecutionCertainty::Rejected
+            } else {
+                super::recovery::ExecutionCertainty::Unknown
+            },
             "ignored_replies": self.ignored_replies,
         });
         error.message.push_str(&format!(
@@ -117,7 +127,7 @@ mod tests {
         let context = ExchangeContext::new(&long, &long, 1, Instant::now());
         let error = context.annotate(context.timeout());
         let detail = &error.details["sdk_zmq_exchange"];
-        assert_eq!(detail.as_object().expect("context object").len(), 7);
+        assert_eq!(detail.as_object().expect("context object").len(), 9);
         for key in ["session_id", "method"] {
             let value = detail[key].as_str().expect("identifier");
             assert_eq!(value.len(), 128);

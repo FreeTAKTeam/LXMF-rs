@@ -96,6 +96,7 @@ mod tests {
             endpoint: "tcp://127.0.0.1:1".into(),
             envelope: ZmqRpcEnvelope::response("unpolled".into(), 1, vec![0; 4096]),
             queue_stage: None,
+            admission: None,
         };
         let bytes = response.owned_wire_bytes();
         let guard = metrics.enter(ZmqStage::Delivery, bytes);
