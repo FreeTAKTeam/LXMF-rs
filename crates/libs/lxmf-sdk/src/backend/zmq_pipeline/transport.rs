@@ -13,6 +13,7 @@ pub(super) struct ZmqPipelineTransport {
     pub(super) command: PushSocket,
     pub(super) responses: PullSocket,
     pub(super) response_endpoint: String,
+    pub(super) response_connection_id: String,
 }
 
 pub(super) struct ZmqDealerTransport {
@@ -43,8 +44,12 @@ impl ZmqPipelineTransport {
         let mut command = PushSocket::new();
         apply_role(&mut command, config.command_role, &config.command_endpoint).await?;
         // Install the Drop owner before bind/connect can suspend or fail.
-        let mut transport =
-            Self { command, responses: PullSocket::new(), response_endpoint: String::new() };
+        let mut transport = Self {
+            command,
+            responses: PullSocket::new(),
+            response_endpoint: String::new(),
+            response_connection_id: new_response_connection_id(),
+        };
         transport.response_endpoint =
             apply_role(&mut transport.responses, config.response_role, &config.response_endpoint)
                 .await?;
@@ -178,6 +183,7 @@ impl ZmqPipelineBackendClient {
                 .as_mut()
                 .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))?;
             envelope.response_endpoint = Some(transport.response_endpoint.clone());
+            envelope.response_connection_id = Some(transport.response_connection_id.clone());
             context.stage = "envelope encode";
             let encoded = self.encode_request(&envelope)?;
             context.stage = "send";
@@ -330,6 +336,28 @@ where
             socket.connect(endpoint).await.map(|_| endpoint.to_owned()).map_err(|err| {
                 sdk_error(ErrorCategory::Transport, format!("zmq connect {endpoint} failed: {err}"))
             })
+        }
+    }
+}
+
+// A monotonic process-local suffix ensures replacement even if wall-clock
+// resolution is coarse or the clock moves backwards. This is routing, not auth.
+fn new_response_connection_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+    format!("{}-{}", super::new_session_id(), NEXT_GENERATION.fetch_add(1, Ordering::Relaxed))
+}
+
+#[cfg(test)]
+mod connection_tests {
+    use super::*;
+    #[test]
+    fn response_socket_generations_are_unique_and_bounded() {
+        let mut ids = std::collections::HashSet::new();
+        for _ in 0..1000 {
+            let id = new_response_connection_id();
+            assert!(id.len() <= 128);
+            assert!(ids.insert(id));
         }
     }
 }

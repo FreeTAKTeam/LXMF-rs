@@ -1228,6 +1228,19 @@ The SDK contract release is additive `v2.6`; schema namespace `v2`, protocol
 version `2`, and v2.5 request compatibility remain unchanged. Pure wire and
 cryptography helpers remain local Rust APIs.
 
+## PUSH/PULL response stabilization (#657)
+
+The compatibility reply path reuses successful sockets with explicit SDK response
+socket generations, bounded to 32 connections across active and idle ownership. Legacy clients
+keep request-scoped replies, and optional named-envelope fields preserve Rust
+protocol-v1 compatibility. Connect/send stage counters and a bounded retained
+failure record expose delivery failures separately from RPC execution.
+Local regressions cover repeated replies, replacement at the same endpoint,
+legacy framing, timeout isolation and joined shutdown. The change does not retry
+ordinary announce mutations or increase deadlines. Production attribution and the
+multi-hour constrained memory-plus-swap gate remain open; see
+`docs/issue-657-investigation.md`.
+
 ## v1.0 human and equipment boundary
 
 Physical RNode/RNodeMulti, Weave, VR-N76, BLE/serial/radio validation, public

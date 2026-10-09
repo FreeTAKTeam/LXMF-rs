@@ -69,12 +69,13 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                                 let response=tokio::task::spawn_blocking(move || {
                                     let endpoint=route.response_endpoint.clone().ok_or("missing rejection endpoint")?;
                                     let local=is_local_zmq_endpoint(&endpoint);
+                                    let connection_id=route.response_connection_id.clone();
                                     let envelope=match authorize_zmq_envelope(daemon.as_ref(),&route,command_endpoint_requires_auth,local) {
                                         Ok(_)=>error_envelope(route.session_id,route.request_id,"SDK_TRANSPORT_ZMQ_BUSY","request was not admitted; retry later"),
                                         Err(error) if local=>rpc_error_envelope(route.session_id,route.request_id,error),
                                         Err(_)=>return Err("remote rejection endpoint unauthorized"),
                                     };
-                                    Ok(ZmqOutboundResponse {endpoint,envelope,queue_stage:None,admission:Some(rejection)})
+                                    Ok(ZmqOutboundResponse {endpoint,connection_id,envelope,queue_stage:None,admission:Some(rejection)})
                                 }).await;
                                 match response {
                                     Ok(Ok(response))=>{if response_tx.send(response).await.is_err() {log::warn!("[daemon] rejection response writer stopped");}}

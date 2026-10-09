@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, OnceLock,
+    Arc, Mutex, OnceLock,
 };
 use std::time::Instant;
 
@@ -17,6 +17,8 @@ pub enum ZmqStage {
     Handler,
     ResponseQueue,
     Delivery,
+    ResponseConnect,
+    ResponseSend,
 }
 
 impl ZmqStage {
@@ -26,6 +28,8 @@ impl ZmqStage {
             Self::Handler => "handler",
             Self::ResponseQueue => "response_queue",
             Self::Delivery => "delivery",
+            Self::ResponseConnect => "response_connect",
+            Self::ResponseSend => "response_send",
         }
     }
 }
@@ -77,7 +81,8 @@ impl StageCounters {
 
 #[derive(Default)]
 pub struct ZmqPipelineMetrics {
-    stages: [Arc<StageCounters>; 4],
+    stages: [Arc<StageCounters>; 6],
+    last_delivery_failure: Mutex<Option<Value>>,
 }
 
 impl ZmqPipelineMetrics {
@@ -91,19 +96,56 @@ impl ZmqPipelineMetrics {
         ZmqStageGuard { counters, stage, bytes, started: Instant::now(), outcome: None }
     }
 
+    /// Retains one bounded, local correlation record. Successful polls do not
+    /// erase a previous delivery failure; payloads, endpoints and auth are absent.
+    pub fn record_delivery_failure(
+        &self,
+        session: &str,
+        request_id: u64,
+        stage: &'static str,
+        timed_out: bool,
+        elapsed_ms: u64,
+    ) {
+        let session: String = session
+            .chars()
+            .take(128)
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect();
+        *self.last_delivery_failure.lock().expect("ZMQ delivery diagnostics mutex poisoned") = Some(
+            json!({
+                "session_id": session, "request_id": request_id, "stage": stage,
+                "error_code": if timed_out {"ZMQ_RESPONSE_DELIVERY_TIMEOUT"} else {"ZMQ_RESPONSE_DELIVERY_FAILED"},
+                "elapsed_ms": elapsed_ms, "execution_certainty": "Unknown",
+            }),
+        );
+    }
+
     pub fn snapshot(&self) -> Value {
         let mut result = serde_json::Map::new();
+        result.insert(
+            "last_delivery_failure".into(),
+            self.last_delivery_failure
+                .lock()
+                .expect("ZMQ delivery diagnostics mutex poisoned")
+                .clone()
+                .unwrap_or(Value::Null),
+        );
         result.insert(
             "coverage".into(),
             json!("PUSH/PULL pipeline only; excludes canonical ROUTER/DEALER"),
         );
-        result.insert("accounting".into(), json!("Ingress wire lengths and queued/active response buffer capacities; excludes decoded JSON, envelope encoding copies, delivery string clones, allocator metadata and socket buffers"));
+        result.insert("accounting".into(), json!("Per-stage wire accounting: ingress lengths, queued/active response capacities and encoded send-frame capacity; overlapping stages are not additive. Excludes decoded JSON, encode buffers during connect, route string clones, idle sockets, allocator metadata and socket buffers"));
         result.insert("consistency".into(), json!("Approximate independent atomic samples"));
         result.insert("slow_stage_us".into(), json!(SLOW_STAGE_US));
         result.insert("warning_interval_us".into(), json!(WARNING_INTERVAL_US));
-        for stage in
-            [ZmqStage::DispatchWait, ZmqStage::Handler, ZmqStage::ResponseQueue, ZmqStage::Delivery]
-        {
+        for stage in [
+            ZmqStage::DispatchWait,
+            ZmqStage::Handler,
+            ZmqStage::ResponseQueue,
+            ZmqStage::Delivery,
+            ZmqStage::ResponseConnect,
+            ZmqStage::ResponseSend,
+        ] {
             let c = &self.stages[stage as usize];
             let read = |value: &AtomicU64| value.load(Ordering::Relaxed);
             result.insert(stage.label().into(), json!({
@@ -171,6 +213,25 @@ impl Drop for ZmqStageGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn last_failure_is_bounded_and_survives_successful_deliveries() {
+        let metrics = ZmqPipelineMetrics::default();
+        metrics.record_delivery_failure(
+            &format!("secret\n雪{}", "x".repeat(1000)),
+            42,
+            "connect",
+            true,
+            1001,
+        );
+        metrics.enter(ZmqStage::Delivery, 0).finish(ZmqStageOutcome::Succeeded);
+        let failure = metrics.snapshot()["last_delivery_failure"].clone();
+        assert_eq!(failure["session_id"].as_str().expect("session").len(), 128);
+        assert!(failure["session_id"].as_str().expect("session").is_ascii());
+        assert_eq!(failure["request_id"], 42);
+        assert_eq!(failure["error_code"], "ZMQ_RESPONSE_DELIVERY_TIMEOUT");
+        assert_eq!(failure.as_object().expect("record").len(), 6);
+    }
 
     #[test]
     fn slow_warning_rate_is_bounded_per_stage_without_a_growing_registry() {

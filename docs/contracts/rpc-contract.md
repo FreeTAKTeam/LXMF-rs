@@ -77,10 +77,36 @@ Envelope:
 - `auth: { scheme, value } | null`
 - `response_endpoint: string | null`
 - `payload: bytes`, containing the existing framed MessagePack RPC request or response
+- `response_connection_id: string | null`, optional PUSH/PULL response-socket generation
 
 Correlation is mandatory. SDK clients must accept a response only when both `session_id` and
 `request_id` match the pending call. ZeroMQ socket identity, round-robin delivery, and peer ordering
 are not sufficient for request/reply semantics.
+
+Updated PUSH/PULL SDK clients keep one `response_connection_id` for the lifetime
+of their response socket and mint a new value whenever that socket is replaced,
+even if the endpoint and identity session stay the same. The identifier is
+routing metadata, never authentication or a mutation-idempotency key. It accepts
+1–128 ASCII alphanumeric, `-` or `_` characters; extended routes also bound the
+session to 128 bytes and endpoint to 512 bytes.
+
+An extended request uses named MessagePack fields so older protocol-v1 Rust
+peers can ignore the new field. Requests without the extension and all ordinary
+responses retain the original seven-field tuple encoding. New daemons accept
+both. Clients without a generation keep request-scoped reply connections.
+
+The daemon reuses successful reply sockets by endpoint, session and generation,
+with an LRU bound of 32 sockets across idle and active delivery. Failure, timeout,
+cancellation and generation replacement discard the affected socket. Delivery
+retains its existing one-second deadline and never re-executes the RPC. Local
+send success does not prove client receipt or mesh transmission. A missing
+mutation reply therefore retains `Unknown` execution certainty.
+
+`daemon_status_ex.resources.zmq_pipeline` separates `response_connect` and
+`response_send` counters and retains one bounded `last_delivery_failure` with
+session/request correlation, stage, code and elapsed time. Successful polls do
+not clear that record; it excludes auth, endpoints and payloads. Counters are
+process-local observations, not a transactionally consistent census.
 
 Security:
 

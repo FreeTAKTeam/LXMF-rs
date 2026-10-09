@@ -474,3 +474,87 @@ Clippy attempt remains failed on 64 literal-format diagnostics (62 daemon and
 two compatibility-test diagnostics); their source predates the metadata change.
 This follow-up does not claim a clean full-workspace lint gate or final resource
 acceptance.
+
+## 9 October follow-up: generation-scoped response connections
+
+The preview.19 report describes an announce request whose local SDK send completed
+but whose correlated reply did not arrive within three seconds. It does not prove
+where that request stalled. This isolated change starts at current upstream
+`e237f80c0c9e219e4090be04a4229d3328074f73` and removes a confirmed reply-path cost:
+the daemon previously made a fresh TCP/ZMTP connection and slept 50 ms for every
+response, including successful polling on an unchanged SDK socket.
+
+A real socket-monitor regression observed 40 accepted connections for 40 replies
+before the change. Updated clients now attach an optional response-socket
+generation. The daemon can reuse a successful connection while that generation
+is stable and discard it when the SDK replaces its response socket. Session and
+endpoint alone are insufficient: a timeout can replace the socket without
+reimporting the identity or changing either identifier. Legacy clients retain
+request-scoped delivery. Extended requests use named fields, which the old Rust
+protocol-v1 decoder accepts while ignoring the extension; unextended frames keep
+the original tuple bytes. Routing metadata and encoded frames remain bounded.
+
+The writer owns an LRU pool with at most 32 sockets across active and idle
+ownership, leaving command-peer capacity under the vendored transport's existing
+64-connection process cap. Sockets move into joined delivery tasks. Failed,
+timed-out or cancelled sends never return to the pool. Shutdown closes idle
+connections and cancels/joins active deliveries. Handshake completion already
+registers the peer, so the extra 50 ms sleep is removed. The existing one-second
+reply deadline and SDK operation deadlines are unchanged. No mutation is replayed
+by this writer; ordinary announce recovery remains `Unknown` after a lost reply.
+
+This follows the existing exclusive resource owner plus bounded channel design
+([Tokio channels](https://tokio.rs/tokio/tutorial/channels)), adding an idle pool
+rather than a shared lock around network I/O. A pool keyed only by endpoint was
+rejected because it could reuse a retired SDK socket. The wire extension costs a
+small bounded identifier per transport/request and requires both updated SDK and
+daemon for reuse; updated daemons still remove the fixed sleep for older clients.
+
+Diagnostics split response connect/handshake from encoded-frame send, with
+completion, failure, timeout, cancellation and elapsed counters. One bounded
+last-delivery-failure record remains visible after later successful polls. Its
+session and request can be matched to the SDK's existing actual-method failure
+context. It excludes payloads, auth and endpoints. Local send completion remains
+separate from client receive and asynchronous mesh announce completion.
+
+Regressions cover a stable 40-reply burst on one connection, replacement at an
+unchanged endpoint/session, legacy request-scoped delivery, LRU/active capacity,
+wire compatibility in both directions, route bounds, stalled-peer isolation,
+cancellation, retained failure diagnostics, and SDK recovery after a lost announce
+reply without identity reimport or announce retry. The reply-path regression does
+not establish that per-reply handshakes caused the observed production timeout.
+The requested several-hour constrained memory/swap, operational propagation,
+paired RCH traffic and production failure-correlation gates remain outstanding.
+
+Local final validation for this follow-up:
+
+- Affected RPC, SDK and daemon suites: **1,873 passed, 119 explicit opt-in tests
+  ignored, zero failures across 43 executables**, including the issue-369 scanner.
+  Run with `TMPDIR=/tmp` and `--test-threads=4`: long temporary paths exceed Unix
+  socket address limits, and unrestricted host-level test parallelism can exceed
+  the vendored transport's process-wide 64-connection cap. The initial failures
+  are preserved separately rather than counted as passes.
+- Strict affected-package all-target/all-feature Clippy, workspace formatting,
+  module-size policy, dependency boundaries, architecture checks and changed
+  Markdown local-link/whitespace checks pass. No dependencies or lockfiles changed.
+- A paired daemon/public SDK process run, pinned to two available CPU cores,
+  copied a local fixture containing 135,893 payload records and 1,000,000 peer
+  associations. Its measured burst completed 1,000 polls (median 0.46 ms,
+  maximum 1.84 ms) and 100 announce acknowledgements (median 2.11 ms, maximum
+  3.14 ms). Polling continued for a total 12.08-second observation. Diagnostics
+  report **1,321 successful reply sends over one response connection**, with no
+  delivery/connect/send failures or timeouts. SDK and daemon exited successfully
+  using the daemon's Ctrl-C shutdown path. An earlier harness SIGTERM exit-code
+  assertion and overly long Unix socket path remain preserved as failed attempts.
+- The copied database finished with all 135,893 payloads and 1,001,024
+  associations. This observation does not establish global maintenance completion
+  or an instantaneous global admission cap. Announce acknowledgements establish
+  local acceptance, not independent over-the-air delivery. The fixture run uses
+  two cores but no production RAM/swap cgroup constraints, RCH process or browser.
+  Its duration is a functional smoke, not a memory plateau test.
+
+Raw local logs, harness, binary hashes and result JSON are in the RCH ignored
+`target/lxmf-657-runtime/` directory; acceptance and Clippy logs are
+`target/lxmf-657-final-tests.log` and `target/lxmf-657-final-clippy.log`.
+Production was not changed. The framework patch is ready for review while the
+full #657 production qualification remains open.
