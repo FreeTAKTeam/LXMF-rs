@@ -32,6 +32,10 @@ pub struct ZmqRpcEnvelope {
     pub response_endpoint: Option<String>,
     #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
+    /// Changes whenever the client's response socket is replaced. Absent for
+    /// legacy clients, whose reply connections must remain request-scoped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_connection_id: Option<String>,
 }
 
 impl ZmqRpcEnvelope {
@@ -50,6 +54,7 @@ impl ZmqRpcEnvelope {
             auth,
             response_endpoint: Some(response_endpoint.into()),
             payload,
+            response_connection_id: None,
         }
     }
 
@@ -62,6 +67,7 @@ impl ZmqRpcEnvelope {
             auth: None,
             response_endpoint: None,
             payload,
+            response_connection_id: None,
         }
     }
 
@@ -75,6 +81,19 @@ impl ZmqRpcEnvelope {
         if self.session_id.trim().is_empty() {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "missing zmq rpc session_id"));
         }
+        if let Some(id) = &self.response_connection_id {
+            if id.is_empty()
+                || id.len() > 128
+                || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+                || self.session_id.len() > 128
+                || self.response_endpoint.as_ref().is_some_and(|endpoint| endpoint.len() > 512)
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid response connection routing",
+                ));
+            }
+        }
         if self.payload.len() > codec::MAX_FRAME_PAYLOAD_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "zmq rpc payload too large"));
         }
@@ -84,8 +103,22 @@ impl ZmqRpcEnvelope {
 
 pub fn encode_envelope(envelope: &ZmqRpcEnvelope) -> io::Result<Vec<u8>> {
     envelope.validate()?;
-    let encoded = codec::encode_frame(envelope)?;
-    if encoded.len() > ZMQ_RPC_MAX_ENVELOPE_BYTES {
+    // Named fields let older protocol-v1 peers ignore the optional routing
+    // extension. Legacy seven-field tuple frames remain byte-for-byte unchanged.
+    let encoded = if envelope.response_connection_id.is_some() {
+        let mut encoded = vec![0; 4];
+        envelope
+            .serialize(&mut rmp_serde::Serializer::new(&mut encoded).with_struct_map())
+            .map_err(io::Error::other)?;
+        let len = u32::try_from(encoded.len() - 4).map_err(io::Error::other)?;
+        encoded[..4].copy_from_slice(&len.to_be_bytes());
+        encoded
+    } else {
+        codec::encode_frame(envelope)?
+    };
+    if encoded.len().saturating_sub(4) > codec::MAX_FRAME_PAYLOAD_LEN
+        || encoded.len() > ZMQ_RPC_MAX_ENVELOPE_BYTES
+    {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "zmq rpc envelope too large"));
     }
     Ok(encoded)
@@ -164,6 +197,61 @@ mod tests {
     use super::*;
 
     #[test]
+    fn response_connection_extension_preserves_legacy_wire_and_borrowed_routes() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct LegacyEnvelope {
+            protocol_version: u16,
+            session_id: String,
+            request_id: u64,
+            kind: ZmqRpcEnvelopeKind,
+            auth: Option<ZmqRpcAuthMetadata>,
+            response_endpoint: Option<String>,
+            #[serde(with = "serde_bytes")]
+            payload: Vec<u8>,
+        }
+        let legacy = LegacyEnvelope {
+            protocol_version: 1,
+            session_id: "compat".into(),
+            request_id: 7,
+            kind: ZmqRpcEnvelopeKind::Request,
+            auth: None,
+            response_endpoint: Some("tcp://127.0.0.1:1".into()),
+            payload: codec::encode_frame(&crate::rpc::RpcRequest {
+                id: 7,
+                method: "status".into(),
+                params: None,
+            })
+            .expect("frame"),
+        };
+        let bytes = codec::encode_frame(&legacy).expect("legacy frame");
+        let mut current = decode_envelope(&bytes).expect("old client to new daemon");
+        assert!(current.response_connection_id.is_none());
+        assert_eq!(encode_envelope(&current).expect("encode"), bytes);
+        current.response_connection_id = Some("generation-1".into());
+        let extended = encode_envelope(&current).expect("extended frame");
+        assert_eq!(
+            codec::decode_frame::<LegacyEnvelope>(&extended).expect("new client to old daemon"),
+            legacy
+        );
+        assert_eq!(decode_envelope(&extended).expect("new daemon"), current);
+        assert_eq!(request_method(&extended).expect("admission"), "status");
+        assert_eq!(request_header(&extended).expect("header"), ("compat", 7));
+        assert_eq!(
+            rejection_route(&extended).expect("overload route").response_connection_id,
+            current.response_connection_id
+        );
+    }
+
+    #[test]
+    fn connection_routing_identifiers_are_bounded_and_cannot_inject_logs() {
+        for id in ["".into(), "g\nsecret".into(), "a".repeat(129)] {
+            let mut envelope = ZmqRpcEnvelope::request("s", 1, "tcp://127.0.0.1:1", vec![], None);
+            envelope.response_connection_id = Some(id);
+            assert!(encode_envelope(&envelope).is_err());
+        }
+    }
+
+    #[test]
     fn zmq_rpc_envelope_roundtrips_framed_rpc_payload() {
         let payload = codec::encode_frame(&crate::rpc::RpcRequest {
             id: 7,
@@ -190,6 +278,7 @@ mod tests {
             auth: None,
             response_endpoint: Some("tcp://127.0.0.1:9124".to_string()),
             payload: Vec::new(),
+            response_connection_id: None,
         };
 
         let err = encode_envelope(&envelope).expect_err("bad version rejected");
@@ -247,12 +336,19 @@ pub fn rejection_route(bytes: &[u8]) -> io::Result<ZmqRpcEnvelope> {
         response_endpoint: Option<&'a str>,
         #[serde(rename = "payload")]
         _payload: serde::de::IgnoredAny,
+        #[serde(default)]
+        response_connection_id: Option<&'a str>,
     }
     let route: Routing<'_> = rmp_serde::from_slice(
         bytes.get(4..).ok_or_else(|| io::Error::other("missing envelope header"))?,
     )
     .map_err(io::Error::other)?;
     if route.session_id.len() > 128
+        || route.response_connection_id.is_some_and(|s| {
+            s.is_empty()
+                || s.len() > 128
+                || !s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+        })
         || route.response_endpoint.is_some_and(|s| s.len() > 512)
         || route.auth.as_ref().is_some_and(|a| a.value.len() > 4096 || a.scheme.len() > 32)
     {
@@ -268,5 +364,6 @@ pub fn rejection_route(bytes: &[u8]) -> io::Result<ZmqRpcEnvelope> {
             .map(|a| ZmqRpcAuthMetadata { scheme: a.scheme.to_owned(), value: a.value.to_owned() }),
         response_endpoint: route.response_endpoint.map(str::to_owned),
         payload: Vec::new(),
+        response_connection_id: route.response_connection_id.map(str::to_owned),
     })
 }

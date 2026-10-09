@@ -2,6 +2,7 @@
 
 mod admission;
 mod pipeline;
+mod response_connections;
 mod response_writer;
 pub(super) use pipeline::run_zmq_rpc_loop_until;
 mod router;
@@ -31,6 +32,7 @@ pub(super) struct ZmqRpcLoopConfig {
 
 struct ZmqOutboundResponse {
     endpoint: String,
+    connection_id: Option<String>,
     envelope: ZmqRpcEnvelope,
     queue_stage: Option<ZmqStageGuard>,
     admission: Option<admission::Lease>,
@@ -38,7 +40,8 @@ struct ZmqOutboundResponse {
 
 impl ZmqOutboundResponse {
     fn owned_wire_bytes(&self) -> usize {
-        self.endpoint.capacity()
+        self.connection_id.as_ref().map_or(0, String::capacity)
+            + self.endpoint.capacity()
             + self.envelope.session_id.capacity()
             + self.envelope.payload.capacity()
     }
@@ -75,6 +78,7 @@ fn handle_zmq_command_message(
             return Err("missing response endpoint");
         }
     };
+    let connection_id = envelope.response_connection_id.clone();
     let response_endpoint_is_local = is_local_zmq_endpoint(response_endpoint.as_str());
     let response = handle_zmq_request_envelope(
         daemon,
@@ -84,6 +88,7 @@ fn handle_zmq_command_message(
     )?;
     Ok(ZmqOutboundResponse {
         endpoint: response_endpoint,
+        connection_id,
         envelope: response,
         queue_stage: None,
         admission: None,

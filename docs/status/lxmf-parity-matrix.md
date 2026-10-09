@@ -23,6 +23,13 @@ cursor-replaying events, and the `LxmfSdkRouter`/`LxmfSdkPropagation` extension
 traits. Row-level transport classification is generated in
 `docs/status/sdk-zmq-parity.json`.
 
+PUSH/PULL stabilization for #657 adds response-socket generations and bounded
+connection reuse, with local unit/simulated evidence for legacy wire compatibility,
+same-endpoint socket replacement, lost announce replies without mutation retry,
+healthy-peer isolation and shutdown. Connect/send diagnostics retain correlation
+without payloads or credentials. This does not promote physical/public-network
+or sustained production memory evidence; see `docs/issue-657-investigation.md`.
+
 The historical v0.9.8 record retains its release boundary. Current `main` and
 the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for their
 named software scenarios, with hardware, public-network, and third-party-client
