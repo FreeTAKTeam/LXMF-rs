@@ -102,8 +102,8 @@ completion, and supervises fatal failure through daemon shutdown/admission.
   rejection and two senders sharing the same command ID without intent collision.
 - Rust 1.88: framework workspace/all-targets passed (3,632 tests, 288 existing
   explicit ignores). Subsequent complete affected SDK/RPC/daemon suites passed
-  after the final writer-hook and receipt-supervision corrections. Exact counts
-  are recorded in the local verification logs.
+  after the final writer-hook and receipt-supervision corrections (1,862 tests,
+  119 explicit ignores). The added initial-budget CLI validation also passes.
 - Paired real SQLite + SDK + ZeroMQ socket tests passed: `Test1234`, lost stored
   ACK and restart of both sides before application, replay beyond the old event
   window, lost admission response/reconciliation, actual owning worker
@@ -122,6 +122,12 @@ completion, and supervises fatal failure through daemon shutdown/admission.
 - Vendored ZeroMQ tests passed: 33 library tests and two real raw-handshake
   churn/same-peer replacement tests. Architecture boundary/module-size checks
   passed. The non-ZeroMQ daemon configuration compiles.
+- Compiled RCH plus managed `reticulumd` started against temporary local-disk
+  databases and loopback endpoints. `/Status` and `/diagnostics/runtime` returned
+  200, durable broker lanes were healthy, native SQLite was 3.53.2/WAL/FULL,
+  13 broker polls completed without errors, and the RCH shutdown exited zero
+  with no daemon left running. This is startup/poll/shutdown evidence, not a
+  live physical-peer delivery or load/plateau qualification.
 - Strict framework-wide Clippy is blocked by pre-existing
   `clippy::uninlined_format_args` findings. Affected crates pass all-target/all-
   feature Clippy with `-D warnings -A clippy::uninlined_format_args`; this is a

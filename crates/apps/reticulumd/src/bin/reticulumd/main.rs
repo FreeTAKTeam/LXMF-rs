@@ -41,6 +41,9 @@ struct Args {
     /// Enable durable ZeroMQ custody; creates a persistent, forward-only storage profile.
     #[arg(long, default_value_t = false)]
     zmq_durable_broker: bool,
+    /// Initial total database/WAL budget. Reopening preserves the admitted database budget.
+    #[arg(long, default_value_t = 512*1024*1024, value_parser=clap::value_parser!(i64).range(32*1024*1024..), requires="zmq_durable_broker")]
+    zmq_broker_budget_bytes: i64,
     /// Declare a consistent daemon backup restore; invalidate old custody receipts.
     #[arg(long, default_value_t = false, requires = "zmq_durable_broker")]
     zmq_broker_restored: bool,
@@ -270,4 +273,36 @@ fn spawn_meshchat_api(
             log::error!("MeshChat API stopped: {err}");
         }
     });
+}
+
+#[cfg(test)]
+mod broker_budget_tests {
+    use super::*;
+    #[test]
+    fn initial_budget_is_explicit_bounded_and_requires_durable_mode() {
+        assert_eq!(
+            Args::try_parse_from(["reticulumd"]).unwrap().zmq_broker_budget_bytes,
+            512 * 1024 * 1024
+        );
+        assert_eq!(
+            Args::try_parse_from([
+                "reticulumd",
+                "--zmq-durable-broker",
+                "--zmq-broker-budget-bytes",
+                "1073741824"
+            ])
+            .unwrap()
+            .zmq_broker_budget_bytes,
+            1024 * 1024 * 1024
+        );
+        assert!(Args::try_parse_from(["reticulumd", "--zmq-broker-budget-bytes", "1073741824"])
+            .is_err());
+        assert!(Args::try_parse_from([
+            "reticulumd",
+            "--zmq-durable-broker",
+            "--zmq-broker-budget-bytes",
+            "1"
+        ])
+        .is_err());
+    }
 }

@@ -153,7 +153,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         args.rpc_tls_client_ca.clone(),
     );
     let store = MessagesStore::open(&args.db).expect("open sqlite");
-    if args.zmq_durable_broker { store.enable_durable_broker(512 * 1024 * 1024).expect("enable durable ZeroMQ broker"); }
+    if args.zmq_durable_broker { store.enable_durable_broker(args.zmq_broker_budget_bytes).expect("enable durable ZeroMQ broker"); }
     if args.zmq_broker_restored {
         store.declare_broker_backup_restore().expect("declare restored durable journal");
         log::warn!("restored daemon journal has a new incarnation; old consumer checkpoints require explicit recovery");

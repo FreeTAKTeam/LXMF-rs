@@ -76,7 +76,7 @@ later logical attempts with 0.5-second exponential backoff capped at 30 seconds.
 
 | Boundary | Initial limit and behavior |
 | --- | --- |
-| Daemon database/journal budget | 512 MiB default; persisted when enabled, not silently resized on reopen. Includes native database/WAL growth admission and reserved completion/control capacity. Native database pages use at most one quarter of that budget (128 MiB by default), leaving bounded WAL-spill/checkpoint and control headroom. Cutover refuses larger existing databases; choose a sufficient initial budget before enabling. |
+| Daemon database/journal budget | 512 MiB default; persisted when enabled, not silently resized on reopen. Includes native database/WAL growth admission and reserved completion/control capacity. Native database pages use at most one quarter of that budget (128 MiB by default), leaving bounded WAL-spill/checkpoint and control headroom. Cutover refuses larger existing databases; choose a sufficient initial `--zmq-broker-budget-bytes` before enabling. |
 | Journal batch | At most 128 events / 12 MiB encoded response, including envelope headroom. One persisted issued range per authenticated consumer. |
 | Daemon ZeroMQ work | Reserved control lane: 8 requests / 96 MiB; bulk: 24 / 160 MiB. Count and retained bytes are acquired before decoded work/task creation and remain owned through reply delivery. Small bounded rejection capacity is separate. |
 | Native ZeroMQ receive | Maximum frame 16 MiB plus 64 KiB framing headroom; multipart count 32, total retained receive bytes 128 MiB. Bounded active connections and timed handshakes. These are transport limits, not a total daemon RSS cap. |
