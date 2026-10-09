@@ -20,6 +20,7 @@ pub(crate) async fn run_zmq_rpc_loop_until(
         Arc::clone(&metrics),
     ));
     let rpc_permits = Arc::new(Semaphore::new(ZMQ_RPC_WORKER_CONCURRENCY));
+    let admission = admission::Admission::new();
     let mut rpc_workers = JoinSet::new();
     log::info!("reticulumd listening on zmq {}", config.command_endpoint);
 
@@ -50,6 +51,46 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                 };
                 let input_bytes = message.iter().map(|frame| frame.len()).sum();
                 let dispatch_wait = metrics.enter(ZmqStage::DispatchWait, input_bytes);
+                if message.len() != 1 || input_bytes > zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES {
+                    log::warn!("[daemon] zmq rpc rejected request frame count or size");
+                    dispatch_wait.finish(ZmqStageOutcome::Failed);
+                    continue;
+                }
+                let lease = match admission.admit(message.get(0).expect("one frame")) {
+                    Ok(Some(lease)) => lease,
+                    Ok(None) => {
+                        dispatch_wait.finish(ZmqStageOutcome::Failed);
+                        if let Some(rejection)=admission.rejection() {
+                            let route=match zmq::rejection_route(message.get(0).expect("one frame")) {
+                                Ok(route)=>route,Err(error)=>{log::warn!("[daemon] invalid bounded rejection route: {error}");continue;}
+                            };
+                            let daemon=Arc::clone(&daemon);let response_tx=response_tx.clone();
+                            rpc_workers.spawn(async move {
+                                let response=tokio::task::spawn_blocking(move || {
+                                    let endpoint=route.response_endpoint.clone().ok_or("missing rejection endpoint")?;
+                                    let local=is_local_zmq_endpoint(&endpoint);
+                                    let envelope=match authorize_zmq_envelope(daemon.as_ref(),&route,command_endpoint_requires_auth,local) {
+                                        Ok(_)=>error_envelope(route.session_id,route.request_id,"SDK_TRANSPORT_ZMQ_BUSY","request was not admitted; retry later"),
+                                        Err(error) if local=>rpc_error_envelope(route.session_id,route.request_id,error),
+                                        Err(_)=>return Err("remote rejection endpoint unauthorized"),
+                                    };
+                                    Ok(ZmqOutboundResponse {endpoint,envelope,queue_stage:None,admission:Some(rejection)})
+                                }).await;
+                                match response {
+                                    Ok(Ok(response))=>{if response_tx.send(response).await.is_err() {log::warn!("[daemon] rejection response writer stopped");}}
+                                    Ok(Err(error))=>log::warn!("[daemon] rejection response dropped: {error}"),
+                                    Err(error)=>log::error!("[daemon] rejection authentication task failed: {error}"),
+                                }
+                            });
+                        }
+                        continue;
+                    }
+                    Err(error) => {
+                        log::warn!("[daemon] zmq rpc invalid request: {error}");
+                        dispatch_wait.finish(ZmqStageOutcome::Failed);
+                        continue;
+                    }
+                };
                 let daemon = Arc::clone(&daemon);
                 let response_tx = response_tx.clone();
                 let rpc_permits = Arc::clone(&rpc_permits);
@@ -61,7 +102,8 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                     let response = tokio::task::spawn_blocking(move || {
                         dispatch_with_metrics(daemon.as_ref(), message, command_endpoint_requires_auth, input_bytes, dispatch_wait)
                     }).await;
-                    if let Ok(Ok(response)) = response {
+                    if let Ok(Ok(mut response)) = response {
+                        response.admission = Some(lease);
                         if response_tx.send(response).await.is_err() {
                             log::warn!("[daemon] zmq rpc response writer stopped");
                         }

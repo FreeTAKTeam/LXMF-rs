@@ -7,7 +7,8 @@ use rns_transport::receipt::{
 use rns_transport::transport::{DeliveryReceipt, ReceiptHandler};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::Sender;
+mod custody;
+pub use custody::{is_terminal, ReceiptPublisher};
 
 #[derive(Debug, Clone)]
 pub struct ReceiptEvent {
@@ -117,21 +118,21 @@ impl ReceiptEvent {
 #[derive(Clone)]
 pub struct ReceiptBridge {
     map: Arc<Mutex<HashMap<String, String>>>,
-    tx: Sender<ReceiptEvent>,
+    tx: ReceiptPublisher,
     probe_receipts: Arc<ProbeReceiptRegistry>,
 }
 
 impl ReceiptBridge {
-    pub fn new(map: Arc<Mutex<HashMap<String, String>>>, tx: Sender<ReceiptEvent>) -> Self {
+    pub fn new(map: Arc<Mutex<HashMap<String, String>>>, tx: impl Into<ReceiptPublisher>) -> Self {
         Self::with_probe_registry(map, tx, Arc::new(ProbeReceiptRegistry::default()))
     }
 
     pub fn with_probe_registry(
         map: Arc<Mutex<HashMap<String, String>>>,
-        tx: Sender<ReceiptEvent>,
+        tx: impl Into<ReceiptPublisher>,
         probe_receipts: Arc<ProbeReceiptRegistry>,
     ) -> Self {
-        Self { map, tx, probe_receipts }
+        Self { map, tx: tx.into(), probe_receipts }
     }
 }
 
@@ -157,21 +158,26 @@ impl ReceiptHandler for ReceiptBridge {
 }
 
 pub fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), std::io::Error> {
-    if event.status.eq_ignore_ascii_case("delivered") {
-        daemon.record_message_delivery_receipt(event.message_id.as_str())?;
-    }
     record_receipt_status(
         &|_message_id: &str, _status: &str| {
-            let _ = daemon.handle_rpc(rns_rpc::rpc::RpcRequest {
-                id: 0,
-                method: "record_receipt".into(),
-                params: Some(event.rpc_params()),
-            })?;
+            daemon.record_network_receipt(
+                &event.message_id,
+                &event.status,
+                event
+                    .rpc_params()
+                    .as_object()
+                    .cloned()
+                    .ok_or_else(|| std::io::Error::other("receipt metadata is not an object"))?,
+            )?;
             Ok(())
         },
         &event.message_id,
         &event.status,
-    )
+    )?;
+    if event.status.eq_ignore_ascii_case("delivered") {
+        daemon.record_message_delivery_receipt(event.message_id.as_str())?;
+    }
+    Ok(())
 }
 
 pub fn track_receipt_mapping(
@@ -180,4 +186,68 @@ pub fn track_receipt_mapping(
     message_id: &str,
 ) {
     shared_track_receipt_mapping(map, packet_hash, message_id);
+}
+
+#[cfg(test)]
+mod durable_tests {
+    use super::*;
+    use rns_rpc::broker::{AdmitRequest, OperationReceipt};
+    use rns_rpc::{BrokerCommand, MessagesStore};
+    #[test]
+    fn network_receipt_commits_broker_status_and_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("receipt.db");
+        let store = MessagesStore::open(&path).unwrap();
+        store.enable_durable_broker(32 * 1024 * 1024).unwrap();
+        let receipt: OperationReceipt = serde_json::from_value(
+            store
+                .broker_command(BrokerCommand::Admit {
+                    owner: "authenticated-client".into(),
+                    source: "rch".into(),
+                    request: AdmitRequest {
+                        identity: "rch".into(),
+                        operation_id: "operation".into(),
+                        destination: "remote".into(),
+                        title: String::new(),
+                        content: "Test1234".into(),
+                        fields: None,
+                        options: Default::default(),
+                    },
+                })
+                .unwrap(),
+        )
+        .unwrap();
+        let daemon = RpcDaemon::with_store(store, "receipt-node".into());
+        let rejected = daemon
+            .handle_rpc(rns_rpc::rpc::RpcRequest {
+                id: 0,
+                method: "record_receipt".into(),
+                params: Some(
+                    serde_json::json!({"message_id":receipt.message_id,"status":"delivered"}),
+                ),
+            })
+            .unwrap();
+        assert!(rejected.error.is_some());
+        handle_receipt_event(&daemon, ReceiptEvent::new(receipt.message_id.clone(), "delivered"))
+            .unwrap();
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT receipt_status FROM messages WHERE id=?1",
+                [&receipt.message_id],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "delivered"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM broker_events WHERE event_type='receipt'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1
+        );
+    }
 }

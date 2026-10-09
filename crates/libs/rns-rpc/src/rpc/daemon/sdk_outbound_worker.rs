@@ -45,7 +45,13 @@ impl RpcDaemon {
             let status = format!("failed: {err}");
             let resolved_status = store
                 .resolve_receipt_status(record.id.as_str(), status.as_str())
-                .unwrap_or_else(|_| Some(status.clone()))
+                .unwrap_or_else(|error| {
+                    log::error!(
+                        "[daemon] outbound failure status was not stored message_id={}: {error}",
+                        record.id
+                    );
+                    None
+                })
                 .unwrap_or_else(|| status.clone());
             if resolved_status == status {
                 Self::append_delivery_trace_to(delivery_traces, record.id.as_str(), status);

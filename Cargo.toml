@@ -1,4 +1,5 @@
 [workspace]
+exclude = ["vendor/zeromq"]
 resolver = "2"
 members = [
   "crates/libs/lxmf",
@@ -126,7 +127,7 @@ loom = "0.7"
 serde_bytes = "0.11"
 rmp-serde = "1.3.0"
 rmpv = "1.3.0"
-rusqlite = { version = "0.37.0", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "hooks"] }
 time = "0.3.45"
 tokio-util = "0.7.15"
 bzip2 = "0.4"
@@ -141,7 +142,7 @@ tokio = { version = "1.44.2", features = ["full"] }
 tokio-rustls = "0.26.2"
 tokio-serial = "5.4.4"
 tokio-stream = "0.1"
-zeromq = { version = "0.6.0", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
+zeromq = { version = "0.6.0", path = "vendor/zeromq", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["fs"] }
 futures-util = "0.3"

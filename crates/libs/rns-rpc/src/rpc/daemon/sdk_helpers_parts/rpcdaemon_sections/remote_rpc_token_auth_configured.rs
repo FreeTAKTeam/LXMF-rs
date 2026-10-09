@@ -275,6 +275,7 @@ impl RpcDaemon {
     }
 
     pub(super) fn sdk_has_capability(&self, capability: &str) -> bool {
+        if self.broker_session_negotiated() { return Self::sdk_supported_capabilities().iter().any(|entry|entry==capability); }
         self.sdk_effective_capabilities
             .lock()
             .expect("sdk_effective_capabilities mutex poisoned")

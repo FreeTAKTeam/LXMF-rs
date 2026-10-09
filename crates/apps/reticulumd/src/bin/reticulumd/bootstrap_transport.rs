@@ -107,8 +107,7 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) propagation_announce_app_data: Option<Vec<u8>>,
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    pub(super) receipt_tx:
-        tokio::sync::mpsc::Sender<reticulum_daemon::receipt_bridge::ReceiptEvent>,
+    pub(super) receipt_tx: reticulum_daemon::receipt_bridge::ReceiptPublisher,
     pub(super) probe_receipts: Arc<ProbeReceiptRegistry>,
     pub(super) propagation_control_enabled: bool,
     pub(super) respond_to_probes: bool,

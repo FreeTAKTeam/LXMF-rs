@@ -75,6 +75,10 @@ impl DeliveryTask {
         if self.abort_if_cancelled("propagation") {
             return;
         }
+        let durable=match self.daemon.durable_prepared_payload(&self.message_id) {
+            Ok(Some(Some(value)))=>match crate::bridge::delivery_scheduler::decode_prepared(value) {Ok(prepared)=>{if let Some(propagation)=prepared.propagation {self.send_prepared_propagated(propagation).await;return;}true},Err(error)=>{log::error!("corrupt persisted propagation payload: {error}");return;}},
+            Ok(Some(None))=>true,Ok(None)=>false,Err(error)=>{log::error!("durable propagation lookup failed: {error}");return;},
+        };
         let Some(context) = self.propagation_preparation_context().await else {
             return;
         };
@@ -156,14 +160,21 @@ impl DeliveryTask {
             Some(propagation_payload.stamp_value.to_string()),
         );
         self.record_propagation_payload_metadata(&propagation_payload, context.target_cost);
-        self
-            .send_prepared_propagated(PreparedPropagationPayload {
+        let prepared=PreparedPropagationPayload {
                 propagation_node_hex: context.propagation_node_hex,
                 propagation_hash: context.propagation_hash,
                 target_cost: context.target_cost,
                 payload: propagation_payload,
-            })
-            .await;
+            };
+        if durable {
+            let encoded=crate::bridge::delivery_scheduler::encode_prepared(&PreparedDeliveryPayload {lxmf_payload:payload,propagation:Some(prepared)});
+            if let Err(error)=self.daemon.persist_durable_prepared_payload(&self.message_id,encoded.clone()) {
+                log::error!("propagation bytes were not committed; send suppressed: {error}");
+                if let Err(error)=self.daemon.defer_durable_dispatch(&self.message_id) {log::error!("durable propagation retry commit failed: {error}");}
+                return;
+            }
+            match crate::bridge::delivery_scheduler::decode_prepared(encoded) {Ok(value)=>if let Some(prepared)=value.propagation {self.send_prepared_propagated(prepared).await;},Err(error)=>log::error!("persisted propagation decode failed: {error}")}
+        } else {self.send_prepared_propagated(prepared).await;}
     }
 
     async fn send_prepared_propagated(self, prepared: PreparedPropagationPayload) {

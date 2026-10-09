@@ -19,6 +19,9 @@ impl RpcDaemon {
             ));
         }
 
+        if let Err(error) = self.authorize_broker_message_mutation(message_id) {
+            return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
+        }
         let _status_guard =
             self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
         let message = self.store.get_message(message_id).map_err(std::io::Error::other)?;

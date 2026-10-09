@@ -7,6 +7,7 @@ pub mod http;
 pub mod replay;
 mod send_request;
 pub mod zmq;
+mod zmq_complexity;
 pub mod zmq_metrics;
 
 use rmpv::Value as MsgPackValue;
@@ -35,6 +36,7 @@ pub fn handle_framed_request(daemon: &RpcDaemon, bytes: &[u8]) -> Result<Vec<u8>
 }
 
 thread_local! {
+    static RPC_ZMQ_PRINCIPAL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
     static RPC_SESSION_CONTEXT: std::cell::RefCell<Option<String>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -42,16 +44,35 @@ thread_local! {
 const LEGACY_RPC_SESSION_ID: &str = "legacy-rpc";
 
 fn with_rpc_session<T>(session_id: &str, operation: impl FnOnce() -> T) -> T {
-    RPC_SESSION_CONTEXT.with(|context| {
-        let previous = context.replace(Some(session_id.to_owned()));
-        let result = operation();
-        context.replace(previous);
-        result
-    })
+    struct Restore(Option<String>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            RPC_SESSION_CONTEXT.with(|context| {
+                context.replace(self.0.take());
+            });
+        }
+    }
+    let _restore =
+        Restore(RPC_SESSION_CONTEXT.with(|context| context.replace(Some(session_id.to_owned()))));
+    operation()
 }
 
 fn current_rpc_session_id() -> String {
     RPC_SESSION_CONTEXT
         .with(|context| context.borrow().clone())
         .unwrap_or_else(|| LEGACY_RPC_SESSION_ID.to_owned())
+}
+
+fn with_zmq_principal<T>(principal: &str, operation: impl FnOnce() -> T) -> T {
+    struct Restore(Option<String>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            RPC_ZMQ_PRINCIPAL.with(|context| {
+                context.replace(self.0.take());
+            });
+        }
+    }
+    let _restore =
+        Restore(RPC_ZMQ_PRINCIPAL.with(|context| context.replace(Some(principal.to_owned()))));
+    operation()
 }

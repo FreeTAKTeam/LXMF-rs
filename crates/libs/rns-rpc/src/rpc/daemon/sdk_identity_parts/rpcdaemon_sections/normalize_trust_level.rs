@@ -44,7 +44,7 @@ impl RpcDaemon {
     }
 
     #[allow(clippy::result_large_err)]
-    fn select_session_identity(&self, requested: Option<&str>) -> Result<String, RpcError> {
+    pub(super) fn select_session_identity(&self, requested: Option<&str>) -> Result<String, RpcError> {
         let session_id = current_rpc_session_id();
         let sessions = self
             .sdk_identity_sessions

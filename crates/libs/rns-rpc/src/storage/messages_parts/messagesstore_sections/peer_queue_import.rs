@@ -29,7 +29,7 @@ impl MessagesStore {
                          HAVING SUM(CASE WHEN state <> 'unhandled' THEN 1 ELSE 0 END) = 0
                      )
                  )",
-                params![peer, now_unix_secs(), limit.max(1)],
+                params![peer, now_unix_secs(), sql_u64(limit.max(1))?],
             )
         })
     }

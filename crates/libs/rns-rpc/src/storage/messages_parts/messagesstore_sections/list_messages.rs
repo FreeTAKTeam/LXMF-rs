@@ -213,7 +213,7 @@ impl MessagesStore {
                     record.destination,
                     record.payload_hex,
                     record.received_at,
-                    record.size_bytes,
+                    sql_u64(record.size_bytes)?,
                     record.stamp_value,
                 ],
             )?;

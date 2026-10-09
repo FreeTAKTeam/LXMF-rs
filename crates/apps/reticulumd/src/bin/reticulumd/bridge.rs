@@ -102,7 +102,7 @@ pub(super) struct TransportBridge {
     outbound_resource_map: OutboundResourceMap,
     outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     direct_backchannel_links: DirectBackchannelLinks,
-    receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
+    receipt_tx: reticulum_daemon::receipt_bridge::ReceiptPublisher,
     delivery_scheduler: DeliveryScheduler,
     service_identities: Arc<RwLock<service_identity::ServiceIdentityRegistry>>,
     service_identity_dir: PathBuf,
@@ -132,7 +132,7 @@ impl TransportBridge {
         peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
         receipt_map: Arc<Mutex<HashMap<String, String>>>,
         outbound_resource_map: OutboundResourceMap,
-        receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
+        receipt_tx: impl Into<reticulum_daemon::receipt_bridge::ReceiptPublisher>,
     ) -> Self {
         let default_display_name = announce_app_data.as_deref().and_then(|app_data| {
             reticulum_daemon::announce_names::parse_peer_name_from_app_data(app_data)
@@ -157,7 +157,7 @@ impl TransportBridge {
             outbound_resource_map,
             outbound_propagation_link: Arc::new(tokio::sync::Mutex::new(None)),
             direct_backchannel_links: DirectBackchannelLinks::new(),
-            receipt_tx,
+            receipt_tx: receipt_tx.into(),
             delivery_scheduler: DeliveryScheduler::spawn(DeliverySchedulerConfig::from_env()),
             service_identities: Arc::new(RwLock::new(
                 service_identity::ServiceIdentityRegistry::default(),

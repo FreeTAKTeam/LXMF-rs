@@ -274,7 +274,7 @@ impl MessagesStore {
                  ORDER BY e.received_at DESC, marks.transient_id DESC
                  LIMIT ?2",
             )?;
-            let rows = stmt.query_map(params![peer, limit.max(1)], |row| row.get(0))?;
+            let rows = stmt.query_map(params![peer, sql_u64(limit.max(1))?], |row| row.get(0))?;
             rows.collect()
         })
     }

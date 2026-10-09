@@ -6,61 +6,7 @@ impl MessagesStore {
         before_ts: Option<i64>,
         before_id: Option<&str>,
     ) -> rusqlite::Result<Vec<AnnounceRecord>> {
-        self.with_read_conn(|conn| {
-            let mut records = Vec::new();
-            let parse_row = |row: &rusqlite::Row| -> rusqlite::Result<AnnounceRecord> {
-                let capabilities_json: Option<String> = row.get(8)?;
-                let capabilities = capabilities_json
-                    .as_deref()
-                    .map(|value| deserialize_json_column(value, 8))
-                    .transpose()?
-                    .unwrap_or_default();
-                let seen_count: i64 = row.get(6)?;
-                Ok(AnnounceRecord {
-                    id: row.get(0)?,
-                    peer: row.get(1)?,
-                    timestamp: row.get(2)?,
-                    name: row.get(3)?,
-                    name_source: row.get(4)?,
-                    first_seen: row.get(5)?,
-                    seen_count: seen_count.max(0) as u64,
-                    app_data_hex: row.get(7)?,
-                    capabilities,
-                    rssi: row.get(9)?,
-                    snr: row.get(10)?,
-                    q: row.get(11)?,
-                    stamp_cost: row.get(12)?,
-                    stamp_cost_flexibility: row.get(13)?,
-                    peering_cost: row.get(14)?,
-                })
-            };
-            if let Some(ts) = before_ts {
-                let query_with_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3";
-                let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
-                if let Some(ann_id) = before_id {
-                    let mut stmt = conn.prepare(query_with_id)?;
-                    let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
-                    while let Some(row) = rows.next()? {
-                        records.push(parse_row(row)?);
-                    }
-                } else {
-                    let mut stmt = conn.prepare(query_without_id)?;
-                    let mut rows = stmt.query(params![ts, limit as i64])?;
-                    while let Some(row) = rows.next()? {
-                        records.push(parse_row(row)?);
-                    }
-                }
-            } else {
-                let mut stmt = conn.prepare(
-                    "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC LIMIT ?1",
-                )?;
-                let mut rows = stmt.query(params![limit as i64])?;
-                while let Some(row) = rows.next()? {
-                    records.push(parse_row(row)?);
-                }
-            }
-            Ok(records)
-        })
+        self.with_read_conn(|conn| list_announces_rows(conn,limit,before_ts,before_id))
     }
 
     pub fn upsert_announce_identity(
@@ -275,7 +221,7 @@ impl MessagesStore {
     }
 
     fn configure_connection(&self) -> rusqlite::Result<()> {
-        self.with_write_conn(|conn| {
+        self.with_control_conn(|conn| {
             conn.pragma_update(None, "journal_mode", "WAL")?;
             conn.pragma_update(None, "synchronous", "NORMAL")?;
             conn.pragma_update(None, "busy_timeout", 5_000i64)?;
@@ -466,4 +412,72 @@ impl MessagesStore {
              DROP TABLE tickets_single_destination;",
         )
     }
+}
+
+impl MessagesStore {
+    pub fn broker_announce_projection(&self)->rusqlite::Result<Vec<AnnounceRecord>> {
+        self.with_read_conn(|conn| {
+            let tx=conn.unchecked_transaction()?;
+            let bytes:i64=tx.query_row("SELECT COALESCE(MAX(bytes),0) FROM (SELECT COALESCE(length(CAST(app_data_hex AS BLOB)),0)+COALESCE(length(CAST(name AS BLOB)),0)+COALESCE(length(CAST(name_source AS BLOB)),0)+COALESCE(length(CAST(capabilities AS BLOB)),0)+length(CAST(id AS BLOB))+length(CAST(peer AS BLOB)) AS bytes FROM announces ORDER BY timestamp DESC,id DESC LIMIT 32)",[],|r|r.get(0))?;
+            if bytes>128*1024 {return Err(super::broker::error("SDK_STORAGE_BROKER_EVENT_TOO_LARGE","announce projection record exceeds 128 KiB"));}
+            let records=list_announces_rows(&tx,32,None,None)?;tx.commit()?;Ok(records)
+        })
+    }
+}
+
+fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before_id:Option<&str>)->rusqlite::Result<Vec<AnnounceRecord>> {
+
+            let mut records = Vec::new();
+            let parse_row = |row: &rusqlite::Row| -> rusqlite::Result<AnnounceRecord> {
+                let capabilities_json: Option<String> = row.get(8)?;
+                let capabilities = capabilities_json
+                    .as_deref()
+                    .map(|value| deserialize_json_column(value, 8))
+                    .transpose()?
+                    .unwrap_or_default();
+                let seen_count: i64 = row.get(6)?;
+                Ok(AnnounceRecord {
+                    id: row.get(0)?,
+                    peer: row.get(1)?,
+                    timestamp: row.get(2)?,
+                    name: row.get(3)?,
+                    name_source: row.get(4)?,
+                    first_seen: row.get(5)?,
+                    seen_count: seen_count.max(0) as u64,
+                    app_data_hex: row.get(7)?,
+                    capabilities,
+                    rssi: row.get(9)?,
+                    snr: row.get(10)?,
+                    q: row.get(11)?,
+                    stamp_cost: row.get(12)?,
+                    stamp_cost_flexibility: row.get(13)?,
+                    peering_cost: row.get(14)?,
+                })
+            };
+            if let Some(ts) = before_ts {
+                let query_with_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3";
+                let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
+                if let Some(ann_id) = before_id {
+                    let mut stmt = conn.prepare(query_with_id)?;
+                    let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
+                    while let Some(row) = rows.next()? {
+                        records.push(parse_row(row)?);
+                    }
+                } else {
+                    let mut stmt = conn.prepare(query_without_id)?;
+                    let mut rows = stmt.query(params![ts, limit as i64])?;
+                    while let Some(row) = rows.next()? {
+                        records.push(parse_row(row)?);
+                    }
+                }
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC,id DESC LIMIT ?1",
+                )?;
+                let mut rows = stmt.query(params![limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    records.push(parse_row(row)?);
+                }
+            }
+            Ok(records)
 }

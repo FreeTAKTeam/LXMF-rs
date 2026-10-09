@@ -2,13 +2,13 @@ impl MessagesStore {
 
     const SDK_DOMAIN_SNAPSHOT_KEY: &'static str = "sdk_domains.v1";
 
-    fn is_terminal_receipt_status(status: &str) -> bool {
+    pub(super) fn is_terminal_receipt_status(status: &str) -> bool {
         let normalized = status.trim().to_ascii_lowercase();
         normalized.starts_with("failed")
             || matches!(normalized.as_str(), "cancelled" | "delivered" | "expired" | "rejected")
     }
 
-    fn should_preserve_receipt_status(existing_status: &str, candidate_status: &str) -> bool {
+    pub(super) fn should_preserve_receipt_status(existing_status: &str, candidate_status: &str) -> bool {
         if Self::is_terminal_receipt_status(existing_status) {
             return true;
         }
@@ -26,7 +26,7 @@ impl MessagesStore {
             write_lock_wait_ns_total: AtomicU64::new(0),
             write_ops_total: AtomicU64::new(0),
         });
-        let (outbound_write_tx, outbound_write_rx) = mpsc::channel();
+        let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
             write_state: write_state.clone(),
             outbound_write_tx,
@@ -36,6 +36,7 @@ impl MessagesStore {
             read_ops_total: AtomicU64::new(0),
         };
         store.configure_connection()?;
+        store.with_control_conn(super::broker::restore_profile)?;
         store.init_schema()?;
         store.refresh_message_count_cache()?;
         Ok(store)
@@ -53,7 +54,7 @@ impl MessagesStore {
             write_lock_wait_ns_total: AtomicU64::new(0),
             write_ops_total: AtomicU64::new(0),
         });
-        let (outbound_write_tx, outbound_write_rx) = mpsc::channel();
+        let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
             write_state: write_state.clone(),
             outbound_write_tx,
@@ -63,6 +64,7 @@ impl MessagesStore {
             read_ops_total: AtomicU64::new(0),
         };
         store.configure_connection()?;
+        store.with_control_conn(super::broker::restore_profile)?;
         store.init_schema()?;
         store.refresh_message_count_cache()?;
         Ok(store)
@@ -76,7 +78,10 @@ impl MessagesStore {
         Ok(())
     }
 
-    fn with_write_conn<T>(
+    fn with_write_conn<T>(&self,f:impl FnOnce(&Connection)->rusqlite::Result<T>)->rusqlite::Result<T> {
+        self.with_control_conn(|conn| {super::broker::mutation_admission(conn,true)?; f(conn)})
+    }
+    fn with_control_conn<T>(
         &self,
         f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
     ) -> rusqlite::Result<T> {
@@ -85,7 +90,8 @@ impl MessagesStore {
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         self.write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
-        f(&conn)
+        super::broker::reclaim_wal(&conn)?;
+        f(&conn).map_err(super::broker::map_commit_error)
     }
 
     fn with_read_conn<T>(
@@ -100,7 +106,7 @@ impl MessagesStore {
             self.read_ops_total.fetch_add(1, Ordering::Relaxed);
             f(&conn)
         } else {
-            self.with_write_conn(f)
+            self.with_control_conn(f)
         }
     }
 
@@ -116,7 +122,13 @@ impl MessagesStore {
         }
     }
 
-    fn write_lock_and_run<T>(
+    fn write_lock_and_run<T>(write_state:&WriteState,f:impl FnOnce(&Connection)->rusqlite::Result<T>)->rusqlite::Result<T> {
+        Self::write_lock_and_run_base(write_state,|conn|{super::broker::mutation_admission(conn,true)?; f(conn)})
+    }
+    fn write_lock_and_run_control<T>(write_state:&WriteState,f:impl FnOnce(&Connection)->rusqlite::Result<T>)->rusqlite::Result<T> {
+        Self::write_lock_and_run_base(write_state,|conn|super::broker::single_transaction(conn,f))
+    }
+    fn write_lock_and_run_base<T>(
         write_state: &WriteState,
         f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
     ) -> rusqlite::Result<T> {
@@ -125,7 +137,8 @@ impl MessagesStore {
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
-        f(&conn)
+        super::broker::reclaim_wal(&conn)?;
+        f(&conn).map_err(super::broker::map_commit_error)
     }
 
     fn insert_message_direct(
@@ -133,7 +146,14 @@ impl MessagesStore {
         record: &MessageRecord,
     ) -> rusqlite::Result<()> {
         let fields_json = record.fields.as_ref().map(serialize_json_for_sql).transpose()?;
-        Self::write_lock_and_run(write_state, |conn| {
+        Self::write_lock_and_run_control(write_state, |conn| {
+            if super::broker::enabled(conn)? {
+                let tx = conn.unchecked_transaction()?;
+                let inserted = super::broker::insert_atomic(&tx, record, None)?;
+                tx.commit()?;
+                if inserted { write_state.message_count_cache.fetch_add(1, Ordering::Relaxed); }
+                return Ok(());
+            }
             let inserted = conn.execute(
                 "INSERT INTO messages (id, source, destination, title, content, timestamp, direction, fields, receipt_status)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -186,7 +206,7 @@ impl MessagesStore {
         message_id: &str,
         candidate_status: &str,
     ) -> rusqlite::Result<Option<String>> {
-        Self::write_lock_and_run(write_state, |conn| {
+        Self::write_lock_and_run_control(write_state, |conn| {
             let existing_status = conn
                 .query_row(
                     "SELECT receipt_status FROM messages WHERE id = ?1 LIMIT 1",
@@ -201,10 +221,13 @@ impl MessagesStore {
                     return Ok(Some(existing_status));
                 }
             }
-            conn.execute(
-                "UPDATE messages SET receipt_status = ?1 WHERE id = ?2",
-                params![candidate_status, message_id],
-            )?;
+            if super::broker::enabled(conn)? {
+                let tx = conn.unchecked_transaction()?;
+                super::broker::status_atomic(&tx, message_id, candidate_status)?;
+                tx.commit()?;
+            } else {
+                conn.execute("UPDATE messages SET receipt_status = ?1 WHERE id = ?2", params![candidate_status,message_id])?;
+            }
             Ok(Some(candidate_status.to_string()))
         })
     }
@@ -214,11 +237,12 @@ impl MessagesStore {
         message_id: &str,
         status: &str,
     ) -> rusqlite::Result<()> {
-        Self::write_lock_and_run(write_state, |conn| {
-            conn.execute(
-                "UPDATE messages SET receipt_status = ?1 WHERE id = ?2",
-                params![status, message_id],
-            )?;
+        Self::write_lock_and_run_control(write_state,|conn| {
+            if super::broker::enabled(conn)? {
+                let tx=conn.unchecked_transaction()?;
+                super::broker::status_atomic(&tx,message_id,status)?;
+                tx.commit()?;
+            } else { conn.execute("UPDATE messages SET receipt_status=?1 WHERE id=?2",params![status,message_id])?; }
             Ok(())
         })
     }
@@ -350,9 +374,10 @@ impl MessagesStore {
     }
 
     pub fn insert_message(&self, record: &MessageRecord) -> rusqlite::Result<()> {
+        let reservation=self.outbound_write_tx.reserve(message_retained_bytes(record)+512).map_err(|e|rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let (reply_tx, reply_rx) = mpsc::channel();
         self.outbound_write_tx
-            .send(OutboundWriteCommand::InsertMessage { record: record.clone(), reply: reply_tx })
+            .send_reserved(OutboundWriteCommand::InsertMessage { record: record.clone(), reply: reply_tx },reservation)
             .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
         reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }

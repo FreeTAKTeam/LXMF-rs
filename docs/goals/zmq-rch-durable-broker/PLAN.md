@@ -1,7 +1,7 @@
 # LXMF-rs / RCH: reviewed Rust implementation plan
 
-Date: 8 October 2026  
-Status: proposed implementation plan (reviewed v2); supersedes the original draft  
+Date: 8 October 2026
+Status: reviewed v2 design reference; local implementation and evidence in [PROGRESS.md](PROGRESS.md); supersedes the original draft
 Publication scope: documentation only. No source, service or database changes.
 
 ## 1. Decision

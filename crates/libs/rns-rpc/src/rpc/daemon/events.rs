@@ -189,6 +189,20 @@ impl RpcDaemon {
         codec::encode_frame(&response).map_err(std::io::Error::other)
     }
 
+    /// Called only after ZeroMQ ingress has authenticated this exchange once.
+    pub fn handle_framed_request_for_zmq_session(
+        &self,
+        session_id: &str,
+        principal: &str,
+        bytes: &[u8],
+    ) -> Result<Vec<u8>, std::io::Error> {
+        let scoped_session =
+            serde_json::to_string(&(principal, session_id)).map_err(std::io::Error::other)?;
+        super::with_zmq_principal(principal, || {
+            self.handle_framed_request_for_session(&scoped_session, bytes)
+        })
+    }
+
     pub fn subscribe_events(&self) -> broadcast::Receiver<RpcEvent> {
         self.events.subscribe()
     }

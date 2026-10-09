@@ -50,6 +50,8 @@ mod parsing;
 mod peer;
 #[path = "zmq_pipeline/propagation.rs"]
 mod propagation;
+#[path = "zmq_pipeline/recovery.rs"]
+mod recovery;
 #[path = "zmq_pipeline/router.rs"]
 mod router;
 #[path = "zmq_pipeline/send.rs"]
@@ -71,6 +73,7 @@ include!("zmq_pipeline/backend_domain_methods.rs");
 
 pub use config::{ZmqEndpointRole, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth};
 use negotiation::new_session_id;
+pub use recovery::{ExecutionCertainty, ZmqRecoveryDecision};
 use support::{map_rpc_error, sdk_error, token_signature};
 use transport::{ZmqDealerTransport, ZmqPipelineTransport};
 const ZMQ_DEALER_POOL_SIZE: usize = 8;
@@ -434,3 +437,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
 
     zmq_backend_domain_methods!();
 }
+
+#[path = "zmq_pipeline/broker.rs"]
+mod broker;

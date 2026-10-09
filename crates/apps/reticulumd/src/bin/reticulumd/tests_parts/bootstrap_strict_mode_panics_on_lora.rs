@@ -133,6 +133,9 @@ fn test_args(
         rpc_unix: None,
         #[cfg(feature = "zmq-pipeline-rpc")]
         zmq_rpc_command: None,
+            zmq_durable_broker: false,
+        zmq_broker_budget_bytes: 512*1024*1024,
+        zmq_broker_restored: false,
         #[cfg(feature = "zmq-pipeline-rpc")]
         zmq_rpc_endpoint: None,
         meshchat_bind: None,

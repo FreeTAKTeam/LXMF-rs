@@ -125,7 +125,9 @@ impl MessagesStore {
 
     pub fn expire_outbound_messages_before(&self, cutoff_ts: i64) -> rusqlite::Result<Vec<String>> {
         self.with_write_conn(|conn| {
-            let mut stmt = conn.prepare(
+            let tx = conn.unchecked_transaction()?;
+            let durable = super::broker::enabled(&tx)?;
+            let mut stmt = tx.prepare(&format!(
                 "SELECT id
                  FROM messages
                  WHERE direction = 'out'
@@ -139,8 +141,9 @@ impl MessagesStore {
                             AND LOWER(receipt_status) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
                         )
                    )
-                 ORDER BY timestamp ASC, id ASC",
-            )?;
+                 ORDER BY timestamp ASC, id ASC {}",
+                if durable { "LIMIT 256" } else { "" }
+            ))?;
             let mut rows = stmt.query(params![cutoff_ts])?;
             let mut ids = Vec::new();
             while let Some(row) = rows.next()? {
@@ -149,11 +152,13 @@ impl MessagesStore {
             drop(rows);
             drop(stmt);
             for message_id in ids.iter() {
-                conn.execute(
-                    "UPDATE messages SET receipt_status = 'expired' WHERE id = ?1",
-                    params![message_id],
-                )?;
+                if durable {
+                    super::broker::status_atomic(&tx, message_id, "expired")?;
+                } else {
+                    tx.execute("UPDATE messages SET receipt_status = 'expired' WHERE id = ?1", params![message_id])?;
+                }
             }
+            tx.commit()?;
             Ok(ids)
         })
     }
@@ -167,11 +172,16 @@ impl MessagesStore {
             return Ok(Vec::new());
         }
         self.with_write_conn(|conn| {
+            let durable = super::broker::enabled(conn)?;
+            let count = if durable { count.min(256) } else { count };
             let collect_ids = |query: &str, remaining: usize| -> rusqlite::Result<Vec<String>> {
                 if remaining == 0 {
                     return Ok(Vec::new());
                 }
-                let mut stmt = conn.prepare(query)?;
+                let query = if durable {
+                    query.replace("WHERE direction = 'out'", "WHERE direction = 'out' AND NOT (receipt_status IS NULL OR (LOWER(TRIM(receipt_status)) NOT LIKE 'failed%' AND LOWER(TRIM(receipt_status)) NOT IN ('delivered','cancelled','expired','rejected')))")
+                } else { query.to_owned() };
+                let mut stmt = conn.prepare(&query)?;
                 let mut rows = stmt.query(params![remaining as i64])?;
                 let mut ids = Vec::new();
                 while let Some(row) = rows.next()? {
@@ -267,7 +277,9 @@ impl MessagesStore {
                 return Ok(Vec::new());
             }
 
-            let mut stmt = conn.prepare(
+            let durable = super::broker::enabled(conn)?;
+            let eligible = if durable { "WHERE NOT (direction='out' AND (receipt_status IS NULL OR (LOWER(TRIM(receipt_status)) NOT LIKE 'failed%' AND LOWER(TRIM(receipt_status)) NOT IN ('delivered','cancelled','expired','rejected'))))" } else { "" };
+            let mut stmt = conn.prepare(&format!(
                 "SELECT id,
                         LENGTH(id) +
                         LENGTH(source) +
@@ -277,9 +289,10 @@ impl MessagesStore {
                         LENGTH(direction) +
                         COALESCE(LENGTH(fields), 0) +
                         COALESCE(LENGTH(receipt_status), 0) AS approx_bytes
-                 FROM messages
-                 ORDER BY timestamp ASC, id ASC",
-            )?;
+                 FROM messages {eligible}
+                 ORDER BY timestamp ASC, id ASC {}",
+                 if durable { "LIMIT 256" } else { "" }
+            ))?;
             let mut rows = stmt.query([])?;
             let mut bytes = current_bytes.max(0) as u64;
             let mut ids = Vec::new();

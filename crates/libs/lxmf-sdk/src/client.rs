@@ -408,3 +408,40 @@ impl<B: SdkBackendAsyncEvents> LxmfSdkAsync for Client<B> {
 #[cfg(test)]
 #[path = "client/tests.rs"]
 mod tests;
+
+#[cfg(feature = "zmq-pipeline-backend")]
+impl Client<crate::backend::zmq_pipeline::ZmqPipelineBackendClient> {
+    /// Start the ZeroMQ custody session without changing the daemon-wide SDK profile.
+    pub fn start_durable_zmq(&self, req: StartRequest) -> Result<ClientHandle, SdkError> {
+        req.validate()?;
+        {
+            let lifecycle = self.lifecycle.lock().expect("lifecycle poisoned");
+            if lifecycle.check_start_reentry(&req)? {
+                return self.handle.lock().expect("handle poisoned").clone().ok_or_else(|| {
+                    SdkError::new(
+                        code::INTERNAL,
+                        ErrorCategory::Internal,
+                        "running client handle missing",
+                    )
+                });
+            }
+        }
+        self.lifecycle.lock().expect("lifecycle poisoned").mark_starting()?;
+        let result = (|| {
+            let negotiation = self.backend.negotiate_durable_broker()?;
+            Self::ensure_capabilities(
+                req.config.profile.clone(),
+                &req.requested_capabilities,
+                &negotiation,
+            )?;
+            let handle = Self::as_client_handle(negotiation);
+            self.lifecycle.lock().expect("lifecycle poisoned").mark_running(req)?;
+            *self.handle.lock().expect("handle poisoned") = Some(handle.clone());
+            Ok(handle)
+        })();
+        if result.is_err() {
+            self.rollback_start_transition();
+        }
+        result
+    }
+}

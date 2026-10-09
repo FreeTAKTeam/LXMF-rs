@@ -44,6 +44,7 @@ pub trait ServiceIdentityBridge: Send + Sync {
 
 #[derive(Debug, Clone, Default)]
 struct SdkIdentitySession {
+    broker_negotiated: bool,
     authorized_identities: HashSet<String>,
     active_identity: Option<String>,
 }

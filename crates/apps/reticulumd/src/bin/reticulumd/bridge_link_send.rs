@@ -456,7 +456,7 @@ fn spawn_propagation_resource_signal_monitor(
     message_id: String,
     destination_hex: String,
     outbound_resource_map: OutboundResourceMap,
-    receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
+    receipt_tx: reticulum_daemon::receipt_bridge::ReceiptPublisher,
 ) {
     tokio::spawn(async move {
         let Ok(signal) = propagation::wait_for_propagation_signal(

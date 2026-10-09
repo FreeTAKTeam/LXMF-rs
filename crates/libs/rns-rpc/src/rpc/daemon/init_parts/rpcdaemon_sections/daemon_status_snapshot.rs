@@ -28,7 +28,12 @@ impl RpcDaemon {
         record: MessageRecord,
         raw_lxmf_bytes: Option<&[u8]>,
     ) -> Result<(), std::io::Error> {
-        self.store.insert_message(&record).map_err(std::io::Error::other)?;
+        if self.store.durable_broker_enabled().map_err(std::io::Error::other)? {
+            let result=self.store.broker_inbound(&record,raw_lxmf_bytes).map_err(std::io::Error::other)?;
+            if result.get("inserted").and_then(JsonValue::as_bool)==Some(false) {return Ok(());}
+        } else {
+            self.store.insert_message(&record).map_err(std::io::Error::other)?;
+        }
         let storage_limit_bytes = self
             .propagation_state
             .lock()
@@ -50,11 +55,13 @@ impl RpcDaemon {
     }
 
     pub fn accept_inbound(&self, record: MessageRecord) -> Result<(), std::io::Error> {
-        self.remember_outbound_ticket_from_inbound(&record)?;
-        if self.message_exists(record.id.as_str())? {
+        let durable=self.store.durable_broker_enabled().map_err(std::io::Error::other)?;
+        if !durable {self.remember_outbound_ticket_from_inbound(&record)?;}
+        if !durable && self.message_exists(record.id.as_str())? {
             return Ok(());
         }
         self.store_inbound_record(record.clone(), None)?;
+        if durable {self.remember_outbound_ticket_from_inbound(&record)?;}
         let _ = self.correlate_inbound_sdk_command(&record)?;
         Ok(())
     }
@@ -64,11 +71,13 @@ impl RpcDaemon {
         record: MessageRecord,
         raw_lxmf_bytes: &[u8],
     ) -> Result<(), std::io::Error> {
-        self.remember_outbound_ticket_from_inbound(&record)?;
-        if self.message_exists(record.id.as_str())? {
+        let durable=self.store.durable_broker_enabled().map_err(std::io::Error::other)?;
+        if !durable {self.remember_outbound_ticket_from_inbound(&record)?;}
+        if !durable && self.message_exists(record.id.as_str())? {
             return Ok(());
         }
         self.store_inbound_record(record.clone(), Some(raw_lxmf_bytes))?;
+        if durable {self.remember_outbound_ticket_from_inbound(&record)?;}
         let _ = self.correlate_inbound_sdk_command(&record)?;
         Ok(())
     }

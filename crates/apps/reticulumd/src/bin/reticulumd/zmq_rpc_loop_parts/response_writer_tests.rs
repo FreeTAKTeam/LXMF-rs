@@ -14,6 +14,7 @@ async fn stalled_response_peer_does_not_block_healthy_event_poll() {
     let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::clone(&metrics)));
     tx.send(ZmqOutboundResponse {
         queue_stage: None,
+        admission: None,
         endpoint: stalled_endpoint,
         envelope: ZmqRpcEnvelope::response("departed-client".to_string(), 1, vec![]),
     })
@@ -75,6 +76,7 @@ async fn response_writer_cancels_active_stalled_peers_on_shutdown() {
     let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::clone(&metrics)));
     tx.send(ZmqOutboundResponse {
         queue_stage: None,
+        admission: None,
         endpoint,
         envelope: ZmqRpcEnvelope::response("shutdown-client".to_string(), 1, vec![]),
     })

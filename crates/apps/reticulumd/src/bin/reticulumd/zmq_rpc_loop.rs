@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+mod admission;
 mod pipeline;
 mod response_writer;
 pub(super) use pipeline::run_zmq_rpc_loop_until;
@@ -20,7 +21,7 @@ use tokio::task::JoinSet;
 use zeromq::{PullSocket, Socket, SocketRecv, ZmqMessage};
 
 const ZMQ_RPC_WORKER_CONCURRENCY: usize = 32;
-const ZMQ_RPC_RESPONSE_QUEUE_CAPACITY: usize = 1024;
+const ZMQ_RPC_RESPONSE_QUEUE_CAPACITY: usize = 32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ZmqRpcLoopConfig {
@@ -32,6 +33,7 @@ struct ZmqOutboundResponse {
     endpoint: String,
     envelope: ZmqRpcEnvelope,
     queue_stage: Option<ZmqStageGuard>,
+    admission: Option<admission::Lease>,
 }
 
 impl ZmqOutboundResponse {
@@ -80,7 +82,12 @@ fn handle_zmq_command_message(
         command_endpoint_requires_auth,
         response_endpoint_is_local,
     )?;
-    Ok(ZmqOutboundResponse { endpoint: response_endpoint, envelope: response, queue_stage: None })
+    Ok(ZmqOutboundResponse {
+        endpoint: response_endpoint,
+        envelope: response,
+        queue_stage: None,
+        admission: None,
+    })
 }
 
 fn handle_zmq_request_envelope(
@@ -89,22 +96,25 @@ fn handle_zmq_request_envelope(
     command_endpoint_requires_auth: bool,
     response_endpoint_is_local: bool,
 ) -> Result<ZmqRpcEnvelope, &'static str> {
-    if let Err(error) = authorize_zmq_envelope(
+    let principal = match authorize_zmq_envelope(
         daemon,
         &envelope,
         command_endpoint_requires_auth,
         response_endpoint_is_local,
     ) {
-        if response_endpoint_is_local {
-            return Ok(rpc_error_envelope(envelope.session_id, envelope.request_id, error));
-        }
-        log::warn!(
+        Ok(principal) => principal,
+        Err(error) => {
+            if response_endpoint_is_local {
+                return Ok(rpc_error_envelope(envelope.session_id, envelope.request_id, error));
+            }
+            log::warn!(
             "[daemon] zmq rpc command rejected request_id={} code={} reason=remote_response_auth_failed",
             envelope.request_id,
             error.code
         );
-        return Err("remote auth failed");
-    }
+            return Err("remote auth failed");
+        }
+    };
     if envelope.kind != ZmqRpcEnvelopeKind::Request {
         return Ok(error_envelope(
             envelope.session_id,
@@ -114,8 +124,9 @@ fn handle_zmq_request_envelope(
         ));
     }
     let response_payload = daemon
-        .handle_framed_request_for_session(
+        .handle_framed_request_for_zmq_session(
             envelope.session_id.as_str(),
+            principal.as_str(),
             envelope.payload.as_slice(),
         )
         .unwrap_or_else(|err| {
@@ -135,12 +146,12 @@ fn authorize_zmq_envelope(
     envelope: &ZmqRpcEnvelope,
     command_endpoint_requires_auth: bool,
     response_endpoint_is_local: bool,
-) -> Result<(), RpcError> {
+) -> Result<String, RpcError> {
     if !command_endpoint_requires_auth
         && response_endpoint_is_local
         && !daemon.remote_rpc_auth_configured()
     {
-        return Ok(());
+        return Ok("local".to_owned());
     }
     let Some(auth) = envelope.auth.as_ref() else {
         daemon.enforce_pre_auth_ip_rate_limit("0.0.0.0")?;
@@ -162,7 +173,7 @@ fn authorize_zmq_envelope(
         .or_else(|| auth.value.strip_prefix("bearer "))
         .unwrap_or(auth.value.as_str());
     let headers = vec![("authorization".to_string(), format!("Bearer {value}"))];
-    daemon.authorize_http_request(&headers, Some("0.0.0.0"))
+    daemon.authorize_http_principal(&headers, Some("0.0.0.0"), None)
 }
 
 #[path = "zmq_rpc_loop_parts/response.rs"]

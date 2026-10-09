@@ -1,3 +1,4 @@
+include!("messagesstore_sections/write_admission.rs");
 include!("messagesstore_sections/sdk_domain_snapshot_key.rs");
 include!("messagesstore_sections/outbound_write_worker.rs");
 include!("messagesstore_sections/schema_support.rs");
@@ -9,3 +10,5 @@ include!("messagesstore_sections/remove_stale_peer_unhandled_propagat.rs");
 include!("messagesstore_sections/prune_propagation_entries_to_limit_b.rs");
 include!("messagesstore_sections/prune_propagation_peer_entries_to_policy.rs");
 include!("messagesstore_sections/list_announces.rs");
+
+include!("messagesstore_sections/broker.rs");

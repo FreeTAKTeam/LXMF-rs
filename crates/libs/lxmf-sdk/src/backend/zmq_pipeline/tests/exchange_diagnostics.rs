@@ -118,6 +118,7 @@ async fn pipeline_decode_and_mapped_remote_errors_keep_local_stage_and_original_
         };
         check_context(&error, &client, stage, true);
         if case == "remote" {
+            assert!(client.transport.lock().await.is_some(), "valid rejection keeps transport");
             assert_eq!(error.machine_code, expected.machine_code);
             assert_eq!(error.category, expected.category);
             assert_eq!(error.retryable, expected.retryable);
@@ -127,9 +128,8 @@ async fn pipeline_decode_and_mapped_remote_errors_keep_local_stage_and_original_
             assert!(error.message.starts_with(&expected.message));
         } else {
             assert_eq!(error.category, ErrorCategory::Transport);
-            // Envelope decode fails inside the exchange and resets it; RPC
-            // decode happens after a successful exchange and keeps it, as before.
-            assert_eq!(client.transport.lock().await.is_none(), case == "envelope");
+            // A matching envelope alone does not make a malformed RPC reusable.
+            assert!(client.transport.lock().await.is_none());
         }
         server.await.expect("server");
     }
