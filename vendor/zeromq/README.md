@@ -1,3 +1,18 @@
+# reticulum-rs-zeromq
+
+This is LXMF-rs's maintained fork of the MIT-licensed `zeromq` 0.6.0
+implementation. It retains the Rust library name `zeromq` and the upstream
+ZMTP wire format. The resource and connection-lifecycle changes are documented
+in [LXMF_PATCHES.md](LXMF_PATCHES.md). Versions follow the LXMF-rs release train.
+
+```toml
+zeromq = { package = "reticulum-rs-zeromq", version = "0.14.0", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
+```
+
+The original upstream overview follows. The bounded transport behavior is
+qualified for LXMF-rs's Tokio/TCP usage; other runtimes and transports retain
+their upstream support status.
+
 # zmq.rs - A native Rust implementation of ZeroMQ
 
 **DISCLAIMER: This codebase does not implement all of ZeroMQ's feature set.**

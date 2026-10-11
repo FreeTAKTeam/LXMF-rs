@@ -59,6 +59,7 @@ jobs:
           set -euo pipefail
 
           manifests=(
+            "vendor/zeromq/Cargo.toml"
             "crates/libs/lxmf-reference/Cargo.toml"
             "crates/libs/rns-core/Cargo.toml"
             "crates/libs/lxmf-core/Cargo.toml"

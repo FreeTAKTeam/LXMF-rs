@@ -347,7 +347,7 @@ impl ResourceSender {
                     .unwrap_or(search_end);
                 self.receiver_min_consecutive_height =
                     part_index.saturating_sub(1 + WINDOW_MAX_FAST);
-                if part_index % self.hashmap_segment_len != 0 {
+                if !part_index.is_multiple_of(self.hashmap_segment_len) {
                     log::error!(
                         "resource sequencing error hash={} part_index={} segment_len={}",
                         self.resource_hash,

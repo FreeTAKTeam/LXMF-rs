@@ -102,7 +102,7 @@ fn parse_switch_id_hex(value: &str) -> Result<[u8; 4], std::io::Error> {
         ));
     }
     let mut out = [0_u8; 4];
-    for (index, chunk) in trimmed.as_bytes().chunks_exact(2).enumerate() {
+    for (index, chunk) in trimmed.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         let text = std::str::from_utf8(chunk).map_err(|_| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,

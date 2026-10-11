@@ -331,7 +331,7 @@ where
 
 fn parse_hex(value: &str) -> Result<Vec<u8>, String> {
     let normalized = value.trim().replace([' ', ':', '-'], "");
-    if normalized.len() % 2 != 0 {
+    if !normalized.len().is_multiple_of(2) {
         return Err("hex must contain an even number of digits".to_string());
     }
     hex::decode(&normalized).map_err(|e| format!("invalid hex: {e}"))

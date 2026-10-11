@@ -291,7 +291,7 @@ fn validate_attachment_text_data(text: &str) -> Result<(), Error> {
     if let Some(payload) = text.strip_prefix("hex:").or_else(|| text.strip_prefix("HEX:")) {
         let payload = payload.trim();
         if payload.is_empty()
-            || payload.len() % 2 != 0
+            || !payload.len().is_multiple_of(2)
             || !payload.chars().all(|ch| ch.is_ascii_hexdigit())
         {
             return Err(Error::new(

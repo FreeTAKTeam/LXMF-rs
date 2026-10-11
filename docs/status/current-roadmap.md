@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-10-03
+Last reassessed: 2026-10-10
 MeshChat POC evidence added: 2026-09-27
 
 This file is the repository-level source of truth for parity posture, release
@@ -16,6 +16,28 @@ external-client evidence.
 
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
+
+## v0.14.0 release preparation
+
+The release candidate consolidates the ZeroMQ SDK recovery, durable-custody,
+propagation resource-use, and reusable reply-connection increments merged since
+v0.13.0. Public package versions advance together to 0.14.0. The existing patched
+transport is published as `reticulum-rs-zeromq` so crates.io consumers retain
+the same bounds and lifecycle behavior as the bundles. The supported Rust
+minimum is 1.88, matching the locked dependency requirements. Release and migration
+details are in [v0.14.0 notes](../release-notes-v0.14.0.md) and
+[upgrade guidance](../migrations/v0.14.0-zmq.md).
+
+The release-check follow-up replaces outbound sleep polling with independent
+bounded receiver waits. Queue capacity (1024) and worker lanes (16) stay intact;
+focused regressions cover idle shutdown and durable dispatch without legacy
+queue traffic, alongside the existing parallel-delivery tests.
+
+The reference/parity boundary is unchanged. Production multi-hour memory/swap,
+power-cut, and physical/public-network qualification remain separate from this
+release. The candidate must pass local release/smoke checks, CI and Verify,
+and the tag's publication, interoperability, and performance workflows before
+publication is described as verified.
 
 ## Reticulum 1.5.5 feature update (v0.13.0 released)
 

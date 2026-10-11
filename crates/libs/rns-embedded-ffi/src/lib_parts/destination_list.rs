@@ -12,7 +12,7 @@ fn destination_list(
     // from the caller-provided destination count with fixed 16-byte entries.
     let bytes = unsafe { core::slice::from_raw_parts(ptr, count.saturating_mul(16)) };
     let mut out = alloc::vec::Vec::with_capacity(count);
-    for chunk in bytes.chunks_exact(16) {
+    for chunk in bytes.as_chunks::<16>().0 {
         let mut destination = [0_u8; 16];
         destination.copy_from_slice(chunk);
         out.push(destination);

@@ -128,12 +128,10 @@ impl ReticulumPacketDiskCache {
         match tokio::fs::read(&raw_path).await {
             Ok(payload) => {
                 return Ok(payload
-                    .chunks_exact(HASH_SIZE)
-                    .map(|bytes| {
-                        let bytes: [u8; HASH_SIZE] =
-                            bytes.try_into().expect("chunks_exact yields fixed-size packet hashes");
-                        Hash::new(bytes)
-                    })
+                    .as_chunks::<HASH_SIZE>()
+                    .0
+                    .iter()
+                    .map(|bytes| Hash::new(*bytes))
                     .collect());
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}

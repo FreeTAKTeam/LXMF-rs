@@ -354,7 +354,9 @@ async fn resource_request_responses_use_bound_link_iface_without_route_lookup() 
     let advertisement = decrypt_resource_advertisement(&link_guard, &advertisement_packet);
     let requested_hashes = advertisement
         .hashmap
-        .chunks_exact(MAPHASH_LEN)
+        .as_chunks::<MAPHASH_LEN>()
+        .0
+        .iter()
         .map(|chunk| {
             let mut hash = [0u8; MAPHASH_LEN];
             hash.copy_from_slice(chunk);
@@ -452,7 +454,9 @@ async fn resource_request_responses_fit_bound_iface_mtu() {
     assert!(advertisement.parts > 1, "test payload should require multiple constrained-MTU parts");
     let requested_hashes = advertisement
         .hashmap
-        .chunks_exact(MAPHASH_LEN)
+        .as_chunks::<MAPHASH_LEN>()
+        .0
+        .iter()
         .map(|chunk| {
             let mut hash = [0u8; MAPHASH_LEN];
             hash.copy_from_slice(chunk);

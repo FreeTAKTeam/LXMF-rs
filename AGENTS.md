@@ -3,7 +3,7 @@
 ## Project Structure
 
 - This is a Cargo workspace using resolver `2`, Rust edition `2021`, and
-  `rust-version = "1.85"`. Workspace lints forbid `unsafe_code`, deny
+  `rust-version = "1.88"`. Workspace lints forbid `unsafe_code`, deny
   `dbg_macro` and `todo`, and warn on `unwrap_used`.
 - Main app crates live under `crates/apps`: `reticulumd` for the daemon,
   `lxmf-cli` for LXMF/LXMD command-line flows, and `rns-tools` for Reticulum
