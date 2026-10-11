@@ -18,6 +18,7 @@ pub use lxmf_sdk::ReferenceRevision
 pub use lxmf_sdk::SoftwareParityOrientation
 pub use lxmf_sdk::SoftwareParityReferences
 pub use lxmf_sdk::current_software_parity_orientation
+pub use lxmf_sdk::durable_broker
 pub mod lxmf_sdk::app
 #[non_exhaustive] pub enum lxmf_sdk::app::AttemptDisposition
 pub lxmf_sdk::app::AttemptDisposition::Failed
@@ -2079,6 +2080,10 @@ pub lxmf_sdk::ErrorCategory::Validation
 pub lxmf_sdk::EventSinkKind::Custom
 pub lxmf_sdk::EventSinkKind::Mqtt
 pub lxmf_sdk::EventSinkKind::Webhook
+pub enum lxmf_sdk::ExecutionCertainty
+pub lxmf_sdk::ExecutionCertainty::NotSubmitted
+pub lxmf_sdk::ExecutionCertainty::Rejected
+pub lxmf_sdk::ExecutionCertainty::Unknown
 #[non_exhaustive] pub enum lxmf_sdk::GroupRecipientState
 pub lxmf_sdk::GroupRecipientState::Accepted
 pub lxmf_sdk::GroupRecipientState::Deferred
@@ -2271,6 +2276,15 @@ pub lxmf_sdk::VoiceSessionState::Unknown
 pub enum lxmf_sdk::ZmqEndpointRole
 pub lxmf_sdk::ZmqEndpointRole::Bind
 pub lxmf_sdk::ZmqEndpointRole::Connect
+pub enum lxmf_sdk::ZmqRecoveryDecision
+pub lxmf_sdk::ZmqRecoveryDecision::CredentialsRequired
+pub lxmf_sdk::ZmqRecoveryDecision::ReconcileOperation
+pub lxmf_sdk::ZmqRecoveryDecision::RestoreSession
+pub lxmf_sdk::ZmqRecoveryDecision::RetryWithinBudget
+pub lxmf_sdk::ZmqRecoveryDecision::Stop
+pub lxmf_sdk::ZmqRecoveryDecision::StorageBackpressure
+impl lxmf_sdk::ZmqRecoveryDecision
+pub fn lxmf_sdk::ZmqRecoveryDecision::for_error(error: &lxmf_sdk::SdkError, replay_safe: bool) -> Self
 #[non_exhaustive] pub struct lxmf_sdk::Ack
 pub lxmf_sdk::Ack::accepted: bool
 pub lxmf_sdk::Ack::revision: core::option::Option<u64>
@@ -2398,6 +2412,8 @@ pub lxmf_sdk::CapabilityDescriptor::since_contract: alloc::string::String
 pub lxmf_sdk::CapabilityDescriptor::state: lxmf_sdk::capability::CapabilityState
 pub lxmf_sdk::CapabilityDescriptor::version: u16
 pub struct lxmf_sdk::Client<B: lxmf_sdk::SdkBackend>
+impl lxmf_sdk::Client<lxmf_sdk::ZmqPipelineBackendClient>
+pub fn lxmf_sdk::Client<lxmf_sdk::ZmqPipelineBackendClient>::start_durable_zmq(&self, req: lxmf_sdk::StartRequest) -> core::result::Result<lxmf_sdk::ClientHandle, lxmf_sdk::SdkError>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::backend(&self) -> &B
 pub fn lxmf_sdk::Client<B>::new(backend: B) -> Self
@@ -3623,6 +3639,14 @@ pub lxmf_sdk::WorkflowPeerReadyResult::contact: lxmf_sdk::domain::ContactRecord
 pub lxmf_sdk::WorkflowPeerReadyResult::identity: lxmf_sdk::domain::IdentityRef
 pub lxmf_sdk::WorkflowPeerReadyResult::was_created: bool
 pub struct lxmf_sdk::ZmqPipelineBackendClient
+impl lxmf_sdk::ZmqPipelineBackendClient
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_ack_stored(&self, request: rns_rpc::broker::AckStoredRequest) -> core::result::Result<rns_rpc::broker::EventPosition, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_admit(&self, request: rns_rpc::broker::AdmitRequest) -> core::result::Result<rns_rpc::broker::OperationReceipt, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_announces(&self, request: rns_rpc::broker::AnnounceProjectionRequest) -> core::result::Result<serde_json::value::Value, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_fetch(&self, request: rns_rpc::broker::FetchRequest) -> core::result::Result<rns_rpc::broker::BrokerBatch, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_reconcile(&self, request: rns_rpc::broker::ReconcileRequest) -> core::result::Result<core::option::Option<rns_rpc::broker::OperationReceipt>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_resume(&self, request: rns_rpc::broker::ResumeRequest) -> core::result::Result<rns_rpc::broker::BrokerCheckpoint, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::negotiate_durable_broker(&self) -> core::result::Result<lxmf_sdk::capability::NegotiationResponse, lxmf_sdk::SdkError>
 impl lxmf_sdk::ZmqPipelineBackendClient
 pub fn lxmf_sdk::ZmqPipelineBackendClient::delivery_stamp_policy_get(&self) -> core::result::Result<lxmf_sdk::domain::DeliveryStampPolicyResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::delivery_stamp_policy_set(&self, req: lxmf_sdk::domain::DeliveryStampPolicyRequest) -> core::result::Result<lxmf_sdk::domain::DeliveryStampPolicyResult, lxmf_sdk::SdkError>
