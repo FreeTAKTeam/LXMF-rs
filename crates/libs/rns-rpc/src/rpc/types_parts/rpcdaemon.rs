@@ -64,7 +64,7 @@ pub struct RpcDaemon {
     sdk_metrics: Arc<Mutex<RpcMetrics>>,
     zmq_pipeline_metrics: Arc<zmq_metrics::ZmqPipelineMetrics>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
-    outbound_delivery_tx: Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
+    outbound_delivery_tx: Option<crossbeam_channel::Sender<OutboundDeliveryCommand>>,
     outbound_delivery_workers: Mutex<Vec<std::thread::JoinHandle<()>>>,
     outbound_delivery_stop: Arc<std::sync::atomic::AtomicBool>,
     announce_bridge: Option<Arc<dyn AnnounceBridge>>,

@@ -545,6 +545,67 @@ fn app_delivery_cancel_accepts_queued_message_before_bridge_handoff() {
 }
 
 #[test]
+fn durable_outbound_dispatch_progresses_without_legacy_queue_commands() {
+    let dir = tempfile::tempdir().expect("broker directory");
+    let store = MessagesStore::open(&dir.path().join("daemon.db")).expect("broker store");
+    store.enable_durable_broker(32 * 1024 * 1024).expect("enable durable broker");
+    let (started_tx, started_rx) = std_mpsc::channel();
+    let (release_tx, release_rx) = std_mpsc::channel();
+    let daemon = RpcDaemon::with_store_and_bridges(
+        store,
+        "idle-durable-dispatch".to_string(),
+        Some(Arc::new(BlockingOutboundBridge::new(started_tx, release_rx))),
+        None,
+    );
+    let receipt = daemon
+        .store
+        .broker_command(crate::storage::broker::BrokerCommand::Admit {
+            owner: "local".into(),
+            source: "rch".into(),
+            request: crate::broker::AdmitRequest {
+                identity: "handle".into(),
+                operation_id: "idle-dispatch-op".into(),
+                destination: "remote".into(),
+                title: "".into(),
+                content: "hello".into(),
+                fields: None,
+                options: Default::default(),
+            },
+        })
+        .expect("durable admission");
+    let started = started_rx
+        .recv_timeout(StdDuration::from_secs(2))
+        .expect("durable pump must progress while the legacy queue stays empty");
+    assert_eq!(receipt["message_id"].as_str(), Some(started.as_str()));
+    release_tx.send(()).expect("release durable delivery");
+    daemon.shutdown_outbound_workers();
+}
+
+#[test]
+fn idle_outbound_delivery_workers_shutdown_with_sender_still_open() {
+    let daemon = RpcDaemon::with_store_and_bridges(
+        MessagesStore::in_memory().expect("in-memory store"),
+        "idle-worker-shutdown".to_string(),
+        Some(Arc::new(PendingOutboundBridge)),
+        None,
+    );
+    assert!(daemon.outbound_delivery_tx.is_some());
+    assert_eq!(daemon.outbound_delivery_workers.lock().expect("worker handles").len(), 16);
+
+    let (done_tx, done_rx) = std_mpsc::channel();
+    let shutdown = std::thread::spawn(move || {
+        daemon.shutdown_outbound_workers();
+        assert!(daemon.outbound_delivery_tx.is_some(), "shutdown must not need disconnection");
+        assert!(daemon.outbound_delivery_workers.lock().expect("worker handles").is_empty());
+        done_tx.send(()).expect("shutdown observer remains connected");
+    });
+    done_rx
+        .recv_timeout(StdDuration::from_secs(2))
+        .expect("idle workers must stop within the bounded shutdown budget");
+    shutdown.join().expect("shutdown worker");
+}
+
+#[test]
 fn outbound_delivery_worker_uses_bounded_parallel_lanes() {
     let store = MessagesStore::in_memory().expect("in-memory store");
     let (started_tx, started_rx) = std_mpsc::channel();

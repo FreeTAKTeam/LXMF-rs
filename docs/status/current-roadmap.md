@@ -28,6 +28,11 @@ minimum is 1.88, matching the locked dependency requirements. Release and migrat
 details are in [v0.14.0 notes](../release-notes-v0.14.0.md) and
 [upgrade guidance](../migrations/v0.14.0-zmq.md).
 
+The release-check follow-up replaces outbound sleep polling with independent
+bounded receiver waits. Queue capacity (1024) and worker lanes (16) stay intact;
+focused regressions cover idle shutdown and durable dispatch without legacy
+queue traffic, alongside the existing parallel-delivery tests.
+
 The reference/parity boundary is unchanged. Production multi-hour memory/swap,
 power-cut, and physical/public-network qualification remain separate from this
 release. The candidate must pass local release/smoke checks, CI and Verify,

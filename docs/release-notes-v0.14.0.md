@@ -25,6 +25,9 @@ remain at the existing tested baseline.
   generation. The daemon retains at most 32 active plus idle reply connections,
   removes the former per-reply delay, discards failed sockets, and joins active
   deliveries on shutdown.
+- Dedicated outbound workers use a bounded channel wait instead of sleeping
+  after an empty poll. Queued work wakes the receiver directly; stop and durable
+  dispatch checks retain their periodic timeout.
 - `reticulum-rs-zeromq` publishes the existing patched transport under a distinct
   package name. The Rust import remains `zeromq`; registry consumers now receive
   the same transport corrections as the binary bundles. All 18 existing public

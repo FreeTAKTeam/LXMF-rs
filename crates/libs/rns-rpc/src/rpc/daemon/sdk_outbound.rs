@@ -11,7 +11,7 @@ impl RpcDaemon {
         delivery_status_lock: Arc<Mutex<()>>,
         outbound_delivery_handoffs: Arc<Mutex<HashSet<String>>>,
     ) -> (
-        Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
+        Option<crossbeam_channel::Sender<OutboundDeliveryCommand>>,
         Vec<std::thread::JoinHandle<()>>,
         Arc<std::sync::atomic::AtomicBool>,
     ) {
@@ -22,15 +22,14 @@ impl RpcDaemon {
         }
         let mut workers = Vec::new();
         let (tx, rx) =
-            mpsc::sync_channel::<OutboundDeliveryCommand>(OUTBOUND_DELIVERY_QUEUE_CAPACITY);
-        let rx = Arc::new(Mutex::new(rx));
+            crossbeam_channel::bounded::<OutboundDeliveryCommand>(OUTBOUND_DELIVERY_QUEUE_CAPACITY);
         for lane in 0..OUTBOUND_DELIVERY_WORKER_LANES {
             let bridge = Arc::clone(&bridge);
             let store = Arc::clone(&store);
             let delivery_traces = Arc::clone(&delivery_traces);
             let delivery_status_lock = Arc::clone(&delivery_status_lock);
             let outbound_delivery_handoffs = Arc::clone(&outbound_delivery_handoffs);
-            let rx = Arc::clone(&rx);
+            let rx = rx.clone();
             let stop = Arc::clone(&stop);
             workers.push(
                 std::thread::Builder::new()
@@ -42,18 +41,13 @@ impl RpcDaemon {
                         if lane == 0 {
                             Self::pump_durable_dispatch(&store, &bridge);
                         }
-                        let command = {
-                            let guard =
-                                rx.lock().expect("outbound delivery receiver mutex poisoned");
-                            guard.try_recv()
-                        };
+                        // Each dedicated OS worker waits independently. In particular,
+                        // an idle receiver cannot lock lane 0 out of the durable pump.
+                        let command = rx.recv_timeout(std::time::Duration::from_millis(25));
                         let command = match command {
                             Ok(command) => command,
-                            Err(mpsc::TryRecvError::Empty) => {
-                                std::thread::sleep(std::time::Duration::from_millis(25));
-                                continue;
-                            }
-                            Err(mpsc::TryRecvError::Disconnected) => break,
+                            Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
+                            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
                         };
                         Self::process_outbound_delivery_command(
                             &bridge,
@@ -388,8 +382,10 @@ impl RpcDaemon {
         };
         tx.try_send(OutboundDeliveryCommand { record, options }).map_err(|err| {
             let message = match err {
-                mpsc::TrySendError::Full(_) => "outbound delivery queue full",
-                mpsc::TrySendError::Disconnected(_) => "outbound delivery worker disconnected",
+                crossbeam_channel::TrySendError::Full(_) => "outbound delivery queue full",
+                crossbeam_channel::TrySendError::Disconnected(_) => {
+                    "outbound delivery worker disconnected"
+                }
             };
             std::io::Error::new(std::io::ErrorKind::WouldBlock, message)
         })
