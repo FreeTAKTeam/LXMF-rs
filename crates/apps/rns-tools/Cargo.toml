@@ -28,7 +28,7 @@ rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version =
 rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.14.0" }
 rand_core = { workspace = true, features = ["getrandom"] }
 bzip2.workspace = true
-# process-wrap 8.2 keeps process-tree cleanup compatible with the workspace MSRV (1.85).
+# process-wrap 8.2 keeps process-tree cleanup compatible with the workspace MSRV.
 process-wrap = { version = "=8.2.1", default-features = false, features = ["std", "process-group", "job-object", "tracing"] }
 portable-pty = "=0.8.1"
 

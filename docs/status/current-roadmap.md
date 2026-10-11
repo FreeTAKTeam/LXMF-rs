@@ -23,7 +23,8 @@ The release candidate consolidates the ZeroMQ SDK recovery, durable-custody,
 propagation resource-use, and reusable reply-connection increments merged since
 v0.13.0. Public package versions advance together to 0.14.0. The existing patched
 transport is published as `reticulum-rs-zeromq` so crates.io consumers retain
-the same bounds and lifecycle behavior as the bundles. Release and migration
+the same bounds and lifecycle behavior as the bundles. The supported Rust
+minimum is 1.88, matching the locked dependency requirements. Release and migration
 details are in [v0.14.0 notes](../release-notes-v0.14.0.md) and
 [upgrade guidance](../migrations/v0.14.0-zmq.md).
 

@@ -32,6 +32,10 @@ remain at the existing tested baseline.
 
 ## Upgrade and operations
 
+Rust 1.88 or newer is required. The locked `time` family already requires
+1.88, and the locked ICU family requires 1.86; this release corrects the stale
+1.85 declaration and adds the supported minimum to the build matrix.
+
 Rust struct literals for `ZmqRpcEnvelope` must include
 `response_connection_id: None` when no response-socket generation is supplied.
 Existing request/response constructors remain available. Unextended protocol-v1
