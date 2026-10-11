@@ -336,15 +336,15 @@ impl RNodeProbeStatus {
         }
         Some(
             image_data
-                .chunks_exact(R_NODE_FRAMEBUFFER_BYTES_PER_LINE)
+                .as_chunks::<R_NODE_FRAMEBUFFER_BYTES_PER_LINE>()
+                .0
+                .iter()
                 .take(usize::from(u8::MAX) + 1)
                 .enumerate()
                 .filter_map(|(line, chunk)| {
                     let line = u8::try_from(line)
                         .expect("line index within 256-item take fits u8");
-                    let line_data: [u8; R_NODE_FRAMEBUFFER_BYTES_PER_LINE] =
-                        chunk.try_into().expect("chunks_exact yields framebuffer line length");
-                    self.framebuffer_write_frame(line, line_data)
+                    self.framebuffer_write_frame(line, *chunk)
                 })
                 .collect(),
         )

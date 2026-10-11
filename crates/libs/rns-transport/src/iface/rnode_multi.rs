@@ -729,7 +729,7 @@ impl RNodeMultiProbeStatus {
                         "rnode multi interfaces response must contain two-byte records".to_string()
                     );
                 }
-                for record in payload.chunks_exact(2) {
+                for record in payload.as_chunks::<2>().0 {
                     let vport = record[0];
                     let kind = RNodeMultiInterfaceType::from_byte(record[1]);
                     if self.interfaces.insert(vport, kind).is_some() {
