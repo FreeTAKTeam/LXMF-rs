@@ -152,7 +152,7 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
         }
 
         let mut cipher = AesCbcEnc::new(&self.enc_key, &iv);
-        for chunk in cipher_buf.chunks_exact_mut(AES_BLOCK_SIZE) {
+        for chunk in cipher_buf.as_chunks_mut::<AES_BLOCK_SIZE>().0 {
             cipher.encrypt_block_mut(Block::from_mut_slice(chunk));
         }
 
@@ -210,7 +210,7 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
 
         let ciphertext = &token_data[IV_KEY_SIZE..tag_start_index];
         if ciphertext.is_empty()
-            || ciphertext.len() % AES_BLOCK_SIZE != 0
+            || !ciphertext.len().is_multiple_of(AES_BLOCK_SIZE)
             || out_buf.len() < ciphertext.len()
         {
             return Err(RnsError::CryptoError);
@@ -220,7 +220,7 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
         plain_buf.copy_from_slice(ciphertext);
 
         let mut cipher = AesCbcDec::new(&self.enc_key, &iv.into());
-        for chunk in plain_buf.chunks_exact_mut(AES_BLOCK_SIZE) {
+        for chunk in plain_buf.as_chunks_mut::<AES_BLOCK_SIZE>().0 {
             cipher.decrypt_block_mut(Block::from_mut_slice(chunk));
         }
 

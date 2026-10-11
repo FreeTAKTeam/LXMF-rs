@@ -360,7 +360,7 @@ mod tests {
                     reader_reads_during_rotation.fetch_add(1, Ordering::Relaxed);
                 }
                 attempts += 1;
-                if attempts % 64 == 0 {
+                if attempts.is_multiple_of(64) {
                     std::thread::yield_now();
                 }
             }

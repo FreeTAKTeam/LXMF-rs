@@ -506,7 +506,7 @@ fn param_hex_bytes(params: &JsonValue, keys: &[&str]) -> Result<Vec<u8>, std::io
         std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{} is required", keys[0]))
     })?;
     let trimmed = value.trim();
-    if trimmed.is_empty() || trimmed.len() % 2 != 0 {
+    if trimmed.is_empty() || !trimmed.len().is_multiple_of(2) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("{} must be a non-empty even-length hex string", keys[0]),

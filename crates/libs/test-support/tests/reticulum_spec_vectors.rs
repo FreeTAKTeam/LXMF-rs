@@ -334,7 +334,7 @@ fn link_id_from_request(packet: &Packet) -> AddressHash {
 }
 
 fn from_hex(hex: &str) -> Vec<u8> {
-    assert!(hex.len() % 2 == 0, "hex string must have even length");
+    assert!(hex.len().is_multiple_of(2), "hex string must have even length");
     hex.as_bytes()
         .chunks_exact(2)
         .map(|pair| {

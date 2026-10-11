@@ -724,7 +724,7 @@ impl RNodeMultiProbeStatus {
                 Ok(true)
             }
             CMD_INTERFACES => {
-                if payload.is_empty() || payload.len() % 2 != 0 {
+                if payload.is_empty() || !payload.len().is_multiple_of(2) {
                     return Err(
                         "rnode multi interfaces response must contain two-byte records".to_string()
                     );

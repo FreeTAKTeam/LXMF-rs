@@ -209,7 +209,7 @@ fn normalize_attachment_data(value: &JsonValue) -> Result<JsonValue, LxmfError> 
 }
 
 fn decode_hex_attachment_data(text: &str) -> Result<Vec<u8>, LxmfError> {
-    if text.len() % 2 != 0 || !text.chars().all(|ch| ch.is_ascii_hexdigit()) {
+    if !text.len().is_multiple_of(2) || !text.chars().all(|ch| ch.is_ascii_hexdigit()) {
         return Err(LxmfError::Encode(
             "attachment hex data has odd length or non-hex characters".to_string(),
         ));
