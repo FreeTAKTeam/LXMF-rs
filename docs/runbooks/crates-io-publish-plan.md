@@ -31,9 +31,12 @@ Use a two-tier public model:
   - `lxmf`
   - `reticulum-rs`
 - Component crates:
+  - `reticulum-rs-zeromq` (the patched Tokio/TCP transport dependency)
   - `lxmf-reference`
   - `lxmf-wire`
   - `lxmf-sdk`
+  - `lxmf-runtime`
+  - `meshchat-api` (the opt-in partial application API)
   - `reticulum-rs-core`
   - `reticulum-rs-transport`
   - `reticulum-rs-rpc`
@@ -70,12 +73,14 @@ not have to rewrite `use` paths just to complete the package rename.
 | Current workspace package | crates.io package | Rust crate name | Version target | Publish |
 | --- | --- | --- | --- | --- |
 | `lxmf-reference` | `lxmf-reference` | `lxmf_reference` | GitHub release version | yes |
+| `vendor/zeromq` | `reticulum-rs-zeromq` | `zeromq` | GitHub release version | yes |
 | `lxmf-core` | `lxmf-wire` | `lxmf_core` | GitHub release version | yes |
 | `lxmf-sdk` | `lxmf-sdk` | `lxmf_sdk` | GitHub release version | yes |
 | `lxmf-runtime` | `lxmf-runtime` | `lxmf_runtime` | GitHub release version | yes |
 | `rns-core` | `reticulum-rs-core` | `rns_core` | GitHub release version | yes |
 | `rns-transport` | `reticulum-rs-transport` | `rns_transport` | GitHub release version | yes |
 | `rns-rpc` | `reticulum-rs-rpc` | `rns_rpc` | GitHub release version | yes |
+| `meshchat-api` | `meshchat-api` | `meshchat_api` | GitHub release version | yes |
 
 ### Wave 1.5: Facades after components exist
 
@@ -187,23 +192,32 @@ Publish in dependency order, not with a blanket `cargo publish --workspace`.
 
 Recommended order:
 
-1. `lxmf-reference`
-2. `reticulum-rs-core`
-3. `lxmf-wire`
-4. `rns-embedded-core`
-5. `rns-embedded-runtime`
-6. `rns-embedded-ffi`
-7. `reticulum-rs-transport`
-8. `reticulum-rs-rpc`
-9. `lxmf-sdk`
-10. `lxmf-runtime`
-11. `rns-embedded-mininode`
-12. `lxmf-embedded-mini`
-13. `reticulum-rs`
-14. `lxmf`
-15. `lxmf-cli`
-16. `reticulumd`
-17. `rns-tools`
+1. `reticulum-rs-zeromq`
+2. `lxmf-reference`
+3. `reticulum-rs-core`
+4. `lxmf-wire`
+5. `rns-embedded-core`
+6. `rns-embedded-runtime`
+7. `rns-embedded-ffi`
+8. `reticulum-rs-transport`
+9. `reticulum-rs-rpc`
+10. `meshchat-api`
+11. `lxmf-sdk`
+12. `lxmf-runtime`
+13. `rns-embedded-mininode`
+14. `lxmf-embedded-mini`
+15. `reticulum-rs`
+16. `lxmf`
+17. `lxmf-cli`
+18. `reticulumd`
+19. `rns-tools`
+
+The fork retains upstream MIT attribution and the `zeromq` Rust import name.
+Its distinct package name is required: publishing a path dependency named
+`zeromq` would select the unpatched upstream registry version. Keep the fork
+in `vendor/zeromq` outside the application workspace's lint/architecture scope;
+validate its packaged library and focused transport regressions separately.
+
 Reason:
 
 - `reticulum-rs-rpc` and `lxmf-sdk` share pinned compatibility metadata through

@@ -2,6 +2,9 @@
 
 Base: crates.io zeromq 0.6.0, MIT, original sources and license included.
 
+Published as `reticulum-rs-zeromq`, with library name `zeromq`. Package versions
+follow the LXMF-rs release so registry consumers keep these corrections.
+
 The unchanged ZMTP wire implementation is used by the ZeroMQ SDK/daemon. Local
 changes cap a frame and complete multipart at 16 MiB plus 64 KiB envelope overhead/32 parts before reserve;
 cap all incomplete decoded frames at 128 MiB; cap active transport read halves

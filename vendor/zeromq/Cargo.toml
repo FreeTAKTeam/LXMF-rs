@@ -12,8 +12,8 @@
 [package]
 edition = "2021"
 rust-version = "1.85.0"
-name = "zeromq"
-version = "0.6.0"
+name = "reticulum-rs-zeromq"
+version = "0.14.0"
 authors = [
     "Alexei Kornienko <alexei.kornienko@gmail.com>",
     "Ryan Butler <thebutlah@gmail.com>",
@@ -25,10 +25,14 @@ autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = "A native Rust implementation of ZeroMQ"
+description = "LXMF-rs maintained ZeroMQ transport with bounded frames, connections, and handshake ownership."
 readme = "README.md"
 license = "MIT"
-repository = "https://github.com/zeromq/zmq.rs"
+repository = "https://github.com/FreeTAKTeam/LXMF-rs"
+documentation = "https://docs.rs/reticulum-rs-zeromq"
+keywords = ["zeromq", "zmtp", "reticulum", "networking"]
+categories = ["network-programming"]
+exclude = ["Cargo.toml.orig"]
 
 [features]
 all-transport = [

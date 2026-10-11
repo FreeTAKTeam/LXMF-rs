@@ -282,6 +282,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
         PublishWave::All => {
             static ALL_PUBLIC_CRATES: &[PublishedCrate] = &[
                 PublishedCrate {
+                    package: "reticulum-rs-zeromq",
+                    manifest_path: "vendor/zeromq/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "lxmf-reference",
                     manifest_path: "crates/libs/lxmf-reference/Cargo.toml",
                 },
@@ -294,6 +298,18 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
                     manifest_path: "crates/libs/lxmf-core/Cargo.toml",
                 },
                 PublishedCrate {
+                    package: "rns-embedded-core",
+                    manifest_path: "crates/libs/rns-embedded-core/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "rns-embedded-runtime",
+                    manifest_path: "crates/libs/rns-embedded-runtime/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "rns-embedded-ffi",
+                    manifest_path: "crates/libs/rns-embedded-ffi/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "reticulum-rs-transport",
                     manifest_path: "crates/libs/rns-transport/Cargo.toml",
                 },
@@ -302,14 +318,42 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
                     manifest_path: "crates/libs/rns-rpc/Cargo.toml",
                 },
                 PublishedCrate {
+                    package: "meshchat-api",
+                    manifest_path: "crates/libs/meshchat-api/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "lxmf-sdk",
                     manifest_path: "crates/libs/lxmf-sdk/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "lxmf-runtime",
+                    manifest_path: "crates/libs/lxmf-runtime/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "rns-embedded-mininode",
+                    manifest_path: "crates/libs/rns-embedded-mininode/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "lxmf-embedded-mini",
+                    manifest_path: "crates/libs/lxmf-embedded-mini/Cargo.toml",
                 },
                 PublishedCrate {
                     package: "reticulum-rs",
                     manifest_path: "crates/libs/reticulum-rs/Cargo.toml",
                 },
                 PublishedCrate { package: "lxmf", manifest_path: "crates/libs/lxmf/Cargo.toml" },
+                PublishedCrate {
+                    package: "lxmf-cli",
+                    manifest_path: "crates/apps/lxmf-cli/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "reticulumd",
+                    manifest_path: "crates/apps/reticulumd/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "rns-tools",
+                    manifest_path: "crates/apps/rns-tools/Cargo.toml",
+                },
             ];
             ALL_PUBLIC_CRATES
         }
