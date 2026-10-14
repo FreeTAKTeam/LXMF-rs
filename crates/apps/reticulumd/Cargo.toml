@@ -63,7 +63,7 @@ name = "code_quality_issue_369"
 path = "tests/code_quality_issue_369.rs"
 
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
-btleplug = "0.12"
+btleplug = "0.13"
 futures = "0.3.31"
 uuid = "1.16.0"
 

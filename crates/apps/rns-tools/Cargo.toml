@@ -36,7 +36,7 @@ portable-pty = "=0.8.1"
 tokio = { workspace = true, features = ["test-util"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
-btleplug = "0.12"
+btleplug = "0.13"
 futures = "0.3.31"
 uuid = "1.16.0"
 tokio = { workspace = true }
