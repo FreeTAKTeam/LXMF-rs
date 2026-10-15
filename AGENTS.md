@@ -50,6 +50,12 @@
 
 ## Rust Development Practices
 
+Read and apply [Rust engineering principles](RUST_ENGINEERING_PRINCIPLES.md)
+for Rust design, implementation, refactoring, and review. It includes SOLID and
+research-driven design-pattern selection and complements these instructions.
+Repository-specific architecture, toolchain, safety, workflow, and release rules
+remain in force; do not replace them with generic design guidance.
+
 - Follow the existing module and crate boundaries before introducing new
   abstractions. Keep shared protocol/domain logic in library crates and keep
   app crates focused on process, CLI, daemon, and integration behavior.
