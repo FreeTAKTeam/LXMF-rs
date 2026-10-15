@@ -788,16 +788,16 @@ async fn routed_link_resource_request_forwards_back_to_link_requester() {
     };
 
     let (forwarded, target) = link_table
-        .handle_reverse_link_packet(&resource_request, next_hop_iface)
+        .handle_link_packet(&resource_request, next_hop_iface)
         .expect("reverse link packet should forward");
     assert_eq!(target, received_from);
     assert_eq!(forwarded.destination, resource_request.destination);
     assert_eq!(forwarded.context, PacketContext::ResourceRequest);
 
-    assert!(
-        link_table.handle_reverse_link_packet(&resource_request, received_from).is_none(),
-        "requester-side packets should keep using the normal forward path"
-    );
+    let (_, target) = link_table
+        .handle_link_packet(&resource_request, received_from)
+        .expect("requester-side packet should follow the recorded forward interface");
+    assert_eq!(target, next_hop_iface);
 }
 
 #[tokio::test]

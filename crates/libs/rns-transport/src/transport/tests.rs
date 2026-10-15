@@ -38,6 +38,8 @@ include!("tests_parts/shared_owner_unknown_link_request.rs");
 
 include!("tests_parts/encrypted_resource_control_packet.rs");
 
+include!("tests_parts/routed_link_packets.rs");
+
 include!("tests_parts/transport_register_channel_handler_d.rs");
 
 include!("tests_parts/inbound_proof_link_selection.rs");

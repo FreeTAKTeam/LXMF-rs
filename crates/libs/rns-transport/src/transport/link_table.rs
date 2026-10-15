@@ -144,6 +144,7 @@ impl LinkTable {
         self.entries.contains_key(link_id)
     }
 
+    #[cfg(test)]
     pub fn original_destination(&self, link_id: &LinkId) -> Option<AddressHash> {
         self.entries.get(link_id).filter(|e| e.validated).map(|e| e.original_destination)
     }
@@ -182,17 +183,27 @@ impl LinkTable {
         }
     }
 
-    pub fn handle_reverse_link_packet(
+    pub fn handle_link_packet(
         &mut self,
         packet: &Packet,
         received_on: AddressHash,
     ) -> Option<(Packet, AddressHash)> {
+        // Shared-owner handoff can establish a Link without a destination path entry.
         let entry = self.entries.get_mut(&packet.destination)?;
-        if !entry.validated || received_on != entry.next_hop_iface {
+        if !entry.validated {
             return None;
         }
+        let target = if received_on == entry.next_hop_iface {
+            entry.received_from
+        } else if received_on == entry.received_from {
+            entry.next_hop_iface
+        } else {
+            return None;
+        };
         entry.timestamp = Instant::now();
-        Some(send_backwards(packet, entry))
+        let mut forwarded = packet.clone();
+        forwarded.ifac = None;
+        Some((forwarded, target))
     }
 
     pub fn remove_stale(&mut self) -> Vec<ExpiredUnvalidatedLink> {

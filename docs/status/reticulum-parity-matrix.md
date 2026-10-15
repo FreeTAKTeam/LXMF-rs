@@ -33,6 +33,14 @@ daemon regression imports an SDK identity and verifies its delivery destination
 while the interface inventory remains empty; this is bootstrap integration
 evidence, not network interoperability evidence.
 
+Established Link data, RTT, packet delivery proofs and Resource proofs now follow
+the opposite recorded interface in either direction on a validated Link, even
+without a destination path-table entry after shared-owner handoff. Unit
+regressions cover both proof contexts and reject unrelated ingress and pending
+Links. The pinned-Python
+two-relay restart regression checks sender-confirmed LXMF delivery in both
+directions; broader reverse-delivery and network evidence remain separate.
+
 ## Reticulum 1.5.5 changed-feature release
 
 The v0.13.0 release adds partial discovery, named interface management, and

@@ -33,6 +33,13 @@ including remaining production memory/swap and delivery acceptance, is in
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 This does not change the Python reference pin or certify a production plateau.
 
+The PR CI repair routes established Link data, RTT, packet delivery proofs and
+Resource proofs to the opposite recorded interface in either direction, only
+after Link validation. It preserves shared-owner handoff even without a
+destination path-table entry. Focused regressions cover absent paths, both
+proof contexts, unrelated ingress and pending Links;
+the pinned-Python two-relay restart regression retains sender delivery checks.
+
 ## v0.14.0 release preparation
 
 The published release consolidates the ZeroMQ SDK recovery, durable-custody,
