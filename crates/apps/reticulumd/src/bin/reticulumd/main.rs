@@ -100,6 +100,7 @@ async fn main() {
     let meshchat_bind = args.meshchat_bind;
     let meshchat_assets = args.meshchat_assets.clone();
     let meshchat_state = args.db.with_extension("meshchat.json");
+    let meshchat_config = args.config.clone();
     if meshchat_bind.is_some_and(|bind| !bind.ip().is_loopback()) {
         eprintln!("--meshchat-bind must use a loopback address");
         std::process::exit(2);
@@ -118,6 +119,7 @@ async fn main() {
             meshchat_bind,
             meshchat_assets,
             meshchat_state,
+            meshchat_config,
         )
         .await;
     }
@@ -127,7 +129,13 @@ async fn main() {
         let daemon = context.daemon.clone();
         let path_table_persistence = context.path_table_persistence;
         let auto_runtime_shutdowns = context.auto_runtime_shutdowns;
-        spawn_meshchat_api(meshchat_bind, meshchat_assets, meshchat_state, context.daemon.clone());
+        spawn_meshchat_api(
+            meshchat_bind,
+            meshchat_assets,
+            meshchat_state,
+            meshchat_config,
+            context.daemon.clone(),
+        );
         tokio::select! {
             _=rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls, context.rpc_unix)=>{},
             error=async {match receipt_owner.as_mut(){Some(owner)=>owner.wait_failure().await,None=>std::future::pending::<String>().await}}=>log::error!("receipt persistence owner failed; stopping daemon: {error}"),
@@ -165,6 +173,7 @@ async fn run_daemon_loops(
     meshchat_bind: Option<std::net::SocketAddr>,
     meshchat_assets: Option<PathBuf>,
     meshchat_state: PathBuf,
+    meshchat_config: Option<PathBuf>,
 ) {
     let bootstrap::BootstrapContext {
         rpc_addr,
@@ -176,7 +185,13 @@ async fn run_daemon_loops(
         auto_runtime_shutdowns,
     } = context;
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    spawn_meshchat_api(meshchat_bind, meshchat_assets, meshchat_state, daemon.clone());
+    spawn_meshchat_api(
+        meshchat_bind,
+        meshchat_assets,
+        meshchat_state,
+        meshchat_config,
+        daemon.clone(),
+    );
     let signal_shutdown = shutdown_tx.clone();
     let signal_task = tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
@@ -259,6 +274,7 @@ fn spawn_meshchat_api(
     bind: Option<std::net::SocketAddr>,
     assets: Option<PathBuf>,
     state_path: PathBuf,
+    config_path: Option<PathBuf>,
     daemon: std::sync::Arc<rns_rpc::RpcDaemon>,
 ) {
     let Some(bind) = bind else {
@@ -269,7 +285,7 @@ fn spawn_meshchat_api(
         return;
     }
     tokio::spawn(async move {
-        if let Err(err) = meshchat_api::serve(bind, daemon, assets, state_path).await {
+        if let Err(err) = meshchat_api::serve(bind, daemon, assets, state_path, config_path).await {
             log::error!("MeshChat API stopped: {err}");
         }
     });

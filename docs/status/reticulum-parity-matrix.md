@@ -104,6 +104,11 @@ the live `enable_transport` value in daemon status. The companion MeshChat
 launcher enables transport and configures one TCP client plus one serial RNode;
 its measured radio bitrate and 2% announce cap pace rebroadcasts for the
 tested profile. Those launcher settings are outside this repository.
+The API now reads and edits saved daemon interfaces and the saved transport
+switch when `--config` is supplied; it preserves both supported TOML layouts
+and requires a daemon restart for changes to take effect. Focused local API
+tests cover these writes and import/export. They do not expand live Reticulum
+forwarding evidence or change the software-parity rows below.
 
 In one manual session, TCP stayed connected, the RNode stayed online, and the
 route to the LoRa peer remained one hop over the RNode during about four idle

@@ -21,9 +21,13 @@ base64.workspace = true
 log.workspace = true
 rand_core = { workspace = true, features = ["getrandom"] }
 rmpv.workspace = true
+toml.workspace = true
+toml_edit = "0.22"
+serialport = { version = "4.9", default-features = false }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+tempfile.workspace = true
