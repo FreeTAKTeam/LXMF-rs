@@ -33,6 +33,15 @@ Manual retries should stay bounded:
 4. Stop on validation, config, capability, and security categories unless the
    user or operator changes input/configuration.
 
+ZeroMQ transport failure can leave execution uncertain. A timeout does not
+prove that a mutation was rejected or never submitted. At the backend boundary,
+`ZmqRecoveryDecision::for_error` classifies `SdkError` using the operation's
+replay-safety contract:
+broker reads, fetch, stored ACK and reconciliation have bounded retries inside
+the original deadline; ordinary send/configuration/identity mutations do not.
+Reconcile durable admission by its persisted operation ID before resubmitting.
+Transient transport failure alone does not authorize re-importing an identity.
+
 ## Idempotency
 
 Use `SendRequest::with_idempotency_key(...)` when an operation may be retried

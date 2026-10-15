@@ -1,12 +1,15 @@
 # SDK Quickstart
 
-This quickstart covers a minimal `lxmf-sdk` client using the RPC backend.
+This quickstart covers the typed ZeroMQ backend for desktop/service clients,
+with Unix and TCP RPC compatibility entry points.
 
 ## Prerequisites
 
-- Rust toolchain matching `rust-toolchain.toml`
-- Running `reticulumd` endpoint (default `unix:/tmp/lxmf-rpc.sock`)
-- Workspace checked out with `cargo check --workspace` passing
+- Rust 1.88 or newer; repository builds use `rust-toolchain.toml`.
+- A running `reticulumd` endpoint. The minimal client below uses an explicitly
+  enabled local ZeroMQ listener.
+- An actual peer destination for delivery; `LXMF_DESTINATION` in the example
+  must identify a reachable peer, not a placeholder.
 
 ## Start `reticulumd`
 
@@ -39,19 +42,24 @@ cargo run -p reticulumd --bin reticulumd -- \
   --zmq-rpc-endpoint tcp://127.0.0.1:9100
 ```
 
-Enable the SDK client feature:
+The SDK and daemon both include ZeroMQ support in their default features.
+For an application outside this workspace, add:
 
 ```toml
-lxmf-sdk = { path = "crates/libs/lxmf-sdk", features = ["zmq-pipeline-backend"] }
+[dependencies]
+lxmf-sdk = "0.14.0"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tokio-stream = "0.1"
 ```
 
-```rust
-use lxmf_sdk::{Client, ZmqPipelineBackendClient, ZmqPipelineBackendConfig};
+If disabling default features, retain `std`, `sdk-async` and
+`zmq-pipeline-backend`. The app-facing constructor is:
 
-let backend = ZmqPipelineBackendClient::new(ZmqPipelineBackendConfig::local(
-    "tcp://127.0.0.1:9100",
-))?;
-let client = Client::new(backend);
+```rust
+use lxmf_sdk::app::Client;
+
+let client = Client::zmq_local("tcp://127.0.0.1:9100")?;
 ```
 
 Use loopback endpoints for local testing. Remote ZeroMQ endpoints require explicit token auth; the
@@ -95,32 +103,9 @@ LXMF_ZMQ_ENDPOINT=tcp://127.0.0.1:9100 \
 cargo run -p lxmf-sdk --example zmq_pipeline_send --features zmq-pipeline-backend
 ```
 
-Start `reticulumd` with HTTP and ZeroMQ enabled for a local stress comparison:
-
-```powershell
-cargo run -p reticulumd --features zmq-pipeline-rpc --bin reticulumd -- `
-  --rpc 127.0.0.1:4242 `
-  --zmq-rpc-endpoint tcp://127.0.0.1:9100 `
-  --db target/stress-pr199/reticulumd.db `
-  --identity target/stress-pr199/reticulumd.identity
-```
-
-Run the ignored HTTP-vs-ZeroMQ stress comparison:
-
-```powershell
-$env:LXMF_STRESS_HTTP_RPC='127.0.0.1:4242'
-$env:LXMF_STRESS_ZMQ_COMMAND='tcp://127.0.0.1:9100'
-$env:LXMF_STRESS_ZMQ_RESPONSE='tcp://127.0.0.1:9101'
-$env:LXMF_STRESS_ITERATIONS='1000'
-cargo test -p lxmf-sdk --features zmq-pipeline-backend --test transport_stress -- --ignored --nocapture --test-threads=1
-```
-
-The stress output is a terse two-line timing report:
-
-```text
-transport_stress op=snapshot iterations=1000 http_ms=... http_avg_us=... http_ops=... zmq_ms=... zmq_avg_us=... zmq_ops=... zmq_http_ratio=...
-transport_stress op=poll_events iterations=1000 http_ms=... http_avg_us=... http_ops=... zmq_ms=... zmq_avg_us=... zmq_ops=... zmq_http_ratio=...
-```
+For transport measurements, use the versioned methodology and complete
+results in the [performance guide](../performance.md). Benchmark/stress
+workloads are separate from this application startup path.
 
 For first-run token-authenticated TCP, put the shared secret in an environment variable
 and point `reticulumd` at the variable name:
@@ -147,56 +132,97 @@ For secured remote bind details, use token or mTLS configuration as described in
 ## Minimal SDK Client
 
 The app-facing path is event-driven: subscribe once, then handle typed events from the stream.
+Set `LXMF_DESTINATION` to the peer destination before running the application.
+The observation window is bounded, and terminality comes from the typed status
+rather than assuming every deployment waits for a delivery receipt.
 
 ```rust
 use lxmf_sdk::app::{Client, Config, EventKind, SendRequest, SubscriptionStart};
 use serde_json::json;
+use std::io;
+use tokio::time::{timeout, Duration};
 use tokio_stream::StreamExt;
 
 #[tokio::main]
-async fn main() -> Result<(), lxmf_sdk::app::Error> {
-    let client = Client::rpc("unix:/tmp/lxmf-rpc.sock");
-    let handle = client.runtime().start_async(Config::desktop_default()).await?;
+async fn main() -> Result<(), io::Error> {
+    // Format app errors only at this executable boundary; control flow stays typed.
+    let report = |error: lxmf_sdk::app::Error| {
+        io::Error::other(format!("{}: {}", error.code.as_str(), error.message))
+    };
+    let destination = std::env::var("LXMF_DESTINATION").map_err(io::Error::other)?;
+    let client = Client::zmq_local("tcp://127.0.0.1:9100").map_err(io::Error::other)?;
+    let handle = client
+        .runtime()
+        .start_async(Config::desktop_default())
+        .await
+        .map_err(report)?;
     println!("runtime_id={}", handle.runtime_id);
 
-    let mut events = client.events().subscribe(SubscriptionStart::Tail)?;
-    let receipt = client.messages().send_async(
-        SendRequest::new(
-            "example.service",
-            "example.peer",
-            json!({"title": "hello", "content": "sdk quickstart"}),
+    let mut events = client
+        .events()
+        .subscribe(SubscriptionStart::Tail)
+        .map_err(report)?;
+    let receipt = client
+        .messages()
+        .send_async(
+            SendRequest::new(
+                "example.service",
+                destination,
+                json!({"title": "hello", "content": "sdk quickstart"}),
+            )
+            .with_ttl_ms(30_000)
+            .with_correlation_id("quickstart-send")
+            .with_delivery_method("direct")
+            .with_stamp_cost(8)
+            .with_include_ticket(true)
+            .with_try_propagation_on_fail(true),
         )
-        .with_ttl_ms(30_000)
-        .with_correlation_id("quickstart-send")
-        .with_delivery_method("direct")
-        .with_stamp_cost(8)
-        .with_include_ticket(true)
-        .with_try_propagation_on_fail(true),
-    )
-    .await?;
+        .await
+        .map_err(report)?;
     println!("queued message_id={}", receipt.message_id);
 
-    while let Some(event) = events.next().await.transpose()? {
-        match event.kind {
-            EventKind::InboundMessageReceived => {
-                println!("received inbound message event");
+    let observation = timeout(Duration::from_secs(35), async {
+        while let Some(event) = events.next().await.transpose().map_err(report)? {
+            if let EventKind::StreamGapDetected(gap) = &event.kind {
+                return Err(io::Error::other(format!(
+                    "reconciliation required: {gap:?}"
+                )));
             }
-            EventKind::MessageDelivered
-                if event.metadata.message_id.as_deref() == Some(receipt.message_id.as_str()) =>
-            {
-                println!("message delivered");
-                break;
+            if event.metadata.message_id.as_deref() == Some(receipt.message_id.as_str()) {
+                if let Some(status) = client
+                    .messages()
+                    .status_async(receipt.message_id.clone())
+                    .await
+                    .map_err(report)?
+                {
+                    if status.terminal {
+                        println!("terminal delivery state={:?}", status.state);
+                        return Ok::<(), io::Error>(());
+                    }
+                }
             }
-            EventKind::StreamGapDetected(gap) => {
-                eprintln!("stream gap requires recovery: {:?}", gap);
-                break;
-            }
-            _ => {}
         }
-    }
+        Err(io::Error::other(
+            "event stream ended before a terminal status",
+        ))
+    })
+    .await;
+    drop(events);
+    client
+        .runtime()
+        .stop_async(lxmf_sdk::ShutdownMode::Graceful)
+        .await
+        .map_err(report)?;
+    observation.map_err(io::Error::other)??;
     Ok(())
 }
 ```
+
+Unix RPC users can replace the constructor with
+`Client::rpc("unix:/tmp/lxmf-rpc.sock")`. For production recovery, retain
+correlation/idempotency information and reconcile typed status after a stream
+gap or uncertain transport failure; see [delivery states](delivery-states.md)
+and [error handling](error-handling.md).
 
 ## Easy-Mode Golden Paths
 

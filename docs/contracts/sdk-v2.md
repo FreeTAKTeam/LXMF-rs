@@ -88,8 +88,8 @@ counts help consumers orient themselves, but they do not replace
 complete` is not a claim of forward behavioral parity. The optional
 `software_parity.forward_behavioral` checkpoint is generated from the frozen
 forward behavioral contract and includes its status, counts, and exact
-reference revision. For the current RNS 1.5.4-dev candidate it reports
-`partial` / `incomplete` (10 requirements, 9 applicable, 0 verified). It is
+reference revision. The frozen RNS 1.5.4-dev checkpoint reports
+`partial` / `incomplete` (10 requirements, 9 applicable, 1 verified). It is
 omitted when no forward checkpoint is available, so clients can distinguish
 older payloads from a verified result. The OpenRPC schema is authoritative for
 the current v2.6 response shape; strict clients must validate against the

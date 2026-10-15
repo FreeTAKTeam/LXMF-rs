@@ -4,6 +4,10 @@ LXMF-rs is a Cargo workspace with explicit library, application, embedded, and
 tooling boundaries. The root [`Cargo.toml`](../Cargo.toml) is the source of
 truth for active members and allowed workspace-local dependency edges.
 
+The workspace uses resolver 2, Rust edition 2021, and a minimum Rust version
+of 1.88. The 18 publishable workspace packages follow the 0.14.0 release;
+`test-support` and `xtask` are unpublished.
+
 ## Directory layout
 
 ```text
@@ -66,6 +70,11 @@ Run examples are collected in [Getting started](getting-started.md) and the
 [CLI reference](lxmf-cli.md).
 
 ## Automation and evidence
+
+`vendor/zeromq` is excluded from workspace membership and published separately
+as `reticulum-rs-zeromq`, with Rust library/import name `zeromq`. It is the
+19th public package in the release. Its [upstream MIT notice](../vendor/zeromq/LICENSE.md)
+is retained; first-party packages inherit the root license and secondary notice.
 
 - [`xtask`](../xtask) owns Cargo-native CI, architecture, release, HIL, and
   packaging commands.

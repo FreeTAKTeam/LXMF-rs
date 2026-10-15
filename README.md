@@ -12,6 +12,19 @@ LXMF-rs is a Rust implementation of the
 provides reusable libraries, a typed SDK, host daemons and command-line tools,
 plus embedded and FFI surfaces.
 
+
+## Our position on independent Reticulum implementations
+
+Reticulum is a public-domain protocol whose authoritative specification is its Python reference implementation.
+
+We respect Mark Qvist's original work and intellectual property rights. However, we reject the assertion that AI-assisted analysis or reimplementation automatically constitutes copyright infringement.
+
+**No individual can claim exclusive control over the independent implementation of a public-domain protocol.** Compatibility should be established through reproducible interoperability tests and technical evidence, not personal endorsement.
+
+**This project will continue its development**, committed to software quality, security, interoperability, and the freedom to innovate.
+
+Read our [full statement on independent implementations and AI-assisted development](PROJECT_POSITION.md).
+
 <!-- performance-summary:start -->
 ## Measured performance
 
@@ -30,30 +43,33 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 
 ## Current status
 
-The current release train is
-[`v0.12.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.12.0).
-It builds on the tested RNS 1.5.2-compatible system and adds the scoped
-Reticulum 1.5.4-dev HDLC, BLE, and `rngit` feature update, alongside transport,
-LXMF, and interoperability fixes. This does not assert full forward behavioral
-parity.
+The latest stable release is
+[`v0.14.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0).
+It aligns the 19 public packages and includes bounded ZeroMQ exchanges,
+reusable reply connections, propagation resource-use fixes, and opt-in durable
+custody and recovery. Rust 1.88 or newer is required. A source checkout of
+`main` can contain changes after the release; use the release tag to reproduce
+its published artifacts.
 
 The canonical release reference remains Python Reticulum 1.5.2 at
-`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The separate 1.5.4-dev
-feature target is documented in the [delta ledger](docs/status/rns-1.5.4-delta.md).
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`, with Python LXMF 0.9.6 at
+`727830cefda83d9c6e3982b48675425f3f988f9c`. The separate Reticulum 1.5.5
+feature update has a [scoped delta ledger](docs/status/rns-1.5.5-delta.md);
+it does not establish full forward behavioral parity.
 
 | Area | Current position |
 | --- | --- |
-| Reticulum software parity | 1,857 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
-| LXMF software parity | All seven tracked software scenarios complete |
+| Python callable inventory | 1,857 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
+| Reticulum software parity | 1,655 mapped callables complete against the pinned baseline; forward behavioral coverage remains separate |
+| LXMF software parity | 202 mapped callables and all seven tracked software scenarios complete |
 | Rust/Python interoperability | Direct, link, channel, paper, propagation, and daemon scenarios exercised against pinned references |
-| Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately for `v0.10.1`; v0.12.0 evidence depends on its exact-tag workflows |
+| Independent interoperability | Versioned rns-rs and supported-subset Reticulum-Go reports are attached to `v0.14.0`; known peer divergences remain explicit |
 | Real-world interoperability | Bounded field evidence exists for REM on physical RNode/LoRa, two-phone TCP, Sideband phone HIL, Columba bidirectional direct LXMF, and live RCH paths; see [real-world interoperability evidence](docs/status/real-world-interoperability.md) |
 | Remaining operational matrix | Permanent HIL, the full declared hardware/platform matrix, public-network rows, long soak, and current-release client reruns remain separate from the completed software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
-project posture, the [v0.12.0 release notes](docs/release-notes-v0.12.0.md),
-the [v0.11.0 RNode migration guide](docs/migrations/v0.11.0-rnode.md), the
-[v0.10.1 release ledger](docs/status/v0.10.1-release.md), and the
+project posture, the [v0.14.0 release notes](docs/release-notes-v0.14.0.md),
+the [v0.14.0 migration guide](docs/migrations/v0.14.0-zmq.md), and the
 [Reticulum](docs/status/reticulum-parity-matrix.md) and
 [LXMF](docs/status/lxmf-parity-matrix.md) parity matrices for row-level detail.
 
@@ -90,8 +106,8 @@ Library consumers can start with the umbrella crates:
 
 ```toml
 [dependencies]
-lxmf = "0.12.0"
-reticulum-rs = "0.12.0"
+lxmf = "0.14.0"
+reticulum-rs = "0.14.0"
 ```
 
 See [Getting started](docs/getting-started.md) for release downloads, checksum
@@ -147,9 +163,16 @@ full gate and evidence boundaries.
 - [LXMF parity matrix](docs/status/lxmf-parity-matrix.md)
 - [Independent implementation evidence](docs/interop/README.md)
 - [Performance methodology and results](docs/performance.md)
+- [v0.14.0 performance dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/lxmf-rs-performance.html) (the generated table above retains its explicitly pinned v0.10.1 dataset)
 - [Support and LTS policy](docs/contracts/support-policy.md)
 - [Security policy](SECURITY.md)
 
 ## License
 
-LXMF-rs is licensed under the [Eclipse Public License 2.0](LICENSE).
+LXMF-rs is distributed under the [Eclipse Public License 2.0](LICENSE).
+The same file contains an explicit [GPL version 2 or later secondary-license
+notice](LICENSE#L280); availability under that secondary license follows the conditions in
+the EPL and that notice. Cargo records the existing arrangement as
+`EPL-2.0 OR GPL-2.0-or-later`; the license text and notice govern its terms.
+Vendored components retain their own licenses and attribution, including
+[zeromq's MIT notice](vendor/zeromq/LICENSE.md).
