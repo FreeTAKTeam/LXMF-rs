@@ -49,7 +49,14 @@ default-members = [
 edition = "2021"
 rust-version = "1.88"
 license = "EPL-2.0 OR GPL-2.0-or-later"
+# Keep SPDX metadata and package the existing primary/secondary-license notice.
+license-file = "LICENSE"
 repository = "https://github.com/FreeTAKTeam/LXMF-rs"
+
+[workspace.metadata.license-check.exceptions."vendor/zeromq"]
+license = "MIT"
+notices = ["LICENSE.md"]
+reason = "Vendored zeromq retains its upstream MIT license and copyright notice; see vendor/zeromq/LXMF_PATCHES.md."
 
 [workspace.metadata.boundaries]
 # Exact workspace-local dependency edges allowed between crates.

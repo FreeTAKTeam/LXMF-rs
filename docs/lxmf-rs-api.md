@@ -1,7 +1,17 @@
 # API Surface and Stability
 
-This note summarizes which repository surfaces are intended for external use and
-where stability guarantees are enforced.
+This guide identifies application entry points and the scope of API checks.
+Use the [package guide](project-layout.md) for the complete current inventory
+and [SDK integration guide](sdk/README.md) for application setup.
+
+## Application entry points
+
+Prefer `lxmf_sdk::app::Client` with typed `runtime()`, `messages()`, `events()`,
+`identity()`, and `attachments()` handles. The typed ZeroMQ backend is the
+preferred desktop/service path; Unix and HTTP/TLS RPC remain supported.
+`lxmf-runtime` is the active in-process backend for hosts embedding transport
+execution. Lower-level `LxmfSdk` methods remain available for explicit cursor
+recovery, diagnostics, and manual embedded hosts.
 
 ## Stable Library Surfaces
 
@@ -15,6 +25,8 @@ The hard-break public API is crate-based, not monolithic module fan-out.
 - `crates/libs/lxmf-sdk`
   - host-facing client facade (`start/send/cancel/status/poll/configure/snapshot/shutdown/tick`)
   - capability negotiation, profile limits, lifecycle guardrails
+- `crates/libs/lxmf-runtime`
+  - in-process backend implementing the SDK over the Reticulum runtime
 - `crates/libs/rns-embedded-core`
   - shared embedded/runtime types for constrained hosts
 - `crates/libs/rns-embedded-runtime`
@@ -30,10 +42,15 @@ The hard-break public API is crate-based, not monolithic module fan-out.
   - shared transport/auth/event contract types used by app crates
 - `crates/libs/reticulum-rs`
   - umbrella crate re-exporting the supported Reticulum library entry points
-- `crates/libs/test-support`
-  - test-only helpers and schema/fixture validation support
+- `crates/libs/lxmf-embedded-mini` and `crates/libs/rns-embedded-mininode`
+  - constrained-device and minimal-node integration; capabilities remain
+    crate-specific
 
 `Cargo.toml` is the source of truth for active workspace members.
+`lxmf-reference` holds pinned compatibility metadata. `test-support` and
+`xtask` are unpublished repository tooling, not public application APIs.
+The patched `reticulum-rs-zeromq` dependency is published separately from
+`vendor/zeromq` with its own retained upstream license.
 
 ## Operator/App Surfaces
 
@@ -46,7 +63,8 @@ App crates are not intended as stable library APIs.
 ## Stability Policy
 
 - No legacy crate path compatibility guarantees (`crates/lxmf`, `crates/reticulum`, `crates/reticulum-daemon`).
-- Public API drift is gated by `docs/contracts/baselines/lxmf-sdk-public-api.txt`.
+- SDK public API drift is gated by `docs/contracts/baselines/lxmf-sdk-public-api.txt`;
+  that SDK baseline does not certify every workspace crate's public API.
 - Contract behavior is governed by:
   - `docs/contracts/sdk-v2.md`
   - `docs/contracts/sdk-v2-events.md`
@@ -58,15 +76,11 @@ Related references:
 - `docs/contracts/support-policy.md`
 - `README.md`
 
-Published crates.io entry points:
-
-- `lxmf`
-- `lxmf-sdk`
-- `lxmf-wire`
-- `reticulum-rs`
-- `reticulum-rs-core`
-- `reticulum-rs-transport`
-- `reticulum-rs-rpc`
+Published crates.io entry points and crate responsibilities are listed in the
+[workspace and package guide](project-layout.md). Core SDK contract v2.6
+retains the `v2` schema namespace and protocol version `2`; these are separate
+from the package release number. Capability negotiation and documented
+pre-1.0 migration rules govern compatibility.
 
 Use the root `Cargo.toml`, crates.io badges in `README.md`, or the selected
 release tag for version numbers. This page intentionally does not duplicate

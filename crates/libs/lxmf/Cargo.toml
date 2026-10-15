@@ -4,6 +4,7 @@ version = "0.14.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "Umbrella crate for LXMF-rs wire types and the high-level LXMF SDK."
 readme = "../../../README.md"

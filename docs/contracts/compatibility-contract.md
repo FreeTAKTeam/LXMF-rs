@@ -2,13 +2,16 @@
 
 ## Version Mapping
 
-- LXMF-rs project releases are recorded in the root `VERSION` file and are
-  independent from Cargo package versions.
-- Release baseline: LXMF-rs `0.5.0` ships `lxmf` `0.3.0` with
-  `reticulum-rs` `0.2.0`.
-- Compatibility track: LXMF-rs `0.5.x` keeps the `lxmf` `0.3.x` and
-  `reticulum-rs` `0.2.x` package line unless release notes declare otherwise.
-- During active refactor development, integration CI may pin exact git revisions.
+- The root `VERSION` identifies the project release; Cargo metadata identifies
+  each package version. v0.14.0 aligns all 19 public packages, including the
+  separately published `reticulum-rs-zeromq` transport. Internal packages are
+  not part of that version promise.
+- The current SDK contract release is `v2.6`, the schema namespace is `v2`,
+  and the negotiated protocol version is `2`. v2.5 request payloads remain
+  accepted. These identifiers are independent of the Cargo package version.
+- Pin an exact tag or commit for reproducible integration. See the
+  [v0.14.0 migration guide](../migrations/v0.14.0-zmq.md) for Rust 1.88,
+  envelope construction, and optional durable-custody requirements.
 - Python Reticulum compatibility is assessed against version `1.5.2` at commit
   `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The version is diagnostic; the
   commit remains the reproducible compatibility identity.
@@ -56,7 +59,7 @@
 
 ## RPC Policy
 
-- Client paths use `send_message_v2` only.
+- Typed SDK client paths use `sdk_send_v2` and negotiated capabilities.
 - Server keeps `send_message` and `send_message_v2` for compatibility.
 - Both methods are subject to the same strict canonical outbound validation path.
 

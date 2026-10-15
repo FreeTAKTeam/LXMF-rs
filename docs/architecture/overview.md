@@ -1,5 +1,9 @@
 # LXMF-rs Architecture
 
+The [package guide](../project-layout.md) maps the current workspace. The
+release baseline and evidence limits live in the [roadmap](../status/current-roadmap.md);
+the [SDK guide](../sdk/README.md) is the application integration entry point.
+
 ## Core Principles
 - Protocol code is isolated from operator workflows.
 - Runtime behavior is explicit and testable.
@@ -29,6 +33,22 @@
 - Error handling: `docs/sdk/error-handling.md`
 - Profile/security configuration: `docs/sdk/configuration-profiles.md`
 - JSON and wire-field mapping details: `docs/architecture/json-lxmf-fields.md`
+
+For desktop/service integrations, prefer the typed ZeroMQ backend and the
+app-facing `lxmf_sdk::app::Client` domain handles. The daemon compiles ZeroMQ
+support by default but opens a listener only when explicitly configured.
+Unix, HTTP, and TLS/mTLS RPC remain supported. `lxmf-runtime` supplies the
+active in-process SDK backend.
+
+The opt-in durable broker adds SQLite-backed custody, an ordered consumer
+journal, stored acknowledgements, and outbound operation reconciliation.
+It requires persistent storage and capability negotiation; ordinary SDK event
+replay and transport handoff do not establish durable custody or peer delivery.
+See [durable-broker operations](../goals/zmq-rch-durable-broker/OPERATIONS.md).
+
+The patched ZeroMQ transport is published separately as `reticulum-rs-zeromq`
+from `vendor/zeromq`, retaining its upstream MIT notice. Workspace boundary
+checks continue to govern first-party library/application dependency edges.
 
 ## Layering Rules
 - `crates/libs/*` must not depend on `crates/apps/*`.

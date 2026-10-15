@@ -4,6 +4,7 @@ version = "0.14.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "Transport, link, interface, receipt, and resource layers for the Reticulum network stack."
 readme = "../../../README.md"

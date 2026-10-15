@@ -15,31 +15,21 @@ CI or tests depend on.
 
 Active workspace members are defined in `Cargo.toml`.
 
-- Libraries:
-  - `lxmf`
-  - `lxmf-core`
-  - `lxmf-sdk`
-  - `reticulum-rs`
-  - `rns-core`
-  - `rns-embedded-core`
-  - `rns-embedded-ffi`
-  - `rns-embedded-runtime`
-  - `rns-rpc`
-  - `rns-transport`
-  - `test-support`
-- Applications:
-  - `lxmf-cli`
-  - `reticulumd`
-  - `rns-tools`
-- Workspace tooling:
-  - `xtask`
+The [workspace and package guide](docs/project-layout.md) maps Cargo package
+names to source directories, binaries, and responsibilities. In particular,
+`lxmf-wire` is in `crates/libs/lxmf-core`; `lxmf-runtime` is an active in-process
+SDK backend. `test-support` and `xtask` are internal, unpublished packages.
+The separately published `reticulum-rs-zeromq` transport is vendored under
+`vendor/zeromq` and excluded from workspace membership.
 
-The active workspace is intentionally the supported crate surface. Retired
-migration-era crates such as `crates/internal/*`, `lxmf-router`, and
-`lxmf-runtime` should not be reintroduced without a new architecture decision
-and boundary gate update.
+Before adding a local dependency edge, check
+`[workspace.metadata.boundaries]` and run `tools/scripts/check-boundaries.sh`.
 
 ## Bootstrap
+
+Use Rust 1.88 or newer. The checkout selects the stable toolchain; the build
+matrix also checks the declared minimum. The Bash bootstrap script requires
+`rustup`, Cargo, and the native build tools needed by the selected targets.
 
 Recommended:
 
@@ -99,6 +89,51 @@ make run-bin PKG=rns-tools BIN=rnx ARGS="--help"
   artifacts. Many are validated by CI.
 - Keep `README.md` short and contributor-oriented. Deep operator guidance should
   live in `docs/runbooks/` or package-specific `README.md` files.
+- Separate installation/tutorials, operator procedures, API contracts, and
+  architecture explanations through the existing [documentation map](docs/README.md).
+- Check package names, feature flags, CLI options, and examples against the
+  current manifests and source. Declare prerequisites and use `--locked` for
+  reproducible source builds.
+- Keep historical release notes, evidence, reference pins, and generated
+  benchmark tables tied to their original versions. Regenerate derived
+  documentation with its owning tool.
+- Separate project versions, SDK contract versions, and Python reference
+  versions; a newer package version does not establish new parity evidence.
+
+For documentation changes, check local paths and heading links, then run:
+
+```bash
+cargo xtask sdk-docs-check
+python3 tools/scripts/performance_docs.py --check
+cargo doc --locked --workspace --no-deps --lib
+```
+
+When changing Rust documentation examples, also run the affected package's
+`cargo test --doc` checks. See the [Cargo documentation command](https://doc.rust-lang.org/cargo/commands/cargo-doc.html)
+and [rustdoc example rules](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html).
+
+## License metadata and packaged notices
+
+Keep the existing [license and secondary-license notice](LICENSE) intact.
+Publishable first-party packages inherit `license.workspace = true` and
+`license-file.workspace = true`. The inherited file is included in each Cargo
+package. The retained upstream MIT grant for `vendor/zeromq` is documented in
+`[workspace.metadata.license-check.exceptions]`; do not replace it with the
+workspace expression.
+
+```bash
+python3 -m unittest discover -s tools/scripts -p test_license_metadata.py -v
+python3 tools/scripts/check_license_metadata.py
+cargo xtask licenses
+```
+
+The deterministic check discovers publishable local packages from Cargo
+metadata, resolves inheritance, and checks Cargo's actual package file lists.
+Intentional exceptions require an SPDX expression, retained notice paths and
+a reason in workspace metadata. These checks run in CI, the existing security
+and release gates, and the crates.io publication preflight. They check
+consistency and distributable contents; they do not determine copyright
+ownership or legal compatibility.
 
 ## When Docs Must Change
 
