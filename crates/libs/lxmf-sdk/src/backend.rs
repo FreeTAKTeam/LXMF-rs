@@ -483,6 +483,8 @@ pub trait SdkBackendAsyncEvents: SdkBackend {
 pub trait SdkBackendAsyncEvents: SdkBackend {}
 
 pub mod mobile_ble;
+#[cfg(feature = "mobile-ble-adapter")]
+pub mod mobile_ble_adapter;
 
 #[cfg(all(feature = "rpc-backend", feature = "std"))]
 pub mod rpc;

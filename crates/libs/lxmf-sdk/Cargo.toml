@@ -13,6 +13,7 @@ keywords = ["lxmf", "sdk", "messaging", "reticulum"]
 categories = ["network-programming", "api-bindings"]
 
 [dependencies]
+rns-bluetooth = { workspace = true, optional = true }
 lxmf-reference.workspace = true
 lxmf-core.workspace = true
 rns-rpc = { workspace = true, optional = true }
@@ -31,6 +32,7 @@ hex.workspace = true
 zeroize.workspace = true
 
 [features]
+mobile-ble-adapter = ["std", "dep:rns-bluetooth"]
 default = ["std", "sdk-async", "rpc-backend", "zmq-pipeline-backend"]
 std = []
 sdk-async = ["dep:tokio", "dep:tokio-stream"]

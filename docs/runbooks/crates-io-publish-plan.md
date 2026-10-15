@@ -286,3 +286,13 @@ Recommended follow-up automation:
   `pub use` dumps of every subcrate symbol.
 - GitHub releases remain the supported binary delivery path even after crates.io
   publication is introduced for library consumers.
+
+
+## Shared Bluetooth leaf
+
+Publish `reticulum-rs-bluetooth` (directory/alias `rns-bluetooth`, import
+`rns_bluetooth`) before any transport, SDK or application that depends on it.
+It participates in the synchronized public release version and existing notice,
+package-content and dependency-version checks. Its explicit edition 2024/MSRV
+1.85 is tested from the normalized package with an independent lockfile by
+`bluetooth-msrv-185`; host workspace builds do not establish its MSRV.

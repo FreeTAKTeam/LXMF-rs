@@ -9,8 +9,13 @@ remains the generic configured-peripheral GATT adapter.
 - Primary kind: `reticulum_ble`
 - Compatibility aliases: `AndroidBLE`, `AndroidBLEInterface`, `BLEInterface`
 - Runtime status key: `_runtime.reticulum_ble`
-- Runtime dependency boundary: BLE OS dependencies stay in the `reticulumd`
-  adapter layer; `rns-transport` remains BLE-agnostic.
+- Runtime dependency boundary: optional platform backends may live in the leaf
+  `reticulum-rs-bluetooth` package. Protocol libraries consume its neutral API;
+  daemon/Android composition layers enable platform features. Each actual local
+  dependency requires an exact boundary allowlist edge, with no blanket exception.
+  This amends the former daemon-only backend rule. Existing `btleplug` adapters
+  remain unchanged through the REM BLE/Classic pilot stages; Linux `bluer 0.17.4`
+  is additive and does not establish a working direct BLE backend by itself.
 
 ## Default GATT Shape
 

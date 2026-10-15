@@ -1,0 +1,28 @@
+[package]
+name = "reticulum-rs-bluetooth"
+version = "0.14.0"
+edition = "2024"
+rust-version = "1.85"
+license.workspace = true
+license-file.workspace = true
+repository.workspace = true
+description = "Protocol-neutral Bluetooth sessions and optional platform backends"
+readme = "README.md"
+
+[lib]
+name = "rns_bluetooth"
+
+[features]
+default = []
+android = []
+bluez = ["dep:bluer", "dep:tokio", "dep:futures-util"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+bluer = { version = "=0.17.4", features = ["bluetoothd"], optional = true }
+tokio = { version = "1.44", features = ["rt-multi-thread", "sync", "time", "io-util", "macros"], optional = true }
+futures-util = { version = "0.3", optional = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+[lints.clippy]
+all = "warn"

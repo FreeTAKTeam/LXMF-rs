@@ -1,0 +1,189 @@
+{
+  "scope": "candidate first-party source inventory only; contents not imported; privacy curation and Git baseline pending",
+  "files": [
+    {
+      "path": "connection_control.py",
+      "sha256": "5f2f6c4fe6b1562d40c7c0da8ce8b7d27fcd5352182bd808f9b5ce6dca9708f3"
+    },
+    {
+      "path": "keep_connected.py",
+      "sha256": "f54feb46383536145268ed6347ce18026c5f1301ebeb036124cfdfbe2a55b0a1"
+    },
+    {
+      "path": "location_shout.py",
+      "sha256": "6de6567fbbaa7159ff8d29b2b75f1b47c23f20340caa5bd6492c746b82017a26"
+    },
+    {
+      "path": "mesh_battery.py",
+      "sha256": "9fcdac2785b88217b4801d7a51670c5e0da11c36f707e1822047e73017ff40ac"
+    },
+    {
+      "path": "mesh_probe.py",
+      "sha256": "fe9ff90b9f76509e8848790559d25b643ab54d109ac1f872243d8cbfebdba4a2"
+    },
+    {
+      "path": "mesh_receive.py",
+      "sha256": "018f32f9082f66f985e909a3f5cec8475b232adae8e61644976203d0e6618914"
+    },
+    {
+      "path": "protocol.py",
+      "sha256": "ef8ab0ec0d773055692fd176a691aeb3ccf7ff2f5f115c20c5067fb6dba08072"
+    },
+    {
+      "path": "receive_decode.py",
+      "sha256": "0c5e15fac5a28d3d0f6d064f97117cb2973250b79573ffa8baa1ded5a0456526"
+    },
+    {
+      "path": "rust-backend/Cargo.lock",
+      "sha256": "4a25ae53c2b9fe672a8e44a861ff23c0dd15f6a4e34f46cead778a8797e0d1d3"
+    },
+    {
+      "path": "rust-backend/Cargo.toml",
+      "sha256": "95ed1352c070e42ff593a376fe2822ce4b19dfc1136446d08e39a860ee360c34"
+    },
+    {
+      "path": "rust-backend/src/api.rs",
+      "sha256": "c83cc2a6f359194bf1f513f941d9f0422f9f3f9543fbf82f55a92f7b70911214"
+    },
+    {
+      "path": "rust-backend/src/backend.rs",
+      "sha256": "90a7b76689759cb95b0b03d036525b085bdac1e6786e68675801520372f0ac6d"
+    },
+    {
+      "path": "rust-backend/src/battery.rs",
+      "sha256": "32359c118e8f92ffe25dd243f2c2577810c8866386b479a12c93a8763e73c18c"
+    },
+    {
+      "path": "rust-backend/src/diagnostics.rs",
+      "sha256": "70bbf2e7746169095e86fdbf71e34ffcb33a671c585b5d2a1305e5331fdc7db1"
+    },
+    {
+      "path": "rust-backend/src/location.rs",
+      "sha256": "0e5a89b7ff9fdb59b780d3d9acb043e2ede283ae9da8da8d805ab9a36fee0ce4"
+    },
+    {
+      "path": "rust-backend/src/main.rs",
+      "sha256": "20002a88eabb43e79f532f6b1938859c816c4f8af205cd43d6e231f3f9d78161"
+    },
+    {
+      "path": "rust-backend/src/message.rs",
+      "sha256": "03977476bc7a88706c56adab33b59cd945cf51a9076273ad0d251bff468428b8"
+    },
+    {
+      "path": "rust-backend/src/protocol.rs",
+      "sha256": "bba9e856b8dcbc6933e89edf2d54e72ad491e1a854ba598d477c9d3b0c69ef3f"
+    },
+    {
+      "path": "rust-backend/src/receive.rs",
+      "sha256": "5468d19437896181deab8565a56b2c821ac775b51e7956a7d1aa141d552f15e5"
+    },
+    {
+      "path": "send_location_once.py",
+      "sha256": "308ff8305f7ecbe5e0fcb79312bd65c49813d1564a1abb3cec737d4f9dd9e384"
+    },
+    {
+      "path": "send_shout_once.py",
+      "sha256": "96d810dc36eeef1d8adf1567460b5be4f89d82b08ebbd438a97f98e985dd232a"
+    },
+    {
+      "path": "submit_shout.py",
+      "sha256": "058e3b377cad18481030dfdddac8579eb27d7f338811a20fac132b66dc53a0d9"
+    },
+    {
+      "path": "test_harness.py",
+      "sha256": "a08909b1b4b4224cf056c799a3bcec6d71eebf00006f95d2ff91a47684d15e42"
+    },
+    {
+      "path": "test_location.py",
+      "sha256": "5580ca073b25fffa34a1a951c3fc24ae1ba7e961816901fbcde9f8f3794a34df"
+    },
+    {
+      "path": "test_location_preview.py",
+      "sha256": "dd412f1f20f2ca23823d0a22fff06da3259591ee69adf68ac4c7f39fe140a149"
+    },
+    {
+      "path": "test_protocol.py",
+      "sha256": "f67d27cb260281fa2b48dca3fc9054edc288f73247b92bc942a941711ced7cc3"
+    },
+    {
+      "path": "test_receive.py",
+      "sha256": "bf118b48daee103aa97f5a7c1ce55dd59be8d53c97bb58a89d3448e16a26a4db"
+    },
+    {
+      "path": "test_send.py",
+      "sha256": "ba9e64a32758672258b77a81813cb129d818c0ae496edbe2ea537410d7734c31"
+    },
+    {
+      "path": "test_web_identity.py",
+      "sha256": "631f2decf2003d46af511f503eefbc2e191d122223ecbc81d1f397e6a5b41a8c"
+    },
+    {
+      "path": "web_server.py",
+      "sha256": "34735773ca3800ae67fdbdd7b17bd3cc91e740d74051e9eb8861e05211f0b4d2"
+    },
+    {
+      "path": "webui/index.html",
+      "sha256": "19609120434499d15bc96be7eff938bbf28db111210b08e18330a12f796ba5c3"
+    },
+    {
+      "path": "webui/package-lock.json",
+      "sha256": "3a0abadd0e0b579344f0cb3a459c22517d0b15cc96e8733825b0a79d6359825b"
+    },
+    {
+      "path": "webui/package.json",
+      "sha256": "c72a6f3a17a3263ed3eaa951fdd56c14ead38863dde2f4bbe720c5a7275fc063"
+    },
+    {
+      "path": "webui/src/App.vue",
+      "sha256": "ef4b24086e7fb9e927991069e6621e57d91883891ae6450e957b52c65a3129e0"
+    },
+    {
+      "path": "webui/src/components/DeviceStatusBar.vue",
+      "sha256": "4857c928879cdf9e7b0e6cad0873dd0596e3e64d7bee773a16df86a16bee2eb6"
+    },
+    {
+      "path": "webui/src/components/GlyphIcon.vue",
+      "sha256": "54860f4a396aa51017dee381d129204b9ba20db55fc1e3d63df60ec27bfcabf5"
+    },
+    {
+      "path": "webui/src/components/LocationComposer.vue",
+      "sha256": "785448022950acbb2d76f8b27a3e23e9d8c6cdb6827d6ab797ab829d1c270ef5"
+    },
+    {
+      "path": "webui/src/components/MapPanel.vue",
+      "sha256": "f90c35eb8e08ada2b43d02c20f153b869b202b622e677c0a057051faecb75e15"
+    },
+    {
+      "path": "webui/src/components/RadioTools.vue",
+      "sha256": "6ab4f899f5e11da1b677ff232e797b58eb0d68fccf25968d66468e2852efba1c"
+    },
+    {
+      "path": "webui/src/components/ShoutChat.vue",
+      "sha256": "efabb62344d6eaee1fe13e8eac00801dc4211e1c015f73dd372aaec31602b4b1"
+    },
+    {
+      "path": "webui/src/main.js",
+      "sha256": "aae4583cfd5e8bb990b1c3f543cf4e56112fd424270a1ee8f7abad69874ffea6"
+    },
+    {
+      "path": "webui/src/services/api.js",
+      "sha256": "df472a593e924def9a729c702f0c579fa98652e5a69130ec00fd81eb7ef820ad"
+    },
+    {
+      "path": "webui/src/services/mockApi.js",
+      "sha256": "3587ab4fcb7e0ad6be869fcaeba58fb75d1bc7a6a4843a34dc5df1f871fe4974"
+    },
+    {
+      "path": "webui/src/services/shoutEncoding.js",
+      "sha256": "a4f2399742cdc4d996495ef0c9018068fe3010e8c36f14254d7eb1d0c9a50f82"
+    },
+    {
+      "path": "webui/src/styles.css",
+      "sha256": "7f5c4b6957e0258996187e2f200362d7eea34435200d3da6a77dce388b8ce082"
+    },
+    {
+      "path": "webui/vite.config.js",
+      "sha256": "f24f5788683b4afcfb2cdb9ec5abad00fd672e6179b2a37c040c53a30146c26e"
+    }
+  ]
+}
