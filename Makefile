@@ -73,7 +73,7 @@ api-diff:
 	done
 
 licenses:
-	cargo deny check licenses
+	cargo xtask licenses
 
 migration-checks:
 	cargo xtask migration-checks

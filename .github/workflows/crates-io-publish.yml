@@ -49,6 +49,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Check license metadata and packaged notices
+        run: python3 tools/scripts/check_license_metadata.py
+
       - name: Publish crates in dependency order
         shell: bash
         env:

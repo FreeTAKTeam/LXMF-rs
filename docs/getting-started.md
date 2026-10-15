@@ -6,9 +6,9 @@ an application.
 
 ## Install a stable release
 
-The [`v0.12.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.12.0)
-adds the scoped Reticulum 1.5.4-dev feature update on the tested RNS
-1.5.2-compatible baseline. It provides Linux, macOS,
+The [`v0.14.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
+includes ZeroMQ reliability and opt-in durable custody while retaining the
+tested RNS 1.5.2 / LXMF 0.9.6 reference baseline. It provides Linux, macOS,
 and Windows archives, Debian and RPM packages, a Windows MSI, SBOMs, and
 checksum files. Choose the asset for your platform and verify it against
 `SHA256SUMS.txt` before extracting or installing it.
@@ -17,18 +17,19 @@ For example, after downloading the Linux x86-64 archive and `SHA256SUMS.txt` int
 the same directory:
 
 ```bash
-grep 'lxmf-rs_0.12.0_linux-x86_64.tar.gz$' SHA256SUMS.txt | sha256sum -c -
-tar -xzf lxmf-rs_0.12.0_linux-x86_64.tar.gz
+sha256sum --check --ignore-missing SHA256SUMS.txt
+tar -xzf lxmf-rs_0.14.0_linux-x86_64.tar.gz
 ```
 
 The [latest release page](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
 is the durable entry point for future versions. Release claims and evidence
-boundaries are described in the [release notes](release-notes-v0.12.0.md) and
+boundaries are described in the [release notes](release-notes-v0.14.0.md) and
 [current roadmap](status/current-roadmap.md).
 
 ## Build from source
 
-The workspace requires Rust 1.85 or newer. The bootstrap helper checks the
+The workspace requires Rust 1.88 or newer; `rust-toolchain.toml` selects
+stable with `rustfmt` and `clippy`. The bootstrap helper checks the
 Rust toolchains, installs the repository's Cargo tools, fetches locked
 dependencies, and runs a formatting smoke check:
 
@@ -54,8 +55,12 @@ smoke check:
 Build the user-facing host tools with:
 
 ```bash
-cargo build --release -p lxmf-cli -p reticulumd -p rns-tools
+cargo build --locked --release -p lxmf-cli -p reticulumd -p rns-tools
 ```
+
+The commands above build the current checkout. To reproduce v0.14.0, select
+`git switch --detach v0.14.0` in a clean checkout before building. Do not
+replace a checkout containing local work without preserving that work first.
 
 ## Run locally
 
@@ -74,6 +79,18 @@ cargo run -p rns-tools --bin rnsd -- --help
 cargo run -p rns-tools --bin rnstatus-rs -- --help
 cargo run -p rns-tools --bin rnx -- --help
 ```
+
+For SDK desktop/service integrations, the preferred typed ZeroMQ backend is
+included by default. Enable its listener explicitly:
+
+```bash
+cargo run -p reticulumd --bin reticulumd -- \
+  --zmq-rpc-endpoint tcp://127.0.0.1:9100
+```
+
+Continue with the [SDK quickstart](sdk/quickstart.md) for client configuration.
+The [v0.14.0 migration guide](migrations/v0.14.0-zmq.md) covers the separately
+enabled durable broker and its persistent-storage requirements.
 
 ### Optional `rngit` WebP conversion
 
@@ -109,19 +126,19 @@ The umbrella crates provide the simplest dependency surface:
 
 ```toml
 [dependencies]
-lxmf = "0.12.0"
-reticulum-rs = "0.12.0"
+lxmf = "0.14.0"
+reticulum-rs = "0.14.0"
 ```
 
 Applications that need narrower features can depend on component crates:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.12.0"
-lxmf-wire = "0.12.0"
-reticulum-rs-core = "0.12.0"
-reticulum-rs-transport = "0.12.0"
-reticulum-rs-rpc = "0.12.0"
+lxmf-sdk = "0.14.0"
+lxmf-wire = "0.14.0"
+reticulum-rs-core = "0.14.0"
+reticulum-rs-transport = "0.14.0"
+reticulum-rs-rpc = "0.14.0"
 ```
 
 Use the [SDK quickstart](sdk/quickstart.md) for a minimal client, the

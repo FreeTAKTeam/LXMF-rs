@@ -17,7 +17,26 @@ requests, both peers nightly, and the strongest profiles on release tags. Every
 run uploads JSON, Markdown, logs/configuration in a raw tarball, and a checksum.
 Tag runs also publish standalone combined JSON/Markdown/HTML release assets.
 
-The current versioned evidence is:
+## Current release evidence
+
+The [v0.14.0 release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
+ties these assets to commit `7822b608f2cd2debd8170895bc580d01dda5356e`:
+
+- [Structured interoperability results](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/v0.14.0-independent.json),
+  [readable matrix](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/v0.14.0-independent.md),
+  and [standalone report](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/v0.14.0-independent.html).
+- Checksummed per-peer raw reports and retained peer divergences in the same
+  release assets. Reticulum-Go remains a supported-subset check.
+- [Performance JSON](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/lxmf-rs-performance.json)
+  and [performance dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/lxmf-rs-performance.html).
+
+The checked-in generated [performance page](../performance.md) retains its
+v0.10.1 dataset. Do not relabel those measurements as v0.14.0 or as current-main
+results.
+
+## Historical evidence
+
+Earlier versioned evidence remains available:
 
 - [`v0.10.1-independent.json`](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.10.1/v0.10.1-independent.json)
   — release-tag structured peer results for RNS 1.5.2 at
@@ -50,7 +69,7 @@ The current versioned evidence is:
   [`../performance/v0.9.9.html`](../performance/v0.9.9.html) — historical
   performance dataset and dashboard;
 - [`../performance/v0.10.1.json`](../performance/v0.10.1.json) and
-  [`../performance/v0.10.1.html`](../performance/v0.10.1.html) — current stable
+  [`../performance/v0.10.1.html`](../performance/v0.10.1.html) — historical stable
   performance dataset and dashboard;
 - [`../performance/v0.10.0.json`](../performance/v0.10.0.json) and
   [`../performance/v0.10.0.html`](../performance/v0.10.0.html) — historical

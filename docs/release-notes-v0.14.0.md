@@ -5,6 +5,16 @@ It includes the ZeroMQ reliability, resource-use, and durable-custody changes
 merged since v0.13.0. Reticulum and LXMF reference pins and network wire formats
 remain at the existing tested baseline.
 
+## Publication record
+
+Published on 2026-10-11 from annotated tag `v0.14.0`, at immutable commit
+`7822b608f2cd2debd8170895bc580d01dda5356e`. The
+[public release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
+links the completed CI, Verify, package/platform/OCI, independent-interoperability,
+and performance workflows, along with verified asset/checksum and provenance
+evidence. Optional Windows/macOS native signing and the Homebrew tap update
+were skipped because the required credentials were unavailable.
+
 ## Changes
 
 - ZeroMQ setup and exchanges have bounded deadlines and cancellation ownership.

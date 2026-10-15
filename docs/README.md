@@ -5,6 +5,10 @@ generated baselines, and historical release records. Use this page to choose
 the current source of truth instead of relying on similarly named historical
 documents.
 
+The current stable release is [v0.14.0](release-notes-v0.14.0.md), with Rust
+1.88 as its minimum. Guides describe the maintained source; versioned release
+notes and evidence describe their named immutable tags.
+
 ## Start here
 
 - [Getting started](getting-started.md): install, build, run, and validate the
@@ -37,24 +41,9 @@ Update these documents when their corresponding behavior changes:
 - [Independent interoperability evidence](interop/README.md): versioned rns-rs
   and Reticulum-Go evidence.
 - [Performance report](performance.md): current methodology and generated
-  results.
-- [v0.9.9 release notes](release-notes-v0.9.9.md): historical stable release
-  summary. The historical rc.6 evidence remains in the
-  [candidate ledger](status/v0.9.9-release-candidate.md).
-- [v0.10.0 release notes](release-notes-v0.10.0.md): current RNS 1.5.0 stable
-  release summary, with immutable-tag evidence tracked in its
-  [release ledger](status/v0.10.0-release.md). The superseded rc.1 record
-  remains in the [historical candidate ledger](status/v0.10.0-release-candidate.md).
-- [v0.10.1 release notes](release-notes-v0.10.1.md): RNS 1.5.2 maintenance
-  candidate, with qualification tracked in the
-  [candidate ledger](status/v0.10.1-release-candidate.md) and the reserved
-  [stable ledger](status/v0.10.1-release.md).
-- [v0.11.0 release notes](release-notes-v0.11.0.md): RNode transport repair
-  and pre-1.0 compatibility boundary.
-- [v0.12.0 release notes](release-notes-v0.12.0.md): scoped Reticulum
-  1.5.4-dev feature update and qualified parity boundary.
-- [v0.12.0 candidate ledger](status/v0.12.0-release-candidate.md): local
-  release evidence and exact-head publication conditions.
+  results for the explicitly pinned v0.10.1 dataset. The
+  [v0.14.0 release dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/lxmf-rs-performance.html)
+  carries the newer published measurements.
 - [Contracts](contracts/): public compatibility, support, API, payload, RPC,
   and protocol guarantees.
 - [Interfaces](interfaces/): interface-specific configuration and integration
@@ -76,12 +65,17 @@ Update these documents when their corresponding behavior changes:
 - [Meshtastic tunnel interface](interfaces/meshtastic.md)
 - [RNode Bluetooth Classic/SPP interface](interfaces/rnode-spp.md)
 
-## Planned work
+## Durable ZeroMQ integration
 
-- [ZeroMQ / RCH durable broker](goals/zmq-rch-durable-broker/PLAN.md):
-  reviewed v2 implementation plan for SDK recovery, durable handoff,
-  transactional RCH processing, and failure testing. Proposed work, not a
-  shipped guarantee.
+- [v0.14.0 upgrade guide](migrations/v0.14.0-zmq.md): package alignment,
+  envelope construction, and opt-in storage migration.
+- [Durable-broker operations](goals/zmq-rch-durable-broker/OPERATIONS.md):
+  controlled cutover, stored acknowledgements, finite budgets, backup restore,
+  and downgrade boundaries.
+- [Broker implementation evidence](goals/zmq-rch-durable-broker/PROGRESS.md):
+  tested behavior and remaining production/physical qualification.
+- [Original implementation plan](goals/zmq-rch-durable-broker/PLAN.md): design
+  rationale; use the operations and evidence pages for shipped behavior.
 
 ## Contracts and architecture
 
@@ -100,6 +94,16 @@ Update these documents when their corresponding behavior changes:
 - [Real-world interoperability evidence](status/real-world-interoperability.md)
 
 - [Latest GitHub release](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
+- [v0.14.0 release notes](release-notes-v0.14.0.md) and
+  [published release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
+- [v0.14.0 ZeroMQ migration guide](migrations/v0.14.0-zmq.md)
+- [v0.13.0 release notes](release-notes-v0.13.0.md) and
+  [Reticulum 1.5.5 delta](status/rns-1.5.5-delta.md)
+- [v0.12.0 release notes](release-notes-v0.12.0.md) and
+  [historical candidate ledger](status/v0.12.0-release-candidate.md)
+- [v0.11.0 release notes](release-notes-v0.11.0.md)
+- [v0.10.1 release notes](release-notes-v0.10.1.md) and
+  [stable release evidence](status/v0.10.1-release.md)
 - [v0.9.9 release notes](release-notes-v0.9.9.md)
 - [v0.10.0 release notes](release-notes-v0.10.0.md)
 - [v0.10.0 release evidence](status/v0.10.0-release.md)
@@ -113,7 +117,7 @@ Update these documents when their corresponding behavior changes:
 - [Release process](RELEASING.md)
 - [crates.io publication plan](runbooks/crates-io-publish-plan.md)
 - [Independent implementation evidence](interop/README.md)
-- [Current performance report](performance.md)
+- [Checked-in performance methodology and v0.10.1 results](performance.md)
 - [Latest public performance dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html)
 - [Historical performance snapshot](PerformancesComparison.html)
 

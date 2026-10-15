@@ -98,6 +98,7 @@ fn run_cargo_audit() -> Result<()> {
 }
 
 fn run_cargo_deny_policy_check() -> Result<()> {
+    run("python3", &["tools/scripts/check_license_metadata.py"])?;
     run("cargo", &["deny", "check", "bans", "licenses", "sources"])
 }
 
@@ -228,6 +229,7 @@ fn run_api_diff() -> Result<()> {
 }
 
 fn run_licenses() -> Result<()> {
+    run("python3", &["tools/scripts/check_license_metadata.py"])?;
     run("cargo", &["deny", "check", "licenses"])
 }
 

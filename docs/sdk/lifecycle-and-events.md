@@ -1,6 +1,7 @@
 # SDK Lifecycle and Event Flow
 
-This document defines practical lifecycle usage around the v2.5 state model.
+This document describes the v2.6 core contract's lifecycle. The state model
+also applies to accepted v2.5 requests.
 
 ## Lifecycle State Machine
 
@@ -37,6 +38,12 @@ delivered cursor.
 After at least one successful connection, transient reconnect failures during
 daemon restart or network recovery are retried instead of ending the
 subscription.
+
+With `ZmqPipelineBackendClient`, the backend owns cursor polling and optional
+event wakeups behind the same typed subscription API. This is ordinary SDK
+event recovery. The opt-in durable broker uses a separate persisted journal,
+consumer identity and stored acknowledgements; a generic event cursor does not
+establish durable custody. See [broker operations](../goals/zmq-rch-durable-broker/OPERATIONS.md).
 
 ## Cursor Polling Pattern
 

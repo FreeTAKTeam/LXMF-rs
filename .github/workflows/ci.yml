@@ -33,6 +33,10 @@ jobs:
           cache-on-failure: false
       - name: Format
         run: cargo fmt --all -- --check
+      - name: License metadata and packaged notices
+        run: |
+          python3 -m unittest discover -s tools/scripts -p test_license_metadata.py -v
+          python3 tools/scripts/check_license_metadata.py
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
       - name: Check

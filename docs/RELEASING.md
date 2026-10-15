@@ -11,20 +11,19 @@ retained as a manual-only legacy workflow and does not trigger on release tags.
 | Linux static binaries (musl) | `lxmf-rs_<ver>_linux-x86_64.tar.gz`, `…_linux-aarch64.tar.gz`, `…_linux-armv7.tar.gz` | `build` job |
 | Raspberry Pi | aarch64 (Pi 4/5, 64-bit OS) and armv7/armhf (32-bit OS) static builds above | `build` job |
 | Debian / RPM packages | `lxmf-rs_<ver>_{amd64,arm64,armhf}.{deb,rpm}` (nfpm) | `package-linux` job |
-| Windows | `lxmf-rs_<ver>_windows-x86_64.zip` (signed exes) + `lxmf-rs_<ver>_x64.msi` (signed MSI) | `package-windows` job |
+| Windows | `lxmf-rs_<ver>_windows-x86_64.zip` + `lxmf-rs_<ver>_x64.msi` (native signing when credentials are configured) | `package-windows` job |
 | macOS universal | `lxmf-rs_<ver>_macos-universal.tar.gz` (lipo universal2, optional codesign; notarization is not wired) | `macos-universal` job |
 | OCI container | `ghcr.io/freetakteam/lxmf-rs:<ver>` (and `:latest` for stable releases only), multi-arch (amd64 + arm64) | `container` job |
 | SBOM | CycloneDX per app crate (`sbom-reticulumd.cdx.json`, `sbom-lxmf-cli.cdx.json`, `sbom-rns-tools.cdx.json`) + `sbom-container.cdx.json` | `sbom` and `container` jobs |
 | Checksums | `SHA256SUMS.txt` + `SHA256SUMS.txt.cosign.bundle` (keyless sigstore signature) | `release` job |
 | Provenance | GitHub build-provenance attestations for every release file and for the container image | `release` and `container` jobs |
-| Homebrew | Stable-release formula update pushed to `FreeTAKTeam/homebrew-tap` | `homebrew` job |
+| Homebrew | Stable-release formula update when tap credentials are configured | `homebrew` job |
 
 All Linux targets are built against musl with `+crt-static`, so the shipped
 binaries are fully static (SQLite is bundled via rusqlite's `bundled` feature,
-and BLE/dbus support is behind opt-in cargo features, so nothing links against
-glibc or system libraries). The same static binaries back the `.deb`/`.rpm`
-packages and the distroless container image, so every channel ships bit-for-bit
-identical tools.
+and the Linux dbus dependency enables vendoring). The Linux packages reuse the
+release binaries. The container is built from the same release commit for its
+declared architectures; verify its provenance and digest separately.
 
 ## Pipeline overview
 
@@ -42,13 +41,30 @@ prepare ─► build (matrix: linux-musl x3, windows, macos x2)
 ## Cutting a release
 
 1. Bump `VERSION` and the crate versions (`cargo xtask` release helpers already
-   exist for crates.io publishing).
-2. For this release, tag the reviewed commit: `git tag -a v0.12.0 -m "LXMF-rs v0.12.0" && git push origin v0.12.0`.
+   exist for crates.io publishing). Align public dependency requirements and
+   include the separately published `reticulum-rs-zeromq` transport. Keep
+   `license-file.workspace = true` on publishable first-party packages; the
+   existing license and conditional secondary notice travel together.
+2. Run `cargo xtask release-check` and the applicable exact-commit hosted
+   gates. This includes the existing license/security checks and Cargo package
+   notice validation. Choose a new version and tag the reviewed commit:
+
+   ```bash
+   release_version="$(cat VERSION)"
+   git tag -a "v${release_version}" -m "LXMF-rs v${release_version}"
+   git push origin "v${release_version}"
+   ```
+
+   Published tags are immutable. v0.14.0 is already published; do not recreate
+   it for the next release.
 3. The workflow runs end to end. A manual dry run is available via
    **Actions → Release → Run workflow** (set `publish: false` to build and
    smoke-test everything without publishing).
-4. Promote only the same immutable commit to the stable `v0.12.0` release after
-   the release evidence ledger recommends publication.
+4. Record the exact tag/commit and terminal outcomes for platform/OCI and
+   crates.io publication, independent interoperability, and performance.
+   Verify public downloads, checksums and provenance before describing the
+   release as verified. Update the roadmap, release notes and installation
+   examples without promoting unrelated hardware or production claims.
 
 Pre-release tags containing `-rc`, `-alpha`, `-beta`, or `preview` are
 published as GitHub pre-releases automatically.
@@ -69,6 +85,9 @@ release.
 ## Verifying a release
 
 ```sh
+# Example: verify the existing v0.14.0 release, using its downloaded files.
+release_version=0.14.0
+
 # 1. Download the artifact set plus checksums and signature bundle, then:
 sha256sum -c SHA256SUMS.txt
 
@@ -80,13 +99,13 @@ cosign verify-blob \
   SHA256SUMS.txt
 
 # 3. Verify build provenance of any file:
-  gh attestation verify lxmf-rs_0.12.0_linux-x86_64.tar.gz --owner FreeTAKTeam
+gh attestation verify "lxmf-rs_${release_version}_linux-x86_64.tar.gz" --owner FreeTAKTeam
 
 # 4. Verify the container image:
-  cosign verify ghcr.io/freetakteam/lxmf-rs:0.12.0 \
+cosign verify "ghcr.io/freetakteam/lxmf-rs:${release_version}" \
   --certificate-identity-regexp "https://github.com/FreeTAKTeam/LXMF-rs/.*" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-  gh attestation verify oci://ghcr.io/freetakteam/lxmf-rs:0.12.0 --owner FreeTAKTeam
+gh attestation verify "oci://ghcr.io/freetakteam/lxmf-rs:${release_version}" --owner FreeTAKTeam
 ```
 
 ## Consumer usage
@@ -102,11 +121,15 @@ docker run --rm -v $PWD/data:/data ghcr.io/freetakteam/lxmf-rs:latest
 brew tap freetakteam/tap && brew install lxmf-rs
 
 # Debian/Ubuntu/Raspberry Pi OS:
-sudo dpkg -i lxmf-rs_0.12.0_arm64.deb     # or amd64 / armhf
+sudo dpkg -i lxmf-rs_0.14.0_arm64.deb     # or amd64 / armhf
 
 # Fedora/RHEL/openSUSE:
-sudo rpm -i lxmf-rs-0.12.0-1.aarch64.rpm  # or x86_64
+sudo rpm -i lxmf-rs_0.14.0_arm64.rpm     # or amd64 / armhf
 ```
+
+The optional Homebrew step was skipped for v0.14.0; check the tap's available
+version before using it. Downloaded archive/package names above match that
+release's assets.
 
 ## Design notes
 

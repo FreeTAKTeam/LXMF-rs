@@ -50,13 +50,19 @@ hard-coding terminal states in application code.
 
 `messages().send_async(...)` returns send acceptance, not final delivery.
 
+Subscribe before sending so a fast delivery cannot precede a tail subscription.
 After send acceptance:
 
-1. Subscribe to events for delivery transitions.
+1. Consume delivery transitions from the existing subscription.
 2. Use `messages().status_async(message_id)` for reconciliation.
 3. Treat `Sent` as transport handoff unless `terminal` is true.
 4. Treat `Delivered`, `Failed`, `Cancelled`, `Expired`, and `Rejected` with
    `terminal=true` as final outcomes.
+
+When the durable broker is enabled, `DaemonStored` and a consumer's
+`ack_stored` establish storage custody at their respective boundaries. Neither
+is a peer delivery receipt. Reconcile an uncertain outbound admission using its
+persisted operation ID before resubmitting; see [durable-broker operations](../goals/zmq-rch-durable-broker/OPERATIONS.md).
 
 ## Event Ordering
 

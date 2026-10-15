@@ -1,6 +1,7 @@
 # Current Roadmap Status
 
 Last reassessed: 2026-10-10
+Release/documentation reconciliation: 2026-10-15 (v0.14.0 public release record)
 MeshChat POC evidence added: 2026-09-27
 
 This file is the repository-level source of truth for parity posture, release
@@ -17,11 +18,11 @@ external-client evidence.
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
 
-## v0.14.0 release preparation
+## v0.14.0 stable release
 
-The release candidate consolidates the ZeroMQ SDK recovery, durable-custody,
+The published release consolidates the ZeroMQ SDK recovery, durable-custody,
 propagation resource-use, and reusable reply-connection increments merged since
-v0.13.0. Public package versions advance together to 0.14.0. The existing patched
+v0.13.0. All 19 public package versions advance together to 0.14.0. The existing patched
 transport is published as `reticulum-rs-zeromq` so crates.io consumers retain
 the same bounds and lifecycle behavior as the bundles. The supported Rust
 minimum is 1.88, matching the locked dependency requirements. Release and migration
@@ -35,9 +36,14 @@ queue traffic, alongside the existing parallel-delivery tests.
 
 The reference/parity boundary is unchanged. Production multi-hour memory/swap,
 power-cut, and physical/public-network qualification remain separate from this
-release. The candidate must pass local release/smoke checks, CI and Verify,
-and the tag's publication, interoperability, and performance workflows before
-publication is described as verified.
+release. The [public release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
+identifies immutable commit `7822b608f2cd2debd8170895bc580d01dda5356e` and records
+successful exact-commit CI/Verify, package/platform/OCI publication,
+independent-interoperability, and performance workflows. It also records
+independent artifact/checksum verification and the optional native-signing and
+Homebrew steps that were skipped. This documentation reconciliation does not
+rerun those historical qualification checks or promote operational evidence.
+The current `main` branch may contain later changes than that released commit.
 
 ## Reticulum 1.5.5 feature update (v0.13.0 released)
 
@@ -3000,6 +3006,12 @@ direction.
   local Rust-only mesh smokes.
 
 ## Current Release State
+
+Stable v0.14.0 is the current published release. Its package alignment, opt-in
+durable broker, migration requirements and qualification boundaries are
+summarized [above](#v0140-stable-release) and in the
+[release notes](../release-notes-v0.14.0.md). The older records below retain
+their original version and evidence scope.
 
 Stable `v0.9.9` publication is historical. Stable `v0.10.0` publication is
 complete on the software, hosted-PR, release-artifact, independent-interop,
