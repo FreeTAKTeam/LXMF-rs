@@ -22,6 +22,8 @@ include!("tests_parts/bootstrap_reports_auto_interface_as.rs");
 
 include!("tests_parts/bootstrap_restores_path_cache.rs");
 
+include!("tests_parts/durable_broker_bootstrap.rs");
+
 include!("tests_parts/bootstrap_strict_mode_panics_on_lora.rs");
 
 include!("tests_parts/propagation_node_toml_config.rs");

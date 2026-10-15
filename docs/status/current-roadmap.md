@@ -23,6 +23,10 @@ The current increment bounds propagation-refill writer transactions, uses
 indexed inventory and pending-only lookups, and avoids reopening unchanged
 announce-cache files on each path save. Existing SDK cancellation, timeout-stage
 diagnostics, bounded dispatch, custody and replay protections remain in force.
+Durable-broker-only daemon startup also creates the identity-capable Reticulum
+transport needed by SDK identity import without adding a network interface or
+Reticulum listener; a focused bootstrap regression verifies a non-empty
+delivery destination and an empty interface inventory.
 Complementary RCH issue 276 changes retain worker connections and index
 unfinished work independently. Local regression and qualification evidence,
 including remaining production memory/swap and delivery acceptance, is in

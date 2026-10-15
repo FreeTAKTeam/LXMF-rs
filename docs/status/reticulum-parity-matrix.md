@@ -27,6 +27,12 @@ Full path/tunnel snapshots are still written, and production memory/swap and
 public-network acceptance remain separate. See
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 
+Durable-broker-only daemon bootstrap initializes the identity-capable transport
+without opening a Reticulum listener or creating network interfaces. A focused
+daemon regression imports an SDK identity and verifies its delivery destination
+while the interface inventory remains empty; this is bootstrap integration
+evidence, not network interoperability evidence.
+
 ## Reticulum 1.5.5 changed-feature release
 
 The v0.13.0 release adds partial discovery, named interface management, and
