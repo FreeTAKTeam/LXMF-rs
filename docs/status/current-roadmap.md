@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-10-10
+Last reassessed: 2026-10-15
 MeshChat POC evidence added: 2026-09-27
 
 This file is the repository-level source of truth for parity posture, release
@@ -16,6 +16,18 @@ external-client evidence.
 
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
+
+## RCH resource regressions: issues 663, 657 and 655
+
+The current increment bounds propagation-refill writer transactions, uses
+indexed inventory and pending-only lookups, and avoids reopening unchanged
+announce-cache files on each path save. Existing SDK cancellation, timeout-stage
+diagnostics, bounded dispatch, custody and replay protections remain in force.
+Complementary RCH issue 276 changes retain worker connections and index
+unfinished work independently. Local regression and qualification evidence,
+including remaining production memory/swap and delivery acceptance, is in
+[the resource regression record](../performance/rch-resource-fixes-663.md).
+This does not change the Python reference pin or certify a production plateau.
 
 ## v0.14.0 release preparation
 

@@ -346,6 +346,7 @@ pub struct Transport {
     resource_events_tx: broadcast::Sender<ResourceEvent>,
     handler: Arc<Mutex<TransportHandler>>,
     iface_manager: Arc<Mutex<InterfaceManager>>,
+    path_table_persistence: reticulum_path_store::PathTablePersistence,
     cancel: CancellationToken,
 }
 

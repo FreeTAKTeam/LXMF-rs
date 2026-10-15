@@ -376,6 +376,7 @@ impl MessagesStore {
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_folded_lookup
                     ON propagation_peer_entries(LOWER(peer), transient_id, state);",
             )?;
+            Self::ensure_peer_queue_refill_schema(&tx)?;
             tx.commit()
         })
     }

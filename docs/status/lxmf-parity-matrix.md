@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-09-01
+Last reassessed: 2026-10-15
 MeshChat POC evidence added: 2026-09-27
 
 This is the maintained row-level status for Python LXMF compatibility.
@@ -29,6 +29,15 @@ same-endpoint socket replacement, lost announce replies without mutation retry,
 healthy-peer isolation and shutdown. Connect/send diagnostics retain correlation
 without payloads or credentials. This does not promote physical/public-network
 or sustained production memory evidence; see `docs/issue-657-investigation.md`.
+
+Issue 663 refill work adds an indexed, persisted keyset scan with at most 128
+candidate identifiers per writer transaction. Effective unhandled counts use a
+pending-only index and preserve completed-state precedence and configured
+capacity; pages release the writer between commits. Local regressions cover
+mostly-known inventory, reopen, new arrivals and first-call capacity. This
+extends resource evidence for issues 657/655 without promoting production
+memory/swap acceptance. See
+[the resource regression record](../performance/rch-resource-fixes-663.md).
 
 The historical v0.9.8 record retains its release boundary. Current `main` and
 the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for their

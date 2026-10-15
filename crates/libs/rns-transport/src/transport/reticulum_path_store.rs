@@ -4,8 +4,39 @@ use crate::transport::reticulum_announce_cache::{
 };
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+const ANNOUNCE_CACHE_VERIFY_INTERVAL: Duration = Duration::from_secs(300);
+
+pub(super) struct PathTablePersistence {
+    save_gate: tokio::sync::Semaphore,
+    state: tokio::sync::Mutex<Option<AnnounceCacheState>>,
+}
+
+impl Default for PathTablePersistence {
+    fn default() -> Self {
+        Self { save_gate: tokio::sync::Semaphore::new(1), state: tokio::sync::Mutex::new(None) }
+    }
+}
+
+#[derive(Default)]
+struct AnnounceCacheState {
+    storage_root: Option<PathBuf>,
+    last_full_verify: Option<Instant>,
+    files: HashMap<Hash, [u8; 32]>,
+}
+
+impl AnnounceCacheState {
+    fn full_verification_due(&self, now: Instant) -> bool {
+        self.last_full_verify
+            .is_none_or(|last| now.duration_since(last) >= ANNOUNCE_CACHE_VERIFY_INTERVAL)
+    }
+
+    fn retain_current_files(&mut self, current_hashes: &HashSet<Hash>) {
+        self.files.retain(|hash, _| current_hashes.contains(hash));
+    }
+}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ReticulumPathTableRestoreReport {
@@ -43,11 +74,26 @@ impl Transport {
         &self,
         storage_path: P,
     ) -> io::Result<usize> {
+        let _save_permit = self
+            .path_table_persistence
+            .save_gate
+            .acquire()
+            .await
+            .map_err(|_| io::Error::other("Reticulum path-table persistence gate closed"))?;
         if self.handler.lock().await.config.connected_to_shared_instance {
             return Ok(0);
         }
 
         let storage_path = storage_path.as_ref().to_path_buf();
+        // Errors before the final state restore discard this cache; the next save verifies disk.
+        let mut cache_state =
+            self.path_table_persistence.state.lock().await.take().unwrap_or_default();
+        if cache_state.storage_root.as_ref() != Some(&storage_path) {
+            cache_state = AnnounceCacheState {
+                storage_root: Some(storage_path.clone()),
+                ..AnnounceCacheState::default()
+            };
+        }
         let now = std::time::Instant::now();
         let now_unix_secs = now_unix_secs();
         let (kept_entries, tunnel_entries, packets) = {
@@ -96,15 +142,30 @@ impl Transport {
 
         tokio::fs::create_dir_all(&storage_path).await?;
         let announce_cache = ReticulumAnnounceCache::new(&storage_path);
-        announce_cache.ensure_dir().await?;
+        let verify_existing = cache_state.full_verification_due(Instant::now());
+        let mut current_hashes = HashSet::with_capacity(packets.len());
+        current_hashes.extend(packets.iter().map(|(packet_hash, _, _)| *packet_hash));
+        cache_state.retain_current_files(&current_hashes);
+        let result = async {
+            announce_cache.ensure_dir().await?;
+            for (packet_hash, iface, packet) in packets {
+                let previous = cache_state.files.get(&packet_hash).copied();
+                let (fingerprint, _) = announce_cache
+                    .write_with_fingerprint(packet_hash, iface, packet, previous, verify_existing)
+                    .await?;
+                cache_state.files.insert(packet_hash, fingerprint);
+            }
 
-        for (packet_hash, iface, packet) in packets {
-            announce_cache.write(packet_hash, iface, packet).await?;
+            tokio::fs::write(storage_path.join("destination_table"), payload).await?;
+            tokio::fs::write(storage_path.join("tunnels"), tunnel_payload).await?;
+            if verify_existing {
+                cache_state.last_full_verify = Some(Instant::now());
+            }
+            Ok(kept_entries.len())
         }
-
-        tokio::fs::write(storage_path.join("destination_table"), payload).await?;
-        tokio::fs::write(storage_path.join("tunnels"), tunnel_payload).await?;
-        Ok(kept_entries.len())
+        .await;
+        *self.path_table_persistence.state.lock().await = Some(cache_state);
+        result
     }
 
     pub async fn restore_reticulum_path_table<P: AsRef<Path>>(
@@ -350,4 +411,38 @@ fn python_tunnel_path_entry_expired(
     now_unix_secs: f64,
 ) -> bool {
     !entry.expires_secs.is_finite() || entry.expires_secs <= now_unix_secs
+}
+
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+
+    #[test]
+    fn removed_routes_are_pruned_from_the_persistence_cache() {
+        let retained = Hash::new_from_slice(b"retained-route");
+        let removed = Hash::new_from_slice(b"removed-route");
+        let mut state = AnnounceCacheState::default();
+        state.files.insert(retained, [1; 32]);
+        state.files.insert(removed, [2; 32]);
+
+        state.retain_current_files(&HashSet::from([retained]));
+
+        assert_eq!(state.files.len(), 1);
+        assert!(state.files.contains_key(&retained));
+        assert!(!state.files.contains_key(&removed));
+    }
+
+    #[test]
+    fn full_verification_is_rate_limited_to_five_minutes() {
+        let now = Instant::now();
+        let mut state = AnnounceCacheState::default();
+        assert!(state.full_verification_due(now));
+
+        state.last_full_verify =
+            Some(now - ANNOUNCE_CACHE_VERIFY_INTERVAL + Duration::from_secs(1));
+        assert!(!state.full_verification_due(now));
+
+        state.last_full_verify = Some(now - ANNOUNCE_CACHE_VERIFY_INTERVAL);
+        assert!(state.full_verification_due(now));
+    }
 }
