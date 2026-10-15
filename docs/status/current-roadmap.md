@@ -2,6 +2,7 @@
 
 Last reassessed: 2026-10-15
 MeshChat POC evidence added: 2026-09-27
+MeshChat saved interface controls added: 2026-10-15
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -110,8 +111,11 @@ remains open as deferred capability work, not a completed bare-metal fix.
 The opt-in loopback `meshchat-api` crate exposes a partial MeshChat 2.4.0
 HTTP/WebSocket compatibility layer from `reticulumd`. Text and file/image
 messaging, conversation/history reads, cancellation, deletion, local
-preferences, remote propagation fetch, and control-socket basics are
-implemented and locally tested. The current development POC ran with
+preferences, remote propagation fetch, control-socket basics, saved interface
+edits/import/export, serial-port discovery, and saved transport toggles are implemented and locally
+tested. Interface edits support both daemon TOML layouts and require restart;
+the live interface stats endpoint exposes a partial daemon snapshot. The
+current development POC ran with
 `rmap.world:4242` and a serial RNode on `/dev/ttyUSB1` at 915 MHz, 500 kHz,
 SF10, 4/5, and 22 dBm, with Reticulum transport enabled. The user confirmed
 two-way LoRa text and delivery of one message after about four idle minutes;
@@ -120,7 +124,7 @@ observations for one setup, not a sustained delivery or verified
 TCP-to-LoRa-to-TCP forwarding test. A roughly 271 KB attachment failed in the
 earlier trial, and receipt of three other messages that Columba reported as
 "in propagation" was not confirmed. The full application contract remains
-incomplete, especially audio send/calls, NomadNet, interface editing, and
+incomplete, especially audio send/calls, NomadNet, and
 propagation transfer state. This adapter does not change the Python RNS/LXMF
 callable-parity counts. See the [MeshChat API runbook](../runbooks/meshchat-api.md),
 [LXMF matrix](lxmf-parity-matrix.md), [Reticulum matrix](reticulum-parity-matrix.md),

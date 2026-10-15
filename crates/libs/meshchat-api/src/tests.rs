@@ -5,6 +5,8 @@ use axum::{
 };
 use tower::ServiceExt;
 
+mod interface_config_api;
+
 async fn call(app: Router, method: &str, path: &str, body: Option<Value>) -> (StatusCode, Value) {
     let mut request = Request::builder().method(method).uri(path);
     if body.is_some() {
@@ -314,7 +316,7 @@ async fn invalid_file_base64_is_rejected_before_storage() {
 }
 
 #[tokio::test]
-async fn interface_list_exposes_read_only_status() {
+async fn interface_stats_exposes_live_status() {
     let daemon = Arc::new(RpcDaemon::test_instance());
     daemon.replace_interfaces(vec![
         rns_rpc::rpc::InterfaceRecord {
@@ -335,12 +337,12 @@ async fn interface_list_exposes_read_only_status() {
         },
     ]);
     let app = router(daemon, None);
-    let (status, body) = call(app, "GET", "/api/v1/reticulum/interfaces", None).await;
+    let (status, body) = call(app, "GET", "/api/v1/interface-stats", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["interfaces"][0]["name"], "meshchat-tcp");
-    assert_eq!(body["interfaces"][0]["type"], "tcp_client");
-    assert_eq!(body["interfaces"][0]["enabled"], true);
-    assert_eq!(body["interfaces"][1]["connection"], "online");
+    assert_eq!(body["interface_stats"]["interfaces"][0]["interface_name"], "meshchat-tcp");
+    assert_eq!(body["interface_stats"]["interfaces"][0]["type"], "tcp_client");
+    assert_eq!(body["interface_stats"]["interfaces"][0]["enabled"], true);
+    assert_eq!(body["interface_stats"]["interfaces"][1]["name"], "meshchat-rnode");
 }
 
 #[tokio::test]

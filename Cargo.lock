@@ -1924,7 +1924,11 @@ dependencies = [
  "rmpv",
  "serde",
  "serde_json",
+ "serialport",
+ "tempfile",
  "tokio",
+ "toml",
+ "toml_edit",
  "tower",
  "tower-http",
 ]

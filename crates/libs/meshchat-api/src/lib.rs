@@ -2,6 +2,7 @@
 
 mod chat;
 mod control;
+mod interface_control;
 #[cfg(test)]
 mod tests;
 
@@ -27,6 +28,7 @@ pub struct AppState {
     local: Arc<RwLock<LocalState>>,
     events: broadcast::Sender<Value>,
     persist: Option<mpsc::UnboundedSender<(LocalState, oneshot::Sender<std::io::Result<()>>)>>,
+    config: Option<Arc<interface_control::ConfigStore>>,
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -114,6 +116,7 @@ pub fn router(daemon: Arc<RpcDaemon>, assets: Option<PathBuf>) -> Router {
         local: Arc::new(RwLock::new(LocalState::default())),
         events,
         persist: None,
+        config: None,
     });
     build_router(state, assets)
 }
@@ -156,19 +159,22 @@ fn build_router(state: Arc<AppState>, assets: Option<PathBuf>) -> Router {
         .route("/api/v1/destination/{destination_hash}/signal-metrics", get(signal_metrics))
         .route("/api/v1/destination/{destination_hash}/lxmf-stamp-info", get(stamp_info))
         .route("/api/v1/ping/{destination_hash}/lxmf.delivery", get(unsupported))
-        .route("/api/v1/interface-stats", get(unsupported))
+        .route("/api/v1/interface-stats", get(interface_control::interface_stats))
         .route("/api/v1/path-table", get(unsupported))
-        .route("/api/v1/comports", get(unsupported))
-        .route("/api/v1/reticulum/interfaces", get(interfaces))
-        .route("/api/v1/reticulum/interfaces/enable", post(unsupported))
-        .route("/api/v1/reticulum/interfaces/disable", post(unsupported))
-        .route("/api/v1/reticulum/interfaces/delete", post(unsupported))
-        .route("/api/v1/reticulum/interfaces/add", post(unsupported))
-        .route("/api/v1/reticulum/interfaces/export", post(unsupported))
-        .route("/api/v1/reticulum/interfaces/import-preview", post(unsupported))
-        .route("/api/v1/reticulum/interfaces/import", post(unsupported))
-        .route("/api/v1/reticulum/enable-transport", post(unsupported))
-        .route("/api/v1/reticulum/disable-transport", post(unsupported))
+        .route("/api/v1/comports", get(interface_control::comports))
+        .route("/api/v1/reticulum/interfaces", get(interface_control::interfaces))
+        .route("/api/v1/reticulum/interfaces/enable", post(interface_control::enable))
+        .route("/api/v1/reticulum/interfaces/disable", post(interface_control::disable))
+        .route("/api/v1/reticulum/interfaces/delete", post(interface_control::delete))
+        .route("/api/v1/reticulum/interfaces/add", post(interface_control::add))
+        .route("/api/v1/reticulum/interfaces/export", post(interface_control::export))
+        .route(
+            "/api/v1/reticulum/interfaces/import-preview",
+            post(interface_control::import_preview),
+        )
+        .route("/api/v1/reticulum/interfaces/import", post(interface_control::import))
+        .route("/api/v1/reticulum/enable-transport", post(interface_control::enable_transport))
+        .route("/api/v1/reticulum/disable-transport", post(interface_control::disable_transport))
         .route("/api/v1/calls", get(calls))
         .route("/api/v1/calls/clear-call-history", post(unsupported))
         .route("/api/v1/calls/hangup-all", get(unsupported))
@@ -189,6 +195,7 @@ pub async fn serve(
     daemon: Arc<RpcDaemon>,
     assets: Option<PathBuf>,
     state_path: PathBuf,
+    config_path: Option<PathBuf>,
 ) -> std::io::Result<()> {
     if !bind.ip().is_loopback() {
         return Err(std::io::Error::new(
@@ -222,6 +229,7 @@ pub async fn serve(
         local: Arc::new(RwLock::new(local)),
         events,
         persist: Some(persist_tx),
+        config: config_path.map(|path| Arc::new(interface_control::ConfigStore::new(path))),
     });
     if let Some(value) = state
         .local
@@ -255,35 +263,6 @@ async fn unsupported() -> impl IntoResponse {
         StatusCode::NOT_IMPLEMENTED,
         Json(json!({"message":"This MeshChat operation is not supported by the Reticulum daemon"})),
     )
-}
-
-async fn interfaces(State(state): State<Arc<AppState>>) -> ApiResult {
-    let status = state.rpc("daemon_status_ex", None).await?;
-    let records = status
-        .get("interfaces")
-        .and_then(Value::as_array)
-        .ok_or_else(|| ApiError::unavailable("daemon interface status is malformed"))?;
-    let interfaces: Vec<Value> = records
-        .iter()
-        .map(|record| {
-            let connection = record
-                .pointer("/settings/_runtime/tcp/stream_status/stream_state")
-                .cloned()
-                .or_else(|| {
-                    record
-                        .pointer("/settings/_runtime/lora/rnode_status/online")
-                        .and_then(Value::as_bool)
-                        .map(|online| json!(if online { "online" } else { "offline" }))
-                });
-            json!({
-                "name":record.get("name"),
-                "type":record.get("type"),
-                "enabled":record.get("enabled"),
-                "connection":connection,
-            })
-        })
-        .collect();
-    Ok(Json(json!({"interfaces":interfaces})))
 }
 
 async fn status(State(state): State<Arc<AppState>>) -> ApiResult {
