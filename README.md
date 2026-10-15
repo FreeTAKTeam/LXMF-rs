@@ -12,6 +12,19 @@ LXMF-rs is a Rust implementation of the
 provides reusable libraries, a typed SDK, host daemons and command-line tools,
 plus embedded and FFI surfaces.
 
+
+## Our position on independent Reticulum implementations
+
+Reticulum is a public-domain protocol whose authoritative specification is its Python reference implementation.
+
+We respect Mark Qvist's original work and intellectual property rights. However, we reject the assertion that AI-assisted analysis or reimplementation automatically constitutes copyright infringement.
+
+**No individual can claim exclusive control over the independent implementation of a public-domain protocol.** Compatibility should be established through reproducible interoperability tests and technical evidence, not personal endorsement.
+
+**This project will continue its development**, committed to software quality, security, interoperability, and the freedom to innovate.
+
+Read our [full statement on independent implementations and AI-assisted development](PROJECT_POSITION.md).
+
 <!-- performance-summary:start -->
 ## Measured performance
 
