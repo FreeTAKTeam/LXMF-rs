@@ -79,7 +79,11 @@ async fn pipeline_decode_and_mapped_remote_errors_keep_local_stage_and_original_
         remote.retryable = Some(true); // Existing mapper drops this; diagnostics must not change it.
         let expected = super::super::support::map_rpc_error(remote.clone());
         let server = tokio::spawn(async move {
-            let request = recv_request_envelope(&mut commands).await.expect("request");
+            // The SDK deadline bounds this exchange; a shorter fixture deadline can
+            // drop a valid late request before the decode/error assertions run.
+            let message = commands.recv().await.expect("request");
+            let bytes = Vec::<u8>::try_from(message).expect("request bytes");
+            let request = zmq::decode_envelope(&bytes).expect("request envelope");
             let mut responses = PushSocket::new();
             responses
                 .connect(&request.response_endpoint.expect("endpoint"))
