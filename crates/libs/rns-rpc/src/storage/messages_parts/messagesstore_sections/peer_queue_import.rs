@@ -1,37 +1,12 @@
 impl MessagesStore {
-    /// Fill only the remaining pending capacity. The count and insertion are a
-    /// single SQLite statement, so concurrent refills cannot exceed the limit.
+    /// Fill remaining pending capacity in bounded, independently committed pages.
+    /// The durable cursor avoids restarting completed scans on unchanged inventory.
     pub fn mark_recent_propagation_unhandled_for_peer(
         &self,
         peer: &str,
         limit: u64,
     ) -> rusqlite::Result<usize> {
-        self.with_write_conn(|conn| {
-            let peer = normalize_peer_key(peer);
-            conn.execute(
-                "INSERT OR IGNORE INTO propagation_peer_entries
-                    (peer, transient_id, state, updated_at)
-                 SELECT ?1, transient_id, 'unhandled', ?2
-                 FROM propagation_entries
-                 WHERE NOT EXISTS (
-                     SELECT 1
-                     FROM propagation_peer_entries existing
-                     WHERE LOWER(existing.peer) = LOWER(?1)
-                       AND existing.transient_id = propagation_entries.transient_id
-                 )
-                 ORDER BY received_at DESC, transient_id DESC
-                 LIMIT (
-                     SELECT MAX(0, ?3 - COUNT(*)) FROM (
-                         SELECT transient_id
-                         FROM propagation_peer_entries
-                         WHERE LOWER(peer) = LOWER(?1)
-                         GROUP BY transient_id
-                         HAVING SUM(CASE WHEN state <> 'unhandled' THEN 1 ELSE 0 END) = 0
-                     )
-                 )",
-                params![peer, now_unix_secs(), sql_u64(limit.max(1))?],
-            )
-        })
+        self.refill_recent_peer_propagation(peer, limit)
     }
 
     pub(crate) fn import_peer_queue_marks(

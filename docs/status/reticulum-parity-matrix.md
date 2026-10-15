@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-10-03
+Last reassessed: 2026-10-15
 MeshChat POC evidence added: 2026-09-27
 
 This is the maintained row-level status for Python Reticulum compatibility.
@@ -17,6 +17,29 @@ Parity is recorded on two independent axes:
 `hardware-unverified` is an evidence boundary, not an implementation failure.
 Evidence labels describe validation scope independently of implementation status;
 they do not downgrade a complete software surface.
+
+The issue 663 path-persistence increment keeps a bounded, single-storage-root
+fingerprint set for current route announces. Unchanged cache files skip encoding
+and filesystem access; initial and five-minute verification still repair
+missing/corrupt files, and changed packet headers/interfaces are persisted.
+Concurrent saves, restart/restore and failure handling have local regressions.
+Full path/tunnel snapshots are still written, and production memory/swap and
+public-network acceptance remain separate. See
+[the resource regression record](../performance/rch-resource-fixes-663.md).
+
+Durable-broker-only daemon bootstrap initializes the identity-capable transport
+without opening a Reticulum listener or creating network interfaces. A focused
+daemon regression imports an SDK identity and verifies its delivery destination
+while the interface inventory remains empty; this is bootstrap integration
+evidence, not network interoperability evidence.
+
+Established Link data, RTT, packet delivery proofs and Resource proofs now follow
+the opposite recorded interface in either direction on a validated Link, even
+without a destination path-table entry after shared-owner handoff. Unit
+regressions cover both proof contexts and reject unrelated ingress and pending
+Links. The pinned-Python
+two-relay restart regression checks sender-confirmed LXMF delivery in both
+directions; broader reverse-delivery and network evidence remain separate.
 
 ## Reticulum 1.5.5 changed-feature release
 

@@ -1,5 +1,7 @@
 use super::*;
+use crate::packet::HeaderType;
 use rmpv::Value as RmpValue;
+use sha2::{Digest, Sha256};
 use std::io;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
@@ -17,29 +19,45 @@ impl ReticulumAnnounceCache {
         tokio::fs::create_dir_all(&self.dir).await
     }
 
+    #[cfg(test)]
     pub(super) async fn write(
         &self,
         packet_hash: Hash,
         iface: AddressHash,
         packet: Packet,
     ) -> io::Result<()> {
+        self.write_with_fingerprint(packet_hash, iface, packet, None, true).await.map(|_| ())
+    }
+
+    pub(super) async fn write_with_fingerprint(
+        &self,
+        packet_hash: Hash,
+        iface: AddressHash,
+        packet: Packet,
+        previous_fingerprint: Option<[u8; 32]>,
+        verify_existing: bool,
+    ) -> io::Result<([u8; 32], CacheWriteOutcome)> {
+        let fingerprint = cached_announce_fingerprint(iface, &packet)?;
+        if !verify_existing && previous_fingerprint == Some(fingerprint) {
+            return Ok((fingerprint, CacheWriteOutcome::SkippedKnownBytes));
+        }
         let payload = encode_cached_announce(iface, packet)?;
         let path = self.path(packet_hash);
-        // Path-table saves revisit every cached announce. Compare exact bytes:
-        // a hash alone does not bind the interface reference or mutable headers.
+        // Periodic exact-byte checks repair files changed outside this process.
         match tokio::fs::File::open(&path).await {
             Ok(file) => {
                 let mut existing = Vec::with_capacity(payload.len() + 1);
                 // Bound reads even if an existing cache file is corrupt/oversized.
                 file.take((payload.len() + 1) as u64).read_to_end(&mut existing).await?;
                 if existing == payload {
-                    return Ok(());
+                    return Ok((fingerprint, CacheWriteOutcome::VerifiedUnchanged));
                 }
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
-        tokio::fs::write(path, payload).await
+        tokio::fs::write(path, payload).await?;
+        Ok((fingerprint, CacheWriteOutcome::Written))
     }
 
     pub(super) async fn restore_classified(
@@ -89,6 +107,13 @@ impl ReticulumAnnounceCache {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CacheWriteOutcome {
+    SkippedKnownBytes,
+    VerifiedUnchanged,
+    Written,
+}
+
 pub(super) struct CachedAnnounce {
     pub(super) packet: Packet,
     pub(super) destination: SingleOutputDestination,
@@ -116,6 +141,27 @@ fn encode_cached_announce(iface: AddressHash, packet: Packet) -> io::Result<Vec<
     rmpv::encode::write_value(&mut payload, &value)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode cached announce"))?;
     Ok(payload)
+}
+
+fn cached_announce_fingerprint(iface: AddressHash, packet: &Packet) -> io::Result<[u8; 32]> {
+    // Packet hashes omit mutable headers, but cached bytes include them.
+    let serialized_len = packet
+        .serialized_len()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode cached announce"))?;
+    let mut fingerprint = Sha256::new();
+    fingerprint.update((serialized_len as u64).to_be_bytes());
+    fingerprint.update([packet.header.to_meta(), packet.header.hops]);
+    if packet.header.header_type == HeaderType::Type2 {
+        let transport = packet
+            .transport
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "encode cached announce"))?;
+        fingerprint.update(transport.as_slice());
+    }
+    fingerprint.update(packet.destination.as_slice());
+    fingerprint.update([packet.context as u8]);
+    fingerprint.update(packet.data.as_slice());
+    fingerprint.update(iface.as_slice());
+    Ok(fingerprint.finalize().into())
 }
 
 fn rmp_bytes(value: &RmpValue) -> Option<&[u8]> {

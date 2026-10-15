@@ -324,6 +324,7 @@ async fn reticulum_tunnel_table_restore_skips_mismatched_cached_announce_destina
 
 struct CachedPathSeed {
     destination: AddressHash,
+    packet: Packet,
 }
 
 async fn learn_cached_path(transport: &Transport, iface: AddressHash, aspect: &str) -> CachedPathSeed {
@@ -341,7 +342,7 @@ async fn learn_cached_path(transport: &Transport, iface: AddressHash, aspect: &s
     )
     .await;
 
-    CachedPathSeed { destination }
+    CachedPathSeed { destination, packet: announce }
 }
 
 fn corrupt_cached_announce_msgpack(storage_path: &std::path::Path, packet_hash: &Hash) {

@@ -1,7 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-10-10
-Release/documentation reconciliation: 2026-10-15 (v0.14.0 public release record)
+Last reassessed: 2026-10-15
 MeshChat POC evidence added: 2026-09-27
 
 This file is the repository-level source of truth for parity posture, release
@@ -18,7 +17,30 @@ external-client evidence.
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
 
-## v0.14.0 stable release
+## RCH resource regressions: issues 663, 657 and 655
+
+The current increment bounds propagation-refill writer transactions, uses
+indexed inventory and pending-only lookups, and avoids reopening unchanged
+announce-cache files on each path save. Existing SDK cancellation, timeout-stage
+diagnostics, bounded dispatch, custody and replay protections remain in force.
+Durable-broker-only daemon startup also creates the identity-capable Reticulum
+transport needed by SDK identity import without adding a network interface or
+Reticulum listener; a focused bootstrap regression verifies a non-empty
+delivery destination and an empty interface inventory.
+Complementary RCH issue 276 changes retain worker connections and index
+unfinished work independently. Local regression and qualification evidence,
+including remaining production memory/swap and delivery acceptance, is in
+[the resource regression record](../performance/rch-resource-fixes-663.md).
+This does not change the Python reference pin or certify a production plateau.
+
+The PR CI repair routes established Link data, RTT, packet delivery proofs and
+Resource proofs to the opposite recorded interface in either direction, only
+after Link validation. It preserves shared-owner handoff even without a
+destination path-table entry. Focused regressions cover absent paths, both
+proof contexts, unrelated ingress and pending Links;
+the pinned-Python two-relay restart regression retains sender delivery checks.
+
+## v0.14.0 release preparation
 
 The published release consolidates the ZeroMQ SDK recovery, durable-custody,
 propagation resource-use, and reusable reply-connection increments merged since

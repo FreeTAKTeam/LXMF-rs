@@ -155,6 +155,7 @@ impl Transport {
             iface_messages_tx,
             resource_events_tx,
             handler,
+            path_table_persistence: super::reticulum_path_store::PathTablePersistence::default(),
             cancel,
         }
     }

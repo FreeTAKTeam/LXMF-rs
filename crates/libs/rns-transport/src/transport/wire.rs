@@ -106,7 +106,14 @@ pub(super) async fn handle_proof(
     }
 
     let maybe_packet = if should_forward_link_table_proof(&packet, &handler, iface).await {
-        handler.link_table.handle_proof(&packet)
+        if packet.header.destination_type == DestinationType::Link
+            && matches!(packet.context, PacketContext::None | PacketContext::LinkProof)
+        {
+            // A reply over an established Link needs its proof routed toward the responder.
+            handler.link_table.handle_link_packet(&packet, iface)
+        } else {
+            handler.link_table.handle_proof(&packet)
+        }
     } else {
         None
     };
@@ -207,34 +214,20 @@ pub(super) async fn handle_data<'a>(
             return;
         }
 
-        let reverse_packet = if handler.config.transport_enabled {
-            handler.link_table.handle_reverse_link_packet(packet, iface)
+        let forwarded_packet = if handler.config.transport_enabled {
+            handler.link_table.handle_link_packet(packet, iface)
         } else {
             None
         };
-        if let Some((packet, iface)) = reverse_packet {
+        if let Some((packet, iface)) = forwarded_packet {
             log::debug!(
-                "[resource-diag] wire_resource_reverse_forward node={} link={} iface={}",
+                "[tp-diag] wire_link_forward node={} link={} iface={}",
                 handler.config.name,
                 packet.destination,
                 iface
             );
             handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
             return;
-        }
-
-        if handler.config.transport_enabled {
-            let lookup = handler.link_table.original_destination(&packet.destination);
-            if lookup.is_some() {
-                let sent = send_to_next_hop(packet, &handler, lookup).await;
-
-                log::trace!(
-                    "tp({}): {} packet to remote link {}",
-                    handler.config.name,
-                    if sent { "forwarded" } else { "could not forward" },
-                    packet.destination
-                );
-            }
         }
     }
 

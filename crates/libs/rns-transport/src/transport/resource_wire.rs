@@ -1,4 +1,3 @@
-use super::path::send_to_next_hop;
 use super::*;
 use crate::resource::{build_link_packet, ResourceAdvertisement};
 
@@ -44,37 +43,19 @@ pub(super) async fn handle_resource_proof(
         handler.resource_response_packets = responses;
         publish_resource_events(&handler, events);
     } else {
-        let reverse_packet = if handler.config.transport_enabled {
-            handler.link_table.handle_reverse_link_packet(&packet, iface)
+        let forwarded_packet = if handler.config.transport_enabled {
+            handler.link_table.handle_link_packet(&packet, iface)
         } else {
             None
         };
-        if let Some((packet, target_iface)) = reverse_packet {
+        if let Some((packet, target_iface)) = forwarded_packet {
             log::debug!(
-                "[tp-diag] resource_proof_reverse_forward node={} link={} iface={}",
+                "[tp-diag] resource_proof_forward node={} link={} iface={}",
                 handler.config.name,
                 packet.destination,
                 target_iface
             );
             handler.send(TxMessage { tx_type: TxMessageType::Direct(target_iface), packet }).await;
-            return;
-        }
-
-        // A Link can carry a Resource in either direction. When the Link
-        // initiator is receiving a reverse-direction Resource, its proof
-        // arrives on the requester side and must continue toward the original
-        // Link destination. The reverse-table branch above intentionally only
-        // handles packets arriving from the responder side; mirror normal Link
-        // data forwarding for the opposite direction.
-        let lookup = handler.link_table.original_destination(&packet.destination);
-        if lookup.is_some() {
-            let sent = send_to_next_hop(&packet, &handler, lookup).await;
-            log::debug!(
-                "[tp-diag] resource_proof_forward node={} link={} sent={}",
-                handler.config.name,
-                packet.destination,
-                sent
-            );
         }
     }
 }
