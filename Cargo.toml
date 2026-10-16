@@ -16,6 +16,7 @@ members = [
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
+  "crates/libs/rns-bluetooth",
   "crates/libs/rns-rpc",
   "crates/libs/test-support",
   "crates/apps/lxmf-cli",
@@ -37,6 +38,7 @@ default-members = [
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
+  "crates/libs/rns-bluetooth",
   "crates/libs/rns-rpc",
   "crates/libs/test-support",
   "crates/apps/lxmf-cli",
@@ -63,6 +65,7 @@ reason = "Vendored zeromq retains its upstream MIT license and copyright notice;
 # `tools/scripts/check-boundaries.sh` treats this as a strict allowlist.
 allowed_library_edges = [
   "lxmf-sdk->lxmf-reference",
+  "lxmf-sdk->reticulum-rs-bluetooth",
   "lxmf-embedded-mini->lxmf-wire",
   "lxmf->lxmf-sdk",
   "lxmf->lxmf-wire",
@@ -118,6 +121,7 @@ lxmf-runtime = { version = "0.14.0", path = "crates/libs/lxmf-runtime" }
 reticulum-rs = { version = "0.14.0", path = "crates/libs/reticulum-rs" }
 rns-core = { package = "reticulum-rs-core", version = "0.14.0", path = "crates/libs/rns-core" }
 rns-rpc = { package = "reticulum-rs-rpc", version = "0.14.0", path = "crates/libs/rns-rpc" }
+rns-bluetooth = { package = "reticulum-rs-bluetooth", version = "0.14.0", path = "crates/libs/rns-bluetooth", default-features = false }
 rns-transport = { package = "reticulum-rs-transport", version = "0.14.0", path = "crates/libs/rns-transport" }
 aes = "0.8.4"
 base64 = "0.22"

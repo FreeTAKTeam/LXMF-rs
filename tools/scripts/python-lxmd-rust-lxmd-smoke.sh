@@ -1112,6 +1112,13 @@ run_link_case() {
     exit 1
   fi
 
+  # The control server can be ready while the transport interface is reconnecting.
+  # Wait for the TCP client before sending the one-shot lifecycle announces.
+  if ! wait_for_rust_tcp_client_accept; then
+    echo "Rust daemon did not accept Python TCP client before ${COMPAT_CASE}" >&2
+    exit 1
+  fi
+
   py_status_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "status" "null")"
   py_delivery_hash="$("${PYTHON_BIN}" - <<'PY' "${py_status_json}"
 import json
