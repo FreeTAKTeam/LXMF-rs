@@ -10,6 +10,7 @@ const MAX_DELIVERY_ATTEMPTS: u32 = 5;
 #[derive(Clone, Copy, Debug)]
 pub struct DeliveryTiming {
     medium_timeout: Duration,
+    medium_timeout_seconds: f64,
     destination_round_trip: Duration,
     lowest_bitrate: Option<u64>,
     path_attempt_limit: u32,
@@ -51,6 +52,7 @@ impl DeliveryTiming {
             |seconds| Duration::try_from_secs_f64(seconds).map_err(|_| InvalidDeliveryTiming);
         Ok(Self {
             medium_timeout: duration(medium_timeout)?,
+            medium_timeout_seconds: medium_timeout,
             destination_round_trip: duration(destination_round_trip)?,
             lowest_bitrate,
             path_attempt_limit: attempt_limit(medium_timeout),
@@ -69,6 +71,20 @@ impl DeliveryTiming {
             PATH_REQUEST_DEBOUNCE
         } else {
             self.path_request_wait()
+        }
+    }
+
+    /// Compare elapsed time to the unquantized measurement; timer conversion can
+    /// round a fractional boundary into the preceding nanosecond.
+    pub fn path_request_pending(self, elapsed: Duration) -> bool {
+        elapsed.as_secs_f64() < PATH_REQUEST_WAIT.as_secs_f64().max(self.medium_timeout_seconds)
+    }
+
+    pub fn request_debounced(self, elapsed: Duration) -> bool {
+        if self.lowest_bitrate.is_some_and(|bitrate| bitrate < 2000) {
+            elapsed.as_secs_f64() < PATH_REQUEST_DEBOUNCE.as_secs_f64()
+        } else {
+            self.path_request_pending(elapsed)
         }
     }
 

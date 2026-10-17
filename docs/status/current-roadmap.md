@@ -29,7 +29,8 @@ Item 3 has local target-reference checkpoints for payload sizing, metadata,
 notification recovery, peer stamp selection, reference retry timing, measured
 identity-discovery waits, atomic admission
 Resource dispatch-failure ownership (including startup subscription), and borrowed
-attempt outcomes with durable propagation-envelope reuse. Production
+attempt outcomes with durable propagation-envelope reuse. Shared path-request
+coalescing and cancellable measured propagation-cost discovery are also covered. Production
 retry ownership and target mixed-peer acceptance remain open; these checkpoints
 do not establish LXMF 1.2.0 completion. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).

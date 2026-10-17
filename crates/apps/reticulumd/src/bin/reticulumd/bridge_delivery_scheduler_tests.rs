@@ -116,6 +116,7 @@ async fn prepare_payload_builds_propagation_stamp_before_delivery_lane() {
     let mut destination = [0u8; 16];
     destination.copy_from_slice(destination_hash.as_slice());
     let task = DeliveryTask {
+        path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
         transport,

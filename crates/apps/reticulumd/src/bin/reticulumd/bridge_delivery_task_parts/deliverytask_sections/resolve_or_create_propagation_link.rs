@@ -85,21 +85,10 @@ impl DeliveryTask {
             identity = self.transport.destination_identity(&destination_hash).await;
         }
         if identity.is_none() {
-            self.transport.request_path(&destination_hash, None, None).await;
+            let timing = self.request_delivery_path(destination_hash).await?;
             log_delivery_trace(&self.message_id, &self.destination_hex, stage, "path-requested");
             let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(&self.message_id, detail, stage, "waiting for announce");
-            let timing = super::delivery_timing::measured_delivery_timing(
-                self.transport.path_timing(&destination_hash).await,
-            )
-            .map_err(|error| {
-                log::error!(
-                    "invalid delivery timing message_id={} destination={destination_hash}: {error}",
-                    self.message_id
-                );
-                self.fail_payload_build(std::io::Error::other(error));
-                DeliveryAttemptOutcome::Terminal
-            })?;
             let deadline = tokio::time::Instant::now() + timing.path_request_wait();
             while tokio::time::Instant::now() < deadline {
                 if self.abort_if_cancelled(stage) {

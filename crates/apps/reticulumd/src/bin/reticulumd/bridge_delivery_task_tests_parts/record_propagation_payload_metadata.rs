@@ -26,6 +26,7 @@ async fn record_propagation_payload_metadata_persists_packed_bytes() {
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
     let destination = [0u8; 16];
     let task = DeliveryTask {
+        path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
         transport,
@@ -188,7 +189,7 @@ async fn propagation_target_cost_matches_selected_node_case_insensitively() {
         AddressHash::new(parse_destination_hash_required(peer).expect("peer hash"));
     let (cost, source) = task
         .propagation_target_cost_reference_style(&peer.to_ascii_uppercase(), propagation_hash)
-        .await;
+        .await.expect("cost lookup");
 
     assert_eq!(cost, Some(23));
     assert_eq!(source, "cached_announce");
@@ -275,6 +276,7 @@ async fn self_selected_propagation_node_stores_locally_without_link_activation()
     destination.copy_from_slice(remote_identity.address_hash.as_slice());
     let (receipt_tx, mut receipt_rx) = tokio::sync::mpsc::channel(16);
     let task = DeliveryTask {
+        path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
         transport,

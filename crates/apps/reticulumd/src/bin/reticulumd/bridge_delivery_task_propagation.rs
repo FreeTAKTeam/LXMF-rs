@@ -58,7 +58,7 @@ impl DeliveryTask {
                 propagation_node_hex.as_str(),
                 propagation_hash,
             )
-            .await;
+            .await?;
         let target_cost = target_cost.unwrap_or(propagation::DEFAULT_PROPAGATION_STAMP_COST);
         log_delivery_trace(
             &self.message_id,
@@ -78,30 +78,36 @@ impl DeliveryTask {
         &self,
         propagation_node_hex: &str,
         propagation_hash: AddressHash,
-    ) -> (Option<u32>, &'static str) {
+    ) -> Result<(Option<u32>, &'static str), DeliveryAttemptOutcome> {
+        if self.abort_if_cancelled("propagation_target_cost") {
+            return Err(DeliveryAttemptOutcome::Stopped);
+        }
         let (_peer, cost, source) =
             self.daemon.outbound_propagation_cost_lookup(Some(propagation_node_hex));
         if cost.is_some() {
-            return (cost, source);
+            return Ok((cost, source));
         }
 
-        self.transport.request_path(&propagation_hash, None, None).await;
+        let timing = self.request_delivery_path(propagation_hash).await?;
         log_delivery_trace(
             &self.message_id,
             propagation_node_hex,
             "propagation_target_cost",
-            "path-requested",
+            "waiting for propagation stamp cost",
         );
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
+        let deadline = tokio::time::Instant::now() + timing.path_request_wait();
         while tokio::time::Instant::now() < deadline {
+            if self.abort_if_cancelled("propagation_target_cost") {
+                return Err(DeliveryAttemptOutcome::Stopped);
+            }
             let (_peer, cost, _source) =
                 self.daemon.outbound_propagation_cost_lookup(Some(propagation_node_hex));
             if cost.is_some() {
-                return (cost, "path_request");
+                return Ok((cost, "path_request"));
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
-        (None, "unavailable")
+        Ok((None, "unavailable"))
     }
 
     pub(super) fn record_propagation_payload_metadata(

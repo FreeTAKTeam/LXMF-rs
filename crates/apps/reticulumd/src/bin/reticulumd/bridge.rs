@@ -207,3 +207,6 @@ fn now_secs_i64() -> i64 {
     i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
         .unwrap_or(i64::MAX)
 }
+
+#[path = "bridge_delivery_paths.rs"]
+mod delivery_paths;

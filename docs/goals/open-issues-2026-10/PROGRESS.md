@@ -412,3 +412,33 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - Local validation: 76 bridge tests and the issue-369 scanner pass; all-feature
   daemon Clippy, formatting, module-size, boundary and diff checks pass. No new PR,
   hosted checks, mixed-peer target acceptance or item-3 completion is claimed.
+
+### Item 3 shared path-request coalescing checkpoint
+
+- Delivery tasks now share scheduler-owned LXMF discovery history. Atomic claim
+  checks suppress duplicate destination requests before transport I/O without
+  holding the history lock across awaits. RNS routing and explicit path RPC policy
+  remain separate. Suppression neither refreshes timestamps nor prunes history;
+  pending reads retain debounce history. An admitted request prunes using the
+  current measured window, as in the pinned router. Retention is time-window based,
+  not an entry-count bound.
+- A production identity-resolver regression failed with duplicate path frames and
+  passes after cutover. Fifty request cells from the unchanged exact-pin fixture
+  cover normal/slow boundaries, pending expiration before debounce, and an
+  86-second pending window permitting another request at the 60-second debounce.
+  Fractional comparisons preserve raw medium seconds instead of rounding the
+  threshold through Duration; timer waits retain Duration. This does not claim
+  identical wall-clock floating-point representation at every sub-nanosecond edge.
+- Removed admission's eager blocking propagation-node lookup; cached/persisted
+  identities remain available and unresolved discovery belongs to the admitted
+  asynchronous task. Both recipient discovery and propagation-cost discovery use
+  the shared history. Cost discovery uses the measured path wait instead of 12s.
+- Review identified that the longer cost wait lacked cancellation checks. Fixed
+  before discovery and during polling, returning Stopped. Paused-clock tests prove
+  a 100-bit/s cost lookup waits 86 seconds and a persisted cancellation ends it
+  within the next 250ms poll without issuing another request. Re-review accepted.
+- Local validation: 81 bridge tests, the wire library/integration suites and
+  issue-369 scanner pass; all-feature daemon Clippy, formatting, boundary, module
+  size and diff checks pass. This is still not the full retry owner: discovery
+  waits remain inside attempts/preparation, and execution-permit release, effective
+  method, announce wakeups and packet/Resource terminal coordination are pending.

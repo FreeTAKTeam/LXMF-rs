@@ -147,31 +147,8 @@ impl OutboundBridge for TransportBridge {
                         }
                         return Some(identity);
                     }
-                    let identity = match resolve_destination_identity_blocking(
-                        self.transport.clone(),
-                        hash,
-                        Duration::from_secs(12),
-                    ) {
-                        Ok(Some(id)) => id,
-                        Ok(None) => return None,
-                        Err(err) => {
-                            log::warn!(
-                                "[daemon] identity resolver for propagation node {node_hex}: {err}"
-                            );
-                            return None;
-                        }
-                    };
-                    match self.outbound_propagation_identities.lock() {
-                        Ok(mut guard) => {
-                            guard.insert(node_hex.to_string(), identity);
-                        }
-                        Err(error) => {
-                            log::error!(
-                                "[daemon] propagation identity cache lock poisoned for node={node_hex}: {error}"
-                            );
-                        }
-                    }
-                    Some(identity)
+                    // Unresolved discovery belongs to the admitted asynchronous task.
+                    None
                 })
             })
         } else {
@@ -198,6 +175,7 @@ impl OutboundBridge for TransportBridge {
             self.receipt_tx.reserve_terminal(&record.id)?;
         }
         let task = DeliveryTask {
+            path_requests: Default::default(),
             deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             daemon,
             transport: self.transport.clone(),

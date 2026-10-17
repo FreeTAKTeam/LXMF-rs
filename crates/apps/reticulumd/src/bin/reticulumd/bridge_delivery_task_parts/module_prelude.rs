@@ -15,6 +15,7 @@ pub(super) struct LinkModeStatuses {
 }
 
 pub(super) struct DeliveryTask {
+    pub(super) path_requests: Arc<super::delivery_paths::DeliveryPathRequests>,
     pub(super) deferred_dispatch: Arc<std::sync::atomic::AtomicBool>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) transport: Arc<Transport>,

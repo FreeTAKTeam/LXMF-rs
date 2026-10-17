@@ -65,8 +65,11 @@ policy has not yet replaced production retry ownership. Borrowed attempts now re
 stable prepared bytes and return explicit ownership outcomes; injected fallback
 commit failures suppress propagation until storage recovers, and restored envelopes
 reuse exact bytes. This remains a single-attempt boundary: effective-method retry
-state is not yet integrated. Request coalescing, admitted-message
-lifecycle, real callback-following delivery and full mixed-peer target traces
+state is not yet integrated. Shared scheduler discovery now coalesces requests,
+preserves pending/debounce history and applies measured cancellable propagation-cost
+waits; outbound admission no longer performs a blocking propagation identity lookup.
+Fifty exact-pin request-boundary cells and concurrent production lookups pass.
+Admitted-message lifecycle, real callback-following delivery and full mixed-peer target traces
 remain pending; no row or reference baseline is promoted by these checkpoints.
 See the [execution record](../goals/open-issues-2026-10/PROGRESS.md).
 

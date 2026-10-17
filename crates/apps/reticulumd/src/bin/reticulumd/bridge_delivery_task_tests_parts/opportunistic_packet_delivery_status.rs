@@ -36,6 +36,7 @@ async fn opportunistic_packet_delivery_reports_status_hash_and_bytes() {
     let receipt_map = Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, mut receipt_rx) = tokio::sync::mpsc::channel(16);
     let task = DeliveryTask {
+        path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
         transport,

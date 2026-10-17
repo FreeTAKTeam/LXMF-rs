@@ -19,6 +19,7 @@ pub(in crate::bridge) fn delivery_task_for_propagation_cost_lookup(daemon: Arc<R
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
     let destination = [0u8; 16];
     DeliveryTask {
+        path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
         transport,
@@ -117,6 +118,7 @@ async fn abort_if_cancelled_reads_persisted_daemon_status() {
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
     let destination = [0u8; 16];
     let task = DeliveryTask {
+        path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
         transport,

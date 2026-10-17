@@ -245,6 +245,7 @@ pub(super) struct DeliveryScheduler {
     bytes: Arc<Semaphore>,
     owner: Arc<DeliveryRuntimeOwner>,
     owned_messages: Arc<Mutex<HashSet<String>>>,
+    path_requests: Arc<super::delivery_paths::DeliveryPathRequests>,
 }
 struct DeliveryRuntimeOwner {
     stop: tokio::sync::watch::Sender<bool>,
@@ -279,14 +280,16 @@ impl DeliveryScheduler {
             bytes: Arc::new(Semaphore::new(DELIVERY_RETAINED_BYTES as usize)),
             owner,
             owned_messages: Arc::new(Mutex::new(HashSet::new())),
+            path_requests: Default::default(),
         }
     }
 
     pub(super) fn enqueue_reserved(
         &self,
-        task: DeliveryTask,
+        mut task: DeliveryTask,
         reservation: DeliveryReservation,
     ) -> Result<(), std::io::Error> {
+        task.path_requests = self.path_requests.clone();
         let peer = task.destination_hex.clone();
         self.metrics.record_admitted_for_peer(&peer);
         match self.tx.try_send(ScheduledDelivery {
