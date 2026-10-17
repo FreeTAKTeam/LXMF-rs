@@ -68,12 +68,18 @@ async fn fallback_task() -> (
 
 #[tokio::test]
 async fn borrowed_fallback_commits_before_reuse_and_restores_exact_envelope() {
-    let (_directory, connection, task, mut prepared, mut receipts) = fallback_task().await;
+    let (_directory, connection, mut task, mut prepared, mut receipts) = fallback_task().await;
     let stamp = Arc::new(Semaphore::new(1));
     let initial = encode_prepared(&prepared);
     assert_eq!(
-        task.run_prepared_attempt(&mut prepared, &stamp).await,
-        DeliveryAttemptOutcome::DeferredStorage
+        task.run_prepared_attempt(&mut prepared).await,
+        DeliveryAttemptOutcome::FallbackPropagation
+    );
+    task.requested_method = RequestedDeliveryMethod::Propagated;
+    let metrics = Arc::new(DeliverySchedulerMetrics::default());
+    assert_eq!(
+        prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex).await,
+        Err(DeliveryAttemptOutcome::DeferredStorage)
     );
     assert!(prepared.propagation.is_none(), "uncommitted envelope must not become reusable");
     assert_eq!(committed_wire(&task), initial);
@@ -93,7 +99,12 @@ async fn borrowed_fallback_commits_before_reuse_and_restores_exact_envelope() {
 
     connection.execute_batch("DROP TRIGGER fail_prepared;").expect("recover storage");
     assert_eq!(
-        task.run_prepared_attempt(&mut prepared, &stamp).await,
+        {
+            prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
+                .await
+                .expect("envelope");
+            task.run_prepared_attempt(&mut prepared).await
+        },
         DeliveryAttemptOutcome::CompletedLocal
     );
     let committed = encode_prepared(&prepared);
@@ -102,13 +113,23 @@ async fn borrowed_fallback_commits_before_reuse_and_restores_exact_envelope() {
     // A closed stamp lane makes an accidental rebuild fail immediately.
     stamp.close();
     assert_eq!(
-        task.run_prepared_attempt(&mut prepared, &stamp).await,
+        {
+            prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
+                .await
+                .expect("envelope");
+            task.run_prepared_attempt(&mut prepared).await
+        },
         DeliveryAttemptOutcome::CompletedLocal
     );
     assert_eq!(encode_prepared(&prepared), committed);
     prepared.propagation = None;
     assert_eq!(
-        task.run_prepared_attempt(&mut prepared, &stamp).await,
+        {
+            prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
+                .await
+                .expect("envelope");
+            task.run_prepared_attempt(&mut prepared).await
+        },
         DeliveryAttemptOutcome::CompletedLocal
     );
     assert_eq!(

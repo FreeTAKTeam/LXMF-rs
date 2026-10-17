@@ -2,6 +2,13 @@ use super::*;
 use rns_rpc::{OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome, PaperEncodeEnvelope};
 
 impl OutboundBridge for TransportBridge {
+    fn notify_delivery_path(&self, destination: &str) {
+        self.delivery_scheduler.notify_path_available(destination);
+    }
+    fn owns_delivery(&self, message_id: &str) -> bool {
+        self.delivery_scheduler.owns_delivery(message_id)
+    }
+
     fn validate_delivery(
         &self,
         record: &rns_rpc::MessageRecord,
@@ -175,6 +182,8 @@ impl OutboundBridge for TransportBridge {
             self.receipt_tx.reserve_terminal(&record.id)?;
         }
         let task = DeliveryTask {
+            stopping: None,
+            wakeup: Default::default(),
             path_requests: Default::default(),
             deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             daemon,

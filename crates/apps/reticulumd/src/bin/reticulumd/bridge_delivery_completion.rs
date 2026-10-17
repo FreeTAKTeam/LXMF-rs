@@ -1,5 +1,6 @@
-use super::{prepare_payload, DeliverySchedulerMetrics, ScheduledDelivery};
+use super::{prepare_payload, prepare_propagation, DeliverySchedulerMetrics, ScheduledDelivery};
 use crate::bridge::delivery_attempt::DeliveryAttemptOutcome;
+use crate::bridge::RequestedDeliveryMethod;
 use rns_rpc::RpcDaemon;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,7 +18,8 @@ pub(super) async fn complete_delivery(
     let daemon = delivery.task.daemon.clone();
     let message_id = delivery.task.message_id.clone();
     let deferred = delivery.task.deferred_dispatch.clone();
-    run_delivery(delivery, global_limit, peer_limit, stamp_limit, metrics, peer).await;
+    run_delivery(delivery, global_limit, peer_limit, stamp_limit, metrics, peer, stopping.clone())
+        .await;
     // Release all task state and permits before the broker can claim again.
     if deferred.load(std::sync::atomic::Ordering::Acquire) {
         defer_dispatch(daemon.as_ref(), &message_id, stopping).await;
@@ -31,39 +33,94 @@ async fn run_delivery(
     stamp_limit: Arc<Semaphore>,
     metrics: Arc<DeliverySchedulerMetrics>,
     peer: String,
+    mut stopping: watch::Receiver<bool>,
 ) {
     // Release membership last, after retained capacity and task state.
     let _ownership = delivery._ownership;
     let _capacity = delivery._capacity_permit;
     let _bytes = delivery._bytes;
-    let task = delivery.task;
+    let mut task = delivery.task;
+    task.stopping = Some(stopping.clone());
     let prepared = prepare_payload(&task, &stamp_limit, &metrics, &peer).await;
     let Some(mut prepared) = prepared else {
         metrics.record_finished_before_delivery_for_peer(&peer);
         return;
     };
-    let Ok(_global_permit) = global_limit.acquire_owned().await else {
-        return;
-    };
-    let Ok(_peer_permit) = peer_limit.acquire_owned().await else {
-        return;
-    };
-    metrics.record_dequeued_for_peer(&peer);
-    metrics.record_started_for_peer(&peer);
-    // Keep task and stable bytes with this owner. Repeated attempts and waits
-    // will be coordinated here; no outcome implicitly authorizes a resend.
-    match task.run_prepared_attempt(&mut prepared, &stamp_limit).await {
-        DeliveryAttemptOutcome::DeferredStorage => {
-            task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
-        }
-        DeliveryAttemptOutcome::AwaitPath { .. }
-        | DeliveryAttemptOutcome::AwaitPacket
-        | DeliveryAttemptOutcome::ResourceOwned
-        | DeliveryAttemptOutcome::CompletedLocal
-        | DeliveryAttemptOutcome::Terminal
-        | DeliveryAttemptOutcome::Stopped => {}
+    if prepared.propagation.is_some() {
+        // A committed fallback envelope fixes the effective method after restart.
+        task.requested_method = RequestedDeliveryMethod::Propagated;
     }
-    metrics.record_completed_for_peer(&peer);
+    loop {
+        if *stopping.borrow() || task.abort_if_cancelled("owner") {
+            metrics.record_finished_before_delivery_for_peer(&peer);
+            return;
+        }
+        let preparation = if task.requested_method == RequestedDeliveryMethod::Propagated {
+            prepare_propagation(&task, &mut prepared, &stamp_limit, &metrics, &peer).await
+        } else {
+            Ok(())
+        };
+        let outcome = match preparation {
+            Err(outcome) => outcome,
+            Ok(()) => {
+                let permits = async {
+                    let peer = peer_limit.clone().acquire_owned().await?;
+                    let global = global_limit.clone().acquire_owned().await?;
+                    Ok::<_, tokio::sync::AcquireError>((peer, global))
+                };
+                let permits = tokio::select! {
+                    result = permits => result.ok(),
+                    _ = stopping.changed() => None,
+                };
+                let Some(permits) = permits else {
+                    metrics.record_finished_before_delivery_for_peer(&peer);
+                    return;
+                };
+                metrics.record_dequeued_for_peer(&peer);
+                metrics.record_started_for_peer(&peer);
+                let outcome = task.run_prepared_attempt(&mut prepared).await;
+                drop(permits);
+                if matches!(
+                    outcome,
+                    DeliveryAttemptOutcome::AwaitPath { .. }
+                        | DeliveryAttemptOutcome::FallbackPropagation
+                ) {
+                    metrics.record_waiting_for_peer(&peer);
+                } else {
+                    if outcome == DeliveryAttemptOutcome::DeferredStorage {
+                        task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
+                    }
+                    metrics.record_completed_for_peer(&peer);
+                    return;
+                }
+                outcome
+            }
+        };
+        match outcome {
+            DeliveryAttemptOutcome::AwaitPath { destination } => {
+                if super::discovery::wait_for_identity(&task, destination, &mut stopping)
+                    .await
+                    .is_err()
+                {
+                    metrics.record_finished_before_delivery_for_peer(&peer);
+                    return;
+                }
+            }
+            DeliveryAttemptOutcome::FallbackPropagation => {
+                // This transition is one-way for the lifetime of this owner.
+                task.requested_method = RequestedDeliveryMethod::Propagated;
+            }
+            DeliveryAttemptOutcome::DeferredStorage => {
+                task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
+                metrics.record_finished_before_delivery_for_peer(&peer);
+                return;
+            }
+            _ => {
+                metrics.record_finished_before_delivery_for_peer(&peer);
+                return;
+            }
+        }
+    }
 }
 
 pub(super) async fn defer_dispatch(

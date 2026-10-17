@@ -19,6 +19,8 @@ pub(in crate::bridge) fn delivery_task_for_propagation_cost_lookup(daemon: Arc<R
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
     let destination = [0u8; 16];
     DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
         path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
@@ -60,37 +62,6 @@ fn cancelled_status_detection_is_case_and_space_tolerant() {
 }
 
 #[tokio::test]
-async fn identity_miss_status_defers_only_direct_and_opportunistic_peer_delivery() {
-    let store = MessagesStore::in_memory().expect("store");
-    let daemon = Arc::new(RpcDaemon::with_store(store, "identity-miss-status-node".to_string()));
-    let mut task = delivery_task_for_propagation_cost_lookup(daemon);
-
-    task.requested_method = RequestedDeliveryMethod::Direct;
-    assert_eq!(
-        task.identity_miss_status("failed: peer not announced"),
-        DeliveryTask::DEFERRED_PEER_IDENTITY_STATUS
-    );
-
-    task.requested_method = RequestedDeliveryMethod::Opportunistic;
-    assert_eq!(
-        task.identity_miss_status("failed: peer not announced"),
-        DeliveryTask::DEFERRED_PEER_IDENTITY_STATUS
-    );
-
-    task.requested_method = RequestedDeliveryMethod::Propagated;
-    assert_eq!(
-        task.identity_miss_status("failed: peer not announced"),
-        "failed: peer not announced"
-    );
-
-    task.requested_method = RequestedDeliveryMethod::Direct;
-    assert_eq!(
-        task.identity_miss_status("failed: propagation node not announced"),
-        "failed: propagation node not announced"
-    );
-}
-
-#[tokio::test]
 async fn abort_if_cancelled_reads_persisted_daemon_status() {
     let message_id = "cancelled-delivery-task";
     let store = MessagesStore::in_memory().expect("store");
@@ -118,6 +89,8 @@ async fn abort_if_cancelled_reads_persisted_daemon_status() {
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
     let destination = [0u8; 16];
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
         path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,

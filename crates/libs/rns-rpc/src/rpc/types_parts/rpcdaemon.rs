@@ -80,6 +80,10 @@ pub struct RpcDaemon {
 }
 
 pub trait OutboundBridge: Send + Sync {
+    /// Notify an admitted owner without admitting another delivery.
+    fn notify_delivery_path(&self, _destination: &str) {}
+    fn owns_delivery(&self, _message_id: &str) -> bool { false }
+
     fn shutdown_delivery(&self) {}
     fn validate_delivery(
         &self,

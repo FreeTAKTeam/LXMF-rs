@@ -27,12 +27,14 @@ Recording this plan does not promote a parity row or complete an issue.
 
 Item 3 has local target-reference checkpoints for payload sizing, metadata,
 notification recovery, peer stamp selection, reference retry timing, measured
-identity-discovery waits, atomic admission
-Resource dispatch-failure ownership (including startup subscription), and borrowed
-attempt outcomes with durable propagation-envelope reuse. Shared path-request
-coalescing and cancellable measured propagation-cost discovery are also covered. Production
-retry ownership and target mixed-peer acceptance remain open; these checkpoints
-do not establish LXMF 1.2.0 completion. See the
+identity discovery, atomic admission and Resource dispatch-failure ownership
+(including startup subscription). An admitted owner now retains prepared bytes
+and reservations across identity waits, releases execution permits while waiting,
+and resumes on targeted announces. Shared path requests coalesce; propagation
+fallback is one-way and reuses its committed envelope. Stamp work and discovery
+observe shutdown/cancellation. Full post-send retry ownership, Link activation
+waits and target mixed-peer acceptance remain open; these checkpoints do not
+establish LXMF 1.2.0 completion. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655

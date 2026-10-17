@@ -2,7 +2,7 @@ use super::{DeliverySchedulerMetrics, DeliveryTask};
 use crate::bridge::delivery_task::{
     emit_receipt_event, PreparedDeliveryPayload, PreparedPropagationPayload,
 };
-use crate::bridge::{log_delivery_trace, propagation, RequestedDeliveryMethod};
+use crate::bridge::{log_delivery_trace, propagation};
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_core::destination_hash::parse_destination_hash_required;
 use rns_transport::hash::AddressHash;
@@ -16,7 +16,7 @@ pub(super) async fn prepare_payload(
     peer: &str,
 ) -> Option<PreparedDeliveryPayload> {
     let finish_queued_stamp = || {
-        if task.requires_deferred_stamp_work() {
+        if task.requires_normal_deferred_stamp_work() {
             metrics.record_stamp_started_for_peer(peer);
             metrics.record_stamp_completed_for_peer(peer);
         }
@@ -50,7 +50,7 @@ pub(super) async fn prepare_payload(
     task.start_delivery_trace();
     if task.abort_if_cancelled("start") {
         task.record_deferred_stamp_cancelled_metadata();
-        if task.requires_deferred_stamp_work() {
+        if task.requires_normal_deferred_stamp_work() {
             metrics.record_stamp_started_for_peer(peer);
             metrics.record_stamp_completed_for_peer(peer);
         }
@@ -58,15 +58,7 @@ pub(super) async fn prepare_payload(
     }
 
     let lxmf_payload = prepare_lxmf_payload(task, stamp_limit, metrics, peer).await?;
-    let propagation = if task.requested_method == RequestedDeliveryMethod::Propagated {
-        if task.requires_normal_deferred_stamp_work() {
-            metrics.record_stamp_queued_for_peer(peer);
-        }
-        Some(prepare_propagation_payload(task, &lxmf_payload, stamp_limit, metrics, peer).await?)
-    } else {
-        None
-    };
-    let prepared = PreparedDeliveryPayload { lxmf_payload, propagation };
+    let prepared = PreparedDeliveryPayload { lxmf_payload, propagation: None };
     if durable {
         if let Err(error) = task
             .daemon
@@ -90,7 +82,21 @@ async fn prepare_lxmf_payload(
     let attempts = if normal_stamp_work { 2 } else { 1 };
     for attempt in 1..=attempts {
         let _stamp_permit = if normal_stamp_work {
-            let permit = stamp_limit.clone().acquire_owned().await.ok()?;
+            let permit = match task.acquire_stamp_permit(stamp_limit).await {
+                Ok(Some(permit)) => permit,
+                Ok(None) => {
+                    metrics.record_stamp_unqueued_for_peer(peer);
+                    task.record_deferred_stamp_cancelled_metadata();
+                    return None;
+                }
+                Err(error) => {
+                    metrics.record_stamp_unqueued_for_peer(peer);
+                    task.fail_payload_build(std::io::Error::other(format!(
+                        "stamp worker stopped: {error}"
+                    )));
+                    return None;
+                }
+            };
             metrics.record_stamp_started_for_peer(peer);
             Some(permit)
         } else {
@@ -124,23 +130,16 @@ async fn prepare_lxmf_payload(
     None
 }
 
-async fn prepare_propagation_payload(
+pub(super) async fn build_propagation_payload(
     task: &DeliveryTask,
     lxmf_payload: &[u8],
     stamp_limit: &Arc<Semaphore>,
     metrics: &Arc<DeliverySchedulerMetrics>,
     peer: &str,
-) -> Option<PreparedPropagationPayload> {
-    let context = match task.propagation_preparation_context().await {
-        Ok(context) => context,
-        Err(outcome) => {
-            if outcome == crate::bridge::delivery_attempt::DeliveryAttemptOutcome::DeferredStorage {
-                task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
-            }
-            metrics.record_stamp_unqueued_for_peer(peer);
-            return None;
-        }
-    };
+) -> Result<PreparedPropagationPayload, super::super::delivery_attempt::DeliveryAttemptOutcome> {
+    use super::super::delivery_attempt::DeliveryAttemptOutcome;
+    let context = task.propagation_preparation_context().await?;
+    metrics.record_stamp_queued_for_peer(peer);
     log_delivery_trace(
         &task.message_id,
         &task.destination_hex,
@@ -149,8 +148,13 @@ async fn prepare_propagation_payload(
     );
     task.record_propagation_stamp_work_metadata("queued", context.target_cost, None);
     for attempt in 1..=2u32 {
-        let _stamp_permit = match stamp_limit.clone().acquire_owned().await {
-            Ok(permit) => permit,
+        let _stamp_permit = match task.acquire_stamp_permit(stamp_limit).await {
+            Ok(Some(permit)) => permit,
+            Ok(None) => {
+                metrics.record_stamp_unqueued_for_peer(peer);
+                task.record_propagation_stamp_work_metadata("cancelled", context.target_cost, None);
+                return Err(DeliveryAttemptOutcome::Stopped);
+            }
             Err(error) => {
                 log::error!(
                     "[daemon-delivery] stamp worker stopped message_id={} peer={peer}: {error}",
@@ -161,12 +165,13 @@ async fn prepare_propagation_payload(
                     context.target_cost,
                     None,
                 );
+                metrics.record_stamp_unqueued_for_peer(peer);
                 emit_receipt_event(
                     &task.receipt_tx,
                     ReceiptEvent::new(task.message_id.clone(), "failed: stamp worker stopped")
                         .with_method("propagation"),
                 );
-                return None;
+                return Err(DeliveryAttemptOutcome::Terminal);
             }
         };
         metrics.record_stamp_started_for_peer(peer);
@@ -174,7 +179,7 @@ async fn prepare_propagation_payload(
         if task.abort_if_cancelled("propagation") {
             task.record_propagation_stamp_work_metadata("cancelled", context.target_cost, None);
             metrics.record_stamp_completed_for_peer(peer);
-            return None;
+            return Err(DeliveryAttemptOutcome::Stopped);
         }
         let result = propagation::build_propagation_payload_until_cancelled(
             lxmf_payload,
@@ -192,7 +197,7 @@ async fn prepare_propagation_payload(
                     Some(payload.stamp_value.to_string()),
                 );
                 task.record_propagation_payload_metadata(&payload, context.target_cost);
-                return Some(PreparedPropagationPayload {
+                return Ok(PreparedPropagationPayload {
                     propagation_node_hex: context.propagation_node_hex,
                     propagation_hash: context.propagation_hash,
                     target_cost: context.target_cost,
@@ -206,7 +211,7 @@ async fn prepare_propagation_payload(
                         context.target_cost,
                         None,
                     );
-                    return None;
+                    return Err(DeliveryAttemptOutcome::Stopped);
                 }
                 if attempt < 2 {
                     task.record_propagation_stamp_retry_metadata(
@@ -224,11 +229,11 @@ async fn prepare_propagation_payload(
                     Some(err.to_string()),
                 );
                 task.fail_payload_build(err);
-                return None;
+                return Err(DeliveryAttemptOutcome::Terminal);
             }
         }
     }
-    None
+    Err(DeliveryAttemptOutcome::Terminal)
 }
 
 // Durable signed LXMF bytes (and any prepared propagation envelope) precede the first network send.

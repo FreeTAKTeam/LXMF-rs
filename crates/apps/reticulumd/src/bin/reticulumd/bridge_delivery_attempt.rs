@@ -8,6 +8,7 @@ pub(super) enum DeliveryAttemptOutcome {
     AwaitPath {
         destination: AddressHash,
     },
+    FallbackPropagation,
     AwaitPacket,
     ResourceOwned,
     CompletedLocal,

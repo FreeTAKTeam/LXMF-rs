@@ -5,6 +5,9 @@ impl RpcDaemon {
         &self,
         destination: &str,
     ) -> Result<usize, std::io::Error> {
+        if let Some(bridge) = self.outbound_bridge.as_ref() {
+            bridge.notify_delivery_path(destination);
+        }
         self.wake_lxmf_outbound_for_announce(
             destination,
             Self::lxmf_wakeable_delivery_method,
@@ -16,6 +19,9 @@ impl RpcDaemon {
         &self,
         destination: &str,
     ) -> Result<usize, std::io::Error> {
+        if let Some(bridge) = self.outbound_bridge.as_ref() {
+            bridge.notify_delivery_path(destination);
+        }
         let selected = self.outbound_propagation_node();
         if !selected.as_deref().is_some_and(|peer| peer.eq_ignore_ascii_case(destination)) {
             return Ok(0);
@@ -43,6 +49,10 @@ impl RpcDaemon {
             .map_err(std::io::Error::other)?;
         let mut scheduled = 0_usize;
         for record in candidates {
+            if self.outbound_bridge.as_ref().is_some_and(|bridge| bridge.owns_delivery(&record.id))
+            {
+                continue;
+            }
             // Durable dispatch reads persisted options and owns retries independently of announces.
             if self.store.broker_owns_message(&record.id).map_err(std::io::Error::other)? {
                 continue;

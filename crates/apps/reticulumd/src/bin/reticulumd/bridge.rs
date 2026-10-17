@@ -210,3 +210,6 @@ fn now_secs_i64() -> i64 {
 
 #[path = "bridge_delivery_paths.rs"]
 mod delivery_paths;
+
+#[path = "bridge_delivery_wakeup.rs"]
+mod delivery_wakeup;

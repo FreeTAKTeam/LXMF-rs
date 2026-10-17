@@ -12,6 +12,8 @@ include!("status_snapshot_parts/propagation_enable_autopeer_maxdepth.rs");
 
 include!("status_snapshot_parts/announce_received_parses_delivery_st.rs");
 
+include!("status_snapshot_parts/announce_owner_wakeup.rs");
+
 include!("status_snapshot_parts/static_peer_path_response_announce_d.rs");
 
 include!("status_snapshot_parts/signed_inbound_ticket_accepts_python.rs");

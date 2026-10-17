@@ -116,6 +116,8 @@ async fn prepare_payload_builds_propagation_stamp_before_delivery_lane() {
     let mut destination = [0u8; 16];
     destination.copy_from_slice(destination_hash.as_slice());
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
         path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
@@ -148,11 +150,16 @@ async fn prepare_payload_builds_propagation_stamp_before_delivery_lane() {
     let metrics = Arc::new(DeliverySchedulerMetrics::default());
     let stamp_limit = Arc::new(Semaphore::new(1));
     task.record_deferred_stamp_queued_metadata();
-    metrics.record_stamp_queued_for_peer(&destination_hex);
+    if task.requires_normal_deferred_stamp_work() {
+        metrics.record_stamp_queued_for_peer(&destination_hex);
+    }
 
-    let _payload = prepare_payload(&task, &stamp_limit, &metrics, &destination_hex)
+    let mut payload = prepare_payload(&task, &stamp_limit, &metrics, &destination_hex)
         .await
-        .expect("prepared propagated payload");
+        .expect("prepared LXMF payload");
+    prepare_propagation(&task, &mut payload, &stamp_limit, &metrics, &destination_hex)
+        .await
+        .expect("prepared envelope");
 
     let result = daemon
         .handle_rpc(RpcRequest { id: 904, method: "list_messages".to_string(), params: None })

@@ -1,6 +1,6 @@
 use super::delivery_task::DeliveryTask;
 use serde_json::{json, Value as JsonValue};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
@@ -8,11 +8,16 @@ use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 #[path = "bridge_delivery_preparation.rs"]
 mod preparation;
 use preparation::prepare_payload;
+#[path = "bridge_delivery_propagation_preparation.rs"]
+mod propagation_preparation;
+pub(in crate::bridge) use propagation_preparation::prepare_propagation;
 #[path = "bridge_delivery_admission.rs"]
 mod admission;
 use admission::{DeliveryOwnership, DeliveryReservation};
 #[path = "bridge_delivery_completion.rs"]
 mod completion;
+#[path = "bridge_delivery_discovery.rs"]
+pub(in crate::bridge) mod discovery;
 #[cfg(test)]
 use preparation::encode_prepared;
 pub(super) use preparation::{decode_prepared, encode_prepared_parts};
@@ -130,6 +135,15 @@ impl DeliverySchedulerMetrics {
         });
     }
 
+    fn record_waiting_for_peer(&self, peer: &str) {
+        self.in_flight_current.fetch_sub(1, Ordering::Relaxed);
+        self.queued_current.fetch_add(1, Ordering::Relaxed);
+        self.update_peer(peer, |counters| {
+            counters.in_flight = counters.in_flight.saturating_sub(1);
+            counters.queued = counters.queued.saturating_add(1);
+        });
+    }
+
     fn record_completed_for_peer(&self, peer: &str) {
         self.in_flight_current.fetch_sub(1, Ordering::Relaxed);
         self.completed_total.fetch_add(1, Ordering::Relaxed);
@@ -244,7 +258,7 @@ pub(super) struct DeliveryScheduler {
     metrics: Arc<DeliverySchedulerMetrics>,
     bytes: Arc<Semaphore>,
     owner: Arc<DeliveryRuntimeOwner>,
-    owned_messages: Arc<Mutex<HashSet<String>>>,
+    owned_messages: Arc<Mutex<HashMap<String, Arc<super::delivery_wakeup::DeliveryWakeup>>>>,
     path_requests: Arc<super::delivery_paths::DeliveryPathRequests>,
 }
 struct DeliveryRuntimeOwner {
@@ -279,7 +293,7 @@ impl DeliveryScheduler {
             metrics,
             bytes: Arc::new(Semaphore::new(DELIVERY_RETAINED_BYTES as usize)),
             owner,
-            owned_messages: Arc::new(Mutex::new(HashSet::new())),
+            owned_messages: Arc::new(Mutex::new(HashMap::new())),
             path_requests: Default::default(),
         }
     }
@@ -290,6 +304,7 @@ impl DeliveryScheduler {
         reservation: DeliveryReservation,
     ) -> Result<(), std::io::Error> {
         task.path_requests = self.path_requests.clone();
+        task.wakeup = reservation.ownership.wakeup.clone();
         let peer = task.destination_hex.clone();
         self.metrics.record_admitted_for_peer(&peer);
         match self.tx.try_send(ScheduledDelivery {
@@ -375,7 +390,7 @@ async fn run_scheduler(
         peer_limits.retain(|_, limit| Arc::strong_count(limit) > 1);
 
         let peer = delivery.task.destination_hex.clone();
-        if delivery.task.requires_deferred_stamp_work() {
+        if delivery.task.requires_normal_deferred_stamp_work() {
             delivery.task.record_deferred_stamp_queued_metadata();
             metrics.record_stamp_queued_for_peer(&peer);
         }

@@ -1,7 +1,39 @@
 use super::*;
 
 impl DeliveryTask {
+    /// Keep the semaphore waiter registered while polling persisted cancellation.
+    pub(super) async fn acquire_stamp_permit(
+        &self,
+        limit: &Arc<tokio::sync::Semaphore>,
+    ) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, tokio::sync::AcquireError> {
+        let acquire = limit.clone().acquire_owned();
+        tokio::pin!(acquire);
+        let mut stopping = self.stopping.clone();
+        loop {
+            if self.abort_if_cancelled("stamp-queue") {
+                return Ok(None);
+            }
+            tokio::select! {
+                result = &mut acquire => return result.map(Some),
+                _ = tokio::time::sleep(Duration::from_millis(250)) => {},
+                _ = async {
+                    match stopping.as_mut() {
+                        Some(stop) => { let _ = stop.changed().await; },
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {
+                    if stopping.as_ref().is_some_and(|stop| *stop.borrow() || stop.has_changed().is_err()) {
+                        return Ok(None);
+                    }
+                },
+            }
+        }
+    }
+
     pub(super) fn abort_if_cancelled(&self, stage: &str) -> bool {
+        if self.stopping.as_ref().is_some_and(|stop| *stop.borrow()) {
+            return true;
+        }
         self.abort_for_status_result(stage, self.daemon.message_receipt_status(&self.message_id))
     }
 
@@ -42,14 +74,14 @@ impl DeliveryTask {
                 };
             }
         };
-        let durable = match self.daemon.owns_durable_message(&self.message_id) {
-            Ok(value) => value,
+        match self.daemon.owns_durable_message(&self.message_id) {
+            Ok(_) => {}
             Err(error) => {
                 log::error!("durable dispatch status unavailable: {error}; send suppressed");
                 return true;
             }
         };
-        let terminal = durable && status.as_deref().is_some_and(Self::is_terminal_status);
+        let terminal = status.as_deref().is_some_and(Self::is_terminal_status);
         if !terminal && !Self::is_cancelled_status(status.as_deref()) {
             return false;
         }
@@ -58,7 +90,7 @@ impl DeliveryTask {
         true
     }
 
-    fn is_terminal_status(status: &str) -> bool {
+    pub(in crate::bridge) fn is_terminal_status(status: &str) -> bool {
         let normalized = status.trim().to_ascii_lowercase();
         matches!(normalized.as_str(), "delivered" | "cancelled" | "expired" | "rejected")
             || normalized.starts_with("failed")

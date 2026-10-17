@@ -38,27 +38,36 @@ impl DeliveryTask {
 
     #[cfg(test)]
     pub(super) async fn run_prepared(
-        self,
+        mut self,
         mut prepared: PreparedDeliveryPayload,
         stamp_limit: Arc<tokio::sync::Semaphore>,
     ) -> DeliveryAttemptOutcome {
-        self.run_prepared_attempt(&mut prepared, &stamp_limit).await
+        loop {
+            if self.requested_method == RequestedDeliveryMethod::Propagated {
+                if let Err(outcome) = super::delivery_scheduler::prepare_propagation(
+                    &self, &mut prepared, &stamp_limit,
+                    &Arc::new(super::delivery_scheduler::DeliverySchedulerMetrics::default()), &self.destination_hex,
+                ).await { return outcome; }
+            }
+            let outcome = self.run_prepared_attempt(&mut prepared).await;
+            if outcome != DeliveryAttemptOutcome::FallbackPropagation { return outcome; }
+            self.requested_method = RequestedDeliveryMethod::Propagated;
+        }
     }
 
     pub(super) async fn run_prepared_attempt(
         &self,
         prepared: &mut PreparedDeliveryPayload,
-        stamp_limit: &Arc<tokio::sync::Semaphore>,
     ) -> DeliveryAttemptOutcome {
         if self.abort_if_cancelled("payload") {
             return DeliveryAttemptOutcome::Stopped;
         }
         match self.requested_method {
-            RequestedDeliveryMethod::Direct => self.run_direct(prepared, stamp_limit).await,
+            RequestedDeliveryMethod::Direct => self.run_direct(prepared).await,
             RequestedDeliveryMethod::Opportunistic => {
                 self.run_opportunistic(&prepared.lxmf_payload).await
             }
-            RequestedDeliveryMethod::Propagated => self.run_propagated(prepared, stamp_limit).await,
+            RequestedDeliveryMethod::Propagated => self.run_propagated(prepared).await,
             RequestedDeliveryMethod::Paper => DeliveryAttemptOutcome::Stopped,
         }
     }
@@ -275,7 +284,6 @@ impl DeliveryTask {
                 self.destination_hash,
                 self.peer_identity,
                 "identity",
-                "failed: peer not announced",
             )
             .await?;
 

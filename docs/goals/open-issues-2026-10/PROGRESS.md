@@ -442,3 +442,44 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   size and diff checks pass. This is still not the full retry owner: discovery
   waits remain inside attempts/preparation, and execution-permit release, effective
   method, announce wakeups and packet/Resource terminal coordination are pending.
+
+### Item 3 retained identity-discovery owner checkpoint
+
+- Split base LXMF preparation/commit from propagation-envelope preparation. An
+  admitted task retains its prepared bytes, duplicate-id membership, count and
+  byte reservations while an identity is missing. Missing identity now returns
+  an explicit wait outcome; it no longer terminates/requeues and rebuilds the
+  message. Execution permits drop before waiting, while stamp permits cover
+  stamp generation only. Propagation cost discovery also precedes execution.
+- Added per-owner target notification. Actual announce RPCs notify before legacy
+  selected-node and durable filtering, and skip redispatch/status mutation for
+  bridge-owned records. The owner registers its target before checking identity
+  readiness; notification permits cover the check/wait race. Legacy unowned
+  delivery remains covered by existing announce tests and an explicit control.
+- Direct fallback now returns an explicit method transition. The owner switches
+  once to Propagated; committed propagation state fixes that method on restore.
+  Envelope publication remains after its durable commit, preserving exact bytes.
+- A real signed announce-ingress regression captures one recipient packet despite
+  a simultaneous deadline and duplicate notifications. It also proves another
+  peer sends while the first retains its reservations and unchanged committed
+  LXMF bytes. This is packet capture, not recipient-confirmed mixed-peer delivery.
+- Review found an extra initial Direct/Propagated discovery attempt and shutdown
+  missing from normal blocking stamp work. Fixed both: normal/slow discovery
+  consumes exactly four/two request windows before terminal exhaustion; shutdown
+  reaches the blocking callback, which is joined, and stamp semaphore waiters
+  observe shutdown/cancellation without losing their place during normal waits.
+  Running cost-255 PoW, unavailable stamp capacity, discovery shutdown and persisted
+  cancellation racing notification all release reservations without requeue/send.
+- Correctness and POST/maintainability re-reviews accepted this incremental
+  owner slice. A production fallback-to-node-discovery-resume regression remains
+  a useful follow-up beyond the existing explicit transition/storage tests. Local validation:
+  all 85 bridge tests passed before the final added cancellation regression; the
+  five owner integration tests then passed including that regression. All 42
+  announce RPC tests, issue-369 scanner, all-feature daemon-binary/RPC-library
+  Clippy, architecture/boundary/module-size checks, formatting and diff checks
+  pass. Logs: `/tmp/lxmf-item3-owner-{bridge,integration,rpc-all,quality,clippy,rpc-clippy,architecture}.log`.
+- Remaining item-3 boundaries are explicit: full post-send and Link-activation
+  retry ownership, terminal persistence/publication fencing, Resource broadcast
+  overload recovery, target/baseline mixed-peer traces and later successful SDK
+  delivery after callback failure. Missing-identity waiting is now owned; this
+  checkpoint does not claim the complete LXMF 1.2.0 lifecycle or hosted CI.

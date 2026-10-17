@@ -7,6 +7,7 @@ use std::sync::Arc;
 pub(super) struct OutboundPayloadBuild {
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) message_id: String,
+    pub(super) stopping: Option<tokio::sync::watch::Receiver<bool>>,
     pub(super) source_hash: [u8; 16],
     pub(super) destination: [u8; 16],
     pub(super) title: String,
@@ -36,18 +37,23 @@ pub(super) async fn build_outbound_payload(
                 .include_ticket
                 .as_ref()
                 .map(|(expires_at, ticket)| (*expires_at, ticket.as_slice())),
-            || match input.daemon.message_receipt_status(&input.message_id) {
-                Ok(status) => {
-                    status.is_some_and(|status| status.trim().eq_ignore_ascii_case("cancelled"))
+            || {
+                if input.stopping.as_ref().is_some_and(|stop| *stop.borrow()) {
+                    return true;
                 }
-                Err(error) => {
-                    let mut guard = status_lookup_error
-                        .lock()
-                        .expect("outbound status lookup error mutex poisoned");
-                    if guard.is_none() {
-                        *guard = Some(error.to_string());
+                match input.daemon.message_receipt_status(&input.message_id) {
+                    Ok(status) => status
+                        .as_deref()
+                        .is_some_and(super::delivery_task::DeliveryTask::is_terminal_status),
+                    Err(error) => {
+                        let mut guard = status_lookup_error
+                            .lock()
+                            .expect("outbound status lookup error mutex poisoned");
+                        if guard.is_none() {
+                            *guard = Some(error.to_string());
+                        }
+                        true
                     }
-                    true
                 }
             },
         );

@@ -15,6 +15,8 @@ pub(super) struct LinkModeStatuses {
 }
 
 pub(super) struct DeliveryTask {
+    pub(super) stopping: Option<tokio::sync::watch::Receiver<bool>>,
+    pub(super) wakeup: Arc<super::delivery_wakeup::DeliveryWakeup>,
     pub(super) path_requests: Arc<super::delivery_paths::DeliveryPathRequests>,
     pub(super) deferred_dispatch: Arc<std::sync::atomic::AtomicBool>,
     pub(super) daemon: Arc<RpcDaemon>,

@@ -41,6 +41,9 @@ fn durable_task_for_destination(
     let daemon = Arc::new(RpcDaemon::with_store(store, "deferred-owner".into()));
     let mut task = delivery_task_for_propagation_cost_lookup(daemon);
     task.message_id = id.into();
+    task.destination = destination;
+    task.destination_hash = rns_transport::hash::AddressHash::new(destination);
+    task.destination_hex = hex::encode(destination);
     task.requested_method = RequestedDeliveryMethod::Direct;
     task.stamp_cost = Some(0);
     let connection = rusqlite::Connection::open(path).expect("connection");
@@ -211,7 +214,7 @@ async fn scheduler_deferred_storage_completions_remain_bounded() {
     let reservation = scheduler.reserve_message(&first_id, 1).expect("reserve").expect("owner");
     scheduler.enqueue_reserved(task, reservation).expect("enqueue first");
     tokio::time::timeout(Duration::from_secs(3), async {
-        while scheduler.owned_messages.lock().expect("owners").contains(&first_id) {
+        while scheduler.owned_messages.lock().expect("owners").contains_key(&first_id) {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
@@ -260,3 +263,6 @@ async fn scheduler_deferred_storage_completions_remain_bounded() {
 
 #[path = "bridge_delivery_attempt_tests.rs"]
 mod attempt_tests;
+
+#[path = "bridge_delivery_owner_tests.rs"]
+mod owner_tests;

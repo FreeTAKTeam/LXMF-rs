@@ -18,8 +18,15 @@ async fn concurrent_identity_lookups_dispatch_one_path_request() {
     second.requested_method = RequestedDeliveryMethod::Direct;
     second.transport = task.transport.clone();
     second.path_requests = task.path_requests.clone();
-    let first = tokio::spawn(async move { task.resolve_destination_identity().await });
-    let second = tokio::spawn(async move { second.resolve_destination_identity().await });
+    let (_stop, stopping) = tokio::sync::watch::channel(false);
+    let mut stopping2 = stopping.clone();
+    let mut stopping1 = stopping;
+    let first = tokio::spawn(async move {
+        crate::bridge::delivery_scheduler::discovery::wait_for_identity(&task, task.destination_hash, &mut stopping1).await
+    });
+    let second = tokio::spawn(async move {
+        crate::bridge::delivery_scheduler::discovery::wait_for_identity(&second, second.destination_hash, &mut stopping2).await
+    });
     channel.tx_channel.recv().await.expect("first request");
     for _ in 0..8 {
         tokio::task::yield_now().await;
@@ -42,7 +49,10 @@ async fn assert_identity_path_wait(bitrate: u64, window_seconds: u64) {
         bitrate,
         100
     ));
-    let owner = tokio::spawn(async move { task.resolve_destination_identity().await });
+    let (_stop, mut stopping) = tokio::sync::watch::channel(false);
+    let owner = tokio::spawn(async move {
+        crate::bridge::delivery_scheduler::discovery::wait_for_identity(&task, task.destination_hash, &mut stopping).await
+    });
     channel.tx_channel.recv().await.expect("path request dispatched");
     tokio::time::advance(Duration::from_secs(window_seconds - 1)).await;
     tokio::task::yield_now().await;
@@ -51,9 +61,12 @@ async fn assert_identity_path_wait(bitrate: u64, window_seconds: u64) {
     for _ in 0..4 {
         tokio::task::yield_now().await;
     }
-    assert!(owner.is_finished(), "resolver must finish at its measured deadline");
-    assert!(matches!(owner.await.expect("resolver"),
-        Err(crate::bridge::delivery_attempt::DeliveryAttemptOutcome::AwaitPath { .. })));
+    assert!(!owner.is_finished(), "the admitted owner retains the unresolved delivery");
+    assert!(channel.tx_channel.try_recv().is_err(), "strict deadline is not due at equality");
+    tokio::time::advance(Duration::from_millis(1)).await;
+    for _ in 0..4 { tokio::task::yield_now().await; }
+    channel.tx_channel.try_recv().expect("next measured discovery request");
+    owner.abort();
 }
 
 #[tokio::test(start_paused = true)]
@@ -106,4 +119,37 @@ async fn slow_propagation_cost_discovery_stops_promptly_on_cancellation() {
     assert_eq!(task.propagation_target_cost_reference_style(&hex::encode(node.as_slice()), node).await,
         Err(crate::bridge::delivery_attempt::DeliveryAttemptOutcome::Stopped));
     assert!(channel.tx_channel.try_recv().is_err(), "cancelled task must not request again");
+}
+
+#[tokio::test(start_paused = true)]
+async fn direct_and_propagated_discovery_fail_at_exact_reference_budget() {
+    for method in [RequestedDeliveryMethod::Direct, RequestedDeliveryMethod::Propagated] {
+        for (bitrate, seconds, requests) in [(100000, 7, 4), (100, 86, 2)] {
+            let mut task = delivery_task_for_propagation_cost_lookup(Arc::new(RpcDaemon::test_instance()));
+            task.requested_method = method;
+            let mut channel = task.transport.iface_manager().lock().await.new_channel(16);
+            assert!(task.transport.iface_manager().lock().await.set_announce_pacing(*channel.address(), bitrate, 100));
+            let (_stop, mut stopping) = tokio::sync::watch::channel(false);
+            let owner = tokio::spawn(async move {
+                crate::bridge::delivery_scheduler::discovery::wait_for_identity(&task, task.destination_hash, &mut stopping).await
+            });
+            channel.tx_channel.recv().await.expect("initial request");
+            for request in 1..=requests {
+                tokio::time::advance(Duration::from_secs(seconds)).await;
+                for _ in 0..8 { tokio::task::yield_now().await; }
+                assert!(!owner.is_finished(), "strict deadline equality");
+                assert!(channel.tx_channel.try_recv().is_err());
+                tokio::time::advance(Duration::from_millis(1)).await;
+                for _ in 0..8 { tokio::task::yield_now().await; }
+                if request < requests {
+                    channel.tx_channel.try_recv().expect("next permitted discovery request");
+                    assert!(!owner.is_finished());
+                } else {
+                    assert!(owner.is_finished(), "reference attempt budget exhausted");
+                    assert!(channel.tx_channel.try_recv().is_err(), "exhaustion must not send one extra request");
+                }
+            }
+            assert_eq!(owner.await.expect("owner"), Err(crate::bridge::delivery_attempt::DeliveryAttemptOutcome::Terminal));
+        }
+    }
 }

@@ -1,6 +1,4 @@
 impl DeliveryTask {
-    pub(super) const DEFERRED_PEER_IDENTITY_STATUS: &'static str = "queued: waiting for announce";
-
     async fn resolve_or_create_propagation_link(
         &self,
         propagation_node_hex: &str,
@@ -34,7 +32,6 @@ impl DeliveryTask {
                 propagation_hash,
                 cached_identity,
                 "propagation-node",
-                "failed: propagation node not announced",
             )
             .await?;
         self.outbound_propagation_identities
@@ -67,7 +64,6 @@ impl DeliveryTask {
         destination_hash: AddressHash,
         cached: Option<Identity>,
         stage: &str,
-        failure_status: &'static str,
     ) -> Result<Identity, DeliveryAttemptOutcome> {
         let mut identity =
             cached.or_else(|| self.cached_identity_for_destination(destination_hash));
@@ -84,68 +80,8 @@ impl DeliveryTask {
         if identity.is_none() {
             identity = self.transport.destination_identity(&destination_hash).await;
         }
-        if identity.is_none() {
-            let timing = self.request_delivery_path(destination_hash).await?;
-            log_delivery_trace(&self.message_id, &self.destination_hex, stage, "path-requested");
-            let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
-            log_delivery_trace(&self.message_id, detail, stage, "waiting for announce");
-            let deadline = tokio::time::Instant::now() + timing.path_request_wait();
-            while tokio::time::Instant::now() < deadline {
-                if self.abort_if_cancelled(stage) {
-                    return Err(DeliveryAttemptOutcome::Stopped);
-                }
-                if let Some(found) = self.transport.destination_identity(&destination_hash).await {
-                    identity = Some(found);
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(250)).await;
-            }
-        }
-
-        if identity.is_none() {
-            identity = self.cached_identity_for_destination(destination_hash);
-            if identity.is_some() {
-                let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
-                log_delivery_trace(
-                    &self.message_id,
-                    detail,
-                    stage,
-                    "resolved from cached peer identity",
-                );
-            }
-        }
-
         let Some(identity) = identity else {
-            if self.abort_if_cancelled(stage) {
-                return Err(DeliveryAttemptOutcome::Stopped);
-            }
-            let status = self.identity_miss_status(failure_status);
-            let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
-            log_delivery_trace(&self.message_id, detail, stage, "not found");
-            emit_receipt_event(
-                &self.receipt_tx,
-                ReceiptEvent::new(self.message_id.clone(), status).with_method(stage),
-            );
-            if status == Self::DEFERRED_PEER_IDENTITY_STATUS {
-                return match self.daemon.durable_prepared_payload(&self.message_id) {
-                    Ok(None) => {
-                        Err(DeliveryAttemptOutcome::AwaitPath { destination: destination_hash })
-                    }
-                    Ok(Some(_)) => {
-                        self.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
-                        Err(DeliveryAttemptOutcome::DeferredStorage)
-                    }
-                    Err(error) => {
-                        log::error!(
-                            "durable dispatch lookup failed message_id={}: {error}",
-                            self.message_id
-                        );
-                        self.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
-                        Err(DeliveryAttemptOutcome::DeferredStorage)
-                    }
-                };
-            }
-            return Err(DeliveryAttemptOutcome::Terminal);
+            return Err(DeliveryAttemptOutcome::AwaitPath { destination: destination_hash });
         };
 
         let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
@@ -153,16 +89,8 @@ impl DeliveryTask {
         Ok(identity)
     }
 
-    pub(super) fn identity_miss_status(&self, failure_status: &'static str) -> &'static str {
-        if failure_status == "failed: peer not announced"
-            && matches!(
-                self.requested_method,
-                RequestedDeliveryMethod::Direct | RequestedDeliveryMethod::Opportunistic
-            )
-        {
-            Self::DEFERRED_PEER_IDENTITY_STATUS
-        } else {
-            failure_status
-        }
+    pub(super) async fn discovery_ready(&self, destination: AddressHash) -> bool {
+        self.cached_identity_for_destination(destination).is_some()
+            || self.transport.destination_identity(&destination).await.is_some()
     }
 }

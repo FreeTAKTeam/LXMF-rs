@@ -2,7 +2,6 @@ impl DeliveryTask {
     async fn run_direct(
         &self,
         prepared: &mut PreparedDeliveryPayload,
-        stamp_limit: &Arc<tokio::sync::Semaphore>,
     ) -> DeliveryAttemptOutcome {
         let payload = prepared.lxmf_payload.as_slice();
         if self.abort_if_cancelled("link") {
@@ -73,7 +72,7 @@ impl DeliveryTask {
                     .with_method("direct")
                     .with_delivery_kind("direct-fallback"),
                 );
-                self.run_propagated(prepared, stamp_limit).await
+                DeliveryAttemptOutcome::FallbackPropagation
             }
             Err(err) => {
                 self.direct_backchannel_links.remove_destination(&self.destination_hash);

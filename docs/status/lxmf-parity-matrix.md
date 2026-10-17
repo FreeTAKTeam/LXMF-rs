@@ -57,20 +57,26 @@ occurs after task/reservation release. Registered Resource dispatch failures now
 stay with their terminal event consumer without triggering a competing fallback;
 startup subscribes before enabling recovered delivery. Proven dropped Link packets
 remove their exact receipt correlation. These tests do not prove reliable Resource
-completion under broadcast-channel overload. Raw transport timing now feeds
-production identity-discovery waits, with separate slowest/next-hop measurements,
-zero-bitrate fallback and exact-reference arithmetic. Propagation lookup uses that
-same asynchronous resolver instead of an additional blocking wait. The timing
-policy has not yet replaced production retry ownership. Borrowed attempts now retain
-stable prepared bytes and return explicit ownership outcomes; injected fallback
-commit failures suppress propagation until storage recovers, and restored envelopes
-reuse exact bytes. This remains a single-attempt boundary: effective-method retry
-state is not yet integrated. Shared scheduler discovery now coalesces requests,
-preserves pending/debounce history and applies measured cancellable propagation-cost
-waits; outbound admission no longer performs a blocking propagation identity lookup.
+completion under broadcast-channel overload. Raw transport timing feeds production
+identity discovery, with separate slowest/next-hop measurements, zero-bitrate
+fallback and exact-reference arithmetic. The admitted owner commits base LXMF
+bytes once, retains count/byte reservations during identity waits and releases
+execution permits so another peer can send. Targeted announce notifications bypass
+legacy selected-node/durable filters; bridge-owned legacy records are not
+redispatched. Direct/Propagated missing-identity tests prove four normal-medium
+requests and two slow-medium requests with strict exhaustion deadlines.
+
+Propagation fallback changes the effective method once; injected commit failures
+suppress propagation until storage recovers and restored envelopes reuse exact
+bytes. Shared discovery coalesces requests and preserves pending/debounce history;
+propagation-cost waits use measured cancellable deadlines outside execution permits.
 Fifty exact-pin request-boundary cells and concurrent production lookups pass.
-Admitted-message lifecycle, real callback-following delivery and full mixed-peer target traces
-remain pending; no row or reference baseline is promoted by these checkpoints.
+Running normal stamp work and queued stamp waiters observe shutdown and release
+reservations. Local signed announce-ingress tests prove one send despite a
+simultaneous timer and duplicate notifications, without rebuilding durable bytes.
+Full post-send/Link activation retry ownership, broadcast-overload terminal recovery,
+real callback-following delivery and full mixed-peer target traces remain pending;
+no row or reference baseline is promoted by these checkpoints.
 See the [execution record](../goals/open-issues-2026-10/PROGRESS.md).
 
 ## MeshChat proof-of-concept evidence (outside module counts)

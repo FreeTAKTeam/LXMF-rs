@@ -1,5 +1,6 @@
 use super::{validate_reservation_bytes, DeliveryScheduler};
-use std::collections::HashSet;
+use crate::bridge::delivery_wakeup::DeliveryWakeup;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::OwnedSemaphorePermit;
 
@@ -10,8 +11,9 @@ pub(in crate::bridge) struct DeliveryReservation {
 }
 
 pub(super) struct DeliveryOwnership {
-    messages: Arc<Mutex<HashSet<String>>>,
+    messages: Arc<Mutex<HashMap<String, Arc<DeliveryWakeup>>>>,
     message_id: String,
+    pub(super) wakeup: Arc<DeliveryWakeup>,
 }
 
 impl Drop for DeliveryOwnership {
@@ -29,7 +31,7 @@ impl DeliveryScheduler {
         bytes: usize,
     ) -> Result<Option<DeliveryReservation>, std::io::Error> {
         let mut messages = self.owned_messages.lock().expect("delivery ownership mutex poisoned");
-        if messages.contains(message_id) {
+        if messages.contains_key(message_id) {
             return Ok(None);
         }
         validate_reservation_bytes(bytes)?;
@@ -54,14 +56,37 @@ impl DeliveryScheduler {
                 "outbound delivery byte capacity exhausted",
             )
         })?;
-        messages.insert(message_id.to_owned());
+        let wakeup = Arc::new(DeliveryWakeup::default());
+        messages.insert(message_id.to_owned(), wakeup.clone());
         Ok(Some(DeliveryReservation {
             count,
             bytes,
             ownership: DeliveryOwnership {
                 messages: self.owned_messages.clone(),
                 message_id: message_id.to_owned(),
+                wakeup,
             },
         }))
+    }
+}
+
+impl DeliveryScheduler {
+    pub(in crate::bridge) fn owns_delivery(&self, id: &str) -> bool {
+        self.owned_messages.lock().expect("delivery ownership mutex poisoned").contains_key(id)
+    }
+
+    pub(in crate::bridge) fn notify_path_available(&self, destination: &str) {
+        let hash = match rns_core::destination_hash::parse_destination_hash_required(destination) {
+            Ok(hash) => rns_transport::hash::AddressHash::new(hash),
+            Err(error) => {
+                log::warn!("invalid delivery wake destination={destination}: {error}");
+                return;
+            }
+        };
+        for wakeup in
+            self.owned_messages.lock().expect("delivery ownership mutex poisoned").values()
+        {
+            wakeup.notify_path(hash);
+        }
     }
 }

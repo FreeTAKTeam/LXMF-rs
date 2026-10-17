@@ -43,6 +43,8 @@ async fn oversized_opportunistic_delivery_falls_back_to_link_delivery() {
     let task_transport = transport.clone();
     let outbound_resource_map = Arc::new(Mutex::new(HashMap::new()));
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
         path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
@@ -196,6 +198,8 @@ async fn propagated_link_send_tracks_resource_with_propagated_status() {
     final_destination.copy_from_slice(&[0x55; 16]);
     let propagation_node_hex = hex::encode(propagation_identity.address_hash.as_slice());
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
         path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
@@ -296,6 +300,8 @@ async fn build_payload_records_normal_stamp_lifecycle_metadata() {
     let mut source_hash = [0u8; 16];
     source_hash.copy_from_slice(signer.address_hash().as_slice());
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
         path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
@@ -377,6 +383,8 @@ async fn build_payload_records_ticket_stamp_lifecycle_metadata() {
     let mut source_hash = [0u8; 16];
     source_hash.copy_from_slice(signer.address_hash().as_slice());
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
         path_requests: Default::default(),
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
