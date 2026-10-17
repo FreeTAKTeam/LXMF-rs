@@ -1,4 +1,4 @@
-async fn task_with_active_link(
+pub(in crate::bridge) async fn task_with_active_link(
 ) -> (DeliveryTask, Arc<tokio::sync::Mutex<Link>>, tokio::sync::mpsc::Receiver<ReceiptEvent>) {
     let message_id = "link-dispatch-owner";
     let store = MessagesStore::in_memory().expect("store");

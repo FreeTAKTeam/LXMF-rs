@@ -1,3 +1,4 @@
+use super::delivery_attempt::DeliveryAttemptOutcome;
 use super::delivery_task::{emit_receipt_event, PropagationPreparationContext};
 use super::*;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
@@ -6,20 +7,10 @@ use base64::Engine;
 impl DeliveryTask {
     pub(super) async fn propagation_preparation_context(
         &self,
-    ) -> Option<PropagationPreparationContext> {
-        let destination_identity = match self.resolve_destination_identity().await {
-            Ok(Some(identity)) => identity,
-            Ok(None) => return None,
-            Err(err) => {
-                log::warn!(
-                    "[daemon] {} resolve destination identity failed: {err}",
-                    self.message_id
-                );
-                return None;
-            }
-        };
+    ) -> Result<PropagationPreparationContext, DeliveryAttemptOutcome> {
+        let destination_identity = self.resolve_destination_identity().await?;
         if self.abort_if_cancelled("propagation") {
-            return None;
+            return Err(DeliveryAttemptOutcome::Stopped);
         }
         log_delivery_trace(
             &self.message_id,
@@ -36,7 +27,7 @@ impl DeliveryTask {
                 )
                 .with_method("propagation"),
             );
-            return None;
+            return Err(DeliveryAttemptOutcome::Terminal);
         };
 
         let propagation_hash = match parse_destination_hash_required(&propagation_node_hex) {
@@ -47,7 +38,7 @@ impl DeliveryTask {
                     ReceiptEvent::new(self.message_id.clone(), format!("failed: {err}"))
                         .with_method("propagation"),
                 );
-                return None;
+                return Err(DeliveryAttemptOutcome::Terminal);
             }
         };
         log_delivery_trace(
@@ -75,7 +66,7 @@ impl DeliveryTask {
             "propagation",
             format!("using propagation stamp cost={target_cost} source={cost_source}").as_str(),
         );
-        Some(PropagationPreparationContext {
+        Ok(PropagationPreparationContext {
             destination_identity,
             propagation_node_hex,
             propagation_hash,

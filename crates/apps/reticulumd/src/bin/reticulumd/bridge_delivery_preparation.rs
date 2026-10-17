@@ -131,9 +131,15 @@ async fn prepare_propagation_payload(
     metrics: &Arc<DeliverySchedulerMetrics>,
     peer: &str,
 ) -> Option<PreparedPropagationPayload> {
-    let Some(context) = task.propagation_preparation_context().await else {
-        metrics.record_stamp_unqueued_for_peer(peer);
-        return None;
+    let context = match task.propagation_preparation_context().await {
+        Ok(context) => context,
+        Err(outcome) => {
+            if outcome == crate::bridge::delivery_attempt::DeliveryAttemptOutcome::DeferredStorage {
+                task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
+            }
+            metrics.record_stamp_unqueued_for_peer(peer);
+            return None;
+        }
     };
     log_delivery_trace(
         &task.message_id,
@@ -240,9 +246,16 @@ struct StoredPropagationPayload {
     stamp_value: u32,
 }
 pub(in crate::bridge) fn encode_prepared(value: &PreparedDeliveryPayload) -> serde_json::Value {
+    encode_prepared_parts(&value.lxmf_payload, value.propagation.as_ref())
+}
+
+pub(in crate::bridge) fn encode_prepared_parts(
+    lxmf_payload: &[u8],
+    propagation: Option<&PreparedPropagationPayload>,
+) -> serde_json::Value {
     serde_json::to_value(StoredPreparedPayload {
-        lxmf_hex: hex::encode(&value.lxmf_payload),
-        propagation: value.propagation.as_ref().map(|p| StoredPropagationPayload {
+        lxmf_hex: hex::encode(lxmf_payload),
+        propagation: propagation.map(|p| StoredPropagationPayload {
             node: p.propagation_node_hex.clone(),
             target_cost: p.target_cost,
             bytes_hex: hex::encode(&p.payload.bytes),

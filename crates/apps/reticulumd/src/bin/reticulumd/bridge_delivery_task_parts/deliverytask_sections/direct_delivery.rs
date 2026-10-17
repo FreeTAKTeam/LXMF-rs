@@ -1,21 +1,19 @@
 impl DeliveryTask {
-    async fn run_direct(self, payload: Vec<u8>, stamp_limit: Arc<tokio::sync::Semaphore>) {
+    async fn run_direct(
+        &self,
+        prepared: &mut PreparedDeliveryPayload,
+        stamp_limit: &Arc<tokio::sync::Semaphore>,
+    ) -> DeliveryAttemptOutcome {
+        let payload = prepared.lxmf_payload.as_slice();
         if self.abort_if_cancelled("link") {
-            return;
+            return DeliveryAttemptOutcome::Stopped;
         }
         let identity = match self.resolve_destination_identity().await {
-            Ok(Some(id)) => id,
-            Ok(None) => return,
-            Err(err) => {
-                log::warn!(
-                    "[daemon] {} resolve destination identity failed: {err}",
-                    self.message_id
-                );
-                return;
-            }
+            Ok(identity) => identity,
+            Err(outcome) => return outcome,
         };
         if self.abort_if_cancelled("link") {
-            return;
+            return DeliveryAttemptOutcome::Stopped;
         }
         let result = if let Some(backchannel_link) = self
             .direct_backchannel_links
@@ -32,7 +30,7 @@ impl DeliveryTask {
                 "link-backchannel",
                 self.destination_hex.as_str(),
                 backchannel_link,
-                &payload,
+                payload,
                 LinkModeStatuses {
                     packet: "sent: link",
                     resource: "sending: link resource",
@@ -50,7 +48,7 @@ impl DeliveryTask {
                 "link",
                 self.destination_hex.as_str(),
                 destination_desc,
-                &payload,
+                payload,
                 LinkModeStatuses {
                     packet: "sent: link",
                     resource: "sending: link resource",
@@ -61,7 +59,7 @@ impl DeliveryTask {
         };
 
         match result {
-            Ok(_) => {}
+            Ok(outcome) => outcome.into(),
             Err(err) if self.try_propagation_on_fail && self.propagation_node_hex.is_some() => {
                 self.direct_backchannel_links.remove_destination(&self.destination_hash);
                 let detail = format!("direct failed err={err}; trying propagated");
@@ -75,7 +73,7 @@ impl DeliveryTask {
                     .with_method("direct")
                     .with_delivery_kind("direct-fallback"),
                 );
-                self.run_propagated(payload, stamp_limit).await;
+                self.run_propagated(prepared, stamp_limit).await
             }
             Err(err) => {
                 self.direct_backchannel_links.remove_destination(&self.destination_hash);
@@ -83,9 +81,10 @@ impl DeliveryTask {
                 log_delivery_trace(&self.message_id, &self.destination_hex, "link", &detail);
                 emit_receipt_event(
                     &self.receipt_tx,
-                    ReceiptEvent::new(self.message_id, format!("failed: {err}"))
+                    ReceiptEvent::new(self.message_id.clone(), format!("failed: {err}"))
                         .with_method("direct"),
                 );
+                DeliveryAttemptOutcome::Terminal
             }
         }
     }

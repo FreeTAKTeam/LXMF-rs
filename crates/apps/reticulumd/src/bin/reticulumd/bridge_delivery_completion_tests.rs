@@ -3,6 +3,12 @@ use crate::bridge::delivery_task_tests::delivery_task_for_propagation_cost_looku
 use rns_rpc::BrokerCommand;
 
 fn durable_task() -> (tempfile::TempDir, rusqlite::Connection, DeliveryTask) {
+    durable_task_for_destination([0; 16])
+}
+
+fn durable_task_for_destination(
+    destination: [u8; 16],
+) -> (tempfile::TempDir, rusqlite::Connection, DeliveryTask) {
     let directory = tempfile::tempdir().expect("directory");
     let path = directory.path().join("delivery.db");
     let store = MessagesStore::open(&path).expect("store");
@@ -14,7 +20,7 @@ fn durable_task() -> (tempfile::TempDir, rusqlite::Connection, DeliveryTask) {
             request: rns_rpc::broker::AdmitRequest {
                 identity: "test-source".into(),
                 operation_id: "deferred-owner".into(),
-                destination: hex::encode([0; 16]),
+                destination: hex::encode(destination),
                 title: "".into(),
                 content: "payload".into(),
                 fields: None,
@@ -251,3 +257,6 @@ async fn scheduler_deferred_storage_completions_remain_bounded() {
     assert_eq!(state(&connection, &first_id), "queued");
     scheduler.shutdown();
 }
+
+#[path = "bridge_delivery_attempt_tests.rs"]
+mod attempt_tests;

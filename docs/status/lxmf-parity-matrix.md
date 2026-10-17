@@ -61,7 +61,11 @@ completion under broadcast-channel overload. Raw transport timing now feeds
 production identity-discovery waits, with separate slowest/next-hop measurements,
 zero-bitrate fallback and exact-reference arithmetic. Propagation lookup uses that
 same asynchronous resolver instead of an additional blocking wait. The timing
-policy has not yet replaced production retry ownership. Request coalescing, admitted-message
+policy has not yet replaced production retry ownership. Borrowed attempts now retain
+stable prepared bytes and return explicit ownership outcomes; injected fallback
+commit failures suppress propagation until storage recovers, and restored envelopes
+reuse exact bytes. This remains a single-attempt boundary: effective-method retry
+state is not yet integrated. Request coalescing, admitted-message
 lifecycle, real callback-following delivery and full mixed-peer target traces
 remain pending; no row or reference baseline is promoted by these checkpoints.
 See the [execution record](../goals/open-issues-2026-10/PROGRESS.md).

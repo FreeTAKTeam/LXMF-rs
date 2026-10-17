@@ -31,5 +31,6 @@ async fn assert_identity_path_wait(bitrate: u64, window_seconds: u64) {
         tokio::task::yield_now().await;
     }
     assert!(owner.is_finished(), "resolver must finish at its measured deadline");
-    assert!(owner.await.expect("resolver").expect("deferred identity").is_none());
+    assert!(matches!(owner.await.expect("resolver"),
+        Err(crate::bridge::delivery_attempt::DeliveryAttemptOutcome::AwaitPath { .. })));
 }

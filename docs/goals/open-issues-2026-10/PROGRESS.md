@@ -386,3 +386,29 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   issue-369 scanner pass. All-feature wire/transport library and daemon-binary
   Clippy, architecture/boundary/module-size checks, formatting and diff checks
   pass. These are local checkpoint results; item-3 hosted PR checks remain pending.
+
+### Item 3 borrowed attempt boundary checkpoint
+
+- The scheduler now borrows a retained task and prepared payload for one attempt.
+  Explicit outcomes distinguish path waiting, packet proof, Resource ownership,
+  local propagation storage, terminal publication, cancellation and storage deferral.
+  This is still one attempt; no outcome implicitly authorizes a resend.
+- Propagation fallback extends the existing durable LXMF representation only after
+  its envelope commits. Failed commits return storage deferral without sending or
+  installing a reusable cache. Recovery checks unchanged LXMF bytes and reuses the
+  stored node, cost, ciphertext and transient ID rather than rebuilding stamps.
+- A real activated Link with a closed interface triggers direct-to-propagation
+  fallback. SQLite fault injection verifies commit failure leaves the durable
+  LXMF unchanged, sends/stores no propagation payload and releases scheduler
+  membership/count/byte reservations before requeue. After recovery, a closed stamp
+  worker proves repeated borrowed attempts and restored state reuse exact bytes.
+  The broker adds a wire hash to stored JSON; tests compare validated decoded wire
+  representations rather than assuming the encoded input equals the storage row.
+- Both independent reviews accepted this checkpoint. Before repeated attempts are
+  enabled, the owner must explicitly retain the effective propagation method;
+  currently a Direct task still re-enters Direct before fallback. The tests above
+  prove envelope reuse, not absence of another direct attempt. Discovery waits,
+  coalescing, announce wakeups and terminal ownership remain the next cutover.
+- Local validation: 76 bridge tests and the issue-369 scanner pass; all-feature
+  daemon Clippy, formatting, module-size, boundary and diff checks pass. No new PR,
+  hosted checks, mixed-peer target acceptance or item-3 completion is claimed.

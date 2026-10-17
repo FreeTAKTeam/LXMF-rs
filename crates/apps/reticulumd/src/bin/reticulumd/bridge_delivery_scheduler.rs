@@ -13,7 +13,9 @@ mod admission;
 use admission::{DeliveryOwnership, DeliveryReservation};
 #[path = "bridge_delivery_completion.rs"]
 mod completion;
-pub(super) use preparation::{decode_prepared, encode_prepared};
+#[cfg(test)]
+use preparation::encode_prepared;
+pub(super) use preparation::{decode_prepared, encode_prepared_parts};
 
 const DEFAULT_DELIVERY_QUEUE_CAPACITY: usize = 64;
 const DELIVERY_RETAINED_BYTES: u32 = 128 * 1024 * 1024;

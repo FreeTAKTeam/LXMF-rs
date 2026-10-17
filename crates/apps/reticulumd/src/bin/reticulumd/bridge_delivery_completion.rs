@@ -1,4 +1,5 @@
 use super::{prepare_payload, DeliverySchedulerMetrics, ScheduledDelivery};
+use crate::bridge::delivery_attempt::DeliveryAttemptOutcome;
 use rns_rpc::RpcDaemon;
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,7 +38,7 @@ async fn run_delivery(
     let _bytes = delivery._bytes;
     let task = delivery.task;
     let prepared = prepare_payload(&task, &stamp_limit, &metrics, &peer).await;
-    let Some(prepared) = prepared else {
+    let Some(mut prepared) = prepared else {
         metrics.record_finished_before_delivery_for_peer(&peer);
         return;
     };
@@ -49,7 +50,19 @@ async fn run_delivery(
     };
     metrics.record_dequeued_for_peer(&peer);
     metrics.record_started_for_peer(&peer);
-    task.run_prepared(prepared, stamp_limit).await;
+    // Keep task and stable bytes with this owner. Repeated attempts and waits
+    // will be coordinated here; no outcome implicitly authorizes a resend.
+    match task.run_prepared_attempt(&mut prepared, &stamp_limit).await {
+        DeliveryAttemptOutcome::DeferredStorage => {
+            task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
+        }
+        DeliveryAttemptOutcome::AwaitPath { .. }
+        | DeliveryAttemptOutcome::AwaitPacket
+        | DeliveryAttemptOutcome::ResourceOwned
+        | DeliveryAttemptOutcome::CompletedLocal
+        | DeliveryAttemptOutcome::Terminal
+        | DeliveryAttemptOutcome::Stopped => {}
+    }
     metrics.record_completed_for_peer(&peer);
 }
 

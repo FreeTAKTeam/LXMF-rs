@@ -1,4 +1,5 @@
 use super::identity_resolver;
+use super::delivery_attempt::DeliveryAttemptOutcome;
 
 use super::*;
 use crate::direct_backchannel::DirectBackchannelLinks;

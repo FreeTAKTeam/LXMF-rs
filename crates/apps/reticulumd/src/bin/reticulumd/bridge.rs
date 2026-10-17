@@ -4,6 +4,8 @@ use super::bridge_helpers::{
 use super::direct_backchannel::DirectBackchannelLinks;
 #[path = "bridge_announce.rs"]
 mod announce;
+#[path = "bridge_delivery_attempt.rs"]
+mod delivery_attempt;
 #[path = "bridge_delivery_method.rs"]
 mod delivery_method;
 #[path = "bridge_delivery_scheduler.rs"]

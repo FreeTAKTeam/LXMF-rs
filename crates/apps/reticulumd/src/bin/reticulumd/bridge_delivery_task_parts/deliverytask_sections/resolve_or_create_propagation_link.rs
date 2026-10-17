@@ -5,7 +5,7 @@ impl DeliveryTask {
         &self,
         propagation_node_hex: &str,
         propagation_hash: AddressHash,
-    ) -> Result<Arc<tokio::sync::Mutex<Link>>, std::io::Error> {
+    ) -> Result<Arc<tokio::sync::Mutex<Link>>, DeliveryAttemptOutcome> {
         if let Some(link) = propagation::cached_propagation_link(
             &self.outbound_propagation_link,
             propagation_node_hex,
@@ -28,7 +28,7 @@ impl DeliveryTask {
                     }
                 }
             });
-        let propagation_identity = match self
+        let propagation_identity = self
             .resolve_identity(
                 Some(propagation_node_hex),
                 propagation_hash,
@@ -36,25 +36,14 @@ impl DeliveryTask {
                 "propagation-node",
                 "failed: propagation node not announced",
             )
-            .await
-        {
-            Ok(Some(identity)) => identity,
-            Ok(None) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Interrupted,
-                    "delivery cancelled",
-                ))
-            }
-            Err(msg) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))
-            }
-        };
+            .await?;
         self.outbound_propagation_identities
             .lock()
             .map_err(|error| {
-                std::io::Error::other(format!(
+                self.fail_payload_build(std::io::Error::other(format!(
                     "propagation identity cache lock poisoned for {propagation_node_hex}: {error}"
-                ))
+                )));
+                DeliveryAttemptOutcome::Terminal
             })?
             .insert(propagation_node_hex.to_string(), propagation_identity);
 
@@ -79,7 +68,7 @@ impl DeliveryTask {
         cached: Option<Identity>,
         stage: &str,
         failure_status: &'static str,
-    ) -> Result<Option<Identity>, &'static str> {
+    ) -> Result<Identity, DeliveryAttemptOutcome> {
         let mut identity =
             cached.or_else(|| self.cached_identity_for_destination(destination_hash));
         if identity.is_some() {
@@ -102,14 +91,19 @@ impl DeliveryTask {
             log_delivery_trace(&self.message_id, detail, stage, "waiting for announce");
             let timing = super::delivery_timing::measured_delivery_timing(
                 self.transport.path_timing(&destination_hash).await,
-            ).map_err(|error| {
-                log::error!("invalid delivery timing message_id={} destination={destination_hash}: {error}", self.message_id);
-                "invalid delivery timing"
+            )
+            .map_err(|error| {
+                log::error!(
+                    "invalid delivery timing message_id={} destination={destination_hash}: {error}",
+                    self.message_id
+                );
+                self.fail_payload_build(std::io::Error::other(error));
+                DeliveryAttemptOutcome::Terminal
             })?;
             let deadline = tokio::time::Instant::now() + timing.path_request_wait();
             while tokio::time::Instant::now() < deadline {
                 if self.abort_if_cancelled(stage) {
-                    return Ok(None);
+                    return Err(DeliveryAttemptOutcome::Stopped);
                 }
                 if let Some(found) = self.transport.destination_identity(&destination_hash).await {
                     identity = Some(found);
@@ -134,7 +128,7 @@ impl DeliveryTask {
 
         let Some(identity) = identity else {
             if self.abort_if_cancelled(stage) {
-                return Ok(None);
+                return Err(DeliveryAttemptOutcome::Stopped);
             }
             let status = self.identity_miss_status(failure_status);
             let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
@@ -144,17 +138,30 @@ impl DeliveryTask {
                 ReceiptEvent::new(self.message_id.clone(), status).with_method(stage),
             );
             if status == Self::DEFERRED_PEER_IDENTITY_STATUS {
-                if self.daemon.durable_prepared_payload(&self.message_id).map_err(|error|{log::error!("durable dispatch lookup failed: {error}");"durable storage unavailable"})?.is_some() {
+                return match self.daemon.durable_prepared_payload(&self.message_id) {
+                    Ok(None) => {
+                        Err(DeliveryAttemptOutcome::AwaitPath { destination: destination_hash })
+                    }
+                    Ok(Some(_)) => {
                         self.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
-                }
-                return Ok(None);
+                        Err(DeliveryAttemptOutcome::DeferredStorage)
+                    }
+                    Err(error) => {
+                        log::error!(
+                            "durable dispatch lookup failed message_id={}: {error}",
+                            self.message_id
+                        );
+                        self.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
+                        Err(DeliveryAttemptOutcome::DeferredStorage)
+                    }
+                };
             }
-            return Err(status);
+            return Err(DeliveryAttemptOutcome::Terminal);
         };
 
         let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
         log_delivery_trace(&self.message_id, detail, stage, "resolved");
-        Ok(Some(identity))
+        Ok(identity)
     }
 
     pub(super) fn identity_miss_status(&self, failure_status: &'static str) -> &'static str {
