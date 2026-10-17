@@ -28,8 +28,8 @@
     },
     {
       "path": "docs/contracts/compatibility-contract.md",
-      "bytes": 4364,
-      "sha256": "3c3627c05be5699d44e1267ee597c8125e6b85d90417fb82f70f1cfe169ef72b"
+      "bytes": 4664,
+      "sha256": "8a05aa70f109cf90722a3b21a5654ba41bc484b8159409d694b24ea43fd307e2"
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
@@ -273,8 +273,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2.md",
-      "bytes": 14585,
-      "sha256": "3a88979acd5856ebae34dc80abed265b3b769c01f287ab281334f83b184a470f"
+      "bytes": 14578,
+      "sha256": "4e22a8ca7da6d23da3e2c08033daa807d83c3548cb1407c047235df519357793"
     },
     {
       "path": "docs/contracts/support-policy.md",

@@ -85,3 +85,26 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - `RUST_TEST_THREADS=4 cargo xtask release-check` is running. Hosted checks,
   native apply/readback, blocked-check proof and restored eligibility remain
   pending; no live protection setting has been changed yet.
+
+### First hosted run and release-check limitation
+
+- PR [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672), initial head
+  `2a8c78456f728c2cee7891e547eb9c3645673c26`, started security and all applicable
+  integration/contract jobs without labels. Its selection artifact contains all
+  21 packages and 91 integration targets for the shared workflow/lock inputs.
+- Hosted peer lifecycle validation exposed stale artifact hashes for
+  `compatibility-contract.md` and `sdk-v2.md`, both changed by merged #666.
+  Regenerated the existing manifest: exactly two byte-count/hash entries change;
+  no contract content or check changed. Independent review verified both against
+  #666 and recomputed the hashes. Interop artifacts, schema clients and SDK API
+  checks pass locally after correction.
+- Full local release-check passed formatting, all-feature Clippy, workspace
+  check, nextest (3,120 passed; 103 opt-in skips), workspace tests and SDK schema,
+  then failed the existing reticulumd publication dry run. The published
+  `reticulum-rs-zeromq` 0.14.0 requires UUID 1.23.3; the unchanged local vendor and
+  workspace lock require 1.26.1, also required by btleplug 0.13.5. Both local pins
+  already exist in base `a0a72d9b`; the downloaded registry crate confirms the old
+  pin. This is a pre-existing registry/package mismatch, not caused by rustls or
+  CI selection. Later release-check stages were not reached. Do not claim a
+  green release-check, downgrade incompatible BLE dependencies, change release
+  versions or publish a new crate within this CI task.
