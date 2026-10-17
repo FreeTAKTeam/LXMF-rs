@@ -606,23 +606,10 @@ jobs:
   security:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install Linux BLE build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libdbus-1-dev
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-targets: true
-          cache-on-failure: false
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny,cargo-audit
-      - name: Security checks
-        run: cargo xtask ci --stage security
+      - uses: ./.github/actions/security
 
   crypto-agility-check:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))

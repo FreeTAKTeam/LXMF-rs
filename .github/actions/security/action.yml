@@ -1,0 +1,28 @@
+name: Security policy
+description: Run the existing authoritative xtask security stage with pinned tools
+runs:
+  using: composite
+  steps:
+    - name: Install Linux BLE build dependencies
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        cache-targets: true
+        cache-on-failure: false
+    - name: Cache pinned security tools
+      id: tools
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/cargo-audit
+          ~/.cargo/bin/cargo-deny
+        key: security-tools-${{ runner.os }}-${{ runner.arch }}-audit-0.22.2-deny-0.19.9
+    - uses: taiki-e/install-action@v2
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        tool: cargo-audit@0.22.2,cargo-deny@0.19.9
+    - name: Security checks
+      shell: bash
+      run: cargo xtask ci --stage security
