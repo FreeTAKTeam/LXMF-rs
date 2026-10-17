@@ -257,3 +257,17 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   tests above do not substitute for those boundaries.
 - Final matrices/roadmap, full item review, workspace/release gates and exact-head
   hosted CI/merge are pending. No item-3 PR has been opened yet.
+
+### Item 3 scheduler preparation extraction
+
+- Moved payload/stamp preparation and persisted-wire codecs to the scheduler's
+  `bridge_delivery_preparation.rs` child. The existing parent exports retain
+  their scope; scheduler queue, capacity, concurrency and shutdown ownership
+  stay in place. Removed its obsolete module-size exception (463-line parent,
+  283-line child).
+- Independent review compared helper bodies with the preceding commit and found
+  no behavior change. Three focused scheduler tests, module-size checks and
+  all-feature daemon-binary Clippy pass.
+- PRE confirms that replacing fixed waits is not full retry parity: the admitted
+  scheduler must own attempts, prepared bytes and wakeups; durable `scheduled`
+  claims must not be requeued merely because a path is pending.

@@ -4,7 +4,6 @@ crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup_parts/modu
 crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup_parts/startup_udp.rs
 crates/apps/reticulumd/src/bin/reticulumd/bootstrap_parts/module_core.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_rnode_management.rs
-crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_scheduler.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_control_peer.rs
 crates/libs/rns-transport/src/iface/auto_runtime_parts/tests_sections/auto_multicast_discovery_bind_resolv.rs
 crates/libs/rns-transport/src/iface/auto_runtime_parts/tests_sections/auto_peer_data_transport_bridge_regi.rs
