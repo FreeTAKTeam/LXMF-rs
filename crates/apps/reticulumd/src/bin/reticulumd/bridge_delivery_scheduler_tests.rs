@@ -116,6 +116,7 @@ async fn prepare_payload_builds_propagation_stamp_before_delivery_lane() {
     let mut destination = [0u8; 16];
     destination.copy_from_slice(destination_hash.as_slice());
     let task = DeliveryTask {
+        deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
         transport,
         peer_crypto: Arc::new(Mutex::new(HashMap::new())),
@@ -172,3 +173,57 @@ async fn prepare_payload_builds_propagation_stamp_before_delivery_lane() {
     assert_eq!(snapshot.stamp_in_flight_current, 0);
     assert_eq!(snapshot.in_flight_current, 0);
 }
+
+#[test]
+fn scheduler_duplicate_admission_does_not_consume_count_or_byte_capacity() {
+    let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {
+        queue_capacity: 1,
+        ..DeliverySchedulerConfig::default()
+    });
+    let first = scheduler
+        .reserve_message("same", DELIVERY_RETAINED_BYTES as usize)
+        .expect("first reservation")
+        .expect("new owner");
+    assert!(scheduler
+        .reserve_message("same", DELIVERY_RETAINED_BYTES as usize)
+        .expect("duplicate is already admitted")
+        .is_none());
+    assert_eq!(
+        scheduler.reserve_message("other", 1).err().expect("full").kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    drop(first);
+    let next = scheduler
+        .reserve_message("same", DELIVERY_RETAINED_BYTES as usize)
+        .expect("capacity released")
+        .expect("new owner after release");
+    drop(next);
+    scheduler.shutdown();
+}
+
+#[test]
+fn scheduler_simultaneous_duplicate_admission_has_one_owner() {
+    let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig::default());
+    let barrier = Arc::new(std::sync::Barrier::new(8));
+    let reservations = std::thread::scope(|scope| {
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let scheduler = &scheduler;
+                let barrier = barrier.clone();
+                scope.spawn(move || {
+                    barrier.wait();
+                    let reservation = scheduler.reserve_message("same", 16).expect("reservation");
+                    barrier.wait();
+                    reservation
+                })
+            })
+            .collect();
+        threads.into_iter().filter_map(|thread| thread.join().expect("worker")).collect::<Vec<_>>()
+    });
+    assert_eq!(reservations.len(), 1);
+    drop(reservations);
+    scheduler.shutdown();
+}
+
+#[path = "bridge_delivery_completion_tests.rs"]
+mod completion_tests;

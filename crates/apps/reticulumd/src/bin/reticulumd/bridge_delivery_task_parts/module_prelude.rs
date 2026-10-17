@@ -14,6 +14,7 @@ pub(super) struct LinkModeStatuses {
 }
 
 pub(super) struct DeliveryTask {
+    pub(super) deferred_dispatch: Arc<std::sync::atomic::AtomicBool>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) transport: Arc<Transport>,
     pub(super) peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,

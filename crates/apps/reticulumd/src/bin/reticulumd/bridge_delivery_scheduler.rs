@@ -1,6 +1,6 @@
 use super::delivery_task::DeliveryTask;
 use serde_json::{json, Value as JsonValue};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
@@ -8,6 +8,11 @@ use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 #[path = "bridge_delivery_preparation.rs"]
 mod preparation;
 use preparation::prepare_payload;
+#[path = "bridge_delivery_admission.rs"]
+mod admission;
+use admission::{DeliveryOwnership, DeliveryReservation};
+#[path = "bridge_delivery_completion.rs"]
+mod completion;
 pub(super) use preparation::{decode_prepared, encode_prepared};
 
 const DEFAULT_DELIVERY_QUEUE_CAPACITY: usize = 64;
@@ -237,14 +242,11 @@ pub(super) struct DeliveryScheduler {
     metrics: Arc<DeliverySchedulerMetrics>,
     bytes: Arc<Semaphore>,
     owner: Arc<DeliveryRuntimeOwner>,
+    owned_messages: Arc<Mutex<HashSet<String>>>,
 }
 struct DeliveryRuntimeOwner {
     stop: tokio::sync::watch::Sender<bool>,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
-}
-pub(super) struct DeliveryReservation {
-    count: OwnedSemaphorePermit,
-    bytes: OwnedSemaphorePermit,
 }
 impl DeliveryScheduler {
     pub(super) fn spawn(config: DeliverySchedulerConfig) -> Self {
@@ -274,34 +276,10 @@ impl DeliveryScheduler {
             metrics,
             bytes: Arc::new(Semaphore::new(DELIVERY_RETAINED_BYTES as usize)),
             owner,
+            owned_messages: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
-    pub(super) fn reserve(&self, bytes: usize) -> Result<DeliveryReservation, std::io::Error> {
-        validate_reservation_bytes(bytes)?;
-        if *self.owner.stop.borrow() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "delivery runtime stopping",
-            ));
-        }
-        let count = self.backlog_limit.clone().try_acquire_owned().map_err(|_| {
-            self.metrics.record_queue_full();
-            std::io::Error::new(
-                std::io::ErrorKind::WouldBlock,
-                "outbound delivery count capacity exhausted",
-            )
-        })?;
-        let bytes = u32::try_from(bytes).map_err(std::io::Error::other)?;
-        let bytes = self.bytes.clone().try_acquire_many_owned(bytes).map_err(|_| {
-            self.metrics.record_queue_full();
-            std::io::Error::new(
-                std::io::ErrorKind::WouldBlock,
-                "outbound delivery byte capacity exhausted",
-            )
-        })?;
-        Ok(DeliveryReservation { count, bytes })
-    }
     pub(super) fn enqueue_reserved(
         &self,
         task: DeliveryTask,
@@ -313,6 +291,7 @@ impl DeliveryScheduler {
             task,
             _capacity_permit: reservation.count,
             _bytes: reservation.bytes,
+            _ownership: reservation.ownership,
         }) {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
@@ -362,6 +341,7 @@ struct ScheduledDelivery {
     task: DeliveryTask,
     _capacity_permit: OwnedSemaphorePermit,
     _bytes: OwnedSemaphorePermit,
+    _ownership: DeliveryOwnership,
 }
 
 async fn run_scheduler(
@@ -383,7 +363,9 @@ async fn run_scheduler(
             biased;
             changed=stopping.changed(),if !*stopping.borrow()=>{if changed.is_err() || *stopping.borrow() {rx.close();}continue;},
             result=owners.join_next(),if !owners.is_empty()=>{if let Some(Err(error))=result {log::error!("delivery task failed: {error}");}continue;},
-            delivery=rx.recv()=>match delivery {Some(delivery)=>delivery,None=>break},
+            // Storage completions no longer retain payload permits; still bound
+            // their live tasks so repeated storage failure cannot grow owners.
+            delivery=rx.recv(),if owners.len()<config.queue_capacity=>match delivery {Some(delivery)=>delivery,None=>break},
         };
         peer_limits.retain(|_, limit| Arc::strong_count(limit) > 1);
 
@@ -399,25 +381,16 @@ async fn run_scheduler(
         let global_limit = Arc::clone(&global_limit);
         let stamp_limit = Arc::clone(&stamp_limit);
         let metrics = Arc::clone(&metrics);
-        owners.spawn_local(async move {
-            let _capacity = delivery._capacity_permit;
-            let _bytes = delivery._bytes;
-            let prepared = prepare_payload(&delivery.task, &stamp_limit, &metrics, &peer).await;
-            let Some(prepared) = prepared else {
-                metrics.record_finished_before_delivery_for_peer(&peer);
-                return;
-            };
-            let Ok(_global_permit) = global_limit.acquire_owned().await else {
-                return;
-            };
-            let Ok(_peer_permit) = peer_limit.acquire_owned().await else {
-                return;
-            };
-            metrics.record_dequeued_for_peer(&peer);
-            metrics.record_started_for_peer(&peer);
-            delivery.task.run_prepared(prepared, stamp_limit).await;
-            metrics.record_completed_for_peer(&peer);
-        });
+        let stopped = stopping.clone();
+        owners.spawn_local(completion::complete_delivery(
+            delivery,
+            global_limit,
+            peer_limit,
+            stamp_limit,
+            metrics,
+            peer,
+            stopped,
+        ));
     }
     while let Some(result) = owners.join_next().await {
         if let Err(error) = result {

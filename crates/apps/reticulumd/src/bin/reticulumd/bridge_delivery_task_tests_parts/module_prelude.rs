@@ -8,7 +8,7 @@ use rns_rpc::{MessageRecord, MessagesStore};
 
 use rns_transport::transport::TransportConfig;
 
-fn delivery_task_for_propagation_cost_lookup(daemon: Arc<RpcDaemon>) -> DeliveryTask {
+pub(in crate::bridge) fn delivery_task_for_propagation_cost_lookup(daemon: Arc<RpcDaemon>) -> DeliveryTask {
     let signer = PrivateIdentity::new_from_name("propagation-cost-lookup-task");
     let transport_identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
     let transport = Arc::new(Transport::new(TransportConfig::new(
@@ -19,6 +19,7 @@ fn delivery_task_for_propagation_cost_lookup(daemon: Arc<RpcDaemon>) -> Delivery
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
     let destination = [0u8; 16];
     DeliveryTask {
+        deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
         transport,
         peer_crypto: Arc::new(Mutex::new(HashMap::new())),
@@ -116,6 +117,7 @@ async fn abort_if_cancelled_reads_persisted_daemon_status() {
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
     let destination = [0u8; 16];
     let task = DeliveryTask {
+        deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
         transport,
         peer_crypto: Arc::new(Mutex::new(HashMap::new())),

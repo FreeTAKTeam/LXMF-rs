@@ -47,7 +47,12 @@ impl OutboundBridge for TransportBridge {
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
         // Reserve count and retained-byte capacity before cloning fields, signing or ticket work.
-        let reservation = self.delivery_scheduler.reserve(delivery_reservation_bytes(record))?;
+        let Some(reservation) = self
+            .delivery_scheduler
+            .reserve_message(&record.id, delivery_reservation_bytes(record))?
+        else {
+            return Ok(());
+        };
         let destination = parse_destination_hash_required(&record.destination)?;
         let service_identity =
             self.service_identity_for_destination(record.source.as_str()).ok_or_else(|| {
@@ -193,6 +198,7 @@ impl OutboundBridge for TransportBridge {
             self.receipt_tx.reserve_terminal(&record.id)?;
         }
         let task = DeliveryTask {
+            deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             daemon,
             transport: self.transport.clone(),
             peer_crypto: self.peer_crypto.clone(),

@@ -51,8 +51,9 @@ The existing module rows below describe the pinned baseline. The additional
 serialized opportunistic limits, implementation/version metadata, notification
 callback recovery and peer stamp-floor selection. Clock-independent retry policy
 now matches 15 target-router timing scenarios, including strict deadlines,
-recovered-path wakeup and floating-point rounding boundaries. This policy has not
-yet replaced production retry ownership. Request coalescing, admitted-message
+recovered-path wakeup and floating-point rounding boundaries. Atomic per-message admission now prevents duplicate preparation and capacity
+failures; durable requeue occurs after task/reservation release. The timing policy
+has not yet replaced production retry ownership. Request coalescing, admitted-message
 lifecycle, real callback-following delivery and full mixed-peer target traces
 remain pending; no row or reference baseline is promoted by these checkpoints.
 See the [execution record](../goals/open-issues-2026-10/PROGRESS.md).

@@ -149,7 +149,7 @@ impl DeliveryTask {
             );
             if status == Self::DEFERRED_PEER_IDENTITY_STATUS {
                 if self.daemon.durable_prepared_payload(&self.message_id).map_err(|error|{log::error!("durable dispatch lookup failed: {error}");"durable storage unavailable"})?.is_some() {
-                        self.daemon.defer_durable_dispatch(&self.message_id).map_err(|error|{log::error!("deferred durable identity dispatch commit failed: {error}");"durable storage unavailable"})?;
+                        self.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
                 }
                 return Ok(None);
             }

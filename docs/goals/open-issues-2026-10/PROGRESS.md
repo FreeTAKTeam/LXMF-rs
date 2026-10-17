@@ -298,3 +298,35 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   boundary cells await coalescer integration; admitted scheduler ownership,
   raw-precision transport adapters, durable claims, announce wakeups, send/receipt
   outcomes and end-to-end exhaustion/recovery remain the next acceptance work.
+
+### Item 3 atomic admission and deferred completion
+
+- Reproduced duplicate admission failing with `WouldBlock` while the original
+  message occupied the whole count/byte budget. ID-aware admission now claims
+  membership before bridge preparation; an already admitted ID is a successful
+  no-op even at capacity. Eight simultaneous callers create one reservation.
+- Ownership follows the reservation through enqueue, preparation and the current
+  delivery task. Queue rejection and early return release task state, count,
+  bytes and membership in that order. This is not yet ownership through all
+  packet proofs/resource completions; that remains part of the attempt cutover.
+- Four inner durable deferral writes now request scheduler completion. The
+  scheduler releases task state and permits before changing `scheduled` to
+  `queued`, preventing a broker reclaim from being acknowledged by a disappearing
+  old owner. Requeue write failures retry; conditional storage transitions cannot
+  resurrect a terminal message. Shutdown leaves failed requeues scheduled for
+  the existing startup recovery path.
+- Live completion futures remain bounded by queue capacity even after they
+  release payload permits. Production scheduler tests exercise this bound during
+  a storage fault. SQLite-trigger regressions cover real preparation failure,
+  ordered release/requeue, storage recovery, terminal arrival during requeue and
+  closed-queue cleanup. They do not prove network retry or SDK delivery.
+- Independent review accepted the slice after correcting task drop order and a
+  test that mistook the completion counter for reservation-release synchronization.
+  All 65 bridge tests, the issue-369 scanner, all-feature daemon Clippy, formatting,
+  module-size and diff checks pass. The corrected synchronization regression was
+  rerun and passed.
+- Next cutover must borrow task/prepared bytes and distinguish pre-send retry,
+  packet awaiting proof, registered Resource ownership and terminal outcomes.
+  A Resource dispatch error can already have queued an asynchronous failure;
+  never treat every `io::Error` as safe to resend. Keep announce/deadline claims
+  with this owner, and preserve raw timing precision from transport measurements.

@@ -170,7 +170,7 @@ impl DeliveryTask {
             let encoded=crate::bridge::delivery_scheduler::encode_prepared(&PreparedDeliveryPayload {lxmf_payload:payload,propagation:Some(prepared)});
             if let Err(error)=self.daemon.persist_durable_prepared_payload(&self.message_id,encoded.clone()) {
                 log::error!("propagation bytes were not committed; send suppressed: {error}");
-                if let Err(error)=self.daemon.defer_durable_dispatch(&self.message_id) {log::error!("durable propagation retry commit failed: {error}");}
+                self.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
                 return;
             }
             match crate::bridge::delivery_scheduler::decode_prepared(encoded) {Ok(value)=>if let Some(prepared)=value.propagation {self.send_prepared_propagated(prepared).await;},Err(error)=>log::error!("persisted propagation decode failed: {error}")}

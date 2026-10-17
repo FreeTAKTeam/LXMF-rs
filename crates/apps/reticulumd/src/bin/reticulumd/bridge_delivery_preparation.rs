@@ -43,9 +43,7 @@ pub(super) async fn prepare_payload(
         Err(error) => {
             finish_queued_stamp();
             log::error!("prepared payload lookup failed message_id={}: {error}", task.message_id);
-            if let Err(error) = task.daemon.defer_durable_dispatch(&task.message_id) {
-                log::error!("prepared payload lookup recovery could not be persisted: {error}");
-            }
+            task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
             return None;
         }
     };
@@ -75,9 +73,7 @@ pub(super) async fn prepare_payload(
             .persist_durable_prepared_payload(&task.message_id, encode_prepared(&prepared))
         {
             log::error!("prepared wire payload was not committed; network send suppressed message_id={}: {error}",task.message_id);
-            if let Err(error) = task.daemon.defer_durable_dispatch(&task.message_id) {
-                log::error!("durable dispatch could not be deferred: {error}");
-            }
+            task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
             return None;
         }
     }
