@@ -26,7 +26,8 @@ distinguishes existing implementation, missing behavior and missing evidence.
 Recording this plan does not promote a parity row or complete an issue.
 
 Item 3 has local target-reference checkpoints for payload sizing, metadata,
-notification recovery, peer stamp selection, pure retry timing, atomic admission
+notification recovery, peer stamp selection, reference retry timing, measured
+identity-discovery waits, atomic admission
 and Resource dispatch-failure ownership (including startup subscription). Production
 retry ownership and target mixed-peer acceptance remain open; these checkpoints
 do not establish LXMF 1.2.0 completion. See the

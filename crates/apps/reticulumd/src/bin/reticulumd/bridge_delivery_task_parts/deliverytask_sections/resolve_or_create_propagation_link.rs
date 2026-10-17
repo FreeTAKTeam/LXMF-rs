@@ -27,19 +27,6 @@ impl DeliveryTask {
                         None
                     }
                 }
-            })
-            .or_else(|| {
-                match resolve_destination_identity_blocking(
-                    self.transport.clone(),
-                    propagation_hash,
-                    Duration::from_secs(12),
-                ) {
-                    Ok(identity) => identity,
-                    Err(err) => {
-                        log::warn!("[daemon] identity resolver for propagation node: {err}");
-                        None
-                    }
-                }
             });
         let propagation_identity = match self
             .resolve_identity(
@@ -106,11 +93,20 @@ impl DeliveryTask {
         }
 
         if identity.is_none() {
+            identity = self.transport.destination_identity(&destination_hash).await;
+        }
+        if identity.is_none() {
             self.transport.request_path(&destination_hash, None, None).await;
             log_delivery_trace(&self.message_id, &self.destination_hex, stage, "path-requested");
             let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(&self.message_id, detail, stage, "waiting for announce");
-            let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
+            let timing = super::delivery_timing::measured_delivery_timing(
+                self.transport.path_timing(&destination_hash).await,
+            ).map_err(|error| {
+                log::error!("invalid delivery timing message_id={} destination={destination_hash}: {error}", self.message_id);
+                "invalid delivery timing"
+            })?;
+            let deadline = tokio::time::Instant::now() + timing.path_request_wait();
             while tokio::time::Instant::now() < deadline {
                 if self.abort_if_cancelled(stage) {
                     return Ok(None);

@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 
 
@@ -187,4 +188,52 @@ Path(__file__).with_name("lxmf_1_2_0_timing.json").write_text(json.dumps({
     "lxmf_commit": PINS["LXMF_PY_REPO"], "rns_commit": PINS["RETICULUM_PY_REPO"],
     "note": "Pinned production router timing methods with injected clock and transport measurements; no network delivery proof.",
     "cases": timing_cases,
+}, indent=2) + "\n")
+
+# Exercise actual RNS measurement arithmetic before LXMF scheduling. Only raw
+# interface bitrates/path presence are injected, not calculated timeout values.
+raw_cases = []
+instance = object.__new__(RNS.Reticulum)
+instance.is_connected_to_shared_instance = False
+for name, lowest, known, next_bitrate in [
+    ("no_interfaces", None, False, None),
+    ("normal_pathless", 2000, False, None),
+    ("slow_pathless", 100, False, None),
+    ("minimum_bitrate", 1, False, None),
+    ("slowest_differs_from_next_hop", 100, True, 100000),
+    ("known_without_interface", 100, True, None),
+    ("known_zero_bitrate", 100, True, 0),
+    ("known_zero_bitrate_only", None, True, 0),
+    ("known_four_attempts", 1500, True, 1500),
+    ("known_rounding_below", 1565, True, 1565),
+    ("known_rounding_above", 1566, True, 1566),
+    ("known_three_attempts", 100, True, 100),
+]:
+    with patch.object(RNS.Reticulum, "get_instance", return_value=instance), \
+         patch.object(RNS.Transport, "has_path", return_value=known), \
+         patch.object(RNS.Transport, "lowest_interface_bitrate", lowest), \
+         patch.object(RNS.Transport, "next_hop_interface_bitrate", return_value=next_bitrate), \
+         patch("time.time", return_value=1000):
+        limits = []
+        for path_request in [False, True]:
+            message = SimpleNamespace(awaiting_path=False, max_delivery_attempts=None)
+            router.schedule_attempt(message, b"peer", path_request=path_request)
+            limits.append(router.attempt_limit(message))
+        raw_cases.append({
+            "name": name, "lowest_bitrate": lowest, "path_known": known,
+            "next_hop_bitrate": next_bitrate,
+            "medium_timeout": router.medium_path_timeout(),
+            "destination_round_trip": router.destination_round_trip(b"peer"),
+            "path_wait": router.path_request_wait(),
+            "delivery_attempt_limit": limits[0], "path_attempt_limit": limits[1],
+        })
+# JSON parsers may round decimal floats differently. Preserve the exact binary
+# reference values too, so arithmetic tests do not test the JSON decoder.
+for case in raw_cases:
+    for field in ["medium_timeout", "destination_round_trip", "path_wait"]:
+        case[field + "_bits"] = int.from_bytes(struct.pack(">d", float(case[field])), "big")
+Path(__file__).with_name("lxmf_1_2_0_timing_measurements.json").write_text(json.dumps({
+    "lxmf_commit": PINS["LXMF_PY_REPO"], "rns_commit": PINS["RETICULUM_PY_REPO"],
+    "note": "Pinned RNS measurements and LXMF scheduling with raw bitrates/path presence injected; no network delivery proof.",
+    "cases": raw_cases,
 }, indent=2) + "\n")

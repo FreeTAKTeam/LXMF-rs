@@ -356,3 +356,33 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - This is not the complete admitted attempt lifecycle. Bounded broadcast lag can
   still lose Resource events; ownership through packet proofs, overload recovery,
   target retry integration and end-to-end target/SDK acceptance remain pending.
+
+### Item 3 measured discovery timing checkpoint
+
+- A paused-clock production regression reproduced the fixed 12-second identity
+  cutoff on a 100-bit/s interface. The shared asynchronous resolver now uses the
+  reference policy's measured path window (86 seconds there; seven-second floor
+  on a normal medium). Tests assert both pending state before the deadline and
+  completion at the deadline without allowing `await` to advance the test clock.
+- Removed propagation lookup's preceding blocking 12-second resolver. The common
+  path first checks the transport's learned identity, then requests/waits only if
+  missing. Explicit timeout callers outside this delivery path remain unchanged.
+- Transport exposes a neutral raw path/interface snapshot. It captures path
+  selection and interface measurements with separate short locks, preserving
+  raw seconds rather than rounding through durations. The daemon applies fixed
+  RNS MTU 500 and the pinned operation order; known zero-bitrate next hops use
+  Python's zero-RTT measurement-error fallback. No transport-to-LXMF dependency.
+- Twelve additional fixtures execute pinned RNS measurement and LXMF scheduling
+  methods with raw bitrates/path presence injected. Exact IEEE bits avoid a
+  demonstrated one-bit decimal JSON decoding difference. Existing sizing,
+  metadata and timing fixtures remain unchanged. A real signed announce-ingress
+  test verifies selected versus slowest interface, offline/stopped exclusion and
+  zero bitrate; this is software timing evidence, not a physical slow-link run.
+- Independent review accepted arithmetic, locking and resolver cutover. Complete
+  retry ownership is still pending: discovery currently waits inside the task;
+  execution permits, prepared bytes, path requests, announce wakeups and terminal
+  state must move into the admitted attempt loop before item 3 is complete.
+- Validation: 74 bridge tests, all 60 wire library/integration tests and the
+  issue-369 scanner pass. All-feature wire/transport library and daemon-binary
+  Clippy, architecture/boundary/module-size checks, formatting and diff checks
+  pass. These are local checkpoint results; item-3 hosted PR checks remain pending.

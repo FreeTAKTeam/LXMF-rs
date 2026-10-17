@@ -36,6 +36,19 @@ impl DeliveryTiming {
         let destination_round_trip = first_hop_timeout.map_or(medium_timeout, |first_hop| {
             2.0 * (first_hop - default_per_hop_timeout).max(0.0) + default_per_hop_timeout
         });
+        Self::from_round_trip(medium_timeout, lowest_bitrate, destination_round_trip)
+    }
+
+    /// Use an already measured destination round trip, in unquantized seconds.
+    /// This also represents the reference router's zero-RTT fallback when a
+    /// known path's first-hop measurement fails.
+    pub fn from_round_trip(
+        medium_timeout: f64,
+        lowest_bitrate: Option<u64>,
+        destination_round_trip: f64,
+    ) -> Result<Self, InvalidDeliveryTiming> {
+        let duration =
+            |seconds| Duration::try_from_secs_f64(seconds).map_err(|_| InvalidDeliveryTiming);
         Ok(Self {
             medium_timeout: duration(medium_timeout)?,
             destination_round_trip: duration(destination_round_trip)?,

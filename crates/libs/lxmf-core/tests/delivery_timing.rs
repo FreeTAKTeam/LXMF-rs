@@ -84,5 +84,7 @@ fn invalid_measurements_are_rejected_before_scheduling() {
         assert!(DeliveryTiming::new(invalid, None, None, 6.0).is_err());
         assert!(DeliveryTiming::new(7.0, None, Some(invalid), 6.0).is_err());
         assert!(DeliveryTiming::new(7.0, None, None, invalid).is_err());
+        assert!(DeliveryTiming::from_round_trip(invalid, None, 6.0).is_err());
+        assert!(DeliveryTiming::from_round_trip(7.0, None, invalid).is_err());
     }
 }

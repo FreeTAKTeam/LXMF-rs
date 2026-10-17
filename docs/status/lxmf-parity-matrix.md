@@ -57,8 +57,11 @@ occurs after task/reservation release. Registered Resource dispatch failures now
 stay with their terminal event consumer without triggering a competing fallback;
 startup subscribes before enabling recovered delivery. Proven dropped Link packets
 remove their exact receipt correlation. These tests do not prove reliable Resource
-completion under broadcast-channel overload. The timing policy
-has not yet replaced production retry ownership. Request coalescing, admitted-message
+completion under broadcast-channel overload. Raw transport timing now feeds
+production identity-discovery waits, with separate slowest/next-hop measurements,
+zero-bitrate fallback and exact-reference arithmetic. Propagation lookup uses that
+same asynchronous resolver instead of an additional blocking wait. The timing
+policy has not yet replaced production retry ownership. Request coalescing, admitted-message
 lifecycle, real callback-following delivery and full mixed-peer target traces
 remain pending; no row or reference baseline is promoted by these checkpoints.
 See the [execution record](../goals/open-issues-2026-10/PROGRESS.md).

@@ -60,17 +60,9 @@ use crate::packet::PacketType;
 use crate::ratchets::{encrypt_for_public_key, now_secs, RatchetStore};
 use crate::resource::{build_resource_request_packet, ResourceEvent, ResourceManager};
 
-fn medium_path_timeout_for_bitrate(bitrate: Option<u64>) -> Duration {
-    const RETICULUM_MTU_BYTES: f64 = 500.0;
-    const MINIMUM_BITRATE: u64 = 5;
-    const DEFAULT_PER_HOP_TIMEOUT_SECS: f64 = 6.0;
-
-    let Some(bitrate) = bitrate else { return Duration::ZERO };
-    Duration::from_secs_f64(
-        2.0 * (RETICULUM_MTU_BYTES * 8.0 / bitrate.max(MINIMUM_BITRATE) as f64)
-            + DEFAULT_PER_HOP_TIMEOUT_SECS,
-    )
-}
+mod path_timing;
+use path_timing::medium_path_timeout_for_bitrate;
+pub use path_timing::PathTimingSnapshot;
 
 mod announce_limits;
 mod announce_table;
