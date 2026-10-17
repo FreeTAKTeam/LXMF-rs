@@ -330,3 +330,29 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   A Resource dispatch error can already have queued an asynchronous failure;
   never treat every `io::Error` as safe to resend. Keep announce/deadline claims
   with this owner, and preserve raw timing precision from transport measurements.
+
+### Item 3 Link dispatch outcome checkpoint
+
+- A real activated Link with a closed output interface reproduced a Resource
+  `ConnectionError` escaping into the caller's retry/fallback path even though
+  transport had already registered the Resource and published `OutboundFailed`.
+  Link helpers now distinguish packet dispatch, Resource lifecycle ownership and
+  stopped delivery. Registered Resource errors log context and leave terminal
+  processing to the existing consumer, with no fabricated sent/sending receipt.
+- Proven dropped packets remove only their own message/hash correlation; unrelated
+  entries remain. Pre-registration errors retain the error path. Removed an
+  unreachable propagation-packet signal branch after the forced Resource return;
+  active Resource rejection/cancellation monitors remain in place.
+- The production-consumer regression exposed lost events before its first poll.
+  Independent review also found recovered delivery could run before bootstrap
+  called the worker. Bootstrap now subscribes before daemon construction/enabling
+  the bridge and transfers that receiver to the consumer. Tests cover both immediate
+  worker registration and dispatch before worker creation, with direct fallback
+  enabled, one Resource failure receipt, persisted failure and cleared tracking.
+- Independent re-review accepted the corrected slice. All 70 bridge tests and
+  five production Resource-consumer tests pass; all-feature daemon Clippy,
+  issue-369 diagnostics, formatting, diff and module-size checks pass. The new Resource and consumer regressions each failed
+  behaviorally before their corresponding fix.
+- This is not the complete admitted attempt lifecycle. Bounded broadcast lag can
+  still lose Resource events; ownership through packet proofs, overload recovery,
+  target retry integration and end-to-end target/SDK acceptance remain pending.

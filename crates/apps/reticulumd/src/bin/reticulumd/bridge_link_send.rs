@@ -1,6 +1,11 @@
 use super::*;
 use crate::outbound_resources;
 
+#[path = "bridge_link_dispatch.rs"]
+mod dispatch;
+use dispatch::DispatchObservation;
+pub(super) use dispatch::LinkAttemptOutcome;
+
 pub(super) async fn cancel_tracked_resource_if_message_cancelled(
     daemon: &RpcDaemon,
     transport: &Transport,
@@ -94,9 +99,10 @@ pub(super) fn spawn_tracked_resource_cancel_monitor(monitor: ResourceCancelMonit
 }
 
 impl DeliveryTask {
-    fn track_link_packet_before_send(&self, packet: &Packet) {
+    fn track_link_packet_before_send(&self, packet: &Packet) -> String {
         let packet_hash = hex::encode(packet.hash().to_bytes());
         track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
+        packet_hash
     }
 
     fn track_resource_before_send(
@@ -138,9 +144,9 @@ impl DeliveryTask {
         destination_desc: DestinationDesc,
         payload: &[u8],
         statuses: LinkModeStatuses,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<LinkAttemptOutcome, std::io::Error> {
         if self.abort_if_cancelled(trace_stage) {
-            return Ok(());
+            return Ok(LinkAttemptOutcome::Stopped);
         }
         log_delivery_trace(
             &self.message_id,
@@ -151,6 +157,7 @@ impl DeliveryTask {
         let link = self.transport.link(destination_desc).await;
         let link_id = *link.lock().await.id();
         self.direct_backchannel_links.record_outbound_local_source(link_id, self.source_hash);
+        let mut observed = DispatchObservation::default();
         let result =
             match await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(20))
                 .await
@@ -169,9 +176,10 @@ impl DeliveryTask {
                         &link,
                         payload,
                         |packet| {
-                            self.track_link_packet_before_send(packet);
+                            observed.packet = Some(self.track_link_packet_before_send(packet));
                         },
                         |resource_hash| {
+                            observed.resource = Some(resource_hash);
                             self.track_resource_before_send(
                                 trace_stage,
                                 activity_peer,
@@ -223,7 +231,7 @@ impl DeliveryTask {
                         .with_bytes(payload.len())
                         .with_link_id(link_id.to_string()),
                 );
-                Ok(())
+                Ok(LinkAttemptOutcome::Packet)
             }
             Ok(LinkSendResult::Resource(resource_hash)) => {
                 let resource_hash_hex = hex::encode(resource_hash.as_slice());
@@ -239,11 +247,13 @@ impl DeliveryTask {
                         .with_bytes(payload.len())
                         .with_link_id(link_id.to_string()),
                 );
-                Ok(())
+                Ok(LinkAttemptOutcome::ResourceOwned)
             }
             Err(err) => {
-                self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), false);
-                Err(err)
+                if observed.resource.is_none() {
+                    self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), false);
+                }
+                observed.failed(self, trace_stage, err)
             }
         }
     }
@@ -278,7 +288,7 @@ impl DeliveryTask {
         link: Arc<tokio::sync::Mutex<Link>>,
         payload: &[u8],
         statuses: LinkModeStatuses,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<LinkAttemptOutcome, std::io::Error> {
         let (activation_link_id, activation_status) = {
             let guard = link.lock().await;
             (*guard.id(), guard.status())
@@ -312,15 +322,17 @@ impl DeliveryTask {
                 .as_str(),
         );
         if self.abort_if_cancelled(trace_stage) {
-            return Ok(());
+            return Ok(LinkAttemptOutcome::Stopped);
         }
         let destination_desc = *link.lock().await.destination();
         let link_id = *link.lock().await.id();
+        let mut observed = DispatchObservation::default();
         if trace_stage == "propagation" {
             let propagation_signal_rx = self.transport.received_data_events();
-            let resource_hash = self
+            let result = self
                 .transport
                 .send_resource_observed(&link_id, payload.to_vec(), None, |resource_hash| {
+                    observed.resource = Some(resource_hash);
                     self.track_resource_before_send(
                         trace_stage,
                         activity_peer,
@@ -331,7 +343,11 @@ impl DeliveryTask {
                     );
                 })
                 .await
-                .map_err(|err| std::io::Error::other(format!("link resource not sent: {err:?}")))?;
+                .map_err(|err| std::io::Error::other(format!("link resource not sent: {err:?}")));
+            let resource_hash = match result {
+                Ok(hash) => hash,
+                Err(err) => return observed.failed(self, trace_stage, err),
+            };
             let resource_hash_hex = hex::encode(resource_hash.to_bytes());
             let detail = format!(
                 "resource_hash={} bytes={} peer={} destination={}",
@@ -359,19 +375,18 @@ impl DeliveryTask {
                 self.outbound_resource_map.clone(),
                 self.receipt_tx.clone(),
             );
-            return Ok(());
+            return Ok(LinkAttemptOutcome::ResourceOwned);
         }
 
-        let mut propagation_signal_rx =
-            (trace_stage == "propagation").then(|| self.transport.received_data_events());
         let result = send_on_link_observed(
             self.transport.as_ref(),
             &link,
             payload,
             |packet| {
-                self.track_link_packet_before_send(packet);
+                observed.packet = Some(self.track_link_packet_before_send(packet));
             },
             |resource_hash| {
+                observed.resource = Some(resource_hash);
                 self.track_resource_before_send(
                     trace_stage,
                     activity_peer,
@@ -388,28 +403,6 @@ impl DeliveryTask {
                 let packet_hash = hex::encode(packet.hash().to_bytes());
                 let detail = format!("packet_hash={packet_hash}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                if let Some(ref mut signal_rx) = propagation_signal_rx {
-                    if let Ok(signal) = propagation::wait_for_propagation_signal(
-                        signal_rx,
-                        link_id,
-                        Duration::from_millis(1500),
-                    )
-                    .await
-                    {
-                        if signal == propagation::PROPAGATION_INVALID_STAMP_SIGNAL {
-                            return Err(std::io::Error::other(
-                                "propagation node rejected message: invalid stamp",
-                            ));
-                        }
-                        let detail = format!("signal=0x{signal:02x}");
-                        log_delivery_trace(
-                            &self.message_id,
-                            &self.destination_hex,
-                            "propagation",
-                            &detail,
-                        );
-                    }
-                }
                 self.daemon.record_outbound_peer_sent(activity_peer, payload.len());
                 emit_receipt_event(
                     &self.receipt_tx,
@@ -421,7 +414,7 @@ impl DeliveryTask {
                         .with_bytes(payload.len())
                         .with_link_id(link_id.to_string()),
                 );
-                Ok(())
+                Ok(LinkAttemptOutcome::Packet)
             }
             Ok(LinkSendResult::Resource(resource_hash)) => {
                 let resource_hash_hex = hex::encode(resource_hash.to_bytes());
@@ -443,9 +436,9 @@ impl DeliveryTask {
                         .with_bytes(payload.len())
                         .with_link_id(link_id.to_string()),
                 );
-                Ok(())
+                Ok(LinkAttemptOutcome::ResourceOwned)
             }
-            Err(err) => Err(err),
+            Err(err) => observed.failed(self, trace_stage, err),
         }
     }
 }

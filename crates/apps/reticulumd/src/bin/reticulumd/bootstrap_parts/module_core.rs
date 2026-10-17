@@ -389,6 +389,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         }
     }
 
+    // The durable pump can deliver as soon as bridge.set_daemon runs. Register
+    // Resource events before enabling it, including during async startup work.
+    let inbound_transport = transport.as_ref().map(|transport| {
+        (transport.clone(), transport.resource_events())
+    });
     let daemon = Arc::new(RpcDaemon::with_store_and_bridges(
         store,
         identity_hash,
@@ -604,7 +609,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
 
     let mut path_table_persistence = None;
-    if let Some(transport) = transport {
+    if let Some((transport, resource_events)) = inbound_transport {
         let transport_network_identity = network_identity
             .as_ref()
             .map(rns_transport::identity_bridge::to_transport_private_identity);
@@ -615,7 +620,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             transport.clone(),
             reticulum_storage_path.clone(),
         ));
-        spawn_inbound_worker(
+        spawn_inbound_worker_with_resource_events(
             daemon.clone(),
             transport.clone(),
             PropagationControlContext {
@@ -631,6 +636,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             bridge.as_ref().map(|bridge| bridge.direct_backchannel_links()),
             receipt_tx.clone(),
             outbound_resource_map,
+            resource_events,
         );
         let discovery_identity =
             rns_transport::identity_bridge::to_transport_private_identity(&identity);

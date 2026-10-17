@@ -2,7 +2,7 @@ use super::announce_worker::spawn_announce_worker;
 
 use super::bridge::TransportBridge;
 
-use super::inbound_worker::spawn_inbound_worker;
+use super::inbound_worker::spawn_inbound_worker_with_resource_events;
 
 use super::interface_hot_apply::InterfaceHotApplyBridge;
 

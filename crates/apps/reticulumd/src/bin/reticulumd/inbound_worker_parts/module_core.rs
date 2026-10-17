@@ -29,6 +29,7 @@ use sha2::Digest;
 
 use std::sync::Arc;
 
+#[cfg(test)]
 pub(super) fn spawn_inbound_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
@@ -36,6 +37,22 @@ pub(super) fn spawn_inbound_worker(
     direct_backchannel_links: Option<DirectBackchannelLinks>,
     receipt_tx: impl Into<reticulum_daemon::receipt_bridge::ReceiptPublisher>,
     outbound_resource_map: OutboundResourceMap,
+) {
+    let resource_events = transport.resource_events();
+    spawn_inbound_worker_with_resource_events(
+        daemon, transport, control, direct_backchannel_links, receipt_tx,
+        outbound_resource_map, resource_events,
+    );
+}
+
+pub(super) fn spawn_inbound_worker_with_resource_events(
+    daemon: Arc<RpcDaemon>,
+    transport: Arc<Transport>,
+    control: PropagationControlContext,
+    direct_backchannel_links: Option<DirectBackchannelLinks>,
+    receipt_tx: impl Into<reticulum_daemon::receipt_bridge::ReceiptPublisher>,
+    outbound_resource_map: OutboundResourceMap,
+    mut rx: tokio::sync::broadcast::Receiver<rns_transport::resource::ResourceEvent>,
 ) {
     if control.enabled {
         control::spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
@@ -54,7 +71,6 @@ pub(super) fn spawn_inbound_worker(
             resource_control.delivery_destination.as_ref(),
         )
         .await;
-        let mut rx = transport.resource_events();
         loop {
             if let Ok(event) = rx.recv().await {
                 match event.kind {

@@ -61,7 +61,7 @@ impl DeliveryTask {
         };
 
         match result {
-            Ok(()) => {}
+            Ok(_) => {}
             Err(err) if self.try_propagation_on_fail && self.propagation_node_hex.is_some() => {
                 self.direct_backchannel_links.remove_destination(&self.destination_hash);
                 let detail = format!("direct failed err={err}; trying propagated");
