@@ -44,6 +44,19 @@ the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for
 named software scenarios, with hardware, public-network, and third-party-client
 evidence tracked independently.
 
+## LXMF 1.2.0 target work (issue 648, incomplete)
+
+The existing module rows below describe the pinned baseline. The additional
+`c3ff2d6dc2f256daab896dadc044dd5a913ecbb7` target has local checkpoints for
+serialized opportunistic limits, implementation/version metadata, notification
+callback recovery and peer stamp-floor selection. Clock-independent retry policy
+now matches 15 target-router timing scenarios, including strict deadlines,
+recovered-path wakeup and floating-point rounding boundaries. This policy has not
+yet replaced production retry ownership. Request coalescing, admitted-message
+lifecycle, real callback-following delivery and full mixed-peer target traces
+remain pending; no row or reference baseline is promoted by these checkpoints.
+See the [execution record](../goals/open-issues-2026-10/PROGRESS.md).
+
 ## MeshChat proof-of-concept evidence (outside module counts)
 
 | Surface | Evidence in this development branch | Remaining boundary |

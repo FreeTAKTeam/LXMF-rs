@@ -113,3 +113,78 @@ Path(__file__).with_name("lxmf_1_2_0_metadata.json").write_text(json.dumps({
     "note": "Current production encoder plus legacy and malformed variants, evaluated by target reference parsers.",
     "cases": metadata_cases,
 }, indent=2) + "\n")
+
+# Evaluate timing decisions through the pinned router, with only clock and
+# transport measurements replaced. No worker or real path request is started.
+from types import SimpleNamespace
+import threading
+
+timing_cases = []
+for name, medium, bitrate, first_hop in [
+    ("unknown", 0, None, None),
+    ("normal_pathless", 8, 2000, None),
+    ("slow_boundary", 8, 1999, None),
+    ("slow_medium", 86, 100, None),
+    ("normal_known", 8, 2000, 6),
+    ("known_below_default", 8, 2000, 4),
+    ("known_retry_boundary", 8, 2000, 8),
+    ("known_above_retry_boundary", 8, 2000, 8.000001),
+    ("known_four_attempts", 8, 2000, 9),
+    ("known_three_attempts", 86, 100, 46),
+    ("slow_unknown_bitrate", 86, None, None),
+    ("path_even_rounding_four", 50 / 4.5, 1000, None),
+    ("path_even_rounding_three", 50 / 3.5, 1000, None),
+    ("known_even_rounding_four", 8, 2000, (50 / 4.5 - 6) / 2 + 6),
+    ("known_even_rounding_three", 8, 2000, (50 / 3.5 - 6) / 2 + 6),
+]:
+    instance = SimpleNamespace(
+        get_medium_path_timeout=lambda: medium,
+        get_lowest_interface_bitrate=lambda: bitrate,
+        get_first_hop_timeout=lambda destination: first_hop,
+    )
+    with patch.object(RNS.Reticulum, "get_instance", return_value=instance), \
+         patch.object(RNS.Transport, "has_path", return_value=first_hop is not None) as has_path, \
+         patch.object(RNS.Transport, "request_path") as request, \
+         patch("time.time", return_value=1000) as clock:
+        schedule_cases = []
+        for path_request in [False, True]:
+            message = SimpleNamespace(awaiting_path=False, max_delivery_attempts=None, delivery_attempts=2)
+            router.schedule_attempt(message, b"peer", path_request=path_request)
+            deadline = message.next_delivery_attempt
+            checks = []
+            for now, path_known in [(1000, False), (1000, True), (deadline, False), (deadline, True), (deadline + 0.001, False)]:
+                clock.return_value = now
+                has_path.return_value = path_known
+                checks.append({"now": now, "path_known": path_known,
+                               "due": router.attempt_due(message, b"peer")})
+            schedule_cases.append({
+                "path_request": path_request, "deadline": deadline,
+                "max_attempts": router.attempt_limit(message),
+                "attempts": message.delivery_attempts, "awaiting_path": message.awaiting_path,
+                "checks": checks,
+            })
+            clock.return_value = 1000
+            has_path.return_value = first_hop is not None
+        router.path_request_lock = threading.Lock()
+        router.path_request_times = {}
+        debounce = 60 if router.slow_interface_online() else router.path_request_wait()
+        request_checks = []
+        for elapsed in sorted(set([0, router.path_request_wait(), debounce - 0.001, debounce])):
+            # Reset the same previous request, so each edge is independent.
+            router.path_request_times = {b"peer": 1000}
+            clock.return_value = 1000 + elapsed
+            pending = router.path_request_pending(b"peer")
+            allowed = router.request_path(b"peer")
+            request_checks.append({"elapsed": elapsed, "pending": pending, "allowed": allowed})
+        timing_cases.append({
+            "name": name, "medium_timeout": medium, "lowest_bitrate": bitrate,
+            "first_hop_timeout": first_hop, "default_per_hop_timeout": RNS.Reticulum.DEFAULT_PER_HOP_TIMEOUT,
+            "path_wait": router.path_request_wait(), "request_debounce": debounce,
+            "destination_round_trip": router.destination_round_trip(b"peer"),
+            "schedules": schedule_cases, "requests": request_checks,
+        })
+Path(__file__).with_name("lxmf_1_2_0_timing.json").write_text(json.dumps({
+    "lxmf_commit": PINS["LXMF_PY_REPO"], "rns_commit": PINS["RETICULUM_PY_REPO"],
+    "note": "Pinned production router timing methods with injected clock and transport measurements; no network delivery proof.",
+    "cases": timing_cases,
+}, indent=2) + "\n")

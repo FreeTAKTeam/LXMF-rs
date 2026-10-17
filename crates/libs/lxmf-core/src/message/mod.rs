@@ -3,6 +3,7 @@ mod delivery;
 mod delivery_stamp;
 #[cfg(test)]
 mod delivery_stamp_tests;
+mod delivery_timing;
 mod payload;
 mod state;
 mod types;
@@ -10,6 +11,7 @@ mod wire;
 
 pub use container::MessageContainer;
 pub use delivery::{decide_delivery, DeliveryDecision};
+pub use delivery_timing::{DeliverySchedule, DeliveryTiming, InvalidDeliveryTiming};
 pub use payload::Payload;
 pub use state::State;
 pub use types::{MessageMethod, MessageState, TransportMethod, UnverifiedReason};

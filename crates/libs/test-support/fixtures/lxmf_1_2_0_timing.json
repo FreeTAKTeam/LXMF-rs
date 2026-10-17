@@ -1,0 +1,1487 @@
+{
+  "lxmf_commit": "c3ff2d6dc2f256daab896dadc044dd5a913ecbb7",
+  "rns_commit": "99de23c040d507e3fefca19e87b182302902725d",
+  "note": "Pinned production router timing methods with injected clock and transport measurements; no network delivery proof.",
+  "cases": [
+    {
+      "name": "unknown",
+      "medium_timeout": 0,
+      "lowest_bitrate": null,
+      "first_hop_timeout": null,
+      "default_per_hop_timeout": 6,
+      "path_wait": 7,
+      "request_debounce": 7,
+      "destination_round_trip": 0,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1010,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1007,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1007,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1007,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1007.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 6.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "normal_pathless",
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop_timeout": null,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 8,
+      "destination_round_trip": 8,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1010,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "slow_boundary",
+      "medium_timeout": 8,
+      "lowest_bitrate": 1999,
+      "first_hop_timeout": null,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 60,
+      "destination_round_trip": 8,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1010,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": false
+        },
+        {
+          "elapsed": 59.999,
+          "pending": false,
+          "allowed": false
+        },
+        {
+          "elapsed": 60,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "slow_medium",
+      "medium_timeout": 86,
+      "lowest_bitrate": 100,
+      "first_hop_timeout": null,
+      "default_per_hop_timeout": 6,
+      "path_wait": 86,
+      "request_debounce": 60,
+      "destination_round_trip": 86,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1086,
+          "max_attempts": 3,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1086.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1086,
+          "max_attempts": 3,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1086,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1086.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 59.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 60,
+          "pending": true,
+          "allowed": true
+        },
+        {
+          "elapsed": 86,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "normal_known",
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop_timeout": 6,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 8,
+      "destination_round_trip": 6,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1010,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "known_below_default",
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop_timeout": 4,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 8,
+      "destination_round_trip": 6,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1010,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "known_retry_boundary",
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop_timeout": 8,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 8,
+      "destination_round_trip": 10,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1010,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1010,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "known_above_retry_boundary",
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop_timeout": 8.000001,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 8,
+      "destination_round_trip": 10.000001999999999,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1010.000002,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010.000002,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1010.000002,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1010.001002,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "known_four_attempts",
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop_timeout": 9,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 8,
+      "destination_round_trip": 12,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1012,
+          "max_attempts": 4,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1012,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1012,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1012.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "known_three_attempts",
+      "medium_timeout": 86,
+      "lowest_bitrate": 100,
+      "first_hop_timeout": 46,
+      "default_per_hop_timeout": 6,
+      "path_wait": 86,
+      "request_debounce": 60,
+      "destination_round_trip": 86,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1086,
+          "max_attempts": 3,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1086.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1086,
+          "max_attempts": 3,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1086,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1086.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 59.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 60,
+          "pending": true,
+          "allowed": true
+        },
+        {
+          "elapsed": 86,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "slow_unknown_bitrate",
+      "medium_timeout": 86,
+      "lowest_bitrate": null,
+      "first_hop_timeout": null,
+      "default_per_hop_timeout": 6,
+      "path_wait": 86,
+      "request_debounce": 86,
+      "destination_round_trip": 86,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1086,
+          "max_attempts": 3,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1086.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1086,
+          "max_attempts": 3,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1086,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1086,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1086.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 85.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 86,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "path_even_rounding_four",
+      "medium_timeout": 11.11111111111111,
+      "lowest_bitrate": 1000,
+      "first_hop_timeout": null,
+      "default_per_hop_timeout": 6,
+      "path_wait": 11.11111111111111,
+      "request_debounce": 60,
+      "destination_round_trip": 11.11111111111111,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1011.1111111111111,
+          "max_attempts": 4,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1011.1111111111111,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1011.1111111111111,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1011.1121111111111,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1011.1111111111111,
+          "max_attempts": 4,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1011.1111111111111,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1011.1111111111111,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1011.1121111111111,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 11.11111111111111,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 59.999,
+          "pending": false,
+          "allowed": false
+        },
+        {
+          "elapsed": 60,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "path_even_rounding_three",
+      "medium_timeout": 14.285714285714286,
+      "lowest_bitrate": 1000,
+      "first_hop_timeout": null,
+      "default_per_hop_timeout": 6,
+      "path_wait": 14.285714285714286,
+      "request_debounce": 60,
+      "destination_round_trip": 14.285714285714286,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1014.2857142857143,
+          "max_attempts": 4,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1014.2857142857143,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1014.2857142857143,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1014.2867142857143,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1014.2857142857143,
+          "max_attempts": 4,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1014.2857142857143,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1014.2857142857143,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1014.2867142857143,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 14.285714285714286,
+          "pending": false,
+          "allowed": false
+        },
+        {
+          "elapsed": 59.999,
+          "pending": false,
+          "allowed": false
+        },
+        {
+          "elapsed": 60,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "known_even_rounding_four",
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop_timeout": 8.555555555555555,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 8,
+      "destination_round_trip": 11.11111111111111,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1011.1111111111111,
+          "max_attempts": 4,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1011.1111111111111,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1011.1111111111111,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1011.1121111111111,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "known_even_rounding_three",
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop_timeout": 10.142857142857142,
+      "default_per_hop_timeout": 6,
+      "path_wait": 8,
+      "request_debounce": 8,
+      "destination_round_trip": 14.285714285714285,
+      "schedules": [
+        {
+          "path_request": false,
+          "deadline": 1014.2857142857143,
+          "max_attempts": 4,
+          "attempts": 2,
+          "awaiting_path": false,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1014.2857142857143,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1014.2857142857143,
+              "path_known": true,
+              "due": false
+            },
+            {
+              "now": 1014.2867142857143,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        },
+        {
+          "path_request": true,
+          "deadline": 1008,
+          "max_attempts": 5,
+          "attempts": 2,
+          "awaiting_path": true,
+          "checks": [
+            {
+              "now": 1000,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1000,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008,
+              "path_known": false,
+              "due": false
+            },
+            {
+              "now": 1008,
+              "path_known": true,
+              "due": true
+            },
+            {
+              "now": 1008.001,
+              "path_known": false,
+              "due": true
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {
+          "elapsed": 0,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 7.999,
+          "pending": true,
+          "allowed": false
+        },
+        {
+          "elapsed": 8,
+          "pending": false,
+          "allowed": true
+        }
+      ]
+    }
+  ]
+}

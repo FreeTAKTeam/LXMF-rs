@@ -271,3 +271,30 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - PRE confirms that replacing fixed waits is not full retry parity: the admitted
   scheduler must own attempts, prepared bytes and wakeups; durable `scheduled`
   claims must not be requeued merely because a path is pending.
+
+### Item 3 reference timing policy checkpoint
+
+- Added clock-independent `DeliveryTiming`/`DeliverySchedule` in the existing
+  wire library. The caller owns attempt counts and terminal outcomes. Path wait,
+  slow-interface debounce, destination round trip, strict deadlines and recovered
+  path wakeups match 15 pinned target-router measurement scenarios (30 schedules,
+  150 due checks). No network worker or reference path request runs in generation.
+- Review exposed a real rounding bug in the first implementation: converting
+  `50 / 4.5` seconds to nanoseconds changed the limit from Python's four attempts
+  to five. A public-API fixture reproduced that failure before the fix. Preserve
+  validated raw seconds for retry rounding, then convert waits to durations;
+  adapters must not quantize the measurements first. Invalid measurements return
+  an explicit error. The earlier missing-API compile failure was scaffolding,
+  not a behavioral regression.
+- Full `cargo test -p lxmf-wire --lib --tests`: 60 passed, 0 failed,
+  0 ignored. All-target/all-feature wire Clippy, formatting, module-size and
+  diff checks pass. Independent re-review accepted the precision fix. Existing
+  size and metadata fixtures remain byte-identical after regeneration.
+- Design uses explicit measurement inputs and one small scheduling value, keeping
+  clocks, I/O, retry ownership and shared request history in production owners.
+  Rust's [ties-to-even rounding](https://doc.rust-lang.org/std/primitive.f64.html#method.round_ties_even)
+  supplies Python rounding without a new dependency.
+- This is staged policy, not production scheduling completion. Generated request
+  boundary cells await coalescer integration; admitted scheduler ownership,
+  raw-precision transport adapters, durable claims, announce wakeups, send/receipt
+  outcomes and end-to-end exhaustion/recovery remain the next acceptance work.

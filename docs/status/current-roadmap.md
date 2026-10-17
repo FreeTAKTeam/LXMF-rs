@@ -25,6 +25,12 @@ utility/rngit software completion. Its [dated acceptance map](../goals/open-issu
 distinguishes existing implementation, missing behavior and missing evidence.
 Recording this plan does not promote a parity row or complete an issue.
 
+Item 3 has local target-reference checkpoints for payload sizing, metadata,
+notification recovery, peer stamp selection and pure retry timing. Production
+retry ownership and target mixed-peer acceptance remain open; these checkpoints
+do not establish LXMF 1.2.0 completion. See the
+[LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
+
 ## RCH resource regressions: issues 663, 657 and 655
 
 The current increment bounds propagation-refill writer transactions, uses
