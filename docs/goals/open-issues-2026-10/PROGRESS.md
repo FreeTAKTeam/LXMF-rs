@@ -200,3 +200,21 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - Independent review found no behavior/provenance defect; extracted existing
   encoder unit tests to keep production below 500 lines and removed its old
   exception. Actual announce exchange remains part of final interop acceptance.
+
+### Item 3 notification recovery slice
+
+- Reproduced an external `EventSinkBridge::publish` panic stopping the single
+  notification worker: the healthy sink observed only one of four expected
+  receipts. Isolated only that callback, after receipt commit and outside daemon
+  locks; errors and unwinding panics increment existing metrics and log kind,
+  sequence and event type. Notification side effects are not retried.
+- Five sink tests and the issue-369 diagnostics scanner pass. The new persistent
+  store regression proves an error, a panic, later callback success, healthy-sink
+  continuation and immutable failed status despite a late delivered receipt.
+  It injects network receipt results; later real SDK/ZeroMQ delivery and admission
+  reservation acceptance remain pending.
+- Design basis: Rust's [catch_unwind](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html)
+  and [AssertUnwindSafe](https://doc.rust-lang.org/std/panic/struct.AssertUnwindSafe.html).
+  The boundary protects daemon state from external notification code; it is not
+  general recovery for storage faults or aborting panics. No dependency or second
+  notification worker was introduced.
