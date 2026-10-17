@@ -1,0 +1,63 @@
+{
+  "lxmf_commit": "c3ff2d6dc2f256daab896dadc044dd5a913ecbb7",
+  "rns_commit": "99de23c040d507e3fefca19e87b182302902725d",
+  "note": "Current production encoder plus legacy and malformed variants, evaluated by target reference parsers.",
+  "cases": [
+    {
+      "name": "current",
+      "wire_hex": "97c2ce69bd1398c3cd0100cd28009315050d83ccfea46c786d6400a5312e322e3001c40950656572204e6f6465",
+      "valid": true,
+      "display_name": "Peer Node",
+      "stamp_cost": 21
+    },
+    {
+      "name": "legacy_name_only",
+      "wire_hex": "97c2ce69bd1398c3cd0100cd28009315050d8101c40950656572204e6f6465",
+      "valid": true,
+      "display_name": "Peer Node",
+      "stamp_cost": 21
+    },
+    {
+      "name": "legacy_empty",
+      "wire_hex": "97c2ce69bd1398c3cd0100cd28009315050d80",
+      "valid": true,
+      "display_name": null,
+      "stamp_cost": 21
+    },
+    {
+      "name": "unknown_field",
+      "wire_hex": "97c2ce69bd1398c3cd0100cd28009315050d84ccfea46c786d6400a5312e322e3001c40950656572204e6f64657f92c081a6667574757265c40576616c7565",
+      "valid": true,
+      "display_name": "Peer Node",
+      "stamp_cost": 21
+    },
+    {
+      "name": "malformed_optional_values",
+      "wire_hex": "97c2ce69bd1398c3cd0100cd28009315050d8301c40950656572204e6f6465009101ccfec0",
+      "valid": true,
+      "display_name": "Peer Node",
+      "stamp_cost": 21
+    },
+    {
+      "name": "malformed_name",
+      "wire_hex": "97c2ce69bd1398c3cd0100cd28009315050d83ccfea46c786d6400a5312e322e3001c401ff",
+      "valid": true,
+      "display_name": null,
+      "stamp_cost": 21
+    },
+    {
+      "name": "malformed_metadata_array",
+      "wire_hex": "97c2ce69bd1398c3cd0100cd28009315050d90",
+      "valid": false,
+      "display_name": null,
+      "stamp_cost": null
+    },
+    {
+      "name": "malformed_metadata_nil",
+      "wire_hex": "97c2ce69bd1398c3cd0100cd28009315050dc0",
+      "valid": false,
+      "display_name": null,
+      "stamp_cost": null
+    }
+  ]
+}

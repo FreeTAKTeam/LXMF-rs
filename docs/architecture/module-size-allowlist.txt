@@ -15,7 +15,6 @@ crates/apps/reticulumd/src/bin/reticulumd/tests_parts/bootstrap_reports_auto_int
 crates/apps/reticulumd/src/bin/reticulumd/tests_parts/bootstrap_restores_path_cache.rs
 crates/apps/reticulumd/src/bin/reticulumd/tests_parts/propagation_link_cache_reuses_same_s.rs
 crates/apps/reticulumd/src/bin/reticulumd/tests_parts/vrn76_builder_rejects_missing_periph.rs
-crates/apps/reticulumd/src/announce_names.rs
 crates/apps/reticulumd/src/config_parts/interfaceconfig_sections/enabled.rs
 crates/apps/reticulumd/src/config_parts/interfaceconfig_sections/normalize_auto_aliases.rs
 crates/apps/reticulumd/src/config_parts/interfaceconfig_sections/validate_lora.rs

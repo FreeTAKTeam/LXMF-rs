@@ -185,3 +185,18 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   daemon boundary test stops after that request; full mixed-peer completion and
   SDK/ZeroMQ acceptance remain pending for this item.
 - Independent review accepted the size slice after tightening fixture provenance: clean exact-pin regeneration is byte-identical; dirty references and foreign module imports are rejected before output. No remaining checkpoint findings.
+
+### Item 3 metadata slice
+
+- Added the exact `PN_META_IMPL_NAME` key. The production encoder advertises
+  `reticulumd` and its compiled package version, preserving binary display names.
+  The new assertion failed before the change; all nine daemon announce-name
+  integration tests and eight Python-target metadata cases now pass.
+- The renamed shared fixture generator also invokes the pinned Python production
+  metadata encoder without starting network workers, then evaluates legacy,
+  unknown and malformed variants with the reference parsers. Optional malformed
+  version/implementation values remain tolerated like Python; non-map metadata
+  is rejected. No unused metadata parser API was added.
+- Independent review found no behavior/provenance defect; extracted existing
+  encoder unit tests to keep production below 500 lines and removed its old
+  exception. Actual announce exchange remains part of final interop acceptance.
