@@ -297,7 +297,7 @@ impl DeliveryTask {
         // without the destination prefix. Receivers prepend the
         // packet destination hash before unpacking.
         let opportunistic_payload = opportunistic_payload(&payload, &self.destination);
-        if opportunistic_payload.len() > rns_transport::packet::PACKET_MDU {
+        if opportunistic_payload.len() > lxmf::constants::ENCRYPTED_PACKET_MDU {
             log_delivery_trace(
                 &self.message_id,
                 &self.destination_hex,

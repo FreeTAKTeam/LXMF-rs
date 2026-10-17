@@ -6,8 +6,8 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | Item | State | PR / exact head / merge | Evidence |
 | --- | --- | --- | --- |
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
-| 2. Automatic CI and protection | In progress | Branch `corvo/open-issues-02-ci-protection` | PRE review approved; baseline results below. |
-| 3. LXMF 1.2.0 | Pending | — | — |
+| 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
+| 3. LXMF 1.2.0 | In progress | Branch `corvo/open-issues-03-lxmf-120` | PRE review complete; test-first implementation begins from the verified item 2 merge. |
 | 4. Transport and RNS 1.5.5 | Pending | — | — |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
@@ -125,3 +125,63 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - The normalization correction requires fresh exact-head hosted checks. A
   controlled CI cancellation will establish native blocking on that head;
   successful restoration and merge eligibility remain pending.
+
+### Item 2 final evidence and merge
+
+- Verify `39070636087` and independent interoperability `39070636070` passed on
+  final head `18816fa6`. With only the deliberately cancelled CI gate failing,
+  GitHub reported `BLOCKED`; the native-policy check remained `correct`.
+- CI `39070636058` attempt 2 then passed on the same head. All three required
+  contexts were successful and bound to Actions app 15368; GitHub reported
+  `CLEAN`/mergeable. Final checks: 20 success, one deliberately inapplicable
+  publication skip. No review threads were outstanding.
+- Independent verification accepted the native failure/restoration proof.
+  Actual fork and docs-only trigger runs were not exercised; local selector
+  regressions cover those rules. The release-check registry limitation above
+  remains unresolved and is not a claim of release readiness.
+- GitHub confirmed the normal squash merge (no admin bypass) at
+  2026-10-17T22:01:21Z. Fetched main contains the recorded merge commit.
+
+## Item 3 PRE review and execution slices
+
+- Keep exact baseline LXMF `727830cefda83d9c6e3982b48675425f3f988f9c`
+  and target `c3ff2d6dc2f256daab896dadc044dd5a913ecbb7` as separate verified
+  profiles. Existing six target smoke cases prove reception only; improve actual
+  opportunistic-mode/no-fallback and SDK/ZeroMQ evidence on the final change.
+- Size: distinguish full wire length, serialized content budget and propagated
+  envelope. Test 398/399/400 wire-byte boundaries with title/fields/stamp overhead
+  across core, runtime and daemon paths before correcting the shared formula.
+- Metadata: emit truthful Rust name/version with existing parser/encoder owners;
+  test old, new, unknown and malformed metadata plus actual announce exchange.
+- Timing: use shared pure policy with existing delivery/scheduler state owners;
+  cover slow/normal media, path provenance, request debounce, retry limits,
+  awaiting-path-only wakeups, selected propagation node and durable dispatch.
+- Peer deltas: correct the inherited zero stamp floor to saturating subtraction;
+  cover empty offers and missing-path backoff. Distinguish management sync RPC
+  from autonomous peer offer behavior when documenting evidence and gaps.
+- Notification recovery: `EventSinkBridge::publish` is the supported Rust
+  external notification boundary. Receipt state commits first; isolate sink
+  failure/panic and prove later notifications/delivery without masking persistence
+  failures. Preserve repeated `updated:false` events while asserting one committed
+  terminal result. Bridge admission panic is a different uncertainty boundary;
+  do not add speculative retry or exactly-once network-delivery guarantees.
+- Independent PRE review identified these owner/evidence constraints. Runtime
+  implementation remains with the main agent, sequentially within this item.
+
+### Item 3 serialized-size slice
+
+- Added 18 exact-target Python fixtures at wire lengths 398/399/400 and
+  430/431/432, covering empty fields, title/fields and injected stamp overhead.
+  The generator checks both immutable reference revisions. Injected stamps test
+  serialization only, not proof-of-work validity.
+- Core regression failed at 400 bytes before the MDU correction. Runtime
+  regression failed because a fitting message incorrectly attempted a Link.
+  Removed the extra timestamp and converted full wire length to the selector's
+  serialized-content budget. The daemon now checks the same encrypted budget
+  before encryption instead of relying on ciphertext overflow for fallback.
+- Core fixture regression, all 16 runtime tests and the daemon's 18-case
+  production-task boundary regression pass. Fitting packets decrypt to the
+  expected bytes with no Link fallback; oversized cases initiate a Link. The
+  daemon boundary test stops after that request; full mixed-peer completion and
+  SDK/ZeroMQ acceptance remain pending for this item.
+- Independent review accepted the size slice after tightening fixture provenance: clean exact-pin regeneration is byte-identical; dirty references and foreign module imports are rejected before output. No remaining checkpoint findings.

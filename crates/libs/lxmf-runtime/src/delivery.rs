@@ -91,7 +91,9 @@ pub(crate) async fn send(
     {
         desired_method = TransportMethod::Direct;
     }
-    let decision = decide_delivery(desired_method, false, wire.len())
+    // The selector takes serialized content excluding LXMF's fixed overhead.
+    let content_size = wire.len().saturating_sub(lxmf_core::constants::LXMF_OVERHEAD);
+    let decision = decide_delivery(desired_method, false, content_size)
         .map_err(|err| validation(format!("failed to select delivery representation: {err}")))?;
     let representation =
         forced_representation(request, decision.method, decision.representation, wire.len());
