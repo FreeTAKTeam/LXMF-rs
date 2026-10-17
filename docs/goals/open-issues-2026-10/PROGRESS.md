@@ -5,8 +5,8 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 
 | Item | State | PR / exact head / merge | Evidence |
 | --- | --- | --- | --- |
-| 1. Acceptance reconciliation | In progress | Not opened | Source/GitHub read-only assessment; no behavior test claims. |
-| 2. Automatic CI and protection | Pending | — | — |
+| 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
+| 2. Automatic CI and protection | In progress | Branch `corvo/open-issues-02-ci-protection` | PRE review approved; baseline results below. |
 | 3. LXMF 1.2.0 | Pending | — | — |
 | 4. Transport and RNS 1.5.5 | Pending | — | — |
 | 5. Maintenance fixes | Pending | — | — |
@@ -35,6 +35,53 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
   duplicates; `git diff --cached --check` passed. No runtime tests were run for
   this documentation-only change.
 
-Hosted checks and merge remain pending. Record exact terminal results in the
-next item after integration so the documentation does not claim its own merge
-or repeatedly invalidate the CI head being accepted.
+Hosted CI [39064126234](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39064126234),
+Verify [39064126187](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39064126187),
+and independent interoperability [39064126272](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39064126272)
+passed on the recorded head. The label-only peer job and PR-inapplicable release
+publication job were deliberately skipped. No review threads were outstanding.
+GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains it.
+
+## Item 2 preparation and baseline
+
+- PRE review approved existing-workflow selection, a unique `CI required` gate,
+  and separate always-triggered Verify/independent required contexts. Native
+  enforcement proof follows settings application/readback and precedes merge.
+- Cargo metadata reports 21 workspace packages and 91 integration targets.
+  Include all dependency kinds and aliases; explicitly broaden shared fixtures
+  and vendored dependencies. Preserve feature-specific mobile validation.
+- Existing security stage fails on four new rustls 0.23.45 advisories:
+  RUSTSEC-2026-0346 through RUSTSEC-2026-0349. All specify 0.23.46 as patched.
+  Existing exception policy remains authoritative; update the dependency.
+- Unbounded `cargo test --workspace --tests` hit eight SDK unit failures from
+  process-wide ZeroMQ connection exhaustion with 22 concurrent test threads.
+  The same 255 SDK tests passed at four threads. The full workspace command
+  with `-- --test-threads=4` passed: 3,669 passed, 288 explicitly ignored,
+  134 test binaries. Preserve production limits and test workload assertions.
+  Logs are `/tmp/lxmf-open-issues-integration-baseline.log`,
+  `/tmp/lxmf-sdk-bounded-baseline.log`, and `/tmp/lxmf-open-issues-tests-bounded.log`.
+- Live Actions checks report app ID 15368 (`github-actions`). Native effective
+  main rules and repository/inherited rulesets were empty at preparation time;
+  recheck immediately before applying protection.
+
+## Item 2 implementation validation
+
+- Added automatic shared security policy, Cargo-dependent integration selection,
+  fail-closed `CI required`, and conflict-preserving native policy tooling.
+- Updated only rustls 0.23.45 to 0.23.46 in the lockfile. The existing security
+  stage now passes without changing exceptions.
+- 25 CI-selection/gate/workflow tests and 11 native-protection tests pass.
+  Mutation tests cover successful readback, concurrently appearing protection,
+  and mismatching readback. `git diff --check` and actionlint 1.7.12 pass
+  (actionlint's optional shellcheck/pyflakes integrations were not run).
+- The actual broad selected integration runner passed all 91 target binaries:
+  548 tests passed and 185 existing opt-in tests were explicitly ignored.
+  Existing lib/bin nextest and feature-specific mobile jobs remain separate.
+- Cross-package LXMD tests retain their existing explicit daemon build helper;
+  selected execution does not depend on an earlier workspace build.
+- Independent correctness, maintainability and POST plan review passed after
+  fixing shared xtask selection, executable-document classification and broad
+  integration validation. No actionable finding remains in the implementation.
+- `RUST_TEST_THREADS=4 cargo xtask release-check` is running. Hosted checks,
+  native apply/readback, blocked-check proof and restored eligibility remain
+  pending; no live protection setting has been changed yet.
