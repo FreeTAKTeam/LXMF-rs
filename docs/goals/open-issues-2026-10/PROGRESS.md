@@ -218,3 +218,42 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   The boundary protects daemon state from external notification code; it is not
   general recovery for storage faults or aborting panics. No dependency or second
   notification worker was introduced.
+
+### Item 3 peer stamp floor slice
+
+- Corrected the accumulated old-reference stamp floor from unconditional zero
+  to `cost.saturating_sub(flexibility)`, matching target `LXMPeer.sync`.
+  Filtering now precedes sync/transfer budgets; a second red regression showed
+  the old relevance gate left below-floor entries pending when the sync budget
+  was only 24 bytes.
+- Six production management-sync scenarios cover below/at/above the floor,
+  flexibility above cost, all-filtered entries with missing peering metadata,
+  and transfer/sync limits. Rejected entries leave that peer's pending queue
+  without deleting the shared message or marking it handled. All 118 focused
+  peer-sync tests pass. This does not yet establish autonomous `/offer` network
+  behavior; reference/mixed-peer acceptance remains open.
+- Notification recovery checkpoint passed independent review and all-feature
+  RPC Clippy. Default Rust panic hooks remain responsible for panic-hook output.
+- Independent review caught explicit selections being validated against the
+  unfiltered offer. A regression reproduced acceptance of a below-floor ID and
+  exposed incorrect budget consumption. Build filtered candidates, validate
+  the selected IDs, then change queue marks; invalid selections preserve both
+  pending entries. Python checks peering readiness before its filter: the Rust
+  missing-key/cost tests exercise management cleanup, not Python gate ordering.
+- Independent re-review accepted the selection fix. Final focused suite and
+  all-feature RPC Clippy pass; module-size and diff checks pass.
+- Broader RPC library validation after all four item-3 checkpoints: 798 passed,
+  zero failed, eight existing opt-in tests ignored (21.57 seconds).
+
+### Item 3 next acceptance work
+
+- Medium-aware path wait/debounce/retry scheduling and awaiting-path announce
+  wakeups remain unimplemented. Keep existing scheduler and persistence owners,
+  explicit timeout overrides and exact Python round/timing semantics.
+- Verify remaining accumulated peer and propagated-envelope representation
+  deltas, then add explicit target-reference profiles without replacing baseline.
+- Complete real announce exchange and typed SDK/ZeroMQ delivery after callback
+  failure, including recipient proof and capacity release. Local helper/receipt
+  tests above do not substitute for those boundaries.
+- Final matrices/roadmap, full item review, workspace/release gates and exact-head
+  hosted CI/merge are pending. No item-3 PR has been opened yet.

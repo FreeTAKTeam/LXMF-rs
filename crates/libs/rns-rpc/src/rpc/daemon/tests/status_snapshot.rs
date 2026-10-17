@@ -60,7 +60,7 @@ include!("status_snapshot_parts/peer_sync_orders_offers_by_python_we.rs");
 
 include!("status_snapshot_parts/peer_sync_preserves_transfer_rate_wh.rs");
 
-include!("status_snapshot_parts/peer_sync_offers_low_value_stamped_e.rs");
+include!("status_snapshot_parts/peer_sync_stamp_floor.rs");
 
 include!("status_snapshot_parts/peer_sync_result_and_event_report_tr.rs");
 
