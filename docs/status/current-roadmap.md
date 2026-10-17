@@ -18,6 +18,13 @@ external-client evidence.
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
 
+The approved [open-issue execution plan](../goals/open-issues-2026-10/PLAN.md)
+tracks six ordered PRs for acceptance reconciliation, automatic CI/protection,
+LXMF 1.2.0, residual transport/RNS 1.5.5 behavior, maintenance fixes and
+utility/rngit software completion. Its [dated acceptance map](../goals/open-issues-2026-10/ACCEPTANCE.md)
+distinguishes existing implementation, missing behavior and missing evidence.
+Recording this plan does not promote a parity row or complete an issue.
+
 ## RCH resource regressions: issues 663, 657 and 655
 
 The current increment bounds propagation-refill writer transactions, uses
