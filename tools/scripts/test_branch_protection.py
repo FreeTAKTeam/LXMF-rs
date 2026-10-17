@@ -25,6 +25,15 @@ class ProtectionTests(unittest.TestCase):
         self.assertEqual(classify(live_policy(), [], POLICY)[0], "correct")
         self.assertEqual(normalize(live_policy())["required_pull_request_reviews"]["required_approving_review_count"], 0)
 
+    def test_github_omits_unrestricted_field_on_readback(self):
+        current = live_policy()
+        current.pop("restrictions")
+        self.assertEqual(classify(current, [], POLICY)[0], "correct")
+        current["future_control"] = None
+        state, detail = classify(current, [], POLICY)
+        self.assertEqual(state, "conflicting")
+        self.assertIn("future_control", detail)
+
     def test_missing_is_distinct_from_conflicting(self):
         self.assertEqual(classify(None, [], POLICY)[0], "missing")
         self.assertEqual(classify(None, [{"type": "pull_request"}], POLICY)[0], "conflicting")

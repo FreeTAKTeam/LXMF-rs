@@ -32,6 +32,9 @@ def api(endpoint, payload=None):
 
 def normalize(current):
     value = {key: item for key, item in current.items() if key != "url"}
+    # GitHub omits this field when PUT received restrictions: null.
+    # Only this field's absence is equivalent to an unrestricted policy.
+    value.setdefault("restrictions", None)
     for key, item in list(value.items()):
         if isinstance(item, dict) and set(item) <= {"enabled", "url"} and "enabled" in item:
             value[key] = item["enabled"]
@@ -71,7 +74,8 @@ def classify(current, effective_rules, policy):
         return "conflicting", str(error)
     if actual == expected:
         return "correct", "Native protection matches the repository-owned policy."
-    differences = sorted(key for key in actual.keys() | expected.keys() if actual.get(key) != expected.get(key))
+    differences = sorted(key for key in actual.keys() | expected.keys()
+                         if key not in actual or key not in expected or actual[key] != expected[key])
     return "conflicting", "Existing controls differ; preserve them: " + ", ".join(differences)
 
 

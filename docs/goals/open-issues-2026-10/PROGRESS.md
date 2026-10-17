@@ -108,3 +108,20 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   CI selection. Later release-check stages were not reached. Do not claim a
   green release-check, downgrade incompatible BLE dependencies, change release
   versions or publish a new crate within this CI task.
+
+### Native policy setup
+
+- All three workflows passed on `c857253e893a92105dabf1f8bf63227d76dfffbf`:
+  CI `39067993422`, independent interoperability `39067993289`, Verify
+  `39067993388`. CI took 4m42s; the existing Verify suite remains substantially
+  longer than the approximate 15-minute target.
+- Explicit native setup succeeded after those passes. GitHub readback shows
+  strict, app-bound checks, admin enforcement, zero required approvals and
+  force-push/deletion disabled. The helper initially misclassified that response:
+  GitHub omits `restrictions` when the submitted value is null. Normalize that
+  one known API representation; unknown controls still conflict. All 12 policy
+  tests, live read-only check and idempotent apply pass; independent review found
+  no weakening. No second PUT was necessary.
+- The normalization correction requires fresh exact-head hosted checks. A
+  controlled CI cancellation will establish native blocking on that head;
+  successful restoration and merge eligibility remain pending.
