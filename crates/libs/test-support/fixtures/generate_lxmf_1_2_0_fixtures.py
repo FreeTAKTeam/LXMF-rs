@@ -245,3 +245,11 @@ Path(__file__).with_name("lxmf_1_2_0_retry_traces.json").write_text(json.dumps({
     "note": "Production handle_outbound/process_outbound/LXMessage.send with controlled clock, transport measurements, Packet.send effect and thread execution. No network proof. The reference delayed rediscovery request survives delivery/cancellation; Rust owner cancellation is intentionally stronger.",
     "cases": generate_retry_traces(RNS, LXMF, source, recipient),
 }, indent=2) + "\n")
+
+from generate_lxmf_1_2_0_link_traces import generate_link_traces
+
+Path(__file__).with_name("lxmf_1_2_0_link_traces.json").write_text(json.dumps({
+    "lxmf_commit": PINS["LXMF_PY_REPO"], "rns_commit": PINS["RETICULUM_PY_REPO"],
+    "note": "Production router admission/retry and LXMessage packet/resource callbacks. Link/Resource transport effects, clock, measurements and thread scheduling are controlled. No real link, packet proof or Resource delivery is claimed. Propagation encryption is real but only stable lengths and within-run byte preservation are recorded. Python callbacks after cancellation may change state; Rust durable terminal monotonicity remains an intentional stronger boundary. Cancellation inputs assign message state rather than invoke router.cancel_outbound; no Resource cancellation or native RNS watchdog timing is proved. Shared-link cases exercise sequential production router processing, not concurrent Rust acquisition. Rust explicit fallback and local propagation custody have no matching router policy here.",
+    "cases": generate_link_traces(RNS, LXMF, source, recipient),
+}, indent=2) + "\n")

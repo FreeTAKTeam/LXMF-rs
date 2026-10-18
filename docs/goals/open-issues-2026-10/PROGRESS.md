@@ -642,3 +642,45 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - Independent correctness and POST/maintainability reviews accept this scoped
   checkpoint and the explicit uncompleted acceptance boundaries. No remaining
   checkpoint blocker was found; neither review claims full item-3 acceptance.
+
+
+### Item 3 production-reference Link and Resource traces
+
+- Added 42 scenarios and 226 snapshots from the pinned production Python router,
+  message send and registered callbacks. The generator verifies exact clean
+  references before importing them. Cases cover pathless and known-path exhaustion,
+  changing medium measurements, activation beyond 20 seconds, never-activated and
+  activated closure, packet timeout/no-receipt/exception, late callbacks, Resource
+  complete/rejected/failed, Direct/backchannel selection, oversized opportunistic
+  escalation and two prepared messages sharing one Link.
+- Shared propagation uses different final recipients. Captured transfers must
+  match both prepared byte sequences exactly, and retries preserve signed bytes
+  and propagation envelopes. Assertions run outside production exception handlers
+  so swallowed send/callback errors cannot silently establish a false oracle.
+- Direct Resource completion is delivered and rejection is terminal; propagation
+  completion is custody sent and rejection retries. Native packet timeout returns
+  OUTBOUND, while no receipt or externally closed SENDING can remain SENDING even
+  after a replacement Link activates. These stalls are characterized explicitly;
+  they are not evidence of successful retry or an invented recovery policy.
+- Added [LINK-OWNER.md](LINK-OWNER.md) as the remaining implementation map within
+  item 3. It preserves the exact retained Link context, one acquisition authority,
+  continuous attempt budget, owned transfer outcomes, terminal commit fence and
+  full SDK/ZeroMQ and target/baseline mixed-peer acceptance. It does not create an
+  extra PR or reduce the six-item plan.
+- Validation: corruption of captured packet bytes fails at the intended external
+  byte-preservation assertion. Two clean generations reproduce SHA-256
+  `fec1e14faeca2b7fb34a738b540e09a7a7bd0258ec30f020d376f5ab4fd06e4e`.
+  Existing generated fixtures remain unchanged. Logs:
+  `/tmp/lxmf-item3-link-trace-red.log` and
+  `/tmp/lxmf-item3-link-trace-generator-{0,1}.log`.
+- Independent correctness and POST/maintainability reviews accept this bounded
+  fixture/documentation checkpoint. Removed the unused single-message binding
+  identified during review. No Rust runtime changed, so this checkpoint does not
+  claim Rust consumption, concurrent acquisition, native watchdog, real Resource
+  cancellation, cryptographic recipient proof or interoperability acceptance.
+  Controlled cancellation assigns message state; shared-Link processing is
+  sequential. Rust durable terminal monotonicity remains an explicit stronger
+  boundary than manually injected late Python callbacks.
+- Next: implement the reviewed retained Link/acquisition boundary and consume the
+  reference transitions through the admitted owner. All remaining item-3 gates
+  remain open; no item-3 PR has yet been created or merged.

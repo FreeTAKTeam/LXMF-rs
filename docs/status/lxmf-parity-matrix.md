@@ -102,6 +102,14 @@ manufacturing a competing terminal. Final SINGLE broadcast handoff checks termin
 state after the transport locks; rejection creates neither correlation nor cache
 entry. Blocked path-request handoff gets a full refreshed discovery window.
 These are local reference-policy and Rust network proofs, not Python interoperability.
+An additional 42 exact-pin Link/Resource scenarios (226 snapshots) now record
+production Direct/Propagated scheduling and callbacks, including slow closure,
+shared-Link reuse, mode-specific completion/rejection and late-callback behavior.
+Controlled I/O does not prove native watchdog timing or actual delivery, and these
+new rows are not yet consumed by a Rust Link owner. The reference also retains
+SENDING after missing-receipt or external-close paths without a timeout callback;
+that observation is not a passing recovery result. The remaining cutover and
+acceptance are mapped in [LINK-OWNER.md](../goals/open-issues-2026-10/LINK-OWNER.md).
 Full Link/Resource post-send and Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.
