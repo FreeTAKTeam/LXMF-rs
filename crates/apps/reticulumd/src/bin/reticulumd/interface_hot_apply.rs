@@ -95,7 +95,7 @@ pub(super) struct InterfaceHotApplyBridge {
     #[cfg(test)]
     tcp_listener_refreshes: Arc<StdMutex<HashMap<String, HotApplyTcpListenerRefresh>>>,
     #[cfg(test)]
-    udp_refreshes: Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
+    pub(super) udp_refreshes: Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
     #[cfg(test)]
     pipe_refreshes: Arc<StdMutex<HashMap<String, HotApplyPipeRefresh>>>,
 }

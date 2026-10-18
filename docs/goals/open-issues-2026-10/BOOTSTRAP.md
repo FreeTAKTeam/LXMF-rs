@@ -3,8 +3,8 @@
 This refines the remaining family gate in [TRANSPORT.md](TRANSPORT.md) after
 `a0772c1d`; it does not add another PR or change the numbered plan. The three
 discovery process cases and finite deeper relay matrix are already qualified.
-The first two TCP/Backbone rows now have the declared software lifecycle evidence
-below. Other family rows and whole-item integration remain open.
+The first four TCP/Backbone/UDP rows now have the declared software lifecycle
+evidence below. Other family rows and whole-item integration remain open.
 
 ## Concrete gap and owner
 
@@ -75,7 +75,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
-| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first two TCP/Backbone rows have the declared software trace qualification below. Remaining UDP/Pipe, PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
+| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first four TCP/Backbone/UDP rows have the declared software trace qualification below. Remaining Pipe, PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
 Implementation stays in the main agent. PRE, correctness and maintainability POST
@@ -273,3 +273,36 @@ cases before behavior changed. Four native traces and three alias controls pass;
 both independent source POST reviews approve. PROGRESS.md records exact gate
 results and retained fixture failures. Other family rows and whole-item evidence
 remain open; no physical/RF/public-network qualification is inferred.
+
+## UDP software lifecycle evidence
+
+The two declared cases in `tests/bootstrap_udp_family.rs` pass through configured
+startup and the existing owned public mutation path:
+
+- `udp_named_ifac_rotation_failed_reload_rollback_detach_and_reattach`
+- `udp_multicast_ifac_peer_rotation_replacement_and_configured_restart`
+
+Unicast Apply commits a live key change while retaining the root. A real occupied
+replacement reports bind_failed, enters owned retirement, and keeps management
+pending while unrelated exact TCP traffic succeeds. Rollback rejects the attempted
+key and accepts the committed key. Changed-key reload, detach/attach and final
+joined shutdown retire old roots and preserve unrelated addresses/traffic.
+
+Multicast group egress uses the loopback-bound native root and an independent
+receiver joined on loopback; exact IFAC bytes and source address are required.
+Signed announcement ingress is unicast, with distinct source ports. Existing/new
+virtual peers inherit key rotation; both directions authenticate and each direct
+reply remains absent at the other peer throughout a two-second observation.
+Replacement removes old child/peer-route dispatch authority. Fresh signed
+announcements from the same destination identities rebind paths to current native
+children; configured restart repeats that evidence with a fresh Transport identity.
+Cached PathTable presence alone is not treated as dispatch authority or eagerly
+erased; the pinned target separates interface removal from path maintenance too.
+
+No production behavior changes are needed. Input announces respect the existing
+ingress guard through an explicit one-Hz schedule; packet/path deadlines and
+production defaults remain unchanged. Both source POST reviews approve; 2/2
+native traces, 31 library/662 binary daemon tests and focused gates pass, with
+retained fixture failures in PROGRESS.md. Sixteen other family rows, whole-item
+integration/hosted CI and merge remain open. Native multicast group ingress and
+physical/RF/public-network acceptance are not claimed.

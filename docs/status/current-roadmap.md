@@ -152,8 +152,16 @@ as typed startup does. Shared alias lists retain precedence, null/empty fallback
 and whitespace; opaque settings metadata stays compatible. A real SDK/ZeroMQ
 rejection/recovery trace preserves authenticated UDP, unrelated TCP and joined
 cleanup. Six focused controls and 31 library/660 binary daemon tests pass with
-independent source POST approval. Remaining carrier
-lifecycle composition and whole-item integration/hosted work remain open in the
+independent source POST approval. Two subsequent UDP native traces qualify the
+unicast/multicast software lifecycle rows: committed-key rollback after a real
+bind failure, unrelated traffic during owned cleanup, named reload/detach/attach,
+loopback multicast group egress, signed unicast peer learning, key rotation,
+peer-isolated direct replies and same-destination route rebinding across changed-key
+replacement/restart. Cached paths remain subject to existing maintenance; retired
+hashes lose dispatch authority. No production behavior changes are needed.
+Both independent source reviews approve; 31 library/662 binary daemon tests and
+focused gates pass. Four of twenty declared software family rows are locally
+qualified. Remaining carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

@@ -70,15 +70,15 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-The first two rows have the declared software lifecycle qualification below;
+The first four rows have the declared software lifecycle qualification below;
 other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
 | --- | --- | --- |
 | TCP server / Backbone | Four declared native traces plus alias admission controls qualify applicable configured error, child rotation, named TCP rollback/reload/detach/attach, restart and unrelated traffic | Locally qualified for these software lifecycle traces; exact-`localhost` IPv6 wire coverage depends on a dual resolver environment. Whole-item integration/hosted CI remain pending |
 | TCP / Backbone client | Declared configured refusal, same-socket activation, live key change, reconnect, changed-key restart and exact unrelated traffic; preceding named constructor/hook traces | Locally qualified for these software lifecycle traces; whole-item integration/hosted CI remain pending |
-| UDP unicast | Daemon/mixed rejection, rotation/restart, failed replacement retry; raw IFAC alias/type admission and retained SDK native traffic | Named-management lifecycle composition |
-| UDP multicast | Production multicast routing helper and common codec | Authenticated ingress/egress, virtual peer rotation, replacement/restart |
+| UDP unicast | Declared configured/named native trace qualifies committed live key rotation, actual failed bind/owned cleanup, authenticated rollback/reload/detach/attach and unrelated traffic; preceding raw IFAC/SDK guards remain inputs | Locally qualified for this software lifecycle trace; whole-item integration/hosted CI remain pending |
+| UDP multicast | Declared native loopback group egress, signed unicast peer ingress, existing/new peer key rotation, peer-isolated replies and same-destination route rebinding after changed-key replacement/restart | Locally qualified for this software lifecycle trace; native group ingress is not claimed. Whole-item integration/hosted CI remain pending |
 | Pipe | Authenticated cat roundtrip, wrong-key rejection, ordinary child cleanup | Configured startup failure, IFAC rotation/respawn/detach |
 | Serial | Authenticated production stream, open/write failure primitives | Configured PTY open/error/reopen and changed-key restart |
 | KISS / AX.25 serial | Authenticated worker and pinned Python PTY exchange | Configured error/reopen/restart, preserving AX.25 framing |
@@ -212,6 +212,85 @@ Correctness POST adds both-order expanded/bracketed IPv6 loopback and wildcard
 controls: textual `::1` alone is not a numeric bind identity. Canonical numeric
 endpoint keys and the existing conservative wildcard-port guard must cover those
 aliases before queueing. This is the same bind-admission owner, without DNS I/O.
+
+### Finite UDP family cases
+
+Checkpoint `524aa7051b5c88ffd430043b6a1fc03b6eb0fa27` completes raw IFAC
+admission preparation. The next task composes the two UDP rows through existing
+configured startup, public Apply/named management and native Transport routing.
+Main agent owns sequential implementation. Inputs are the current UDP worker,
+multicast peer-routing owner and configured-root mutation fixtures. Allowed files
+are focused daemon tests, their registration, existing UDP/mutation/routing owners
+only if a regression demonstrates a defect, and task/status documents. Other
+carriers, new public management kinds, default changes, physical/RF/public-network
+traffic and item 5 work are forbidden. Both read-only PRE/POST reviews gate this
+checkpoint; it remains part of the single eventual item-4 PR.
+
+| Declared case | Required trace |
+| --- | --- |
+| Named unicast UDP | Configured startup and exact authenticated ingress/egress; public Apply commits live key rotation without replacing the root; an occupied named replacement reaches actual bind failure and restores the last committed key, rejecting attempted-key/plaintext input; successful changed-key reload, detach and reattach retire old roots. Unrelated TCP address and exact traffic persist, including while failed-worker cleanup is pending |
+| Multicast UDP peers | Configured native multicast role with an actual loopback group datagram; real signed announces create two independent native virtual peers; authenticated ingress and direct replies use their exact peer/root addresses; wrong-key/plaintext cannot create a peer or enter ingress. Live parent key rotation reaches existing and newly learned peers. Changed-key named replacement and a full configured restart remove old children/peer-route ownership and permit fresh authenticated peer learning/replies |
+
+Use test-owned IPv4 loopback sockets and a multicast output interface explicitly
+bound to loopback. No network configuration changes. Existing two-second packet
+barriers, three-second published readiness, twenty-second management replies and
+ten-second owned cleanup remain fixed. A real bind-failed UDP worker currently
+sleeps five seconds before retrying; observe its pending retirement and unrelated
+traffic rather than relaxing cleanup or replacing it with a mock. Configured
+restart intentionally recreates every root, so require old-tree retirement and
+fresh native transport identity rather than unrelated-root continuity there.
+Each authentication phase counts both wrong-key and plaintext rejection before
+exact matching-key ingress/egress; status/errors must redact all test credentials.
+Reuse existing test fixtures/helpers where their contract fits. Start with the
+declared native traces; production changes require a retained failing regression
+and the smallest fix in the current owner. No retry-until-green qualifies a row.
+
+Both PRE reviewers approve. Exact tests are
+`udp_named_ifac_rotation_failed_reload_rollback_detach_and_reattach` and
+`udp_multicast_ifac_peer_rotation_replacement_and_configured_restart`.
+Multicast evidence is native group **egress**: an independent socket joins the
+group on loopback and receives exact IFAC bytes from the native root's address.
+Signed-announcement ingress is unicast, with two peer source ports on loopback;
+do not claim native group ingress. Fresh signed announcements after retirement
+must recreate parent/path bindings without resetting duplicate state, and old
+child hashes must no longer dispatch. The failed-replacement test retains the
+existing test-only UDP status handle, observes actual bind_failed and subsequent
+root removal, and proves management is pending while unrelated traffic succeeds.
+Only that existing test-only refresh field's visibility may broaden for this
+native observation; no production status owner or test fixture framework is added.
+Standard UdpSocket group membership/loopback semantics and Linux IP_MULTICAST_IF
+support this existing loopback fixture shape:
+[Rust UdpSocket](https://doc.rust-lang.org/std/net/struct.UdpSocket.html),
+[Linux ip(7)](https://man7.org/linux/man-pages/man7/ip.7.html).
+
+The initial native trace exposes fixture assumptions: a joined bind-failed worker
+retains its last failure snapshot, while its root/dispatch authority is removed;
+expect that failure snapshot rather than invent a closed-state requirement. The
+first signed peer learns successfully, but sending the second within 30 ms hits
+the unchanged 3.5 Hz new-interface ingress guard (360-second hold). The fixture
+therefore schedules signed announce input at most once per second. Packet/path
+observation bounds and production defaults remain unchanged; no cache reset,
+ingress bypass or forced dispatch is allowed. Independent peer observations
+also reject the other peer's exact direct-reply bytes during a full two-second
+observation after each intended reply.
+
+The paced run then reaches an overstrong path-cache assertion. Native stop
+removes peer-route ownership and dispatch authority, while destination PathTable
+entries may remain until maintenance. Target RNS 1.5.5 Transport.py:548-551 also
+removes interface registration separately from path culling at :957-979. Do not
+add eager cache erasure to satisfy this fixture. Reuse both destination identities
+across replacement/restart and generate fresh signed announcements; require each
+same destination's path to bind to its new native child/current parent. Negative
+announces must preserve the prior path value and cannot create a new peer.
+
+Both declared traces now pass (2/2, 16.24 seconds), with no production behavior
+change. Source correctness and maintainability POST reviews approve. Full daemon
+validation passes 31 library and 662 binary tests; all-target/all-feature daemon
+Clippy, default check, architecture, diagnostics scanner, formatting, boundaries
+and module size pass. PROGRESS.md retains all fixture failures and exact logs.
+The two UDP inventory rows are locally qualified for these declared traces.
+The remaining sixteen family rows, whole-item integration, one PR, exact-head
+hosted CI and merge remain open.
 
 ### Raw IFAC type preparation for UDP composition
 

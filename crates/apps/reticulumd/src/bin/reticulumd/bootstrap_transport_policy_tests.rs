@@ -16,6 +16,9 @@ mod tcp_client_options;
 #[path = "tests/bootstrap_tcp_family.rs"]
 mod tcp_family;
 
+#[path = "tests/bootstrap_udp_family.rs"]
+mod udp_family;
+
 async fn start_fixture(
     args: &Args,
     config: &DaemonConfig,

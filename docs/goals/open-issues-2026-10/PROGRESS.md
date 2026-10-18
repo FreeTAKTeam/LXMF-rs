@@ -2151,3 +2151,53 @@ validation only; terminal results and final-head review/CI/merge remain required
 - This qualifies raw-input preparation only. Named UDP lifecycle and multicast
   virtual-peer composition, other family rows, whole-item integration, one PR,
   exact-head hosted CI and merge remain open.
+
+## Item 4 UDP software family traces
+
+- Checkpoint `524aa7051b5c88ffd430043b6a1fc03b6eb0fa27` closes raw IFAC
+  preparation. Both source PRE roles approve the next two declared native traces
+  in TRANSPORT.md. Main-agent implementation reuses production startup/mutation,
+  native IFAC/UDP and existing unrelated TCP helpers. Only an existing cfg(test)
+  refresh field widens visibility for native failure observation; production
+  behavior/owners/defaults remain unchanged.
+- Configured unicast authenticates exact ingress/egress, then public Apply commits
+  live key rotation while retaining the root. An occupied replacement reaches
+  actual bind_failed and owned retirement; management stays pending while exact
+  unrelated TCP traffic succeeds. Rollback rejects the attempted key and accepts
+  the committed key. Changed-key reload, detach/attach, stale-hash dispatch
+  rejection, sanitized diagnostics and ten-second joined cleanup complete.
+- Multicast proves actual loopback group egress with exact IFAC bytes/source, then
+  signed unicast announces create distinct virtual peers for two source ports.
+  Existing/new peers inherit rotation. Matching traffic succeeds after wrong-key
+  and plaintext rejection; direct replies remain absent from the other peer
+  during full two-second observations. Changed-key replacement and configured
+  restart reuse the same destination identities with fresh signed announces;
+  paths bind to active children of the current root without resetting duplicates.
+  Old child hashes lose dispatch authority. Single-root transitions preserve the
+  unrelated root/address/traffic; whole restart intentionally recreates all roots.
+- `/tmp/lxmf-item4-udp-family-initial.log` retains a fixture compilation error
+  (snapshot lacks Serialize), fixed by its existing to_json. The first native
+  run in `...-native-initial.log` fails both cases: a retired failed worker keeps
+  its bind_failed snapshot rather than closed, and multicast peer learning times
+  out. `...-diagnostic.log` proves complete unicast success and locates the latter
+  at the second announce, sent about 30 ms after the first and held 360 seconds by
+  the existing 3.5 Hz new-interface guard. Temporary diagnostic logging is removed.
+- An explicit one-Hz announce input schedule preserves default admission policy
+  and two-second path deadlines. `...-paced.log` then fails an immediate PathTable
+  erasure assertion. Both reviewers distinguish raw cached membership from peer
+  ownership/dispatch retirement; pinned RNS 1.5.5 Transport.py:548-551 and :957-979
+  separate removal from path maintenance too. No eager cache erasure is added.
+  Same-destination/current-parent rebinding replaces that assertion. Review also
+  strengthens an immediate isolation drain to full two-second observations.
+- Final `...-rebinding.log` passes both traces in 16.24 seconds. Both independent
+  source POST roles approve. Full all-feature daemon tests pass 31 library and
+  662 binary cases in `...-daemon.log` (31.25 seconds for binary tests).
+  All-target/all-feature daemon Clippy, default check, architecture, diagnostics
+  scanner, Cargo formatting, boundaries and module size pass with corresponding
+  `/tmp/lxmf-item4-udp-family-` suffixes. Existing manifest, optional BLE and
+  profile-helper warnings remain baseline output.
+- The first four of twenty software family rows now have their declared evidence.
+  Sixteen other families, whole-item integration/release checks, one PR, exact-head
+  hosted CI and merge remain open. Group evidence is native egress only, with
+  signed unicast peer ingress; no native group-ingress, hardware, RF, public-network
+  or whole-issue completion is inferred.
