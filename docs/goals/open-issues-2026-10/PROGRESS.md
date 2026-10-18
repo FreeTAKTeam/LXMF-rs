@@ -7,7 +7,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | --- | --- | --- | --- |
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
-| 3. LXMF 1.2.0 | Draft PR; in progress | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); published checkpoint `57f3efb46c3a17dc1e9099d9a7a649693dce15da` | Integrated owner/adapter passes locally. Canonical SDK recovery now passes locally; target/baseline mixed-peer qualification is ongoing. Hosted quality found a new Clippy lint in one test, corrected locally; fresh exact-head checks remain required. No merge. |
+| 3. LXMF 1.2.0 | Local acceptance; final review/CI pending | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); runtime/test checkpoint `5a0a30f55eac94f6bf5dcb7963f5be28771a8abd` | Both clean complete compatibility matrices pass 30/30; canonical SDK failure recovery and all 47/263 production-owner traces pass. Workspace tests/Clippy pass; release-check retains the existing package conflict. Fresh final-head hosted checks and merge remain required. |
 | 4. Transport and RNS 1.5.5 | Pending | — | — |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
@@ -1073,7 +1073,7 @@ validation only; terminal results and final-head review/CI/merge remain required
   The default-feature architecture build emitted the pre-existing unused BLE
   runtime-status helper warning; the all-feature Clippy gate remains clean.
 
-## Item 3 SDK and mixed-reference qualification (in progress)
+## Item 3 SDK and mixed-reference qualification
 
 - Public `Client<ZmqPipelineBackendClient>` now exercises the canonical router,
   production delivery owner, real native Transport peer and SQLite together.
@@ -1169,3 +1169,58 @@ validation only; terminal results and final-head review/CI/merge remain required
   daemon Clippy with `-D warnings`, module-size, formatting and diff checks pass.
   Log: `/tmp/lxmf-item3-trace-input-barrier-stress.log`. Independent correctness
   POST approved the input boundary without changing production ownership/policy.
+
+### Item 3 clean full compatibility qualification
+
+- Clean committed candidate `5a0a30f55eac94f6bf5dcb7963f5be28771a8abd` passes
+  **30/30 cases at each pin**, 2026-10-18 08:23:08–08:29:36 UTC. Each report
+  contains 23 live Python/Rust cases, seven local Cargo policy cases, no missing
+  required dispatch, failures, blocked cases, ignored tests or skips. Candidate
+  and both exact reference repositories are clean in preflight; fault injection
+  is disabled. Main's canonical reference manifest is unchanged.
+- Reports are `target/interop/item3/5a0a30f5/baseline/matrix.json` (SHA-256
+  `855835d887c070bd2769e71209bc2f0a560bbd1b042a8f4b78aafdf964ecef6a`) and
+  `target/interop/item3/5a0a30f5/lxmf-1.2.0/matrix.json` (SHA-256
+  `dad165428cf44c8419099ea3408d8ecf8d07afcb9490cc667b715f4e20d0c279`).
+  Logs are `/tmp/lxmf-item3-{baseline,target}-matrix-5a0a30f5.log`; complete
+  commands, per-case environment, raw logs, native events and peer content remain
+  beside each report. This final documentation update does not change the tested
+  runtime, fixtures or harness.
+- Invoke `target/reference-prep/venv/bin/python tools/scripts/python_compat_matrix.py
+  --all --reference-profile PROFILE --python "$PWD/target/reference-prep/venv/bin/python"
+  --python-rns-path "$PWD/target/reference-prep/repos/rns-parity"
+  --python-lxmf-path "$PWD/target/reference-prep/repos/REFERENCE"
+  --output REPORT`, with `RUST_TEST_THREADS=4`. Baseline uses profile `baseline`,
+  reference directory `lxmf-baseline`, shared/control/endpoint ports
+  `22101/22102/22111`, Rust RPC/transport `127.0.0.1:22301/22302`; target uses
+  profile/directory `lxmf-1.2.0`, ports `22201/22202/22211` and
+  `127.0.0.1:22401/22402`. Set the recorded `PY_SHARED_INSTANCE_PORT`,
+  `PY_INSTANCE_CONTROL_PORT`, `PY_ENDPOINT_CONTROL_PORT`, `RUST_RPC_ADDR` and
+  `RUST_TRANSPORT_ADDR` variables explicitly. All ten ports were checked available
+  together before these concurrent runs. Python shared instances use TCP.
+- All six Direct/Opportunistic/propagated directions pass. Remote propagation
+  controls and offers, both Link liveness/teardown directions, 16 KB native
+  Resource, interchange and path policies also pass. Resource/propagation gates
+  require exact native message/method/peer/representation/hash evidence and reject
+  any later negative terminal; recipient stored content is checked independently.
+- Target propagation metadata contains decoded `lxmd`/`1.2.0` plus raw wire bytes
+  and peer identity in Rust; the baseline's missing fields stay absent. Both
+  Python peers decode truthful `reticulumd`/`0.14.0`, with matching stamp costs.
+  Both lanes explicitly configure Python's 1 MB receiving policy. The target's
+  1 KB default, accumulated atomic-file/source-blackhole/autonomous-peer gaps,
+  signal depth budget and stronger Rust terminal/late-proof behavior remain in
+  the delta ledger. No general forward-parity or physical-network claim follows.
+- Seventeen Python profile/evidence regressions pass. Hosted nextest now passes
+  on `5a0a30f5`, including the corrected native input-completion barriers. Final
+  documentation review and exact-final-head hosted checks remain integration
+  gates; item 3 is not yet merged and items 4–6 remain pending.
+- Independent verification decoded all 14 receiver payloads across six directions
+  plus Resource at both pins: content, source and destination match. Native
+  Resource proof binds 16,539 baseline / 16,549 target full-wire bytes; propagated
+  packet custody binds the actual 302-byte envelope separately from recipient
+  delivery. All raw announce metadata and ingested target peer fields agree.
+  Correctness accepted the four slices without a local acceptance blocker.
+  Maintainability review required reconciling the current LINK-OWNER status,
+  now updated, and corrected one existing roadmap release-heading link. Historical
+  checkpoint prose retains its original scope. Final-head hosted CI/merge remain
+  required; no package publication or broad parity promotion is implied.

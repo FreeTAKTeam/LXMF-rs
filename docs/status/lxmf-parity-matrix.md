@@ -44,7 +44,7 @@ the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for
 named software scenarios, with hardware, public-network, and third-party-client
 evidence tracked independently.
 
-## LXMF 1.2.0 target work (issue 648, incomplete)
+## LXMF 1.2.0 software qualification (issue 648)
 
 The module rows below retain the existing baseline. Additional target
 `c3ff2d6dc2f256daab896dadc044dd5a913ecbb7` work covers the serialized Opportunistic
@@ -82,7 +82,7 @@ native proof, blocked SQLite receipt writes and one durable completion. Other
 regressions cover another blocked handler during shutdown, retained unresolved
 correlation and three interrupted stamp workers without spending build retries.
 The all-feature transport suite passes 968 tests with 9 existing ignores; the
-all-feature daemon binary suite passes 573 tests; 31 daemon library and two
+all-feature daemon binary suite passes 574 tests; 31 daemon library and two
 native packet-bridge integration tests also pass.
 
 The 47 controlled Python Link/Resource scenarios (263 snapshots) include shared
@@ -94,8 +94,25 @@ monotonic committed terminals and the signal decoder depth budget are explicit
 Rust differences. A canonical public SDK/ZeroMQ client now survives two real
 missing-peer send failures and external notification error/panic, then delivers
 signed native content with coherent status, replay and one persisted terminal
-outcome per operation. Target/baseline mixed-peer traces, propagation announce
-exchange and final-head review/CI remain required.
+outcome per operation.
+
+Clean candidate `5a0a30f55eac94f6bf5dcb7963f5be28771a8abd` passes all 30 required
+compatibility cases separately at baseline `727830ce` and target `c3ff2d6d`, both
+with RNS `99de23c0`: 23 live cases and seven local transport-policy cases each,
+zero failures, skips or ignores. The six delivery directions, bidirectional
+propagation controls, offers, Link lifecycle, 16 KB Resource, interchange and path
+policy cases pass. Target Python metadata is ingested as `lxmd`/`1.2.0`; the old
+pin's missing metadata stays absent. Both Python peers decode Rust's truthful
+`reticulumd`/`0.14.0` announce. Native completion evidence binds message, method,
+peer, representation and proof hash; final-recipient stored content is checked
+separately from propagation custody. Resource acceptance is configured to 1 MB
+at both pins, not an equivalence claim for the target's changed 1 KB default.
+
+The four approved item-3 slices have local acceptance; final-head review and
+hosted CI remain required before merge. The accumulated file-export,
+source-blackhole, persistence and autonomous-peer boundaries remain in the delta
+ledger. Release-check reaches the existing published ZeroMQ/UUID conflict after
+passing its software test stages; later release stages remain unperformed.
 No parity row or reference baseline is promoted. See
 [LINK-OWNER.md](../goals/open-issues-2026-10/LINK-OWNER.md) and
 [PROGRESS.md](../goals/open-issues-2026-10/PROGRESS.md).

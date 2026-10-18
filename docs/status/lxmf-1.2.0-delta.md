@@ -1,4 +1,4 @@
-# LXMF 1.2.0 compatibility delta (in progress)
+# LXMF 1.2.0 compatibility delta
 
 Issue: [#648](https://github.com/FreeTAKTeam/LXMF-rs/issues/648).
 The baseline remains LXMF `727830cefda83d9c6e3982b48675425f3f988f9c`;
@@ -11,7 +11,7 @@ includes accumulated changes; this table does not attribute every row to 1.2.0.
 | --- | --- | --- |
 | Correct opportunistic serialized content budget: 287, removing the extra timestamp | `lxmf-core` constants and delivery selection; covered locally | Eighteen exact-pin size fixtures include title, fields and stamps. Core/runtime/daemon tests compare 398/399/400 full-wire bytes and mode selection. |
 | Medium-aware request debounce, path and delivery waits, attempt limits, awaiting-path wakeups | Shared `DeliveryTiming`/`DeliverySchedule`, daemon path history and retained delivery owners; implemented locally | Exact measurement/decision fixtures, 66 Opportunistic snapshots and native discovery/retry tests pass. The additional 47-case/263-row Link adapter passes against the production admitted owner. Native watchdog and physical slow-interface reliability are separate claims. |
-| `PN_META_IMPL_NAME = 0xFE` and string implementation/version metadata | `lxmf-core` announce encoder/parser and daemon announce producer; covered parser/producer behavior | Old/new/unknown/malformed fixtures pass. The target mixed Python/Rust announce exchange remains required. Rust emits its own name and version. |
+| `PN_META_IMPL_NAME = 0xFE` and string implementation/version metadata | `lxmf-core` announce encoder/parser and daemon announce producer; locally qualified | Old/new/unknown/malformed fixtures pass. Both clean mixed-peer matrices pass: target Python's `lxmd`/`1.2.0` is ingested, baseline missing values remain absent, and both Python peers decode Rust's actual `reticulumd`/`0.14.0` wire metadata. |
 | Sequential outbound processing and recovery when notification callbacks fail | Existing retained scheduler and sole receipt worker; external `EventSinkBridge` notifications remain outside committed storage locks | Canonical public SDK/ZeroMQ qualification now passes two real send failures, external sink error/panic and subsequent signed native delivery through the same client. Status, replay and persisted terminal outcomes remain coherent. The sink is enabled via public configure; startup field propagation is not claimed. |
 | Peer stamp minimum changes from the erroneous zero floor to `max(0, cost-flex)` | Existing peer owner uses `saturating_sub`; covered arithmetic | Focused minimum-cost regressions and Python fixtures cover underflow and positive floors. This does not establish autonomous network offers. |
 | Missing Opportunistic packet receipt no longer raises while installing a callback | Retained Opportunistic owner handles no-route explicitly; covered bounded Rust behavior | Unused correlation is removed; pending status and the existing retry budget remain owned. Rust status vocabulary and cancellation are explicitly stronger than the Python callback behavior. |
@@ -38,7 +38,22 @@ decoder has a 32-container safety budget; deeper extra values are ignored and
 leave the observer armed. These differences must remain visible in comparison
 results instead of being counted as exact Python matches.
 
+Clean candidate `5a0a30f55eac94f6bf5dcb7963f5be28771a8abd` passes both full
+30-case matrices (23 live Python/Rust, seven local policy cases each), with no
+skips or ignores. Reports and exact invocation/reference/environment records are
+under `target/interop/item3/5a0a30f5/{baseline,lxmf-1.2.0}/matrix.json`.
+Direct, Opportunistic and propagated messages pass in both directions. Native
+Resource delivery and typed propagation custody are checked separately from
+stored recipient content; a later negative terminal, event-stream gap or missing
+native proof fails the evidence gate. The eight predeclared native input-barrier
+stress iterations also pass all 47 scenarios/263 snapshots.
+
+These results qualify the four approved slices, not every accumulated Python
+change in this ledger. The default size, file-export, source-blackhole,
+persistence and autonomous-peer boundaries above remain explicit. Workspace
+tests and all-feature Clippy pass. Release-check reaches the existing published
+ZeroMQ/UUID conflict after its software test stages; it is not a release pass.
+
 The [roadmap](current-roadmap.md), [parity matrix](lxmf-parity-matrix.md) and
 [execution contract](../goals/open-issues-2026-10/LINK-OWNER.md) remain authoritative.
-Target mixed-peer regressions and
-final-head review/CI are still required before item 3 can merge.
+Final-head review/CI are still required before item 3 can merge.

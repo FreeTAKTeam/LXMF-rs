@@ -25,8 +25,9 @@ utility/rngit software completion. Its [dated acceptance map](../goals/open-issu
 distinguishes existing implementation, missing behavior and missing evidence.
 Recording this plan does not promote a parity row or complete an issue.
 
-Item 3 remains incomplete. Local implementation covers serialized payload limits,
-truthful implementation/version metadata, isolated notification failures and peer
+Item 3's four approved software slices are locally qualified. Implementation
+covers serialized payload limits, truthful implementation/version metadata,
+isolated notification failures and peer
 stamp-floor arithmetic. Shared timing policy and retained Opportunistic retries
 consume exact target fixtures, including 66 snapshots. Preparation, coalesced path
 requests and targeted announce wakeups retain admission across waits.
@@ -45,11 +46,21 @@ Local all-feature transport and daemon binary suites pass. The 47 controlled
 Python Link/Resource scenarios (263 snapshots) now pass the production-owner row adapter;
 the public SDK/ZeroMQ recovery qualification passes two real failed sends,
 external callback error/panic and subsequent signed native delivery with coherent
-status/replay and persisted terminal outcomes. Full target/baseline mixed-peer
-traces remain pending. These local results do not establish final-head CI or LXMF 1.2.0
-completion. The [accumulated delta ledger](lxmf-1.2.0-delta.md) preserves file-export,
+status/replay and persisted terminal outcomes. Clean candidate `5a0a30f5` passes
+both complete 30-case compatibility matrices: 23 live Python/Rust cases and seven
+local transport-policy cases at each immutable LXMF pin, without skips or ignores.
+Direct, Opportunistic and propagated traffic passes in both directions; the target
+propagation announces exchange honest `lxmd`/`1.2.0` and `reticulumd`/`0.14.0`
+metadata. The 16 KB Resource lane explicitly uses a 1 MB Python receiving policy;
+upstream's new 1 KB default remains a documented difference.
+
+These results qualify the scoped increment, with final-head review and hosted CI
+still required before merge. Workspace tests and all-feature Clippy pass. The
+release-check reaches the pre-existing published ZeroMQ/UUID dependency conflict;
+it does not pass and no release readiness is claimed. The
+[accumulated delta ledger](lxmf-1.2.0-delta.md) preserves file-export,
 source-blackhole and autonomous-peer gaps. See the
-[LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
+[LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-software-qualification-issue-648).
 
 ## RCH resource regressions: issues 663, 657 and 655
 
@@ -3068,7 +3079,7 @@ direction.
 
 Stable v0.14.0 is the current published release. Its package alignment, opt-in
 durable broker, migration requirements and qualification boundaries are
-summarized [above](#v0140-stable-release) and in the
+summarized [above](#v0140-release-preparation) and in the
 [release notes](../release-notes-v0.14.0.md). The older records below retain
 their original version and evidence scope.
 

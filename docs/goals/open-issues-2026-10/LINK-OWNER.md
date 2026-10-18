@@ -344,7 +344,7 @@ persistence, shutdown drain and retained SQLite terminal capacity. A real SQLite
 fault test keeps local custody pending while another peer sends over a learned
 path; execution permits are available and admission remains retained until commit.
 
-## Integrated driver status (local acceptance pending)
+## Integrated driver status (local acceptance qualified)
 
 The scheduler now uses the retained Link/Resource owner. The displaced sender,
 detached monitors, generic discovery loop and outbound broadcast receipt publisher
@@ -356,7 +356,8 @@ transport shutdown.
 The last full transport suite passed 968 tests (9 existing ignores). The current
 focused owner suite passes 44 tests, including the 47-case/263-row production-owner
 adapter, real packet/Resource proofs with blocked SQLite commits, creator rejection
-while commit is pending, and rejection after acknowledged custody. The refreshed full daemon suite passes 573 tests. Clippy passes for daemon and
+while commit is pending, and rejection after acknowledged custody. The refreshed
+full daemon suite passes 574 tests. Clippy passes for daemon and
 transport across all targets/features; daemon library tests (31), native bridge
 integration (2), the issue-369 scanner, boundaries, module size and architecture
 checks pass.
@@ -383,8 +384,14 @@ A creator signal wins when both it and the commit acknowledgement are ready befo
 the owner observes them; observing the commit retires that callback. Packet and
 Resource blocked-write regressions and late-signal controls cover this boundary.
 
-Target/baseline mixed-peer tests and SDK recovery remain pending. Historical
-prerequisite notes above describe their checkpoints;
+Clean candidate `5a0a30f5` passes both complete target/baseline compatibility
+matrices (30/30 each, no skips/ignores), including live propagation metadata and
+native Resource/custody evidence. The same public SDK/ZeroMQ client passes two
+real missing-peer failures, external callback error/panic and subsequent signed
+native delivery, with coherent replay/status and one durable terminal per message.
+The receiving-size configuration and broader accumulated gaps remain explicit in
+the delta ledger. Final-head review, hosted CI and merge remain required.
+Historical prerequisite notes above describe their checkpoints;
 [PROGRESS.md](PROGRESS.md) records the current integration.
 
 ## Required acceptance
