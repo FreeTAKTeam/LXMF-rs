@@ -7,7 +7,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | --- | --- | --- | --- |
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
-| 3. LXMF 1.2.0 | In progress | Branch `corvo/open-issues-03-lxmf-120` | Retained opportunistic owner and native Link/Resource prerequisites validated locally; full retained Link owner and mixed-reference acceptance remain pending. |
+| 3. LXMF 1.2.0 | Draft PR; in progress | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); published checkpoint `a6886c29bbc25bdcac55a9f02a1105d72ba90616` | Retained opportunistic/local-custody owner and native Link/Resource prerequisites validated locally; full remote Link owner and mixed-reference acceptance remain pending. Hosted checks running; no merge. |
 | 4. Transport and RNS 1.5.5 | Pending | — | — |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
@@ -965,3 +965,19 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - The next integration remains one continuous remote Link driver, including packet
   timeout/proof ownership and mode-specific Resource completion; no item-3 merge
   or full parity completion is claimed.
+
+### Item 3 draft PR and first hosted validation
+
+Opened and attached [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673) on
+2026-10-18. GitHub confirms OPEN/DRAFT, mergeable, base
+`23a96a4a13bba3237c93c66f8d45443cc3d119ad` and published head
+`a6886c29bbc25bdcac55a9f02a1105d72ba90616`. The body explicitly lists remaining
+remote-owner, baseline-delta, mixed-peer, callback/SDK and final validation work.
+
+The first hosted runs on that checkpoint are:
+- [CI 39100469293](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39100469293)
+- [Verify 39100469289](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39100469289)
+- [Independent interoperability 39100469295](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39100469295)
+
+Selection has passed and the applicable jobs are running. This records draft
+validation only; terminal results and final-head review/CI/merge remain required.
