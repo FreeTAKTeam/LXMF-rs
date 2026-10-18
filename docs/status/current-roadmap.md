@@ -219,8 +219,14 @@ LoRa/RNode's next bounded supervisor increment now publishes contextual native
 opening errors and observes independent global/interface stop inputs through
 connect/retry and the existing stream/probe owner. Failure/stop regressions and
 the final 26-case native suite pass with independent source review and focused
-gates. Those active-stream controls are unpressured; shared KISS pressure,
-generic-bearer cleanup and configured-family traces still remain open.
+gates. Those supervisor active-stream controls are unpressured. Separately, nine
+native shared-KISS pressure cases fail before scoped I/O cancellation, then pass
+alongside exact ready-shutdown and initial-error/no-cleanup controls (15 total).
+Initial failure and interrupted I/O append no shutdown bytes; ordinary ready
+cleanup remains intact. Independent source reviews and affected gates pass;
+default transport passes 1,054, transport all-feature 1,083 (twelve existing
+ignores each) and default daemon 31/678. Generic-bearer cleanup and configured
+LoRa/RNode family traces still remain open.
 Thirteen of twenty declared software family rows are locally qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).

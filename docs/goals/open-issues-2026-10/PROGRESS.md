@@ -2240,6 +2240,49 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 shared KISS pending-I/O retirement checkpoint
+
+- Supervisor checkpoint `b1d7e536` precedes this bounded shared-owner change.
+  Nine native pressure cases fail their two-second joins; normal ready shutdown
+  and initial-write-error/no-cleanup controls both pass before correction.
+  `/tmp/lxmf-item4-lora-kiss-pressure-red.log` retains 2 passes/9 failures in
+  2.01 seconds. The final KISS suite passes 15/15 in 0.04 seconds in
+  `...-kiss-pressure-green.log`, including four existing controls.
+- The existing I/O body runs as one scoped future. An explicit false initial
+  result preserves the old error/no-shutdown return. Ordinary loop exit permits
+  ready-first cleanup selected against the same stop. Outer interruption drops
+  pending I/O and skips further output on the possibly partial stream; final
+  status still commits outside it. Existing inner stop selection, helper bodies,
+  option layouts, protocol timing and owner count remain unchanged.
+- Tests notify actual Pending write/flush operations, keep capacity-one peers
+  and the exact receive sentinel held through cancellation/join, then observe
+  EOF and exact partial/full bytes without false success counters. Explicit
+  current-thread RX controls reach the full send before yielding; the processing
+  counter is a barrier, and retained queue contents separately establish no
+  cancelled admission. The parent remains live until explicit retirement, and
+  the stream management receiver closes. Cleanup controls preserve exact ready
+  shutdown bytes/counters and the original initial-error status.
+- Both source POST roles approve. Default transport passes 1,054 tests with
+  twelve existing ignores; default daemon passes 31 library/678 binary tests,
+  including the LoRa native controls and configured Serial/KISS regressions in
+  their respective suites. Transport all-feature passes 1,083 with twelve
+  existing ignores. No post-change all-feature daemon suite is claimed here.
+  Logs are `/tmp/lxmf-item4-lora-kiss-{transport-default,daemon-default,transport-all-features}.log`.
+- Affected Clippy, diagnostics #369, architecture, boundaries, module size,
+  explicit three-file formatting and diff gates pass in
+  `/tmp/lxmf-item4-lora-kiss-{clippy,diagnostics,architecture,boundaries,size,fmt,diff}.log`.
+  Generic bearer and configured LoRa/RNode traces remain open. This native
+  shared-owner checkpoint does not qualify that family row: current totals
+  remain thirteen of twenty, seven families plus whole-item integration/one
+  PR/hosted CI/merge outstanding. No physical/RF/public-network evidence.
+
+Commands: red `cargo test -p reticulum-rs-transport --lib kiss::pressure_tests`;
+focused green `cargo test -p reticulum-rs-transport --lib iface::kiss::`;
+affected `cargo test -p reticulum-rs-transport --lib`, its `--all-features`
+variant and `cargo test -p reticulumd --lib --bins`. Clippy uses
+`-p reticulumd -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings`;
+diagnostics/architecture/boundary/size owners are unchanged.
+
 ## Item 4 LoRa/RNode opening-status and supervisor stop checkpoint
 
 - Structural checkpoint `581e9b52` precedes behavior. Two native owned missing
@@ -2273,8 +2316,8 @@ validation only; terminal results and final-head review/CI/merge remain required
   Clippy, diagnostics scanner #369, architecture, boundaries, module size,
   explicit six-file formatting and diff checks pass in
   `/tmp/lxmf-item4-lora-supervisor-{clippy,diagnostics,architecture,boundaries,size,fmt,diff}.log`.
-  Shared KISS pressure/cleanup, generic bearer and configured serial/TCP traces
-  remain pending. This checkpoint qualifies neither pressured retirement nor
+  At this checkpoint, shared KISS pressure/cleanup, generic bearer and configured
+  serial/TCP traces remained pending. It qualified neither pressured retirement nor
   the LoRa/RNode family row; thirteen of twenty rows remain locally qualified,
   with seven families and whole-item integration/hosted/merge gates open.
 
@@ -2299,8 +2342,9 @@ the diagnostics command is `cargo test -p reticulumd --test code_quality_issue_3
   serial/TCP traces and bounded fake-bearer attempts for both existing kinds.
   At the preparation baseline, opening errors only logged and retry waits/TCP
   connect could hide cancellation; the subsequent supervisor checkpoint above
-  corrects those gaps. Shared KISS/bearer receive pressure and generic bearer
-  final online status remain open. Platform backend reads stay single-owner.
+  corrects those gaps. Shared KISS pressure was documented next and is qualified
+  separately above; generic bearer pressure/final status remain open. Platform
+  backend reads stay single-owner.
 - Correctness PRE approves mechanical preparation and requires initial KISS
   write failure to retain its no-cleanup path. Independent global/interface-stop
   controls must cancel, then await the existing stream and probe monitor owner.

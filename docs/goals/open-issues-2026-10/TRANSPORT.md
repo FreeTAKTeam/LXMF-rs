@@ -910,10 +910,29 @@ Both bounded source POST roles and affected Clippy/diagnostics/architecture/
 boundary/size/explicit-formatting gates pass. These active controls are
 unpressured, use a sixty-second existing test startup guard and observe actual
 initial I/O, EOF and release of the monitor's interface owner. They do not prove
-independent protocol conformance or a stalled TCP connect syscall. Shared KISS
-pressure/cleanup, generic bearer and the two configured lifecycle traces remain
-open. The inventory stays thirteen of twenty; no row promotion or production
-timing/default change is inferred from this supervisor checkpoint.
+independent protocol conformance or a stalled TCP connect syscall. At that
+supervisor checkpoint, shared KISS pressure/cleanup, generic bearer and the two
+configured lifecycle traces remained open. The inventory stayed thirteen of
+twenty; no row promotion or production timing/default change was inferred.
+
+The next shared-KISS checkpoint retains nine actual Pending RX/write/flush
+failures and two passing cleanup controls before correction. The existing body
+becomes a scoped operation: initial error keeps its no-cleanup return, ordinary
+loop exit permits ready-first cleanup against the same stop, and outer
+interruption retires possible partial bytes without appending output. Existing
+inner stop, helper bodies, public options and timing stay intact. Final native
+KISS tests pass 15/15 (0.04 seconds), including the nine pressure cases, normal
+ready shutdown, initial failure and four prior controls. Exact held queues,
+bytes, EOF, no false output/admission counters, a live parent and closed control
+receiver qualify this native owner; they do not imply configured-family proof.
+
+Both source POST roles and affected gates pass. Default transport passes 1,054
+tests and transport all-feature 1,083, each with twelve existing ignores; default
+daemon passes 31/678, including configured Serial/KISS. Exact commands/results
+are in PROGRESS.md. Generic bearer and configured LoRa/RNode traces remain
+pending; family totals stay thirteen of twenty, with seven families and the
+whole-item integration/one PR/hosted CI/merge still open. No physical or
+public-network activity is used.
 
 The locked-version [Tokio select documentation](https://docs.rs/tokio/1.53.2/tokio/macro.select.html)
 confirms ordered polling with `biased`, assigns fairness to that ordering and
