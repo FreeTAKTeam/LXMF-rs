@@ -258,7 +258,6 @@ async fn ensure_weave_endpoint(
     let mut manager = options.iface_manager.lock().await;
     let address =
         manager.register_virtual_iface(options.parent_iface, IfaceRole::VirtualUnicast)?;
-    manager.set_outgoing(address, true);
     drop(manager);
 
     let mut state = state.lock().await;
@@ -314,29 +313,27 @@ async fn cleanup_weave_endpoints(
     options: &WeaveStreamOptions,
     state: Arc<tokio::sync::Mutex<WeaveRuntimeState>>,
 ) {
-    let endpoints = {
-        let mut state = state.lock().await;
-        let endpoints: Vec<([u8; ENDPOINT_ID_LEN], AddressHash)> = state
-            .endpoints
-            .iter()
-            .map(|(endpoint_id, endpoint)| (*endpoint_id, endpoint.iface))
+    // Registration and GC may be cancelled between native and private-index commits.
+    {
+        let mut manager = options.iface_manager.lock().await;
+        let children: Vec<_> = manager
+            .interface_tree_hashes(options.parent_iface)
+            .into_iter()
+            .filter(|iface| *iface != options.parent_iface)
             .collect();
+        for iface in children {
+            if !manager.stop_interface(iface) {
+                log::debug!(
+                    "Weave endpoint cleanup interface already absent parent={} iface={iface}",
+                    options.parent_iface
+                );
+            }
+        }
+    }
+    {
+        let mut state = state.lock().await;
         state.endpoints.clear();
         state.addresses.clear();
-        endpoints
-    };
-
-    if endpoints.is_empty() {
-        return;
-    }
-
-    for (_, iface) in &endpoints {
-        if !options.iface_manager.lock().await.stop_interface(*iface) {
-            log::debug!(
-                "Weave endpoint cleanup interface already absent parent={} iface={iface}",
-                options.parent_iface
-            );
-        }
     }
     update_weave_status(&options.runtime_status, WeaveRuntimeStatus::clear_endpoints);
 }

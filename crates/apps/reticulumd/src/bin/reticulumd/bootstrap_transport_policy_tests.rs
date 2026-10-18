@@ -31,6 +31,10 @@ mod pty_peer;
 #[path = "tests/bootstrap_serial_family.rs"]
 mod serial_family;
 
+#[cfg(target_os = "linux")]
+#[path = "tests/bootstrap_weave_family.rs"]
+mod weave_family;
+
 #[path = "tests/bootstrap_i2p_family.rs"]
 mod i2p_family;
 

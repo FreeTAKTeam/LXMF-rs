@@ -70,7 +70,7 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-The first twelve rows have the declared software lifecycle qualification below;
+The first thirteen rows have the declared software lifecycle qualification below;
 other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
@@ -87,7 +87,7 @@ other rows remain open. Record exact test names/results when qualified.
 | I2P incoming | Declared preparation failure/redaction/recovery, persisted key file, old/new accepted-child rotation and peer isolation, session recreation retaining both children, changed-key restart and native setup/stream shutdown | Locally qualified for these fake-SAM software traces; recovered startup metadata remains a snapshot. Public router interoperability and whole-item integration/hosted CI remain pending |
 | AutoInterface | Two configured Linux manual-binding traces qualify native activation failure/partial cleanup, sixteen-byte IFAC, old/new virtual-child key and non-IFAC policy inheritance, peer-isolated configured-port routing and changed-identity restart; two queue-pressure regressions qualify joined receive-owner shutdown | Locally qualified for these software traces; manual bindings do not prove OS adoption or multicast ingress. Whole-item integration/hosted CI remain pending |
 | Meshtastic | Configured unavailable-bearer failure, simulated multi-chunk native admission/status, live same-root key rotation, unrelated TCP and changed-identity/key restart; two blocked native queue regressions plus independent bearer IFAC controls | Locally qualified for these software traces; the daemon path requires simulation loopback. External device/RF and whole-item integration/hosted CI remain separate |
-| Weave | Authenticated signed-handshake stream | Startup/reconnect errors, virtual endpoint rotation and restart |
+| Weave | Configured Linux PTY failure/repair, independently verified signed handshake, sixteen-byte IFAC rejection/authentication, old/new child policy and isolated replies, same-root reconnect, actual remote-display wire commands and changed-identity/key/MTU restart; eight native policy/interrupted-owner/pressure regressions | Locally qualified for these software traces; physical devices/RF/public-network and whole-item integration/hosted CI remain separate |
 | LoRa / RNode serial, TCP and existing bearer paths | Authenticated stream/fake bearer and startup-monitor failures | Configured validation failure, reconnect/restart/status |
 | RNodeMulti | Authenticated vport, parent removes children on shutdown | Active-vport rotation and failed/restarted configuration |
 | RNode BLE | Fake-backend native ingress/egress and startup/runtime recovery | Daemon status composition and active-child rotation |
@@ -734,8 +734,9 @@ default check, diagnostics, architecture, explicit formatting, boundaries and
 module-size gates pass. Both Meshtastic source POST roles approve. This locally
 qualifies the twelfth software family row only. The configured path is an
 explicit loopback simulation, distinct from independent native bearer IFAC
-evidence. Eight families and whole-item integration/one PR/hosted CI/merge
-remain open; no external radio or RF qualification is inferred.
+evidence. At that checkpoint, eight families and whole-item integration/one
+PR/hosted CI/merge remained open; no external radio or RF qualification was
+inferred.
 
 ### Weave software family composition board
 
@@ -744,8 +745,8 @@ open there. Read-only exploration maps Weave to its existing configured
 dispatcher/prepared root, serial worker, native endpoint registry and
 status/control projection. Both immutable reference files are byte-identical
 for this surface: native IFAC is sixteen bytes, MTU 1,024 and baud 3,000,000.
-Python assigns a new endpoint its parent's outgoing policy. Rust currently
-overrides inherited outgoing with `true` in `ensure_weave_endpoint`.
+Python assigns a new endpoint its parent's outgoing policy. Before this fix,
+Rust overrode inherited outgoing with `true` in `ensure_weave_endpoint`.
 
 | Task | Main-agent owner/files | Declared evidence |
 | --- | --- | --- |
@@ -805,8 +806,38 @@ four Serial/KISS controls pass in 6.07 seconds. The root is now 426 lines,
 status 466, stream 239, frame processing 342 and tests/core 1,127; remove the
 obsolete root allowance without adding exceptions. Affected Clippy,
 architecture, boundaries, module size, explicit formatting and diff checks pass.
-This checkpoint changes no behavior or family qualification; the policy,
-cancellation/ownership and configured PTY traces remain the next work.
+That checkpoint changed no behavior or family qualification; the policy,
+cancellation/ownership and configured PTY traces remained the next work then.
+
+Subsequent native behavior evidence retains genuine 0/3 policy/interrupted-owner
+and 0/5 pressured-operation failures before correction. Removing the outgoing
+override, selecting the existing stops around the scoped I/O operation and
+reconciling the existing manager tree in mandatory awaited cleanup yields 30/30
+native cases in 0.10 seconds. Both native POST roles approve; the maintainer's
+existing tree-helper refinement also passes 30/30. PROGRESS.md preserves the
+fixture-only compile/parent-token corrections and every native result. This
+native-only checkpoint did not yet qualify Weave.
+
+The subsequent two configured PTY cases pass their first run (32.11 seconds).
+Review tightens quiet observation to reject any extra byte/EOF within the same
+two seconds, and uses two seconds for restart discovery already observed as
+emitted; only missing-device recovery gets eight seconds. Both final source POST
+roles approve. Final focused default/all-feature configured runs pass 2/2 in
+32.10/32.12 seconds. The traces establish exact signed handshake, negative and
+positive default-IFAC wire behavior, existing/new child key and non-IFAC policy,
+isolated endpoint replies, native failure/same-root recovery, actual display
+commands, unrelated traffic, joined observer/root/control cleanup and new
+Transport identity/key/MTU restart with fresh state. No real device is used.
+
+Default affected suites pass 1,035 transport and 31/678 daemon tests; the daemon
+binary precedes the quiet assertion tightening, covered by the final focused
+default run. Separate all-feature suites pass 1,064 transport and 31/679 daemon
+tests, with twelve existing transport ignores in both scopes. Clippy, default
+check, architecture, diagnostics scanner, boundaries, module size and explicit
+formatting/diff gates pass. Detailed command/log scopes are in PROGRESS.md.
+Weave now qualifies the thirteenth declared software row. Seven families and
+whole-item integration/one PR/hosted CI/merge remain open. Backoff configuration
+is unchanged; these traces do not establish physical/RF/public-network behavior.
 
 ### Raw IFAC type preparation for UDP composition
 

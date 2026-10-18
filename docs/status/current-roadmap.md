@@ -204,7 +204,18 @@ untraced/consistent with prior controlled descriptor inheritance; its unchanged
 lifetime bodies now reuse exact-case isolation. The declared next all-feature
 transport run passes 1,056 tests (twelve existing ignores), separate daemon
 validation passes 31/677, and affected Clippy/focused gates pass.
-Twelve of twenty declared software family rows are locally qualified. Remaining
+A configured Weave PTY trace now verifies signed discovery/CONNECT, native
+sixteen-byte IFAC rejection/authentication, old/new child policy and isolated
+endpoint replies, same-root recovery, actual remote-display wire commands and
+changed-identity/key/MTU restart with joined native/control/observer cleanup.
+Eight native regressions fail before correcting inherited outgoing policy,
+blocked I/O cancellation and interrupted child ownership, then pass; mandatory
+cleanup uses the existing manager tree outside cancellable I/O. Both final
+source reviews approve, final configured default/all-feature cases pass 2/2,
+and affected suites/Clippy/focused gates pass. The full default daemon run
+precedes a quiet-observer tightening covered by the final focused run; exact
+scopes and retained failures remain in the execution record.
+Thirteen of twenty declared software family rows are locally qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

@@ -16,6 +16,12 @@ use crate::serde::Serialize;
 
 use super::*;
 
+#[path = "endpoint_lifecycle.rs"]
+mod endpoint_lifecycle;
+
+#[path = "blocked_shutdown.rs"]
+mod blocked_shutdown;
+
 fn packet_payload(packet: &Packet) -> Vec<u8> {
     let mut buffer = vec![0_u8; 512];
     let mut output = OutputBuffer::new(&mut buffer);

@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; twelve of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P, Auto and simulated Meshtastic family traces qualify locally. Eight other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; thirteen of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P, Auto, simulated Meshtastic and Weave family traces qualify locally. Seven other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -2239,6 +2239,89 @@ validation only; terminal results and final-head review/CI/merge remain required
   others, whole-item integration/release checks, one PR, exact-head hosted CI and
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
+
+## Item 4 Weave configured PTY lifecycle qualification
+
+- Two Linux cases use only the shared owned PTY observer and loopback TCP.
+  Strict missing-alias preflight reports a redacted failed record with no native
+  root/runtime-status handle or control binding. Permissive startup retains an offline/reconnecting root
+  with prepared native sixteen-byte IFAC and default MTU 1,024/baud 3,000,000.
+- The native PTY trace independently verifies DISCOVER addressing, signed
+  response and CONNECT signature; connection logs and published WDCL state
+  establish readiness after port open. Counted wrong-key/plaintext rejection
+  precedes exact authenticated endpoint ingress and endpoint-addressed egress.
+  Existing/new children inherit rotated IFAC, mode, outgoing=false, gravity
+  and pacing; outgoing is deliberately restored for wire tests. A two-second
+  first-byte check rejects every extra byte or EOF after each direct response.
+- Alias removal before PTY closure prevents reopening a recycled slave. Old
+  children disappear while the same root and unrelated TCP remain; a new owned
+  PTY recovers with rotated policy under the unchanged five-second native retry.
+  Remote-display RPC acknowledgements are followed by exact command bytes on
+  the PTY. Joined owner shutdown closes saved control receivers/bindings and
+  unrelated sockets; observers reach EOF and successful explicit child waits.
+  Full restart uses a new Transport identity/final credential, explicit MTU 512,
+  fresh counters/learned state and new exact traffic/control observations.
+- The first configured run passes 2/2 in 32.11 seconds. Both source POST roles
+  request tightening the quiet observer (no complete frame -> no byte), and the
+  correctness role limits already-emitted restart discovery to two seconds;
+  only missing-device recovery uses eight seconds. Both approve the final
+  source. Final focused default/all-feature runs pass 2/2 in 32.10/32.12 seconds,
+  retained in `/tmp/lxmf-item4-weave-configured-{initial,tight-default,tight-all-features}.log`.
+- Default affected suites pass 1,035 transport tests (twelve existing ignores)
+  and 31 library/678 binary daemon tests. That daemon binary precedes the quiet
+  assertion tightening; the final focused default run above covers it. Separate
+  all-feature suites pass 1,064 transport tests (twelve existing ignores) and
+  31 library/679 binary daemon tests. Affected all-target/all-feature Clippy,
+  default check, architecture, diagnostics scanner, boundaries, module size,
+  explicit seven-file formatting and diff checks pass. Logs are
+  `/tmp/lxmf-item4-weave-{transport,daemon}-{default,all-features}.log` and
+  `/tmp/lxmf-item4-weave-{clippy,check-default,architecture,diagnostics,boundaries,size,fmt,diff}.log`.
+- This qualifies the thirteenth declared software family row only. Seven
+  families and whole-item integration/one PR/hosted CI/merge remain open. No
+  physical Weave device, RF or public-network evidence is claimed; accepted
+  but unused backoff knobs remain unchanged and are not fixture shortcuts.
+
+Configured commands: `cargo test -p reticulumd --bin reticulumd policy_tests::weave_family`
+and the same with `--all-features`. Affected commands are
+`cargo test -p reticulum-rs-transport --lib`,
+`cargo test -p reticulumd --lib --bins`, and separate `--all-features` variants;
+the previously retained combined-package cipher-feature failure is not rerun or
+reported as passing. Clippy uses the same affected packages with
+`--all-targets --all-features --no-deps -- -D warnings`; other focused commands
+retain their existing architecture/diagnostic/boundary/size owners.
+
+## Item 4 Weave native policy, ownership and blocked-operation corrections
+
+- From mechanical checkpoint `95139214`, three native policy/interrupted-owner
+  cases fail before correction (0/3 in 0.00 seconds), and five blocked RX,
+  discovery write/flush and packet write/flush cases fail their two-second
+  joins (0/5 in 2.03 seconds). Retained logs are
+  `/tmp/lxmf-item4-weave-endpoint-native-red.log` and
+  `/tmp/lxmf-item4-weave-shutdown-red.log`. An earlier endpoint fixture compile
+  error comparing collection types is in `...-endpoint-red.log`; it is not
+  acceptance evidence.
+- Remove the redundant outgoing override after native child registration.
+  Select the existing stop tokens around the scoped I/O operation, keeping
+  normal inner stop selection and mandatory awaited cleanup outside it. Cleanup
+  reconciles the existing manager's interface tree minus its parent, catching
+  registration/GC interruptions without telemetry sampling or another registry.
+  Native children retire while the parent and unrelated tree remain live.
+- The first corrected native run passes 29/30. Its packet-flush fixture used
+  the manager's parent stop token, so stopping a child also garbage-collected
+  that already-cancelled parent. The fixture now supplies an independent stream
+  stop token and retains/asserts the live manager parent token. No production
+  change is attributed to this fixture correction. Logs remain in
+  `...-native-green.log` and `...-native-corrected.log`; the latter passes 30/30
+  in 0.10 seconds. After the maintainability review selects the existing tree
+  helper, `...-native-tree-helper.log` also passes 30/30 in 0.10 seconds.
+- Both native POST roles approve, with that small helper change from the
+  maintainer. At this native-only checkpoint, two configured Linux PTY cases
+  were undergoing their declared first run/source reviews; family totals were
+  still twelve of twenty. The later configured qualification is recorded above.
+
+Native command: `cargo test -p reticulum-rs-transport --lib weave` (the focused
+red runs used the `weave::tests::endpoint_lifecycle` and
+`weave::tests::blocked_shutdown` filters).
 
 ## Item 4 Weave mechanical preparation and behavior board
 
