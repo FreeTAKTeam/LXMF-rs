@@ -110,6 +110,10 @@ new rows are not yet consumed by a Rust Link owner. The reference also retains
 SENDING after missing-receipt or external-close paths without a timeout callback;
 that observation is not a passing recovery result. The remaining cutover and
 acceptance are mapped in [LINK-OWNER.md](../goals/open-issues-2026-10/LINK-OWNER.md).
+Transport Link acquisition now atomically publishes one shared Link for concurrent
+callers and preserves restart/reset interleavings, with five deterministic Rust
+regressions. The daemon propagation cache policy and retained Link owner are still
+pending; this does not consume the 42 reference scenarios or promote a parity row.
 Full Link/Resource post-send and Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.

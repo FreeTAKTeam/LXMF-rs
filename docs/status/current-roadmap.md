@@ -45,7 +45,10 @@ acquiring send locks. Full Link/Resource post-send ownership, Link activation wa
 and target mixed-peer acceptance remain open; these checkpoints do not establish
 LXMF 1.2.0 completion. A further 42 production-reference Link/Resource scenarios
 (226 snapshots) now define the remaining mode-specific retry and completion
-contract; they are controlled Python evidence, not Rust implementation acceptance. See the
+contract; they are controlled Python evidence, not Rust implementation acceptance.
+Transport acquisition now shares one published outbound Link across concurrent
+callers and preserves reset/restart races; daemon activation and transfer ownership
+remain pending. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655

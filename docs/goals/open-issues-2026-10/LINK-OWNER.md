@@ -119,6 +119,29 @@ Resource consumer and the narrow transport Link acquisition/state APIs. Extract
 helpers where the active module-size gate requires it. Keep unrelated CLI,
 hardware, release and sibling repositories out of this cutover.
 
+## Acquisition checkpoint
+
+The transport prerequisite now uses optimistic selection with atomic map
+publication in `Transport::link`. It rechecks pointer identity before reuse and
+replacement, and revalidates Closed under a nonblocking Link lock before replacing
+an existing entry. A public restart can therefore preserve the same Arc. Contended
+Link waits occur outside the handler lock; only the published candidate dispatches
+its first request, under the existing handler send lock. Explicit reset still
+invalidates a returned handle; acquisition does not grant a lifetime lease.
+
+This uses the existing map authority instead of a per-target mutex registry and
+its additional retention/cleanup rules. The choice follows the standard
+[`Arc::ptr_eq`](https://doc.rust-lang.org/std/sync/struct.Arc.html#method.ptr_eq)
+identity contract and Tokio's [shared-state lock-scope guidance](https://tokio.rs/tokio/tutorial/shared-state).
+Five deterministic transport regressions cover absent/Closed concurrent creators,
+restart during preparation, removed-entry reuse, and contention during restart.
+Four regressions failed against the preceding implementation before the fix.
+
+The daemon propagation cache's 25-second expiry and unconditional reset remain
+pending. Remove those next so native lifecycle state governs reuse, including
+Stale, and prove a cache miss cannot destroy an active Resource. The retained
+message Link context, continuous retry budget and transfer owner remain pending.
+
 ## Required acceptance
 
 - Consume every covered reference row against the production owner decisions;

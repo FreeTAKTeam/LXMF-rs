@@ -684,3 +684,43 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - Next: implement the reviewed retained Link/acquisition boundary and consume the
   reference transitions through the admitted owner. All remaining item-3 gates
   remain open; no item-3 PR has yet been created or merged.
+
+
+### Item 3 atomic outbound Link acquisition
+
+- Fixed concurrent `Transport::link` callers publishing separate Links for one
+  destination. Selection snapshots the existing map entry; publication rechecks
+  pointer identity under the existing handler lock. Only the winner dispatches an
+  initial request. Reuse also revalidates map membership, so a removed entry is
+  not returned while explicit reset waits to close it.
+- PRE review identified public restart reviving the same Closed Arc during
+  candidate preparation. Publication now rechecks native Closed state with a
+  nonblocking Link lock and retains that guard through insertion. If contended,
+  it drops the handler before awaiting the Link and retries selection. No Link
+  guard is held across handler reacquisition or packet dispatch.
+- Publication and initial dispatch use the same existing handler send lock;
+  explicit reset/maintenance cannot remove the candidate between these actions.
+  Explicit reset retains its destructive semantics, and callers must still observe
+  native lifecycle after acquisition. Cancellation does not reset a shared Link.
+  No per-target mutex registry or second lifecycle owner was introduced.
+- Extracted the existing method from the nearly full `close_channel.rs` section
+  into the existing establishment section. The public API, routing, request sizing
+  and handler send path remain the same. The trade-off against a new lock registry
+  and primary Rust/Tokio references are recorded in [LINK-OWNER.md](LINK-OWNER.md).
+- Four deterministic regressions failed against the original implementation:
+  competing absent entries, competing Closed entries, restart during preparation
+  and reuse while reset has removed the entry. All pass after the fix. A fifth
+  stages contention at final Closed revalidation and proves unrelated handler
+  access remains available before the same Arc is restarted and reused. Tests use
+  real transport mutex barriers and explicit future polling, not scheduling sleeps.
+- Independent correctness and POST/maintainability reviews accept this bounded
+  acquisition checkpoint. Daemon propagation cache expiry/reset removal, retained
+  Link context, continuous retry budget, native activation waits, transfer recovery,
+  successful SDK/ZeroMQ delivery and target/baseline mixed-peer acceptance remain
+  pending. The 42 Link/Resource reference rows are not yet consumed by that owner.
+- Validation: all-feature transport library suite passes 944 tests (9 existing
+  ignores); daemon bridge integration filter passes 33 tests and retained-owner
+  filter passes 99. The issue-369 scanner, all-feature daemon/transport library and
+  binary Clippy, formatting, boundaries, architecture and module-size checks pass.
+  Logs: `/tmp/lxmf-item3-link-acquire-{red,green,transport,bridge,owner,quality,clippy,architecture,boundaries,size}.log`.
+  This is local validation only; item 3 still has no PR or hosted CI result.
