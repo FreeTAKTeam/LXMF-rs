@@ -926,3 +926,42 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   pass. Logs: `/tmp/lxmf-item3-bound-resource-{before,after,transport,bridge,clippy,quality,format,architecture,boundaries,size}.log`.
 - Item 3 remains active. No item-3 PR, hosted CI, full mixed-peer acceptance or
   completion is claimed.
+
+### Item 3 retained-Link cancellation and teardown
+
+- Native Resource cancellation now rejects a Link-ID mismatch before changing
+  pending, active or segmented state. The regression failed against the preceding
+  implementation and now preserves the original transfer and observer until its
+  matching Link cancels it. Moved cancellation into the existing cleanup module
+  after correctness review caught the regular-module size limit.
+- Added exact-Arc cancellation and teardown. The ID cancellation API delegates;
+  native Resource mutation and completion remain in ResourceManager. Teardown
+  closes/removes only the selected Arc and publishes logical failures in one
+  handler/Link critical section. Busy-Link waits release handler. Lifecycle frames
+  retain the captured ID/interface after releasing Link, preserving replacement
+  Links and concurrent restart behavior.
+- A fallible internal Link teardown keeps closure even when frame construction
+  fails. Legacy callers retain their Option API with an actionable diagnostic.
+  Frame handoff failure does not reverse an observed native Cancelled/Failed result.
+  The APIs govern the current Arc generation; earlier-generation cleanup is not
+  promised if a public restart/request changes that same Arc's ID.
+- Eight new tests cover wrong-Link cancellation at three transfer stages, native
+  frame-construction failure through both APIs, active inbound/outbound teardown
+  and replacement Resource preservation, failed handoff, pending closure, handler
+  availability under Link contention and old-interface teardown during restart.
+  Maintainer review reconciled conflicting cancellation documentation. A real
+  Transport regression now proves that dropping interrupted dispatch then explicitly
+  cancelling its registration clears native state before handoff and after queuing
+  but before confirmation. Pending cleanup can emit no cancel frame; the daemon
+  owner will use drive-to-completion before cancellation instead.
+- Correctness and POST reviews accepted the resolved checkpoint. The native Link
+  construction-failure branch is tested; Resource publication in the corresponding
+  transport build-error branch is established by inspection. Full remote delivery
+  ownership, typed remote custody and mixed-peer acceptance remain pending.
+- Validation passes: 959 all-feature transport tests (9 existing ignores), all
+  104 daemon bridge tests, all-target/all-feature transport and daemon Clippy,
+  issue-369 scanning, formatting, dependency boundaries, architecture and module
+  size. Logs: `/tmp/lxmf-item3-link-lifecycle-{before,after,focused,cancel-contract,transport,bridge,quality,clippy,format,architecture,boundaries,size}.log`.
+- The next integration remains one continuous remote Link driver, including packet
+  timeout/proof ownership and mode-specific Resource completion; no item-3 merge
+  or full parity completion is claimed.

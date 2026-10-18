@@ -53,8 +53,11 @@ and transfer ownership remain pending. Native Resource sends can now register a
 retained logical completion result before dispatch; recipient proofs and failure
 outcomes survive legacy event-broadcast overflow. Resource preparation and initial
 dispatch can now keep the exact selected Link; the shared delivery fallback no
-longer re-resolves its ID. This does not grant a lease against native closure or
-complete the retained daemon driver. Storage now atomically records
+longer re-resolves its ID. Native cancellation validates Resource/Link association;
+retained teardown preserves replacement Links and publishes Resource failure before
+frame handoff. Contention and concurrent-restart tests cover lock scope and captured
+interface routing. These do not grant a lease against native closure or complete
+the retained daemon driver. Storage now atomically records
 trusted propagation custody and retires dispatch intent without consuming later
 recipient-terminal capacity; restart cannot re-upload that committed operation.
 Older preparation reservations repair only their missing custody capacity through

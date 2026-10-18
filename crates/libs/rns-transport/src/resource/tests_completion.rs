@@ -60,6 +60,62 @@ async fn resource_completion_tracks_logical_failure_cancel_and_rejection() {
     }
 }
 
+#[test]
+fn resource_cancellation_rejects_an_unrelated_link_without_changing_native_state() {
+    for segment in [0, 1, 2] {
+        let (mut manager, mut link) = manager_with_test_link();
+        let (_, unrelated) = manager_with_test_link();
+        assert_ne!(link.id(), unrelated.id());
+        let (original, _) = manager
+            .start_send(&link, vec![0x51; MAX_EFFICIENT_SIZE + 1], None)
+            .expect("prepare two segments");
+        let completion = manager.observe_outbound(original);
+        if segment > 0 {
+            manager.confirm_outbound_dispatch(original, true);
+        }
+        let mut active = original;
+        if segment == 2 {
+            let proof = ResourceProof {
+                resource_hash: original,
+                proof: manager.outgoing.get(&original).expect("first sender").expected_proof,
+            };
+            let packets = manager.handle_packet(
+                &resource_packet(PacketContext::ResourceProof, &proof.encode(), *link.id()),
+                &mut link,
+            );
+            active = decrypt_advertisement(&link, &packets[0]).hash;
+            assert_ne!(active, original);
+            manager.drain_events();
+        }
+        let before = (manager.pending_outgoing.len(), manager.outgoing.len());
+        assert!(matches!(
+            manager.cancel_outgoing(original, &unrelated),
+            Err(RnsError::InvalidArgument)
+        ));
+        assert_eq!((manager.pending_outgoing.len(), manager.outgoing.len()), before);
+        assert!(manager.outgoing_segment_chains.contains_key(&original));
+        assert!(manager.drain_events().is_empty());
+        assert_eq!(completion.current(), None, "mismatch must not publish cancellation");
+
+        let packet = manager.cancel_outgoing(original, &link).expect("matching Link");
+        if segment == 0 {
+            assert!(packet.is_none(), "undispatched advertisement needs no cancel frame");
+        } else {
+            let packet = packet.expect("cancel active segment");
+            assert_eq!(packet.destination, *link.id());
+            assert_eq!(decrypt_link_packet(&link, &packet).data.as_slice(), active.as_slice());
+        }
+        let events = manager.drain_events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].hash, original);
+        assert_eq!(events[0].link_id, *link.id());
+        assert_eq!(completion.current(), Some(ResourceOutcome::Cancelled));
+        assert!(manager.has_no_outbound_state());
+        assert!(manager.outgoing_segment_chains.is_empty());
+        assert!(manager.cancel_outgoing(original, &unrelated).expect("already absent").is_none());
+    }
+}
+
 #[tokio::test]
 async fn resource_completion_wait_survives_producer_removal_only_with_a_result() {
     let (mut manager, link) = manager_with_test_link();

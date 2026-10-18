@@ -194,8 +194,11 @@ instead of a second receipt writer, an unbounded result history, or a broadcast
 replay mechanism. Native completion is not application persistence or custody.
 
 The send future retains its existing cancellation limitation after registration:
-the owner must drive it to completion or explicitly cancel the registered Resource
-before abandoning it. Merely dropping a pending dispatch leaves native state
+the owner must drive it to completion, or drop the send future then explicitly
+cancel the registered Resource before abandoning it. Do not keep driving the send
+concurrently with cancellation. Pending registration can already have queued its
+advertisement; cancellation guarantees local native cleanup and may emit no cancel
+frame to that peer. Merely dropping a pending dispatch leaves native state
 without the dispatch confirmation that activates its retry lifecycle. The driver
 must preserve this boundary during cancellation and shutdown.
 
@@ -222,14 +225,37 @@ This proves initial dispatch context, not lifecycle support for arbitrary remove
 Links or two different Links sharing one ID. Native Resource routing remains keyed
 by Link ID. Explicit closure/restart is not prevented by retaining an Arc.
 
+Transport lifecycle primitives now preserve this context as well:
+
+- `cancel_resource_on_link` validates the Resource's native Link ID before packet
+  construction or mutation, including pending and later segmented transfers.
+  Mismatch returns InvalidArgument without publishing a result. Native Cancelled
+  observation remains authoritative when cancel-frame handoff fails; the return
+  boolean describes frame handoff, including false when no frame is necessary.
+- `teardown_link` closes the current Arc, removes only pointer-equal map entries,
+  and publishes native Resource failures under one handler/Link critical section.
+  Both operations use handler then Link try-lock, releasing handler before waiting
+  on a busy Link. Captured lifecycle packets use their original interface after
+  the Link lock is released. New frame-construction failure propagation still
+  finalizes local closure; the existing Option-returning Link API logs failure.
+- Regressions cover wrong-Link cancellation at three transfer stages, active
+  inbound/outbound teardown with an unaffected replacement Resource, failed frame
+  handoff, native pending closure, handler availability during Link contention and
+  restart/request during blocked teardown dispatch. The latter decrypts the old-ID
+  frame at the original peer. A separate native Link test checks construction
+  failure through the fallible and legacy APIs; transport-level Resource publication
+  in that construction-error branch is established by code inspection.
+
+These APIs govern the Arc's current generation when their critical section starts.
+Public restart/request can change the same Arc's ID. They do not clean arbitrary
+earlier generations or grant a lifetime lease; the retained driver must avoid
+restarting an in-flight transfer. The daemon driver chooses to drive registered
+sends to completion before cancellation. The lower-level explicit cleanup alternative
+above remains available, with its documented frame limitation. The daemon driver
+cutover remains pending.
+
 PRE review also identified these remaining driver requirements:
 
-- Exact-Arc cancellation must validate Resource/Link association before removing
-  native state. A cancellation-frame send error can coexist with an already
-  observed native Cancelled outcome. Drive registered sends to completion first.
-- Exact-Arc teardown must preserve a replacement map entry, publish native Resource
-  outcomes and send its teardown packet without holding the Link lock. It must not
-  use destination-wide `reset_out_link` against a possibly newer owner.
 - Link packet receipt timeout is `max(rtt * 6, 0.005 seconds)` in the pinned RNS
   `Packet.py:430`; expiry is strict `sent_at + timeout < now`. Expose native timing
   narrowly and test the proof race; retry deadlines and Link watchdogs differ.

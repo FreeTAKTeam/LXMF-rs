@@ -275,32 +275,6 @@ impl Transport {
         }
     }
 
-    pub async fn cancel_resource(
-        &self,
-        link_id: &AddressHash,
-        resource_hash: Hash,
-    ) -> Result<bool, RnsError> {
-        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
-        let packet = {
-            let mut handler = self.handler.lock().await;
-            let link_guard = link.lock().await;
-            let packet = handler.resource_manager.cancel_outgoing(resource_hash, &link_guard)?;
-            let events = handler.resource_manager.drain_events();
-            super::resource_wire::publish_resource_events(&handler, events);
-            packet
-        };
-        let Some(packet) = packet else {
-            return Ok(false);
-        };
-
-        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
-        if matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast) {
-            Ok(true)
-        } else {
-            Err(RnsError::ConnectionError)
-        }
-    }
-
     pub async fn send_channel_message(
         &self,
         link_id: &AddressHash,

@@ -129,6 +129,13 @@ delegate to the same implementation. Map-replacement and failed-dispatch tests
 prove initial ciphertext/interface binding and observation ordering; retained Arc
 completion also runs through the existing two-Transport recipient-proof test.
 This is not lifecycle support for removed Links or a daemon-owner cutover.
+Native lifecycle primitives now validate Link association before cancelling a
+Resource and close/remove only the selected Link Arc during teardown. Logical
+completion survives cancel/close frame handoff failure, and a replacement Resource
+stays live. Focused tests cover pending/active/second-segment cancellation, native
+inbound/outbound teardown, contention and restart during blocked frame dispatch.
+The APIs govern the current Arc generation and do not lease it against restart.
+Remote daemon ownership and method-specific completion remain pending.
 The storage boundary now distinguishes trusted propagation custody from ordinary
 sent-status text. Custody commits status, journal and dispatch completion atomically,
 spends retained preparation capacity, and preserves recipient-terminal capacity.

@@ -13,46 +13,6 @@ pub struct ResourceManager {
 }
 
 impl ResourceManager {
-    pub fn cancel_outgoing(
-        &mut self,
-        resource_hash: Hash,
-        link: &Link,
-    ) -> Result<Option<Packet>, RnsError> {
-        let active_hash = self
-            .outgoing
-            .iter()
-            .find_map(|(hash, sender)| (sender.original_hash == resource_hash).then_some(*hash));
-        if let Some(active_hash) = active_hash {
-            let packet = build_link_packet(
-                link,
-                PacketType::Data,
-                PacketContext::ResourceInitiatorCancel,
-                active_hash.as_slice(),
-            )?;
-            let sender = self
-                .outgoing
-                .remove(&active_hash)
-                .expect("outgoing sender existed before cancel packet");
-            self.outgoing_segment_chains.remove(&sender.original_hash);
-            self.events.push(ResourceEvent {
-                hash: sender.original_hash,
-                link_id: sender.link_id,
-                kind: ResourceEventKind::OutboundCancelled,
-            });
-            return Ok(Some(packet));
-        }
-
-        if let Some(sender) = self.pending_outgoing.remove(&resource_hash) {
-            self.outgoing_segment_chains.remove(&sender.original_hash);
-            self.events.push(ResourceEvent {
-                hash: resource_hash,
-                link_id: sender.link_id,
-                kind: ResourceEventKind::OutboundCancelled,
-            });
-        }
-        Ok(None)
-    }
-
     pub fn drain_events(&mut self) -> Vec<ResourceEvent> {
         let events = std::mem::take(&mut self.events);
         self.publish_outbound_completions(&events);

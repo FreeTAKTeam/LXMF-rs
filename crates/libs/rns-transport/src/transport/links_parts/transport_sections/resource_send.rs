@@ -85,8 +85,11 @@ impl Transport {
     /// Once invoked, the receiver owns observation even if dispatch returns an error.
     ///
     /// Dropping the receiver does not cancel the transfer. This send operation is
-    /// not cancellation-safe after registration: drive it to completion or explicitly
-    /// cancel the registered Resource before abandoning its native lifecycle.
+    /// not cancellation-safe after registration: drive it to completion, or drop
+    /// this future and explicitly cancel the observed registration before abandoning
+    /// its native lifecycle. Do not keep driving a send concurrently with cancellation.
+    /// A pending registration may already have queued an advertisement, so cancellation
+    /// guarantees local native cleanup, not a cancel-frame handoff to the peer.
     pub async fn send_resource_observed_with_completion(
         &self,
         link_id: &AddressHash,

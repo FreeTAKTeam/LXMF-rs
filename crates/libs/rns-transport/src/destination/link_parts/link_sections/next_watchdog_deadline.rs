@@ -149,9 +149,23 @@ impl Link {
     }
 
     pub fn teardown(&mut self) -> Option<Packet> {
-        let packet =
-            if self.status.can_send_teardown() { self.teardown_packet().ok() } else { None };
-        if packet.is_some() {
+        match self.try_teardown() {
+            Ok(packet) => packet,
+            Err(error) => {
+                // Legacy callers require local closure even when no frame can be built.
+                log::warn!("link({}): teardown frame could not be built: {error}", self.id);
+                None
+            }
+        }
+    }
+
+    pub(crate) fn try_teardown(&mut self) -> Result<Option<Packet>, RnsError> {
+        let packet = if self.status.can_send_teardown() {
+            self.teardown_packet().map(Some)
+        } else {
+            Ok(None)
+        };
+        if matches!(packet, Ok(Some(_))) {
             self.note_outbound(PacketContext::LinkClose);
         }
         let reason = self.local_close_reason();
