@@ -70,12 +70,13 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-Record exact test names/results when qualified; no row is complete yet.
+The first two rows have the declared software lifecycle qualification below;
+other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
 | --- | --- | --- |
-| TCP server / Backbone | Strict/best-effort bind failures, accepted-child rotation/restart | IFAC named reload rollback, detach/reattach and unrelated traffic continuity |
-| TCP / Backbone client | Authenticated mixed TCP, connection/hot-apply tests | IFAC connection failure, configuration and reconnect |
+| TCP server / Backbone | Four declared native traces plus alias admission controls qualify applicable configured error, child rotation, named TCP rollback/reload/detach/attach, restart and unrelated traffic | Locally qualified for these software lifecycle traces; exact-`localhost` IPv6 wire coverage depends on a dual resolver environment. Whole-item integration/hosted CI remain pending |
+| TCP / Backbone client | Declared configured refusal, same-socket activation, live key change, reconnect, changed-key restart and exact unrelated traffic; preceding named constructor/hook traces | Locally qualified for these software lifecycle traces; whole-item integration/hosted CI remain pending |
 | UDP unicast | Daemon/mixed rejection, rotation/restart, failed replacement retry | Raw-record alias/type collisions and named-management composition |
 | UDP multicast | Production multicast routing helper and common codec | Authenticated ingress/egress, virtual peer rotation, replacement/restart |
 | Pipe | Authenticated cat roundtrip, wrong-key rejection, ordinary child cleanup | Configured startup failure, IFAC rotation/respawn/detach |
@@ -140,6 +141,77 @@ passes with signed IFAC output, old/new MTU, unrelated traffic and joined shutdo
 Both independent POST reviews approve; 31 library/646 binary daemon tests and
 focused gates pass. These qualify the two constructor tasks, with finite TCP
 family scenarios still pending.
+
+### Finite TCP and Backbone family cases
+
+Checkpoint `fcc1b32c04a52550eecda86ebfb19afa659eb3b8` closes constructor
+alignment. Main-agent implementation remains sequential. The next bounded task
+uses production configured startup, native IFAC/HDLC wire and the existing
+mutation/named-management owner; no new public management kind is introduced.
+Files are the existing hot-apply listener constructor, bootstrap policy test
+registration, one focused TCP-family test module and these status/task documents.
+
+| Declared case | Required trace |
+| --- | --- |
+| TCP named listener | Strict configured startup; old/new accepted children and live parent key rotation; occupied-listener named reload with attempted-key rejection and previous-key rollback; successful changed-key reload; detach/attach. Old children must reach EOF/removal at each retirement. Prefer-IPv6 and MTU survive public reconstruction. Exact unrelated TCP traffic/address persists throughout |
+| Configured TCP client | Bound, unlistened test-owned socket produces real failure/status; turn the same socket into a listener; authenticate first connection; live key change and EOF/reconnect retain policy and root; full configured restart changes key. Preserve unrelated traffic during the root's failure/live transitions |
+| Configured Backbone client | Same declared client trace through Backbone configuration, retaining its liveness/tuning. No public named-management extension; restart uses configured startup |
+| Configured Backbone listener | Strict occupied bind failure and joined cleanup; authenticated existing/new children across live parent key rotation; whole configured stop/restart with changed key, child EOF/removal and retained liveness/MTU. No public named-management extension |
+
+Each authentication phase sends wrong-key and plaintext frames before exact
+authenticated ingress/egress. Negative frames must increment native violations
+and cannot reach ingress; the matching packet then succeeds. All errors/status
+must exclude test credentials. Two-second packet/readiness/EOF barriers and
+eight-second native reconnect bounds remain fixed; two-second publication may
+use a three-second observation bound. Global configured restart deliberately
+retires/recreates all configured roots, while unrelated-root continuity is
+asserted across single-root transitions. No retry-until-green qualifies a case.
+The public listener preference omission must first produce a focused native red,
+then use its existing builder option. Other behavior changes require a reproduced
+failure before a minimal existing-owner fix. Family rows remain pending until
+the complete declared traces, focused gates and independent POST reviews pass.
+
+PRE reviews require the unchanged ten-second cleanup join bound, including an
+already sleeping failed listener worker. The preference red uses `localhost`
+after independently requiring both loopback resolver candidates and a successful
+IPv6 loopback bind. Connections must actually reach IPv6 after public rollback,
+reload and reattach; status alone cannot establish selection. Missing environment
+prerequisites are explicit failures/unqualified evidence. Public/named
+`tcp_server` retains its existing rejection of `i2p_tunneled=true` before
+retirement; these traces do not extend that management capability or claim every
+listener constructor option is publicly supported.
+
+The IPv6 control also reaches the existing `localhost`-to-IPv4 rewrite in public
+bind preparation. Preserve native resolver preference/fallback and existing bind
+collision rejection when correcting it; do not hard-code IPv6 as a new required
+address family. Public Apply commits the listener's live key rotation before
+named rollback snapshots its record. Native-only rotation is appropriate for the
+configured Backbone case and cannot stand in for that managed-record commit.
+
+The first cohort records fixture failures before product qualification:
+`localhost` is IPv4-only in this machine's hosts file, though `::1` binds and
+`localhost.localdomain` resolves to both loopbacks. The fixed resolver fixture
+chooses the first dual-loopback result from `[localhost, localhost.localdomain]`,
+still requiring native IPv6 connectivity. Separate production bind-preparation
+and both-order alias-collision controls cover preferred `localhost` without
+changing system configuration. Exact dual-`localhost` wire evidence remains
+environment-specific; a hosted dual-`localhost` environment uses it directly.
+Status assertions observe the existing publication tick; fresh-manager restarts
+may reuse native address hashes and instead require prior tree retirement, a new
+transport identity and fresh authenticated connections. Configured listener
+strictness uses its existing panic policy, avoiding the unrelated client's
+separate CLI preflight probe. These fixture corrections do not change product
+timing or turn a failed prerequisite into a pass. The native named trace also
+requires rejected tunneled-listener reload to preserve its active root/traffic.
+After rollback, the named trace also occupies the IPv6 candidate at a new port
+and requires native IPv4 fallback, authenticated traffic and old-child retirement
+before returning to an available IPv6 endpoint. Resolver selection requires all
+returned candidates to be loopback addresses. Both PRE reviewers approve this
+bounded refinement and the cohesive listener helper extraction if size requires it.
+Correctness POST adds both-order expanded/bracketed IPv6 loopback and wildcard
+controls: textual `::1` alone is not a numeric bind identity. Canonical numeric
+endpoint keys and the existing conservative wildcard-port guard must cover those
+aliases before queueing. This is the same bind-admission owner, without DNS I/O.
 
 ## Duplicate and persistence contract
 

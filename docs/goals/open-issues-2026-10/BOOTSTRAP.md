@@ -3,7 +3,8 @@
 This refines the remaining family gate in [TRANSPORT.md](TRANSPORT.md) after
 `a0772c1d`; it does not add another PR or change the numbered plan. The three
 discovery process cases and finite deeper relay matrix are already qualified.
-No whole-family row is yet complete.
+The first two TCP/Backbone rows now have the declared software lifecycle evidence
+below. Other family rows and whole-item integration remain open.
 
 ## Concrete gap and owner
 
@@ -74,7 +75,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
-| Family composition | Qualify the finite twenty-row inventory using its applicable native/software backends | Managed streams/UDP/Pipe, PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells; failed/degraded outcomes remain explicit |
+| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first two TCP/Backbone rows have the declared software trace qualification below. Remaining UDP/Pipe, PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
 Implementation stays in the main agent. PRE, correctness and maintainability POST
@@ -228,3 +229,47 @@ while a following test-owned SAM greeting waits; it proves first control lookup,
 not serial/radio delivery or I2P interoperability. No physical/RF/public network
 is used. Broad gates and final checkpoint results are recorded in PROGRESS.md;
 the twenty-family matrix and whole-item integration remain open.
+
+## TCP and Backbone software lifecycle evidence
+
+Four declared production-startup/native wire cases in
+`tests/bootstrap_tcp_family.rs` now pass:
+
+- `tcp_named_listener_ifac_rotation_rollback_reload_and_reattach_preserve_ipv6`
+- `configured_tcp_client_ifac_refusal_live_rotation_reconnect_and_restart`
+- `configured_backbone_client_ifac_refusal_live_rotation_reconnect_and_restart`
+- `configured_backbone_listener_ifac_failure_child_rotation_and_restart`
+
+Each authentication phase rejects wrong-key and plaintext frames on its exact
+native root/child before admitting the matching authenticated packet and emitting
+exact authenticated HDLC bytes. TCP public Apply commits live key rotation before
+named rollback snapshots it. Existing/new children inherit that policy. A real
+occupied listener rejects replacement, old children reach EOF/removal, and the
+restored child rejects the attempted key while accepting the committed key.
+Successful reload, detach/attach, native refusal/reconnect and full configured
+restart use the same owners. Single-root changes preserve the unrelated TCP
+address and exact traffic. Full restart intentionally retires all roots and
+proves a fresh Transport identity/connection; native addresses can repeat in a
+fresh manager. Status/error assertions exclude test credentials and cleanup keeps
+the existing ten-second join bound.
+
+Native preference forwarding and exact `localhost` bind preparation had separate
+pre-fix reds. The final wire trace selects `localhost.localdomain` locally because
+this machine's `localhost` is IPv4-only; it requires both loopback families, an
+independent IPv6 bind and actual IPv6 connections after rollback/reload/reattach.
+Occupying the preferred IPv6 candidate at another port proves native IPv4 fallback.
+A dual-`localhost` environment uses that first fixed candidate instead. This is
+dual-host IPv6 wire evidence plus exact-`localhost` preparation evidence, not a
+claim that the local hosts file supplies both families for `localhost`.
+
+The minimal public listener correction forwards its existing preference flag,
+retains hostname resolution when preferred, and preserves the default IPv4 alias.
+Numeric endpoint display and the existing conservative wildcard guard now cover
+tested compressed/bracketed/expanded IPv6 aliases before queueing. These extra
+controls reproduce the independent review's collision finding before passing.
+The existing tunneled-listener public rejection still preserves the active root
+and traffic. The cohesive listener helper extraction passed 36 existing hot-apply
+cases before behavior changed. Four native traces and three alias controls pass;
+both independent source POST reviews approve. PROGRESS.md records exact gate
+results and retained fixture failures. Other family rows and whole-item evidence
+remain open; no physical/RF/public-network qualification is inferred.

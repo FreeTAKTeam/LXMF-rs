@@ -5,6 +5,13 @@ use rns_transport::iface::{InterfaceManager, InterfaceMode};
 use std::io;
 use std::time::Duration;
 
+#[cfg(test)]
+pub(crate) use super::record_tcp_listener::tcp_server_bind_addr_with_device_resolver;
+use super::record_tcp_listener::{
+    host_is_unspecified, tcp_server_bind_candidates, tcp_server_hot_apply_host,
+};
+pub(crate) use super::record_tcp_listener::{tcp_server_bind_addr, tcp_server_client_mtu};
+
 use super::record_settings::interface_record_shared_config;
 use super::record_settings::{setting_bool, setting_f64, setting_i64, setting_str, setting_u64};
 
@@ -22,21 +29,24 @@ pub(crate) fn validate_hot_apply_uniqueness(
         }
         if record.kind == "tcp_server" {
             let bind_addr = tcp_server_bind_addr(record)?;
-            if record.enabled && !seen_tcp_server_bind_addresses.insert(bind_addr.clone()) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("duplicate tcp_server bind address '{bind_addr}'"),
-                ));
-            }
             if record.enabled {
+                for candidate in tcp_server_bind_candidates(record, &bind_addr) {
+                    if !seen_tcp_server_bind_addresses.insert(candidate) {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("duplicate tcp_server bind address '{bind_addr}'"),
+                        ));
+                    }
+                }
                 let port = record.port.ok_or_else(|| {
                     io::Error::new(
                         io::ErrorKind::InvalidInput,
                         "tcp_server hot-apply requires port",
                     )
                 })?;
-                let host = tcp_server_hot_apply_host(record.host.as_deref().unwrap_or_default());
-                if host_is_ipv4_unspecified(host) {
+                let host =
+                    tcp_server_hot_apply_host(record.host.as_deref().unwrap_or_default(), false);
+                if host_is_unspecified(host) {
                     if !seen_tcp_server_any_bind_ports.insert(port) {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidInput,
@@ -174,77 +184,6 @@ pub(crate) fn hot_apply_interface_record_changed(
 
 pub(crate) fn tcp_endpoint(record: &InterfaceRecord) -> Option<String> {
     Some(format!("{}:{}", record.host.as_ref()?, record.port?))
-}
-
-pub(crate) fn tcp_server_bind_addr(record: &InterfaceRecord) -> Result<String, io::Error> {
-    tcp_server_bind_addr_with_device_resolver(
-        record,
-        crate::bootstrap::resolve_tcp_listener_device_bind_host,
-    )
-}
-
-pub(crate) fn tcp_server_bind_addr_with_device_resolver<F>(
-    record: &InterfaceRecord,
-    resolve_device_host: F,
-) -> Result<String, io::Error>
-where
-    F: Fn(&str, bool) -> Result<String, String>,
-{
-    let host = if let Some(host) =
-        record.host.as_deref().map(str::trim).filter(|value| !value.is_empty())
-    {
-        host.to_string()
-    } else if let Some(device) = setting_str(record, "device") {
-        resolve_device_host(device, setting_bool(record, "prefer_ipv6").unwrap_or(false)).map_err(
-            |err| {
-                io::Error::new(io::ErrorKind::InvalidInput, format!("tcp_server hot-apply {err}"))
-            },
-        )?
-    } else {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "tcp_server hot-apply requires host or device",
-        ));
-    };
-    if setting_bool(record, "i2p_tunneled").unwrap_or(false) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "tcp_server hot-apply does not support i2p_tunneled records",
-        ));
-    }
-    let port = record.port.ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "tcp_server hot-apply requires port")
-    })?;
-    Ok(format_endpoint(tcp_server_hot_apply_host(host.as_str()), port))
-}
-
-pub(crate) fn tcp_server_client_mtu(record: &InterfaceRecord) -> Option<usize> {
-    setting_u64(record, "mtu").and_then(|value| usize::try_from(value).ok())
-}
-
-fn format_endpoint(host: &str, port: u16) -> String {
-    let host = host.trim();
-    let host = host.strip_prefix('[').and_then(|value| value.strip_suffix(']')).unwrap_or(host);
-    if host.contains(':') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
-
-fn host_is_ipv4_unspecified(host: &str) -> bool {
-    let host = host.trim();
-    host.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_unspecified())
-}
-
-fn tcp_server_hot_apply_host(host: &str) -> &str {
-    let host = host.trim();
-    let host = host.strip_prefix('[').and_then(|value| value.strip_suffix(']')).unwrap_or(host);
-    if host.eq_ignore_ascii_case("localhost") {
-        "127.0.0.1"
-    } else {
-        host
-    }
 }
 
 pub(crate) fn udp_bind_and_forward_addr(

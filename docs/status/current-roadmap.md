@@ -138,7 +138,15 @@ replacement/continuity and failed listener retry controls pass. Public/named TCP
 clients now reuse schema-validated startup options and preserve initial/reconnect
 tunnel hooks through replacement and failed-reload rollback. Five option-only
 native replacements and signed/authenticated rollback/reconnect traffic pass;
-full daemon validation passes 31 library/646 binary tests. Remaining carrier
+full daemon validation passes 31 library/646 binary tests. Four subsequent
+TCP/Backbone native lifecycle traces qualify the first two declared software
+family rows: connection failure/reconnect, existing/new child key rotation,
+named TCP rollback/reload/detach/attach, changed-key configured restart and exact
+unrelated traffic. Listener preference forwarding, native IPv4 fallback and
+tested numeric/wildcard bind collisions are covered; local IPv6 wire evidence
+uses a dual-loopback hostname with separate exact-`localhost` preparation controls.
+Both independent source reviews approve, and final daemon validation passes
+31 library/653 binary tests. Remaining carrier
 lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

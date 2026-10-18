@@ -1,3 +1,4 @@
+use super::interface_hot_apply_parts::record_settings::setting_bool;
 use super::*;
 
 pub(super) async fn spawn_trusted_stream(
@@ -74,7 +75,8 @@ pub(super) async fn spawn_hot_apply_interface(
                     return None;
                 }
             };
-            let mut adapter = TcpServer::new(bind_addr, iface_manager.clone());
+            let mut adapter = TcpServer::new(bind_addr, iface_manager.clone())
+                .with_prefer_ipv6(setting_bool(record, "prefer_ipv6").unwrap_or(false));
             if let Some(client_mtu) = tcp_server_client_mtu(record) {
                 adapter = adapter.with_client_mtu(client_mtu);
             }

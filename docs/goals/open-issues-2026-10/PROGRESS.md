@@ -2034,3 +2034,73 @@ validation only; terminal results and final-head review/CI/merge remain required
   module to preserve the 1,200-line test limit. These are constructor/ownership
   controls; finite carrier composition, whole-item integration, PR, hosted CI and
   merge remain open.
+
+## Item 4 TCP and Backbone family software traces
+
+- Checkpoint `fcc1b32c04a52550eecda86ebfb19afa659eb3b8` completes the preceding
+  TCP client constructor/hook cutover. The finite next task keeps the existing
+  startup/mutation/native ownership paths, public named-kind restrictions and
+  one eventual item-4 PR. BOOTSTRAP.md records all four exact test names.
+- Configured TCP and Backbone clients now have a composed native trace from a
+  bound-but-unlistened socket's failure/status through listening on that same
+  socket, wrong-key/plaintext rejection, exact authenticated ingress/egress,
+  live key rotation, EOF/reconnect and changed-key configured restart. Backbone
+  listener composition includes strict occupied-bind failure, retained sanitized
+  status/join, existing/new child rotation and changed-key restart. Single-root
+  transitions preserve the unrelated TCP address and exact bidirectional traffic;
+  whole configured restart deliberately recreates all roots.
+- The named TCP listener trace commits key rotation through public Apply, rejects
+  unsupported tunneled reload without retiring the root, fails a real occupied
+  replacement and authenticates the restored committed key while rejecting the
+  attempted key. Successful reload, detach/attach, old-child EOF/removal and
+  unrelated traffic complete through actual management replies. Preferred IPv6
+  connections work after rollback/reload/attach; an occupied IPv6 candidate also
+  proves native IPv4 fallback. MTU and the native preference/liveness status stay
+  correct. Two-second packet/EOF, eight-second reconnect, three-second publication
+  and existing ten-second join bounds remain unchanged.
+- Initial `/tmp/lxmf-item4-tcp-family-red.log` contains fixture failures rather
+  than production regressions: local `localhost` has no IPv6 candidate, initial
+  status awaited publication, and fresh managers can reuse their address hashes.
+  `...-configured-fixture-corrected.log` then exposes the fixture accepting a CLI
+  preflight/dummy connection. Listener-only strictness now uses existing config
+  policy. All three configured traces pass in
+  `...-configured-policy-corrected.log` (10.09 seconds). Fresh-manager evidence
+  requires old-tree retirement, a new Transport identity and fresh authenticated
+  connections, rather than different manager-local hashes.
+- The fixed ordered resolver candidates are `localhost`, then
+  `localhost.localdomain`; both families must be loopback-only, and an independent
+  IPv6 bind is mandatory. Locally the second name supplies the dual-host wire
+  trace. Exact-`localhost` preparation remains a separate control; there is no
+  local dual-`localhost` wire claim or resolver configuration mutation.
+- Two genuine production controls fail in `...-localhost-native-v2-red.log`:
+  forced IPv4 despite preferred localhost, and missing IPv6 alias collision
+  rejection. The named trace reaches rollback and fails on the missing native
+  preference flag in `...-preference-native-v2-red.log`; resolver ordering still
+  permits its IPv6 connection, so this is a forwarding/status defect, not a claim
+  that that connection failed. The initial versions of these two logs retain a
+  test import compilation failure and are not runtime evidence.
+- Cohesive listener bind/MTU helpers first move without behavior changes; 36
+  existing hot-apply cases pass in `...-listener-extraction.log`. The minimal
+  correction forwards the existing preference option, keeps preferred localhost
+  as a hostname for native fallback, and preserves its default IPv4 alias.
+  Correctness POST then finds expanded IPv6 and wildcard collisions. Both new
+  assertions fail in `...-review-collision-red.log` (one pass/two fail); numeric
+  endpoint canonicalization and the existing both-family wildcard-port guard
+  fix them. Final controls pass three cases in `...-review-collision-green.log`;
+  all four native traces pass in `...-native-reviewed.log` (10.10 seconds).
+- Both independent source POST reviews approve. The earlier broad suite passes
+  31 library/652 binary tests in `...-daemon.log`; `...-clippy.log` retains the
+  test-only device-resolver reexport warning, fixed with cfg(test). The next
+  653-test suite passes, but `...-architecture.log` flags the test module's
+  root-directory classification. It now lives in the existing tests directory;
+  no limit or allowance changes. Final daemon validation passes 31 library and
+  653 binary tests in `...-daemon-approved.log` (30.69 seconds for binary tests).
+  Final all-target/all-feature Clippy and architecture pass in
+  `...-clippy-approved.log` and `...-architecture-approved.log`; default check,
+  diagnostics scanner, Cargo/include formatting, boundaries, module size and
+  task links/diff checks pass with their corresponding suffixes. Existing
+  manifest/optional BLE/profile-helper warnings remain baseline output.
+- The first two software family inventory rows now have their declared lifecycle
+  evidence. Other carrier rows, whole-item integration/release checks, one PR,
+  exact-head hosted CI and merge remain open. No physical/RF/public-network or
+  whole-issue qualification is inferred from these traces.

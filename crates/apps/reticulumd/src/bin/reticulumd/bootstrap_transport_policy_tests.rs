@@ -13,6 +13,9 @@ mod restore_replacement;
 #[path = "bootstrap_tcp_client_options_tests.rs"]
 mod tcp_client_options;
 
+#[path = "tests/bootstrap_tcp_family.rs"]
+mod tcp_family;
+
 async fn start_fixture(
     args: &Args,
     config: &DaemonConfig,

@@ -1065,3 +1065,5 @@ fn hot_apply_queue_is_bounded_and_reports_pressure() {
     assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
     assert!(err.to_string().contains("interface mutation queue is full"));
 }
+#[path = "interface_hot_apply/tcp_listener_options.rs"]
+mod tcp_listener_options;
