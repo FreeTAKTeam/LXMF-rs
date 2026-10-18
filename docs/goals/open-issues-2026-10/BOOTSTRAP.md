@@ -3,8 +3,9 @@
 This refines the remaining family gate in [TRANSPORT.md](TRANSPORT.md) after
 `a0772c1d`; it does not add another PR or change the numbered plan. The three
 discovery process cases and finite deeper relay matrix are already qualified.
-The first five TCP/Backbone/UDP/Pipe rows now have the declared software lifecycle
-evidence below. Other family rows and whole-item integration remain open.
+The first eight TCP/Backbone/UDP/Pipe/Serial/KISS rows now have the declared
+software lifecycle evidence below. Other family rows and whole-item integration
+remain open.
 
 ## Concrete gap and owner
 
@@ -75,7 +76,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
-| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first five TCP/Backbone/UDP/Pipe rows have the declared software trace qualification below. Remaining PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
+| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first eight TCP/Backbone/UDP/Pipe/Serial/KISS rows have the declared software trace qualification below. Remaining Auto/SAM, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
 Implementation stays in the main agent. PRE, correctness and maintainability POST
@@ -334,6 +335,41 @@ production defaults and declared deadlines remain unchanged.
 
 Both source POST roles approve, with no production behavior changes. Initial
 native validation passes 2/2 in 4.03 seconds; full daemon validation passes 31
-library/664 binary tests and focused gates. Fifteen other family rows and
+library/664 binary tests and focused gates. Other family rows and
 whole-item integration/hosted CI/merge remain open. This is Linux software process
 evidence, with no Windows or physical-carrier qualification.
+
+## Serial and KISS software lifecycle evidence
+
+Four Linux-only cases in `tests/bootstrap_serial_family.rs` pass:
+
+- `configured_serial_ifac_open_failure_rotation_reopen_and_restart`
+- `configured_kiss_ifac_open_failure_rotation_reopen_and_restart`
+- `configured_ax25_kiss_ifac_open_failure_rotation_reopen_and_restart`
+- `configured_kiss_tcp_ifac_refusal_rotation_reconnect_and_restart`
+
+The PTY cases start from an absent owned alias and real native open errors. An
+owned raw PTY permits same-root activation, exact authenticated first traffic and
+native live key rotation. Alias removal precedes closing its master; a new error
+must occur before a fresh PTY is published atomically. Retained-root reopen keeps
+the rotated key. KISS TCP instead uses an unlistened bound socket for refusal,
+then listens on that same socket and proves retained policy across EOF/reconnect.
+
+Every authentication phase rejects/counts wrong-key and plaintext input before
+exact matching traffic, with the carrier's eight-byte default. Fixed independent
+initialization bytes are consumed on every KISS open/connection/restart; AX.25
+data has the pinned APZRNS/N0CALL-0 sixteen-byte UI header. This does not qualify
+AX.25 address validation. All cases perform a changed-key configured restart,
+native MTU 512/1024 checks, sanitized status and joined cleanup. Unrelated TCP
+address/traffic persists during single-root transitions. Full restart proves old
+tree retirement and a fresh Transport identity rather than new manager hashes.
+
+The Python PTY child owns the master and closes its extra slave descriptor. The
+Rust fixture keeps one buffered stdout reader across the child's path greeting
+and raw traffic. Expected EIO
+does not block stdin EOF; output EOF and successful child wait prove fixture
+cleanup. No helper framing/crypto, unsafe Rust, new dependency, public API or
+production behavior change is introduced. Both source POST reviews approve;
+four final native cases pass in 6.08 seconds, and full daemon validation passes
+31 library/668 binary tests plus focused gates. Twelve other family rows and
+whole-item integration/hosted CI/merge remain open; this is Linux software evidence.

@@ -2239,3 +2239,46 @@ validation only; terminal results and final-head review/CI/merge remain required
   others, whole-item integration/release checks, one PR, exact-head hosted CI and
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
+
+## Item 4 Serial and KISS software family traces
+
+- Checkpoint `61cf99e0c79793a28abdbaec2edfc7d51fc888ca` records Pipe composition.
+  Both PRE roles approve four Linux software cases for three inventory rows.
+  Main-agent implementation adds one 506-line module and Linux registration,
+  reusing configured bootstrap, native retry/IFAC owners and unrelated TCP helpers.
+  No production behavior/default/API/dependency changes or unsafe Rust.
+- Serial, KISS and AX.25 KISS begin with absent owned device aliases and real
+  native open-error status. Raw owned PTYs permit same-root activation, eight-byte
+  IFAC authentication and live rotation. Closing the old master requires a new
+  open-error increment before publishing a fresh PTY; reopen retains the key.
+  KISS TCP instead uses a bound, unlistened socket's refusal, then listens on the
+  same socket and retains its root/key through EOF/reconnect. Every phase counts
+  wrong-key/plaintext rejection before exact authenticated ingress/egress.
+- Fixed independent KISS initialization bytes are consumed on every open,
+  reconnect and restart. AX.25 uses the pinned APZRNS/N0CALL-0 sixteen-byte UI
+  header around IFAC data; no address-validation qualification is claimed. Full
+  changed-key configured restart proves old-tree retirement, fresh Transport
+  identity, native MTU 512/1024, sanitized status and joined cleanup. Single-root
+  transitions retain unrelated TCP addresses and exact traffic.
+- The test-owned Python helper closes its extra slave descriptor, relays raw
+  bytes with complete writes and preserves buffered greeting/wire bytes. Expected
+  EIO remains responsive to stdin EOF; stdout EOF and successful Child wait prove
+  helper cleanup. Alias removal is tightened to precede master closure while the
+  authenticated native descriptor is open, preventing another concurrent test's
+  reused slave name from being opened by a retry.
+- `/tmp/lxmf-item4-serial-family-initial.log` retains a fixture reader/writer
+  tuple compilation error. Accepting the existing capabilities by value handles
+  both borrowed PTY streams and TCP halves; no new adapter or behavior change.
+  The first native run passes 4/4 in `...-native-initial.log` (6.07 seconds), and
+  final alias isolation passes 4/4 in `...-alias-isolated.log` (6.08 seconds).
+  Both independent source POST reviews approve. No production defect/pre-fix
+  runtime red is claimed.
+- Full daemon validation passes 31 library and 668 binary cases in
+  `...-daemon.log` (32.61 seconds for binary tests). All-target/all-feature daemon
+  Clippy, default check, architecture, diagnostics scanner, Cargo formatting,
+  boundaries and module size pass with corresponding
+  `/tmp/lxmf-item4-serial-family-` suffixes. Existing baseline warnings remain.
+- Eight of twenty software family rows now have their declared evidence. Twelve
+  others, whole-item integration/release checks, one PR, exact-head hosted CI and
+  merge remain open. This is Linux software evidence, with no Windows, hardware,
+  RF, public-network or whole-issue completion inferred.

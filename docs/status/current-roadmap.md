@@ -166,7 +166,14 @@ key rotation, exit/respawn, named failed-reload rollback, detach/attach and nati
 MTU. Direct-child identity, socket EOF and /proc disappearance prove reaping;
 unrelated traffic and owned shutdown persist. Both source reviews and focused
 gates pass with 31 library/664 binary daemon tests, without production changes.
-Five of twenty declared software family rows are locally qualified. Remaining
+Four Linux Serial/KISS cases then cover real device-open/refused-connect failures,
+same-root key rotation and reopen/reconnect, exact independent initialization/UI
+framing, changed-key configured restart, native MTU and unrelated traffic. Raw
+PTY helpers are explicitly reaped; removing owned aliases prevents retries from
+opening another test's reused slave name.
+Both source reviews and focused gates pass with 31 library/668 binary daemon tests,
+without production changes. Eight of twenty declared software family rows are
+locally qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

@@ -23,6 +23,10 @@ mod udp_family;
 #[path = "tests/bootstrap_pipe_family.rs"]
 mod pipe_family;
 
+#[cfg(target_os = "linux")]
+#[path = "tests/bootstrap_serial_family.rs"]
+mod serial_family;
+
 async fn start_fixture(
     args: &Args,
     config: &DaemonConfig,

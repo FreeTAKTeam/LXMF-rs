@@ -70,7 +70,7 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-The first five rows have the declared software lifecycle qualification below;
+The first eight rows have the declared software lifecycle qualification below;
 other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
@@ -80,9 +80,9 @@ other rows remain open. Record exact test names/results when qualified.
 | UDP unicast | Declared configured/named native trace qualifies committed live key rotation, actual failed bind/owned cleanup, authenticated rollback/reload/detach/attach and unrelated traffic; preceding raw IFAC/SDK guards remain inputs | Locally qualified for this software lifecycle trace; whole-item integration/hosted CI remain pending |
 | UDP multicast | Declared native loopback group egress, signed unicast peer ingress, existing/new peer key rotation, peer-isolated replies and same-destination route rebinding after changed-key replacement/restart | Locally qualified for this software lifecycle trace; native group ingress is not claimed. Whole-item integration/hosted CI remain pending |
 | Pipe | Two declared Linux native-process traces qualify missing-executable failure/repair, default IFAC authentication, live rotation/respawn, named rollback/reload/detach/attach, effective MTU, unrelated traffic and child reaping | Locally qualified for these Linux software lifecycle traces; whole-item integration/hosted CI remain pending |
-| Serial | Authenticated production stream, open/write failure primitives | Configured PTY open/error/reopen and changed-key restart |
-| KISS / AX.25 serial | Authenticated worker and pinned Python PTY exchange | Configured error/reopen/restart, preserving AX.25 framing |
-| KISS TCP | Shared authenticated KISS stream | Actual initial failure/reconnect with IFAC retained |
+| Serial | Declared Linux PTY trace qualifies native open failure, same-root activation/key rotation/reopen, exact authenticated HDLC, changed-key configured restart, native MTU and unrelated traffic | Locally qualified for this Linux software trace; whole-item integration/hosted CI remain pending |
+| KISS / AX.25 serial | Two declared Linux PTY traces qualify native open failure/rotation/reopen/restart, independent initial command bytes and APZRNS/N0CALL-0 UI framing, exact IFAC traffic, native MTU and cleanup | Locally qualified for these Linux software traces; AX.25 address validation is not claimed. Whole-item integration/hosted CI remain pending |
+| KISS TCP | Declared configured refusal/same-socket activation, initial command bytes, native live key rotation/reconnect, changed-key restart and exact authenticated/unrelated traffic | Locally qualified for this software trace; whole-item integration/hosted CI remain pending |
 | I2P outgoing | Fake-SAM virtual peer authentication/rotation | SAM failure/reconnect, daemon status and cleanup |
 | I2P incoming | Authenticated accepted stream | Fake-SAM accept-loop failure/restart and accepted-child rotation |
 | AutoInterface | Authenticated peer transport bridge, owned-port restart | Configured activation failure/restart and live virtual-child policy |
@@ -345,9 +345,84 @@ Both declared cases pass on their first native run (2/2, 4.03 seconds), without
 production changes. Source correctness and maintainability POST reviews approve.
 The full daemon suite passes 31 library/664 binary tests, and all-target/all-feature
 Clippy, default check, architecture, diagnostics, formatting, boundaries and module
-size pass. PROGRESS.md records exact logs. Five of twenty family rows are now
-locally qualified for their declared traces; fifteen others and whole-item
+size pass. PROGRESS.md records exact logs. The Pipe row is locally qualified
+for its declared traces; other family rows and whole-item
 integration, one PR, exact-head hosted CI and merge remain open.
+
+### Finite Serial and KISS family cases
+
+Checkpoint `61cf99e0` qualifies Pipe. The next sequential main-agent task covers
+three existing inventory rows with four native software cases. Inputs are the
+current Serial/KISS/KISS-TCP workers, configured builders, IFAC preparation and
+the existing KISS fake-PTY fixture shape. Allowed files are a focused Linux daemon
+test module/registration, current serial/KISS/mutation owners only for reproduced
+defects, and task/status documents. Other families, new dependencies, Rust unsafe,
+new public management kinds, protocol defaults and physical/radio devices are
+forbidden. Both read-only PRE/POST roles gate this checkpoint; no extra PR.
+
+| Declared case | Required trace |
+| --- | --- |
+| `configured_serial_ifac_open_failure_rotation_reopen_and_restart` | Missing owned device alias produces actual open failure/status while prepared IFAC remains installed. Publish a test-owned raw PTY slave through that alias; automatic reopen on the same root authenticates exact HDLC ingress/egress. Native live key rotation persists through master closure/open failure and a new PTY behind the same alias. Full configured changed-key restart authenticates fresh traffic and retires the old tree |
+| `configured_kiss_ifac_open_failure_rotation_reopen_and_restart` | Same trace through configured KISS serial, with exact initial KISS command frames on initial open/reopen/restart and authenticated data framing |
+| `configured_ax25_kiss_ifac_open_failure_rotation_reopen_and_restart` | Same trace through AX.25 KISS, preserving the pinned APZRNS/N0CALL-0 sixteen-byte UI header around IFAC data, escaping and native status |
+| `configured_kiss_tcp_ifac_refusal_rotation_reconnect_and_restart` | A bound, unlistened owned TCP socket produces actual refusal/status; listening on that same socket permits native KISS connection, initial command frames and authenticated traffic. Native key rotation persists through EOF/reconnect on the same root. Full changed-key configured restart authenticates fresh traffic and retires the old tree |
+
+All authentication phases count/reject wrong-key/plaintext frames before matching
+ingress and exact egress. Native manager/status verify MTU 512, then restart MTU
+1024, current IFAC and sanitized diagnostics. Preserve unrelated TCP address and
+exact traffic during single-root failure/rotation/reopen; configured restart
+deliberately recreates all roots and requires old-tree retirement/fresh Transport
+identity. Native Serial/KISS eight-byte tag defaults remain authoritative. Keep
+two-second packet/EOF barriers, three-second status/open/reconnect observation and
+ten-second owned native cleanup. Fixture backoff is explicitly 50/100 ms without
+changing production defaults; no retry-until-green or ingress/cache bypass.
+
+The Linux PTY observer is a test-owned Python process using openpty/setraw. It
+reports its slave path once, closes its extra slave descriptor and relays raw
+bytes between master and its stdin/stdout. Reuse the existing fake-PTY EIO handling
+while no native slave is open; it performs no framing, crypto or policy. The Rust
+test retains the child handle with kill-on-drop and explicitly closes stdin,
+observes stdout EOF and awaits successful child exit. Atomically replace only a
+test-owned symlink for activation/reopen. A new PTY path may reuse its predecessor's
+name; native failure, helper lifetime and fresh wire traffic establish the new
+carrier generation. No process-wide signals, system TTY settings or hardware.
+Reuse bootstrap/unrelated TCP helpers and a local reader/writer wire helper,
+without introducing a shared fixture framework or process supervisor.
+
+The pinned target's Serial/KISS/AX25KISS DEFAULT_IFAC_SIZE and AX25 destination
+constructor were checked in their specific interface files. PTY behavior follows
+[Python pty](https://docs.python.org/3/library/pty.html),
+[Python tty](https://docs.python.org/3/library/tty.html) and
+[Linux pty(7)](https://man7.org/linux/man-pages/man7/pty.7.html).
+
+Maintainer PRE approves with explicit new open_errors increments after master
+closure before replacement. Greeting reads must preserve following bytes even if
+a reused PTY path permits early native output. Helper stdin/EOF stays responsive
+during EIO, relay writes complete, fixed KISS initialization frames and the
+APZRNS/N0CALL-0 header are independently asserted, and negative AX.25 frames keep
+valid outer framing so they exercise IFAC rejection. Native policy/MTU and helper
+EOF/child-wait observations retain their declared bounds.
+
+Correctness PRE also approves. Keep CLI strict startup disabled so real workers
+see missing devices/refused connections. One buffered stdout reader spans the
+path greeting and raw wire; never discard prefetched bytes. Remove the owned alias
+while the authenticated native descriptor is still open, then close its PTY
+master and observe the new open failure before creating a replacement PTY. This
+prevents retries from opening another concurrent test's reused slave name; publish
+the new ready target atomically. AX.25 wire checks do not qualify address validation.
+
+The initial build retains a fixture tuple type error, corrected by accepting the
+existing reader/writer capabilities by value (including borrowed PTY handles).
+The first native run passes four cases in 6.07 seconds. Alias removal is then
+tightened to precede master closure, preventing retries from opening another
+parallel test's reused slave name; the final run passes four cases in 6.08 seconds.
+No production change or pre-fix runtime defect is claimed. Both source POST roles
+approve. Full daemon validation passes 31 library/668 binary tests, and focused
+Clippy/default/architecture/diagnostics/format/boundary/size gates pass.
+The three Serial/KISS inventory rows are locally qualified for these declared
+Linux software traces. Eight of twenty rows are now qualified; twelve other
+families, whole-item integration, one PR, exact-head hosted CI and merge remain
+open. Physical behavior and AX.25 address validation remain unqualified.
 
 ### Raw IFAC type preparation for UDP composition
 
