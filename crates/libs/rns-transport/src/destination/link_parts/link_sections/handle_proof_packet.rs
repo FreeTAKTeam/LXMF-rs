@@ -6,6 +6,7 @@ impl Link {
             && matches!(packet.context, PacketContext::None | PacketContext::LinkProof)
         {
             if let Ok(hash) = self.validate_packet_proof(packet) {
+                self.requests.packet_acknowledged(self.id, hash);
                 self.note_inbound(packet.context);
                 if let Some(pending) = self.channel_pending.remove(&hash) {
                     self.channel_states.insert(pending.sequence, ChannelMessageState::Delivered);

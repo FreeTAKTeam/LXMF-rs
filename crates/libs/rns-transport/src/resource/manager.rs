@@ -19,6 +19,21 @@ impl ResourceManager {
         events
     }
 
+    pub(crate) fn pending_event_link_id(&self) -> Option<AddressHash> {
+        self.events.first().map(|event| event.link_id)
+    }
+
+    /// Keep events manager-owned until the native Link owner is locked. Draining,
+    /// applying native outcomes and legacy publication must not yield.
+    pub(crate) fn drain_link_events(&mut self, link_id: AddressHash) -> Vec<ResourceEvent> {
+        let (selected, remaining): (Vec<_>, Vec<_>) = std::mem::take(&mut self.events)
+            .into_iter()
+            .partition(|event| event.link_id == link_id);
+        self.events = remaining;
+        self.publish_outbound_completions(&selected);
+        selected
+    }
+
     #[cfg(test)]
     pub(crate) fn has_no_outbound_state(&self) -> bool {
         self.pending_outgoing.is_empty() && self.outgoing.is_empty()
@@ -64,121 +79,6 @@ impl ResourceManager {
         }
     }
 
-    fn handle_advertisement_into(
-        &mut self,
-        packet: &Packet,
-        link: &mut Link,
-        responses: &mut Vec<Packet>,
-        interface_mtu: usize,
-    ) {
-        let Ok(advertisement) = ResourceAdvertisement::unpack(packet.data.as_slice()) else {
-            log::debug!("[resource-diag] reject_advertisement unpack_failed");
-            return;
-        };
-        log::debug!(
-            "[resource-diag] advertisement link={} hash={} transfer_size={} data_size={} parts={} flags=0x{:02x} request={} response={} metadata={} compressed={} encrypted={}",
-            link.id(),
-            advertisement.hash,
-            advertisement.transfer_size,
-            advertisement.data_size,
-            advertisement.parts,
-            advertisement.flags,
-            advertisement.is_request(),
-            advertisement.is_response(),
-            (advertisement.flags & FLAG_METADATA) == FLAG_METADATA,
-            advertisement.compressed(),
-            advertisement.encrypted()
-        );
-        // Enforce the inbound limits before any receiver state is created
-        // (issue #514) — see advertisement_limits.rs.
-        if advertisement_exceeds_inbound_limits(&advertisement, link.id()) {
-            return;
-        }
-        if advertisement.total_segments > 1 {
-            let expected_segment = self
-                .incoming_segments
-                .get(&advertisement.original_hash)
-                .map(|assembly| assembly.next_segment)
-                .unwrap_or(1);
-            if advertisement.segment_index != expected_segment {
-                // Out-of-order split-resource segment (issue #520): we
-                // deliberately log-and-drop rather than accept or reject.
-                // Reference Reticulum has NO segment-ordering check and
-                // blindly accepts segments in any order, so silently
-                // accepting would mask a real receiver-side assembly
-                // divergence here (our receiver assembles strictly in
-                // order). Sending a ResourceReceiverCancel (RCL, context
-                // 0x07) is the interoperable reject signal, but it would
-                // tear down the sender's entire resource — much harsher
-                // than the reference behavior for what is usually a
-                // reordered/in-flight segment that the sender will
-                // retransmit on the next request window. Dropping keeps
-                // the transfer alive: the sender re-offers the missing
-                // segment and normal flow resumes.
-                log::warn!(
-                    "rejecting out-of-order resource segment original_hash={} expected={} received={}",
-                    advertisement.original_hash,
-                    expected_segment,
-                    advertisement.segment_index
-                );
-                return;
-            }
-        }
-        let resource_hash = advertisement.hash;
-        if self.incoming.get(&resource_hash).is_some_and(|receiver| receiver.is_active()) {
-            log::debug!("[resource-diag] advertisement_duplicate hash={resource_hash}");
-            log::debug!("resource inbound: duplicate advertisement for active receiver hash={}", resource_hash);
-            return;
-        }
-        let receiver = if interface_mtu == DEFAULT_RESOURCE_INTERFACE_MTU {
-            ResourceReceiver::new(&advertisement, *link.id())
-        } else {
-            ResourceReceiver::new_with_mtu(&advertisement, *link.id(), interface_mtu)
-        };
-        let Ok(mut receiver) = receiver else {
-            log::warn!("rejecting unreasonable advertisement");
-            log::debug!("[resource-diag] reject_advertisement unreasonable");
-            return;
-        };
-        let adv_now = Instant::now();
-        let stats = *self.link_stats.entry(*link.id()).or_insert_with(LinkStats::new);
-        // Start where the last resource on this link finished rather than at
-        // WINDOW, so a split transfer does not re-learn the same link once per
-        // segment.
-        //
-        // Deliberately *not* clamped to `window_max`. The reference restores
-        // only `window` and leaves the ceiling at its default
-        // (`RNS/Resource.py`), which means a carried window may legitimately
-        // start above it: the ceiling gates *growth*, and a link that has
-        // already demonstrated a window of 24 should not be made to re-climb
-        // to 10 before it can use it. Growth simply stays disabled until a
-        // loss brings the window back under the ceiling — which is the
-        // intended reading of "this link has proven this much".
-        if let Some(previous) = stats.last_window {
-            receiver.window = previous.max(receiver.window_min);
-        }
-        let request = receiver.build_request(adv_now, stats.rtt, stats.arrival_interval, RequestTrigger::Immediate);
-        log::debug!(
-            "[resource-diag] request_parts hash={} requested={} exhausted={}",
-            resource_hash,
-            request.requested_hashes.len(),
-            request.hashmap_exhausted
-        );
-        receiver.mark_request();
-        self.incoming.insert(resource_hash, receiver);
-        match build_link_packet(
-            link,
-            PacketType::Data,
-            PacketContext::ResourceRequest,
-            &request.encode(),
-        ) {
-            Ok(packet) => responses.push(packet),
-            Err(_) => {
-                log::warn!("failed to build request packet");
-            }
-        };
-    }
-
     fn handle_request_into(
         &mut self,
         packet: &Packet,
@@ -222,7 +122,12 @@ impl ResourceManager {
             let update_now = Instant::now();
             let stats =
                 self.link_stats.get(&receiver.link_id).copied().unwrap_or_else(LinkStats::new);
-            let request = receiver.build_request(update_now, stats.rtt, stats.arrival_interval, RequestTrigger::Immediate);
+            let request = receiver.build_request(
+                update_now,
+                stats.rtt,
+                stats.arrival_interval,
+                RequestTrigger::Immediate,
+            );
             match build_link_packet(
                 link,
                 PacketType::Data,
@@ -290,9 +195,8 @@ impl ResourceManager {
                 }
                 PartOutcome::Incomplete => {
                     let now = Instant::now();
-                    let stats = self.link_stats
-                        .entry(receiver.link_id)
-                        .or_insert_with(LinkStats::new);
+                    let stats =
+                        self.link_stats.entry(receiver.link_id).or_insert_with(LinkStats::new);
 
                     // Collect RTT sample measured during handle_part (if any).
                     if let Some(rtt) = receiver.last_rtt_sample.take() {
@@ -328,9 +232,14 @@ impl ResourceManager {
                     // It simply finds no room in the window and returns
                     // nothing to send.
                     let (rtt, arrival_interval) = (stats.rtt, stats.arrival_interval);
-                    let request = receiver.build_request(now, rtt, arrival_interval, RequestTrigger::PartReceived);
+                    let request = receiver.build_request(
+                        now,
+                        rtt,
+                        arrival_interval,
+                        RequestTrigger::PartReceived,
+                    );
                     if !request.requested_hashes.is_empty() || request.hashmap_exhausted {
-                            request_packet = match build_link_packet(
+                        request_packet = match build_link_packet(
                             link,
                             PacketType::Data,
                             PacketContext::ResourceRequest,

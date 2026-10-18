@@ -164,8 +164,7 @@ impl Transport {
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
         handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
-        let events = handler.resource_manager.drain_events();
-        super::resource_wire::publish_resource_events(&handler, events);
+        super::resource_wire::publish_resource_events(&mut handler).await;
         if sent {
             Ok(resource_hash)
         } else {

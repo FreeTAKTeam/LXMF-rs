@@ -79,3 +79,6 @@ include!("tests_parts/cache_local_link_ingress.rs");
 include!("tests_parts/cache_transit_link_proof.rs");
 include!("tests_parts/cache_pending_link_proof.rs");
 include!("tests_parts/link_packet_receipt.rs");
+
+#[path = "tests/request_receipts.rs"]
+mod request_receipts;

@@ -64,7 +64,7 @@ impl Link {
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
             channel_rx_ring: HashMap::new(),
-            pending_response_limits: HashMap::new(),
+            requests: request_receipt::RequestBook::default(),
             channel_window: CHANNEL_WINDOW_INIT,
             channel_window_max: CHANNEL_WINDOW_MAX_SLOW,
             channel_window_min: CHANNEL_WINDOW_MIN,

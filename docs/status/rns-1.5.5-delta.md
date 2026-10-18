@@ -14,7 +14,7 @@ separate until their reference policy is deliberately changed.
 | Empty/ambiguous `None` IFAC values are not published or adopted; I2P discovery config adds `.b32.i2p` | `rns-transport` discovery; `reticulumd` publish/config examples | Add IFAC sanitation and legacy-record regression. Rust I2P example already uses `.b32.i2p`; retain its test. |
 | rngit permits Markdown download converted to `.mu`, and counts readable work documents in scope links | `rns-tools` `rngit_parts` page media and work pages | Add bounded conversion and permission-filtered counts/links with pinned-Python Link evidence. |
 | Local client initializes owner and bitrate before connecting; detach stops listener/reconnect workers and spawned children inherit policy | `rns-transport` local and interface workers | Audit existing Rust lifecycle, add regressions only for uncovered equivalents. |
-| Link request timeout and rejection can fail receipts still in `SENT` state | `rns-transport` Link/request path | Audit for equivalent Rust receipt states and add a focused regression or record API non-equivalence. |
+| Link request timeout and rejection can fail receipts still in `SENT` state | `rns-transport` Link/request path | No equivalent retained state at v0.13.0. The later item-4 follow-up adds a Link-owned receipt book, native phases/cleanup and exact-target guard evidence; see REQUESTS.md below. |
 | Default announce cap is a percentage, including virtual children | `rns-transport` interface manager | Existing 2% default and child inheritance are present; verify with focused tests. |
 
 ## Release evidence and remaining gaps
@@ -39,9 +39,12 @@ sample I2P discovery entry already uses `.b32.i2p`.
 
 Local-client forced bitrate is applied before the accepted stream worker runs,
 and virtual children inherit their parent's initial announce cap and policy.
-Rust has no Python-style pending Link request-receipt state, so the 1.5.5
-`SENT` timeout/rejection fix has no equivalent state transition to patch here;
-that remains a broader API gap. Live changes to a parent's announce pacing do
+At v0.13.0 Rust had no equivalent retained pending Link request state. The later
+item-4 follow-up adds the native receipt book and packet/Resource owner described
+in [REQUESTS.md](../goals/open-issues-2026-10/REQUESTS.md), with exact 1.5.5
+controlled guard comparisons, native signed ACK/Resource phase tests and real
+rncp/rngit baseline/target traces. These bounded software checks do not complete
+the broader transport/discovery acceptance. Live changes to a parent's announce pacing do
 not currently propagate to existing virtual children. Neither gap is hidden by
 the 1.5.5 feature pin.
 

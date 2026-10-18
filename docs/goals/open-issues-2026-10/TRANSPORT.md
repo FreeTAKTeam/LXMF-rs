@@ -198,6 +198,19 @@ must finish either pending state once; a later duplicate/valid response cannot
 reopen a rejected request. Exercise actual packet and Resource paths, exact IDs,
 closure/cancellation, lost notification and oversized-then-later response cases.
 
+The fifth local slice implements that bounded owner in
+[REQUESTS.md](REQUESTS.md): native exact-Arc registration and handoff, retained
+terminal outcomes, guarded packet/Resource phases, strict response admission,
+scoped cleanup and existing-maintenance deadlines. Wire/native regressions cover
+both representations, genuine signed ACKs, early responses, aborted dispatch,
+malformed/oversized responses, queue loss, retirement and shutdown. Correlation
+commits in ResourceManager only after receiver validation; relabelled duplicates
+and rejected advertisements cannot authorize cleanup of unrelated transfers.
+rncp/rngit consume retained outcomes and native commit latches for abandonable
+optional cancellation/close I/O. Controlled target-reference guards and actual
+utility mixed-peer traces remain separately identified in PROGRESS.md; these
+checks do not complete the other item-4 cells.
+
 Discovery cases include accepted/rejected/missing/malformed implementation and
 version, default/override, persisted legacy IFAC, stale entries, duplicate names
 and endpoints, Linux Backbone versus Windows/macOS TCP selection, monitoring

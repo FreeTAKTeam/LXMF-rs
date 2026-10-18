@@ -59,26 +59,30 @@ impl Transport {
         None
     }
 
-
     pub async fn reset_out_link(&self, destination: &AddressHash) {
-        let removed = {
+        loop {
             let mut handler = self.handler.lock().await;
-            handler.out_links.remove(destination)
-        };
-        let Some(link) = removed else {
+            let Some(link) = handler.out_links.get(destination).cloned() else {
+                return;
+            };
+            let mut owner = match link.try_lock() {
+                Ok(owner) => owner,
+                Err(_) => {
+                    drop(handler);
+                    drop(link.lock().await);
+                    continue;
+                }
+            };
+            super::resource_wire::publish_resource_events_for_link(
+                &mut handler,
+                *owner.id(),
+                Some(&mut owner),
+            );
+            owner.close();
+            super::requests::retire_closed_link(&mut handler, &mut owner);
+            handler.out_links.remove(destination);
             return;
-        };
-
-        let link_id = {
-            let mut link = link.lock().await;
-            let link_id = *link.id();
-            link.close();
-            link_id
-        };
-        let mut handler = self.handler.lock().await;
-        handler.resource_manager.remove_link_state(link_id);
-        let events = handler.resource_manager.drain_events();
-        super::resource_wire::publish_resource_events(&handler, events);
+        }
     }
 
     /// The correct way to send any packet addressed to an already-open
@@ -114,7 +118,7 @@ impl Transport {
         }
     }
 
-    async fn find_any_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
+    pub(super) async fn find_any_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
         let (out_links, in_link) = {
             let handler = self.handler.lock().await;
             (
@@ -136,7 +140,7 @@ impl Transport {
         None
     }
 
-    async fn resource_mtu_for_iface(&self, iface: Option<AddressHash>) -> usize {
+    pub(super) async fn resource_mtu_for_iface(&self, iface: Option<AddressHash>) -> usize {
         let Some(iface) = iface else {
             return crate::resource::DEFAULT_RESOURCE_INTERFACE_MTU;
         };
@@ -200,74 +204,7 @@ impl Transport {
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
         handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
-        let events = handler.resource_manager.drain_events();
-        super::resource_wire::publish_resource_events(&handler, events);
-        if sent {
-            Ok(resource_hash)
-        } else {
-            Err(RnsError::ConnectionError)
-        }
-    }
-
-    pub async fn send_request_resource(
-        &self,
-        link_id: &AddressHash,
-        request_id: Vec<u8>,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-    ) -> Result<Hash, RnsError> {
-        self.send_request_resource_with_max_response_size(link_id, request_id, data, metadata, None)
-            .await
-    }
-
-    pub async fn send_request_resource_with_max_response_size(
-        &self,
-        link_id: &AddressHash,
-        request_id: Vec<u8>,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-        max_response_size: Option<usize>,
-    ) -> Result<Hash, RnsError> {
-        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
-        let response_request_id = request_id.clone();
-        let iface = {
-            let link_guard = link.lock().await;
-            link_guard.ingress_iface()
-        };
-        let interface_mtu = self.resource_mtu_for_iface(iface).await;
-        // See `send_resource_observed`: prepared off the handler lock.
-        let prepared = {
-            let link_guard = link.lock().await;
-            // See `resource_wire.rs`: the negotiated link MTU, not the local
-            // interface alone, is what a fragment has to fit through.
-            let interface_mtu = interface_mtu.min(link_guard.link_mtu());
-            ResourceManager::prepare_send(
-                &link_guard,
-                data,
-                metadata,
-                Some(request_id),
-                false,
-                interface_mtu,
-            )?
-        };
-        let mut handler = self.handler.lock().await;
-        let (resource_hash, packet) = handler.resource_manager.track_prepared(prepared);
-        drop(handler);
-        if let Some(max_response_size) = max_response_size {
-            link.lock().await.set_response_size_limit(&response_request_id, max_response_size);
-        }
-        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
-        if !matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast)
-            && max_response_size.is_some()
-        {
-            link.lock().await.clear_response_size_limit(&response_request_id);
-        }
-        let mut handler = self.handler.lock().await;
-        let sent =
-            matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
-        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
-        let events = handler.resource_manager.drain_events();
-        super::resource_wire::publish_resource_events(&handler, events);
+        super::resource_wire::publish_resource_events(&mut handler).await;
         if sent {
             Ok(resource_hash)
         } else {

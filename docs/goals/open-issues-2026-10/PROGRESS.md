@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; four local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) records ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission and native Link routing checkpoints pass bounded reviews and local checks. Remaining lifecycle, request, discovery, child policy and deeper recovery gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; five local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) and [REQUESTS.md](REQUESTS.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing and request receipts pass bounded reviews and local checks. Remaining family lifecycle, discovery, child policy and deeper recovery gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1500,3 +1500,83 @@ validation only; terminal results and final-head review/CI/merge remain required
   `/tmp/lxmf-item4-routing-{clippy-last,quality,architecture,boundaries,size-final,dispatch-last}.log`.
   The carrier lifecycle matrix, request receipts, discovery runtime, child-policy
   propagation and deeper recovery still gate item 4. No hosted check, PR or merge.
+
+## Item 4 request-receipt checkpoint
+
+- [REQUESTS.md](REQUESTS.md) freezes the native owner/cutover contract. One
+  Link-owned book replaces `pending_response_limits`, binding exact owner,
+  generation, registration identity, request ID, source hash, size policy,
+  phases and accepted response hashes. Retained watch outcomes survive absent
+  or lagged legacy listeners; per-generation terminal ID fences cannot reopen.
+  Large response data lives only with observers. Distinct-ID fences intentionally
+  grow within a generation; no unapproved expiry/cap was invented.
+- Native exact-Arc dispatch registers before handoff and rechecks generation
+  and pointer-equal map membership after preparation. Packet IDs use the final
+  encrypted packet hash; Resource IDs use packed request bytes. Handoff time
+  precedes post-send Link bookkeeping, and Resource activation stays under the
+  send handler before a fast first ResourceRequest can be processed. Legacy
+  explicit-ID Resource APIs delegate this owner without gaining a new deadline.
+- Exact target `7f2b3b9b524c9386316379af1313b43a5e4f7a5d` changes timeout/reject
+  guards to include SENT but exclude RECEIVING. Packet ACK stops its packet
+  timer while RequestReceipt stays SENT; Resource completion sets DELIVERED and
+  starts the response timer. Native tests separately validate signed full-hash
+  ACKs; a controlled executable target probe compares six guard rows, repeated
+  callbacks, PacketReceipt ACK behavior and Resource completion. This is not an
+  actual Python wire ACK trace or a general Python state-equivalence claim.
+- Response size uses reencoded packet body minus two, and Resource `d`
+  uncompressed total across compressed/split transfers. Invalid ordinary owned
+  envelopes fail InvalidResponse; metadata-bearing raw responses preserve their
+  explicit contract. Oversized/malformed then valid input cannot reopen a
+  terminal request. RECEIVING guards preserve the accepted transfer.
+- ResourceManager retains unpublished events across lookup awaits; per-Link
+  drain, native application and legacy publication do not yield. Native reset,
+  replacement, teardown and shutdown drain captured-generation cleanup before
+  detaching owners. The supervisor interrupts blocked workers before closing
+  retained Links. Explicit cancellation can retire an already abandoned-send
+  registration without rewriting its terminal watch outcome.
+- Independent POST reviews reproduced two blockers and approved their fixes.
+  Response correlation now commits in ResourceManager after duplicate, order,
+  assembly identity and receiver validation. Relabelled ordinary/other-request
+  advertisements, invalid first segments and out-of-order advertisements cannot
+  donate hashes. Cleanup requires request ID and response kind as well as Link
+  generation/hashes, preserving unrelated receivers and partial assemblies.
+  The original admission red is retained in
+  `/tmp/lxmf-item4-request-admission-red.log`; native green/control evidence is
+  `/tmp/lxmf-item4-request-post-fixes-focused.log` (124 pass, one opt-in ignore).
+- `cancel_request_on_link_observed` signals native cleanup after releasing
+  native locks and before optional I/O. rncp/rngit use that latch and the existing
+  teardown latch so a full live carrier queue cannot delay return after cleanup
+  commits. The live full-queue control verifies no invented frame handoff and
+  exact unrelated-transfer completion. Its first extension incorrectly expected
+  a Progress event for a one-part transfer; the manager emits Complete directly.
+  The corrected assertion checks actual completion bytes; both logs are retained
+  as `/tmp/lxmf-item4-request-full-queue{,-green}.log`.
+- rncp status and rngit request waiters use retained outcomes. rncp's separate
+  ordinary file Resource keeps its waiter; rnx has no scoped outgoing request
+  constructor. Actual Git list/fetch/bundle/push/release operations and rncp
+  binary push/fetch/error cases pass against both clean baseline `99de23c` and
+  target `7f2b3b9`. Canonical reference pins are unchanged. Final reruns are
+  `/tmp/lxmf-item4-request-{rngit-baseline,rngit-target,rncp-baseline,rncp-target,reference}-verified.log`;
+  all five tests pass. Each target is an isolated exact checkout, not a sibling
+  repository scan or moving-reference claim.
+- Final all-feature transport passes 1,037 with 11 explicit ignores. Utility
+  bins pass 260 with 86 opt-in ignores across 18 binaries. Default daemon passes
+  31 library and 588 binary tests; all-feature daemon passes 31 and 589. Affected
+  all-target/all-feature Clippy, explicit included-file rustfmt, Cargo fmt,
+  boundaries, module size and architecture checks pass. Diagnostics initially
+  rejected four ignored local-latch send results; explicit trace handling fixes
+  all four without exemptions, and issue-369 scanner passes. Logs are
+  `/tmp/lxmf-item4-request-{transport,tools,daemon,architecture,clippy,size,boundaries,fmt}-verified.log`,
+  `/tmp/lxmf-item4-request-daemon-all-features.log`, and
+  `/tmp/lxmf-item4-request-diagnostics-{verified,green}.log`.
+- Same-namespace test extractions preserve existing names/helpers while bringing
+  the touched Resource test root below the size policy and removing its old
+  allowlist entry. The rncp roundtrip test is similarly extracted, with an exact
+  opt-in target selector while the canonical pin check remains the default.
+  The concurrent reset regression now asserts the atomic close/removal contract;
+  an already-waiting acquisition may reuse that Arc before reset linearizes.
+  Earlier fixture failures remain recorded, not relabelled as production passes.
+- Independent correctness and maintainability POST both approve the bounded
+  slice. This is a local checkpoint, with no item-4 PR, hosted evidence or merge.
+  Family lifecycle, discovery runtime, live child-policy propagation and the
+  predeclared deeper mixed-process recovery matrix still gate item 4.

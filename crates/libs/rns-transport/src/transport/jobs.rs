@@ -361,6 +361,7 @@ pub(super) async fn manage_transport(
                         let now = Instant::now();
                         let requests = handler.resource_manager.retry_requests(now);
                         let advertisements = handler.resource_manager.poll_outgoing(now);
+                        super::resource_wire::publish_resource_events(&mut handler).await;
                         for (link_id, request) in requests {
                             let link = handler
                                 .in_links
@@ -377,8 +378,6 @@ pub(super) async fn manage_transport(
                         for (_link_id, packet) in advertisements {
                             handler.send_packet(packet).await;
                         }
-                        let events = handler.resource_manager.drain_events();
-                        super::resource_wire::publish_resource_events(&handler, events);
                     }
                 }
             }
@@ -391,6 +390,7 @@ pub(super) async fn manage_transport(
     // is still running cancels the rest and is logged with its name and
     // failure.
     supervise_workers(&mut workers, &worker_names, &cancel).await;
+    super::requests::close_transport_requests(&handler_arc).await;
 }
 
 type WorkerSet = tokio::task::JoinSet<()>;
@@ -415,7 +415,20 @@ async fn supervise_workers(
     worker_names: &WorkerNames,
     cancel: &tokio_util::sync::CancellationToken,
 ) {
-    while let Some(result) = workers.join_next_with_id().await {
+    loop {
+        let result = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                // A worker can be blocked on carrier I/O inside its selected
+                // branch. Interrupt it before native shutdown needs its locks.
+                workers.abort_all();
+                workers.join_next_with_id().await
+            }
+            result = workers.join_next_with_id() => result,
+        };
+        let Some(result) = result else {
+            break;
+        };
         match result {
             Ok((id, ())) => {
                 if !cancel.is_cancelled() {
@@ -426,6 +439,7 @@ async fn supervise_workers(
                     cancel.cancel();
                 }
             }
+            Err(err) if err.is_cancelled() && cancel.is_cancelled() => {}
             Err(err) => {
                 // JoinError carries no return value, but it does carry
                 // the failed task id — look the worker name up so panics

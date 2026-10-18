@@ -40,7 +40,7 @@ impl Link {
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
             channel_rx_ring: HashMap::new(),
-            pending_response_limits: HashMap::new(),
+            requests: request_receipt::RequestBook::default(),
             channel_window: CHANNEL_WINDOW_INIT,
             channel_window_max: CHANNEL_WINDOW_MAX_SLOW,
             channel_window_min: CHANNEL_WINDOW_MIN,
@@ -106,7 +106,11 @@ impl Link {
         };
         self.status = LinkStatus::Pending;
         self.close_reason = None;
-        self.id = LinkId::from(&packet);
+        let request_id = LinkId::from(&packet);
+        if self.id != request_id {
+            self.requests.reset(RequestFailure::LinkClosed);
+        }
+        self.id = request_id;
         self.proof_generation_ready = true;
         self.derived_key = DerivedKey::new_empty();
         self.session_cipher = None;
@@ -127,7 +131,6 @@ impl Link {
         self.channel_pending.clear();
         self.channel_states.clear();
         self.channel_rx_ring.clear();
-        self.pending_response_limits.clear();
         self.reset_channel_flow_control();
 
         packet
@@ -271,28 +274,29 @@ impl Link {
                             (Some(id), true)
                         } else if packet.context == PacketContext::Response {
                             match response_envelope_metadata(plain_text) {
-                                Some((id, response_size)) => {
-                                    let accepted = id.as_ref().is_none_or(|id| {
-                                        self.take_response_limit_if_allowed(id, response_size)
-                                    });
-                                    (id, accepted)
-                                }
-                                None => {
-                                    log::warn!(
-                                        "link({}): response is not a valid request envelope",
-                                        self.id
+                                Ok((id, response_size)) => {
+                                    let accepted = self.requests.packet_response(
+                                        self.id,
+                                        &id,
+                                        response_size,
+                                        plain_text,
                                     );
-                                    (None, true)
+                                    (Some(id), accepted)
+                                }
+                                Err(error) => {
+                                    log::warn!(
+                                        "link({}): invalid response envelope: {}",
+                                        self.id,
+                                        error
+                                    );
+                                    return LinkHandleResult::None;
                                 }
                             }
                         } else {
                             (None, true)
                         };
                     if !response_accepted {
-                        log::warn!(
-                            "link({}): response exceeded the pending request size limit",
-                            self.id
-                        );
+                        log::warn!("link({}): response rejected by request policy", self.id);
                         return LinkHandleResult::None;
                     };
                     self.post_event(LinkEvent::Data(Box::new(

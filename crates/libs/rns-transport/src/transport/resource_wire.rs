@@ -35,13 +35,12 @@ pub(super) async fn handle_resource_proof(
         link.note_inbound(packet.context);
         let mut responses = std::mem::take(&mut handler.resource_response_packets);
         handler.resource_manager.handle_packet_into(&packet, &mut link, &mut responses);
-        let events = handler.resource_manager.drain_events();
+        publish_resource_events_for_link(&mut handler, *link.id(), Some(&mut link));
         drop(link);
         for response in responses.drain(..) {
             handler.send_packet(response).await;
         }
         handler.resource_response_packets = responses;
-        publish_resource_events(&handler, events);
     } else {
         let forwarded_packet = if handler.config.transport_enabled {
             handler.link_table.handle_link_packet(&packet, iface)
@@ -96,35 +95,6 @@ pub(super) async fn handle_link_resource_packet<'a>(
     if packet.context == PacketContext::ResourceAdvrtisement {
         if let Ok(advertisement) = ResourceAdvertisement::unpack(packet_for_manager.data.as_slice())
         {
-            if advertisement.is_response() {
-                if let Some(request_id) = advertisement.request_id.as_ref() {
-                    let response_size =
-                        usize::try_from(advertisement.transfer_size).unwrap_or(usize::MAX);
-                    if !link.take_response_limit_if_allowed(request_id, response_size) {
-                        log::warn!(
-                            "[resource-diag] reject_response_advertisement link={} hash={} size={}",
-                            link.id(),
-                            advertisement.hash,
-                            advertisement.transfer_size
-                        );
-                        if let Ok(reject) = build_link_packet(
-                            &link,
-                            PacketType::Data,
-                            PacketContext::ResourceReceiverCancel,
-                            advertisement.hash.as_slice(),
-                        ) {
-                            let response_iface = link.ingress_iface().unwrap_or(iface);
-                            handler
-                                .send(TxMessage {
-                                    tx_type: TxMessageType::Direct(response_iface),
-                                    packet: reject,
-                                })
-                                .await;
-                        }
-                        return true;
-                    }
-                }
-            }
             if advertisement.is_request() {
                 let limit = handler
                     .single_in_destinations
@@ -141,20 +111,8 @@ pub(super) async fn handle_link_resource_packet<'a>(
                                 advertisement.transfer_size,
                                 limit
                             );
-                            if let Ok(reject) = build_link_packet(
-                                &link,
-                                PacketType::Data,
-                                PacketContext::ResourceReceiverCancel,
-                                advertisement.hash.as_slice(),
-                            ) {
-                                let response_iface = link.ingress_iface().unwrap_or(iface);
-                                handler
-                                    .send(TxMessage {
-                                        tx_type: TxMessageType::Direct(response_iface),
-                                        packet: reject,
-                                    })
-                                    .await;
-                            }
+                            reject_resource_advertisement(handler, link, iface, advertisement.hash)
+                                .await;
                             return true;
                         }
                     }
@@ -182,7 +140,8 @@ pub(super) async fn handle_link_resource_packet<'a>(
         &mut responses,
         interface_mtu,
     );
-    let events = handler.resource_manager.drain_events();
+    let cleanup =
+        super::requests::poll_request_cleanup(handler, &mut link, std::time::Instant::now());
     if !responses.is_empty() {
         log::debug!(
             "[resource-diag] wire_resource_responses node={} link={} ctx={:02x} responses={} iface={}",
@@ -194,14 +153,54 @@ pub(super) async fn handle_link_resource_packet<'a>(
         );
     }
     drop(link);
+    for message in cleanup {
+        handler.send(message).await;
+    }
     for response in responses.drain(..) {
         handler
             .send(TxMessage { tx_type: TxMessageType::Direct(response_iface), packet: response })
             .await;
     }
     handler.resource_response_packets = responses;
-    publish_resource_events(handler, events);
     true
+}
+
+async fn reject_resource_advertisement(
+    handler: &mut TransportHandler,
+    mut link: MutexGuard<'_, Link>,
+    ingress: AddressHash,
+    resource: Hash,
+) {
+    let link_id = *link.id();
+    let iface = link.ingress_iface().unwrap_or(ingress);
+    // Native terminal cleanup cannot depend on a cancellation frame's crypto or I/O.
+    let mut messages =
+        super::requests::poll_request_cleanup(handler, &mut link, std::time::Instant::now());
+    let reject = build_link_packet(
+        &link,
+        PacketType::Data,
+        PacketContext::ResourceReceiverCancel,
+        resource.as_slice(),
+    );
+    drop(link);
+    match reject {
+        Ok(packet) => messages.push(TxMessage { tx_type: TxMessageType::Direct(iface), packet }),
+        Err(error) => log::warn!(
+            "Resource rejection frame failed link={} resource={} error={}",
+            link_id,
+            resource,
+            error
+        ),
+    }
+    for message in messages {
+        if handler.send(message).await.sent_ifaces == 0 {
+            log::warn!(
+                "Resource rejection frame handoff failed link={} resource={}",
+                link_id,
+                resource
+            );
+        }
+    }
 }
 
 fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Result<Packet, RnsError> {
@@ -237,10 +236,31 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Result<Packe
     Ok(plain_packet)
 }
 
-pub(super) fn publish_resource_events(handler: &TransportHandler, events: Vec<ResourceEvent>) {
-    for event in events {
+pub(super) async fn publish_resource_events(handler: &mut TransportHandler) {
+    while let Some(link_id) = handler.resource_manager.pending_event_link_id() {
+        // Cancellation during lookup leaves the events in their existing owner.
+        if let Some(link) = handler.local_link_for_id(&link_id).await {
+            let mut link = link.lock().await;
+            publish_resource_events_for_link(handler, link_id, Some(&mut link));
+        } else {
+            publish_resource_events_for_link(handler, link_id, None);
+        }
+    }
+}
+
+pub(super) fn publish_resource_events_for_link(
+    handler: &mut TransportHandler,
+    link_id: AddressHash,
+    mut link: Option<&mut Link>,
+) {
+    link = link.filter(|link| *link.id() == link_id);
+    for event in handler.resource_manager.drain_link_events(link_id) {
+        if let Some(link) = link.as_deref_mut() {
+            if !link.request_resource_event(&event) {
+                continue;
+            }
+        }
         let hash = event.hash;
-        let link_id = event.link_id;
         if handler.resource_events_tx.send(event).is_err() {
             log::trace!(
                 "[resource-diag] event has no active subscribers resource={} link={}",

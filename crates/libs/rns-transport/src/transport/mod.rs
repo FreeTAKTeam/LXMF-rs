@@ -480,6 +480,7 @@ mod links;
 mod path;
 mod profiling;
 // resource_wire: link-scoped resource packet handling on inbound wire paths.
+mod requests;
 mod resource_wire;
 // wire_encryption: packet-context policy for transport-layer encryption.
 mod wire_encryption;

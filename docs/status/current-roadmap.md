@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-10-15
+Last reassessed: 2026-10-18
 MeshChat POC evidence added: 2026-09-27
 MeshChat saved interface controls added: 2026-10-15
 
@@ -86,8 +86,16 @@ preserves retry binding, applies one valid-proof-authorized hop rebalance, and
 remembers local matching-hop proofs before validation. Transit LRPROOF replay
 avoids originating hash remembering; ordinary Link and KeepAlive routing share
 validated interface/hop checks. Actual queue changes and retained late-receipt
-regressions pass. A pinned Python Resource round trip also passes. The remaining
-carrier lifecycle, request, discovery, live child policy and deeper
+regressions pass. A pinned Python Resource round trip also passes. Native
+request receipts now retain packet/Resource outcomes through one Link-owned book,
+with exact generation/registration binding, response admission, timeout phases
+and cancellation. ResourceManager validates a response receiver before binding
+its hashes; request cleanup cannot remove ordinary or other-request transfers.
+Native lifecycle retirement/shutdown settles retained observers before removing
+their owner, and utility clients can abandon optional cancellation/close I/O
+after native cleanup commits. See the bounded
+[request contract](../goals/open-issues-2026-10/REQUESTS.md) for evidence and limits.
+The remaining carrier lifecycle, discovery, live child policy and deeper
 recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655
@@ -154,7 +162,8 @@ path; the daemon
 does not yet activate auto-connect from it. Named attach/detach/reload covers
 only existing TCP client/server, UDP, and Pipe hot-apply paths; the separate
 `set_interfaces` RPC still acknowledges queue admission. Broader Markdown
-rendering and pending Link request-receipt states remain open. An uninterrupted
+rendering remains open; later native request-receipt qualification is recorded
+in item 4 above. An uninterrupted
 local `cargo xtask release-check` passed on the code-identical candidate.
 The exact integrated commit `fbc75b86e15550722923b366398f0a4116182894`
 passed [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456558),
