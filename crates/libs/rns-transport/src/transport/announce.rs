@@ -16,7 +16,7 @@ use crate::packet::{Header, HeaderType, PropagationType};
 /// accepted announce, so rejecting on app_data change would break
 /// legitimate announces (e.g. LXMF peers rotating stamp-cost metadata)
 /// and diverge from protocol behavior.
-fn identity_drifted(existing: &Identity, announced: &Identity) -> bool {
+pub(super) fn identity_drifted(existing: &Identity, announced: &Identity) -> bool {
     existing.public_key != announced.public_key || existing.verifying_key != announced.verifying_key
 }
 

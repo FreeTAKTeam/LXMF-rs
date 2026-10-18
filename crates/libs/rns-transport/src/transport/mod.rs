@@ -467,6 +467,7 @@ mod core;
 // handler: packet send pipeline and routing/encryption outcomes.
 mod handler;
 mod ifac;
+mod prepared_packet;
 // jobs: background maintenance loops and periodic work.
 mod jobs;
 // links: link lifecycle and link-scoped data/resource operations.

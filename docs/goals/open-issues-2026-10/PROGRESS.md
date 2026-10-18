@@ -516,3 +516,34 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   reference post-send retry policy, or recover lost Resource broadcasts. Those
   require their explicit lifecycle cutover and target mixed-peer evidence before
   the single item-3 PR is ready. No hosted check or item completion is claimed.
+
+### Item 3 opportunistic proof-registration prerequisite
+
+- A real sender/recipient regression exposed a pre-existing prepared-send gap:
+  the daemon registered its message mapping but bypassed transport PacketCache
+  proof context, and its cached recipient identity was unavailable to validation.
+  Before the fix, the actual recipient proof could not commit delivered (exit
+  101, `/tmp/lxmf-item3-proof-red.log`); after it, the same regression passes.
+- Added one validated SINGLE prepared-send API. It recomputes the identity hash
+  from public/verifying keys, checks the named destination and packet class,
+  rejects known identity drift, then registers the absent identity without a
+  route. The observer installs message correlation before the authoritative send
+  helper records proof context and hands off unchanged ciphertext. No second
+  transport encryption or proof-validation path was added.
+- Security tests reject forged cached hashes, destination mismatch, conflicting
+  known identities, wrong known signers and untracked hashes; both implicit and
+  explicit proofs remain destination-bound. The daemon test uses real RxMessage
+  ingress, receiver decryption/proof, ReceiptBridge and the durable receipt worker;
+  it checks exact LXMF bytes, persisted delivered and correlation cleanup.
+- Review found an unintended generic public-API behavior expansion for Announce
+  and Link packets. Restored that original method unchanged; only the new
+  validated SINGLE API uses the authoritative send helper. Correctness and
+  maintainability/POST reviews then accepted the scoped change. Extracted the
+  new proof test to respect the existing module-size gate.
+- Validation: 88 bridge tests, 294 transport tests (seven existing ignored), the
+  issue-369 scanner and the extracted real-recipient regression pass. Boundary,
+  module-size, formatting and diff checks pass. All-feature daemon and transport
+  library/binary Clippy is recorded in `/tmp/lxmf-item3-proof-final-clippy.log`.
+- The test completes the current one-attempt scheduler before returning the
+  proof. Full retained post-send retry ownership and mixed Python/Rust traces
+  remain pending; no item completion or hosted CI is claimed.

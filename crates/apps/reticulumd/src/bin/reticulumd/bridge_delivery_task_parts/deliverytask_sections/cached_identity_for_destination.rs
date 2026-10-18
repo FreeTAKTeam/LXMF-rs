@@ -174,7 +174,6 @@ impl DeliveryTask {
         }
         packet.data = encrypted_data;
         let packet_hash = hex::encode(packet.hash().to_bytes());
-        track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
         if log::log_enabled!(log::Level::Trace) {
             let detail = format!(
                 "sending packet_hash={} payload_len={} payload_prefix={}",
@@ -186,7 +185,18 @@ impl DeliveryTask {
         } else {
             log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", "sending");
         }
-        let trace = self.transport.send_prepared_packet_broadcast_with_trace(packet).await;
+        let trace = match self.transport.send_prepared_single_packet_observed_with_trace(
+            packet, identity, DestinationName::new("lxmf", "delivery"),
+            |hash| track_receipt_mapping(&self.receipt_map, &hex::encode(hash.to_bytes()), &self.message_id),
+        ).await {
+            Ok(trace) => trace,
+            Err(error) => {
+                self.fail_payload_build(std::io::Error::other(format!(
+                    "opportunistic recipient binding failed for {}: {error}", self.destination_hex
+                )));
+                return DeliveryAttemptOutcome::Terminal;
+            }
+        };
         let trace_detail = send_trace_detail(trace);
         log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", &trace_detail);
         let outcome = trace.outcome;

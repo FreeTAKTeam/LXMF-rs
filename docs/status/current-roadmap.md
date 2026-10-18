@@ -33,7 +33,10 @@ and reservations across identity waits, releases execution permits while waiting
 and resumes on targeted announces. Shared path requests coalesce; propagation
 fallback is one-way and reuses its committed envelope. Stamp work and discovery
 observe shutdown/cancellation. Accepted terminal receipts retain admission until
-the receipt worker commits them or shutdown begins. Full post-send retry ownership, Link activation
+the receipt worker commits them or shutdown begins. Prepared opportunistic sends
+now register destination-bound proof context before handoff; a real Rust recipient
+decrypts the original LXMF bytes and returns a proof that persists as delivered.
+Full post-send retry ownership, Link activation
 waits and target mixed-peer acceptance remain open; these checkpoints do not
 establish LXMF 1.2.0 completion. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).

@@ -83,7 +83,12 @@ async fn unresolved_owner_retains_wire_and_capacity_while_another_peer_sends() {
     other.message_id = "other-peer-send".into();
     other.requested_method = RequestedDeliveryMethod::Opportunistic;
     other.stamp_cost = Some(0);
-    other.destination_hash = remote.as_identity().address_hash;
+    other.destination_hash = rns_transport::destination::SingleOutputDestination::new(
+        *remote.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    )
+    .desc
+    .address_hash;
     other.destination = other.destination_hash.as_slice().try_into().expect("other hash");
     other.destination_hex = hex::encode(other.destination);
     let other_peer = other.destination_hex.clone();
@@ -401,3 +406,6 @@ async fn queued_terminal_retains_owner_until_commit_or_shutdown() {
         scheduler.shutdown();
     }
 }
+
+#[path = "bridge_delivery_proof_tests.rs"]
+mod proof_tests;

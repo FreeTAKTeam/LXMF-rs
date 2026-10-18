@@ -80,6 +80,14 @@ releases them for recovery. A real SQLite write fault proves queued acceptance
 cannot release the owner; recovery commits one receipt, and shutdown preserves
 the pending event for drain. Both reserved and accepted legacy terminals use the
 same fence; an unused reservation or rejected enqueue does not wait.
+Prepared opportunistic sends now validate cached identity/key and named-destination
+bindings before observation, register proof context through the transport send
+owner, and preserve ciphertext. The real Rust sender/recipient ingress regression
+proves exact decrypted LXMF bytes, recipient-generated proof, persisted delivered
+status and correlation cleanup without fabricating a path. Implicit and explicit
+proof tests reject wrong known signers and untracked hashes. This fixes an existing
+prepared-send gap, not a new LXMF 1.2.0 wire rule; it does not yet prove retained
+post-send scheduling or Python interoperability.
 Full post-send/Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.

@@ -62,6 +62,7 @@ include!("tests_parts/accepted_child_ifac_rotation.rs");
 include!("tests_parts/reticulum_runtime_management.rs");
 
 include!("tests_parts/packet_proof_correlation.rs");
+include!("tests_parts/prepared_packet_proof.rs");
 
 include!("tests_parts/single_destination_delivery_proof.rs");
 
