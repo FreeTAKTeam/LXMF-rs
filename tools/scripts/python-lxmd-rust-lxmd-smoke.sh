@@ -1119,6 +1119,8 @@ cat > "${PY_RNS_DIR}/config" <<EOF
 [reticulum]
   enable_transport = true
   share_instance = yes
+  # Use the per-case ports below on platforms whose default is a shared Unix socket.
+  shared_instance_type = tcp
   shared_instance_port = ${PY_SHARED_INSTANCE_PORT}
   instance_control_port = ${PY_INSTANCE_CONTROL_PORT}
   discover_interfaces = false

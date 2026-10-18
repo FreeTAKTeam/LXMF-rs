@@ -1126,3 +1126,18 @@ validation only; terminal results and final-head review/CI/merge remain required
   `/tmp/lxmf-item3-workspace-clippy.log` and
   `/tmp/lxmf-item3-reference-evidence-unit.log`. Full clean matrices, workspace
   tests and exact-head hosted checks remain required.
+- Clean `73fe0ec2` baseline/target matrices were interrupted after initial
+  failures: Python RNS's default shared Unix socket joined another local instance
+  despite configured per-case TCP ports. Exact reference source confirms this
+  selection. The harness now explicitly uses `shared_instance_type=tcp`, honoring
+  its dedicated ports; target Direct delivery passes with this isolation. The
+  original logs and `target/interop/item3/73fe0ec2/interrupted.json` are retained.
+  A full rerun on the corrected clean commit remains required. Concurrent profiles
+  must use explicit disjoint shared/control/endpoint and Rust ports, recorded in
+  each case's environment, instead of relying on PID-modulo defaults.
+- The workspace run stopped at the process-level proof-replay restart test's
+  transport-status deadline. Isolated package, workspace-selected and complete
+  workspace target-selection reruns of that exact test pass (0.15–0.18 seconds).
+  This is not a full workspace pass or a confirmed production fix. Keep the
+  failure log `/tmp/lxmf-item3-workspace-tests.log` and rerun the complete suite
+  separately from the mixed-peer processes to qualify this boundary.

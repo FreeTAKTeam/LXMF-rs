@@ -229,7 +229,7 @@ def validate_cargo_evidence(output: str) -> tuple[str, str, list[dict[str, int |
 
 def validate_live_evidence(report_path: Path) -> tuple[str, str, dict[str, Any] | None]:
     if not report_path.is_file():
-        return "fail", "live case exited successfully without report.json", None
+        return "fail", "live case did not produce report.json", None
     try:
         payload = json.loads(report_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -425,6 +425,12 @@ def run_case(
                 "LOG_DIR",
                 "REPORT_PATH",
                 "LXMF_PY_COMPAT_CASE_TIMEOUT_SECS",
+                "LXMF_COMPAT_REFERENCE_PROFILE",
+                "RUST_RPC_ADDR",
+                "RUST_TRANSPORT_ADDR",
+                "PY_SHARED_INSTANCE_PORT",
+                "PY_INSTANCE_CONTROL_PORT",
+                "PY_ENDPOINT_CONTROL_PORT",
             }
         },
         "stdout": repo_path(stdout_path),
