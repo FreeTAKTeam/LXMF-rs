@@ -11,84 +11,9 @@ use ifac_admission::violates_ifac_policy;
 mod traffic_class;
 use traffic_class::inbound_traffic_class;
 
-pub(super) async fn filter_duplicate_packet(
-    packet_cache: Arc<Mutex<PacketCache>>,
-    in_link: Option<Arc<Mutex<Link>>>,
-    node_name: &str,
-    packet: &Packet,
-    connected_to_shared_instance: bool,
-    transport_identity: AddressHash,
-) -> (bool, bool) {
-    // The pinned Python packet_filter bypasses hash deduplication for these
-    // contexts before applying packet-type or destination-specific filtering.
-    let mut allow_duplicate = matches!(
-        packet.context,
-        PacketContext::KeepAlive
-            | PacketContext::ResourceRequest
-            | PacketContext::ResourceProof
-            | PacketContext::Resource
-            | PacketContext::CacheRequest
-            | PacketContext::Channel
-    );
-    if !connected_to_shared_instance
-        && packet.header.packet_type != PacketType::Announce
-        && matches!(packet.header.destination_type, DestinationType::Plain | DestinationType::Group)
-        && packet.transport.is_some_and(|transport| transport != transport_identity)
-    {
-        // Python rejects packets addressed to another transport before its
-        // Plain/Group duplicate-cache bypass.
-        return (false, false);
-    }
-    if packet.header.packet_type != PacketType::Announce
-        && matches!(packet.header.destination_type, DestinationType::Plain | DestinationType::Group)
-    {
-        // Python's packet_filter accepts local-hop Plain/Group packets before
-        // consulting its packet-hash generations. The ingress path has already
-        // rejected transported (>1 hop) packets and invalid announces.
-        allow_duplicate = true;
-    }
-    match packet.header.packet_type {
-        PacketType::Announce => return (true, false),
-        PacketType::LinkRequest => {}
-        PacketType::Data => {
-            allow_duplicate |=
-                matches!(packet.context, PacketContext::LinkClose | PacketContext::Channel);
-        }
-        PacketType::Proof => {
-            if packet.context == PacketContext::LinkRequestProof {
-                if let Some(link) = in_link {
-                    if link.lock().await.status().not_yet_active() {
-                        allow_duplicate = true;
-                    }
-                }
-            }
-        }
-    }
-
-    let is_new = packet_cache.lock().await.update(packet);
-    if !is_new
-        && packet.header.destination_type == DestinationType::Link
-        && matches!(
-            packet.context,
-            PacketContext::Resource
-                | PacketContext::ResourceAdvrtisement
-                | PacketContext::ResourceRequest
-                | PacketContext::ResourceHashUpdate
-                | PacketContext::ResourceProof
-        )
-    {
-        log::debug!(
-            "[resource-diag] duplicate_drop_candidate node={} link={} ctx={:02x}",
-            node_name,
-            packet.destination,
-            packet.context as u8
-        );
-    }
-    // An attached client delegates packet deduplication to the shared-instance
-    // owner. Reticulum's packet_filter accepts these packets and add_packet_hash
-    // deliberately does not populate the local duplicate list in this mode.
-    (is_new || allow_duplicate || connected_to_shared_instance, is_new)
-}
+pub(super) mod admission;
+use admission::{defers_duplicate_remember, record_filtered_packet};
+pub(super) use admission::{enqueue_inbound_message, filter_duplicate_packet};
 
 pub(super) async fn preprocess_inbound_message(
     handler_arc: &Arc<Mutex<TransportHandler>>,
@@ -103,26 +28,13 @@ pub(super) async fn preprocess_inbound_message(
     }
 
     let received_hops = message.packet.header.hops;
-    let (
-        configured_hops_delta,
-        connected_to_shared_instance,
-        iface_manager,
-        path_request,
-        packet_cache,
-        in_link,
-        node_name,
-        transport_identity,
-    ) = {
+    let (configured_hops_delta, connected_to_shared_instance, iface_manager, path_request) = {
         let handler = handler_arc.lock().await;
         (
             handler.local_hops_delta_for_packet(&message.packet),
             handler.config.connected_to_shared_instance,
             handler.iface_manager.clone(),
             handler.fixed_dest_path_requests,
-            handler.packet_cache.clone(),
-            handler.in_links.get(&message.packet.destination).cloned(),
-            handler.config.name.clone(),
-            *handler.config.identity.address_hash(),
         )
     };
     if violates_ifac_policy(
@@ -215,6 +127,22 @@ pub(super) async fn preprocess_inbound_message(
         return None;
     }
 
+    let allowed = {
+        let handler = handler_arc.lock().await;
+        let cache = handler.packet_cache.lock().await;
+        filter_duplicate_packet(
+            &cache,
+            &message.packet,
+            received_hops,
+            handler.config.connected_to_shared_instance,
+            *handler.config.identity.address_hash(),
+        )
+    };
+    if !allowed {
+        record_filtered_packet(handler_arc, &message).await;
+        return None;
+    }
+
     let mut decoded_path_request = None;
     let mut traffic_class = inbound_traffic_class(&message, path_request);
     if is_path_request {
@@ -277,39 +205,12 @@ pub(super) async fn preprocess_inbound_message(
         return None;
     }
 
-    // Path requests use their own exact (destination, tag) replay key, independent of requester
-    // and ingress interface. Bypass the global packet hash cache so the path-request handler can
-    // apply that RNS 1.5 replay rule before deciding whether to batch or forward the request.
-    let (accepted, packet_cache_inserted) = if is_path_request {
-        (true, false)
-    } else {
-        filter_duplicate_packet(
-            packet_cache,
-            in_link,
-            &node_name,
-            &message.packet,
-            connected_to_shared_instance,
-            transport_identity,
-        )
-        .await
-    };
-    if !accepted {
-        iface_manager.lock().await.record_packet_filter_hit(message.address);
-        log::debug!(
-            "dropping duplicate packet: dst={}, ctx={:?}, type={:?}",
-            message.packet.destination,
-            message.packet.context,
-            message.packet.header.packet_type
-        );
-        return None;
-    }
-
     Some((
         traffic_class,
         QueuedInbound {
             message,
             ingress_limited: false,
-            packet_cache_inserted,
+            wire_hops: received_hops,
             path_request: decoded_path_request,
         },
     ))
@@ -321,10 +222,6 @@ pub(super) async fn rollback_rejected_inbound(
 ) {
     if let Some(request) = queued.path_request.as_ref() {
         handler_arc.lock().await.path_requests.rollback_admission(request, queued.message.address);
-    }
-    if queued.packet_cache_inserted {
-        let packet_cache = handler_arc.lock().await.packet_cache.clone();
-        packet_cache.lock().await.remove(&queued.message.packet.hash());
     }
 }
 
@@ -357,6 +254,60 @@ pub(super) async fn process_inbound_message(
     if handle_fixed_destinations(&packet, &mut handler, message.address, path_request).await {
         return;
     }
+    let route_iface = if packet.header.packet_type == PacketType::Announce {
+        message.address
+    } else {
+        handler.ingress_route_iface(&packet, message.address, message.source).await
+    };
+    let wrong_local_data_iface = if packet.header.packet_type == PacketType::Data
+        && packet.header.destination_type == DestinationType::Link
+    {
+        if let Some(link) = handler.local_link_for_packet(&packet).await {
+            let expected = link.lock().await.ingress_iface();
+            expected.filter(|expected| *expected != route_iface)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    if defers_duplicate_remember(&packet) {
+        let mut cache = handler.packet_cache.lock().await;
+        if !filter_duplicate_packet(
+            &cache,
+            &packet,
+            queued.wire_hops,
+            handler.config.connected_to_shared_instance,
+            *handler.config.identity.address_hash(),
+        ) {
+            drop(cache);
+            drop(handler);
+            record_filtered_packet(
+                &handler_arc,
+                &RxMessage { address: message.address, packet, source: message.source },
+            )
+            .await;
+            return;
+        }
+        if let Some(expected) = wrong_local_data_iface {
+            cache.forget_hash(&packet.hash());
+            log::warn!(
+                "dropping local Link Data from wrong interface link={} expected={} actual={}",
+                packet.destination,
+                expected,
+                route_iface
+            );
+            return;
+        }
+        if !(handler.config.connected_to_shared_instance
+            || handler.link_table.knows(&packet.destination)
+            || packet.header.packet_type == PacketType::Proof
+                && packet.context == PacketContext::LinkRequestProof)
+        {
+            cache.remember_hash(packet.hash());
+        }
+    }
+
     match packet.header.packet_type {
         PacketType::Announce => {
             if queued.ingress_limited {
@@ -366,25 +317,19 @@ pub(super) async fn process_inbound_message(
                 handle_announce(&packet, handler, message.address, message.source).await
             }
         }
-        PacketType::LinkRequest => {
-            let route_iface =
-                handler.ingress_route_iface(&packet, message.address, message.source).await;
-            handle_link_request(&packet, route_iface, handler).await
-        }
+        PacketType::LinkRequest => handle_link_request(&packet, route_iface, handler).await,
         PacketType::Proof => {
-            let route_iface =
-                handler.ingress_route_iface(&packet, message.address, message.source).await;
             drop(handler);
             handle_proof(packet, handler_arc, route_iface).await;
         }
-        PacketType::Data => {
-            let route_iface =
-                handler.ingress_route_iface(&packet, message.address, message.source).await;
-            handle_data(&packet, route_iface, handler).await
-        }
+        PacketType::Data => handle_data(&packet, route_iface, handler).await,
     }
 }
 
 #[cfg(test)]
 #[path = "inbound_processing_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/queue_admission.rs"]
+mod admission_tests;

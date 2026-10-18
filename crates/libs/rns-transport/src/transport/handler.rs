@@ -190,47 +190,6 @@ impl TransportHandler {
         SendPacketTrace::with_packet_hash(outcome, packet_hash, None, true, dispatch)
     }
 
-    pub(super) async fn send(&self, message: TxMessage) -> TxDispatchTrace {
-        self.send_observed(message, |_| {}).await
-    }
-
-    pub(super) async fn send_observed(
-        &self,
-        message: TxMessage,
-        handoff: impl FnOnce(&TxDispatchTrace),
-    ) -> TxDispatchTrace {
-        let packet = message.packet.clone();
-        self.packet_cache.lock().await.update(&packet);
-        let announce_policy = if packet.header.packet_type == PacketType::Announce
-            && matches!(message.tx_type, TxMessageType::Broadcast(_))
-        {
-            let next_hop_iface = self.path_table.next_hop_iface(&packet.destination);
-            let mut mgr = self.iface_manager.lock().await;
-            let local_destination = self.single_in_destinations.contains_key(&packet.destination);
-            let policy =
-                AnnounceBroadcastPolicy::for_next_hop(&mgr, next_hop_iface, local_destination);
-            let dispatch = mgr.send_with_announce_policy(message, Some(policy)).await;
-            handoff(&dispatch);
-            if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
-                self.note_link_packet_sent(&packet).await;
-            }
-            return dispatch;
-        } else {
-            None
-        };
-        let dispatch = self
-            .iface_manager
-            .lock()
-            .await
-            .send_with_announce_policy(message, announce_policy)
-            .await;
-        handoff(&dispatch);
-        if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
-            self.note_link_packet_sent(&packet).await;
-        }
-        dispatch
-    }
-
     pub(super) fn has_destination(&self, address: &AddressHash) -> bool {
         self.single_in_destinations.contains_key(address)
     }
@@ -241,17 +200,18 @@ impl TransportHandler {
 
     #[cfg(test)]
     pub(super) async fn filter_duplicate_packets(&self, packet: &Packet) -> bool {
-        let in_link = self.in_links.get(&packet.destination).cloned();
-        super::inbound_processing::filter_duplicate_packet(
-            self.packet_cache.clone(),
-            in_link,
-            &self.config.name,
+        let mut cache = self.packet_cache.lock().await;
+        let accepted = super::inbound_processing::filter_duplicate_packet(
+            &cache,
             packet,
+            packet.header.hops,
             self.config.connected_to_shared_instance,
             *self.config.identity.address_hash(),
-        )
-        .await
-        .0
+        );
+        if accepted && !self.config.connected_to_shared_instance {
+            cache.remember_hash(packet.hash());
+        }
+        accepted
     }
 
     #[allow(dead_code)]
@@ -462,3 +422,7 @@ impl TransportHandler {
 }
 
 include!("handler_parts/path_request.rs");
+
+include!("handler_parts/dispatch.rs");
+
+include!("handler_parts/link_lookup.rs");

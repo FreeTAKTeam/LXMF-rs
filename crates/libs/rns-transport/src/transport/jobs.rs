@@ -1,6 +1,6 @@
 use super::announce::announce_retransmit_tick;
 use super::inbound_processing::{
-    preprocess_inbound_message, process_inbound_message, rollback_rejected_inbound,
+    enqueue_inbound_message, preprocess_inbound_message, process_inbound_message,
 };
 use super::*;
 use crate::destination::link::{LinkCloseReason, LinkWatchdogAction};
@@ -186,15 +186,7 @@ pub(super) async fn manage_transport(
                 else {
                     continue;
                 };
-                if let Err(full) = inbound_queues.enqueue(class, message) {
-                    rollback_rejected_inbound(&handler_arc, &full.item).await;
-                    log::warn!(
-                        "dropping inbound packet because {:?} queue is full iface={} hash={}",
-                        full.class,
-                        full.item.message.address,
-                        full.item.message.packet.hash()
-                    );
-                }
+                enqueue_inbound_message(&handler_arc, &inbound_queues, class, message).await;
             }
         });
     }
@@ -273,6 +265,26 @@ pub(super) async fn manage_transport(
                 }
             }
         });
+    }
+
+    {
+        let packet_cache = handler_arc.lock().await.packet_cache.clone();
+        let cancel = cancel.clone();
+        spawn_named_worker(
+            &mut workers,
+            &mut worker_names,
+            "packet-membership-maintenance",
+            async move {
+                loop {
+                    tokio::select! {
+                        _ = cancel.cancelled() => break,
+                        _ = time::sleep(INTERVAL_PACKET_MEMBERSHIP_MAINTENANCE) => {
+                            packet_cache.lock().await.maintain_duplicate_generations();
+                        }
+                    }
+                }
+            },
+        );
     }
 
     {

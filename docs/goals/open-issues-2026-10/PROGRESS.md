@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; PRE reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) records ownership, finite cells and validation boundaries. First slice addresses raw IFAC configuration and policy-before-worker activation. No acceptance or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; three local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) records ownership, finite cells and validation boundaries. IFAC/publication, configured startup, and duplicate foundation/ordinary admission checkpoints pass bounded reviews and local checks. Remaining routing, lifecycle, request, discovery and deeper recovery gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1366,3 +1366,64 @@ validation only; terminal results and final-head review/CI/merge remain required
   are `/tmp/lxmf-item4-bootstrap-{quality,architecture}.log`. The full family lifecycle,
   duplicate-cache/queue, request, discovery, child policy and deeper recovery
   requirements remain open. No item-4 hosted check, PR or merge yet.
+
+### Item 4 duplicate foundation and ordinary admission checkpoint
+
+- Configured-startup checkpoint committed as `d7624f7e`. The next bounded change
+  keeps two membership generations, TTL proof/source records and retained Link
+  receipts in PacketCache with separate intent operations. Strict current-count
+  greater than 500,000 rotates at the native 250 ms maintenance interval; existing
+  90-second/180-second TTL cleanup remains separate. Tests exercise both real
+  threshold rotations, displacement, previous-to-current remembering, lookup
+  without promotion and proof-context independence.
+- Regressions first reproduced TTL expiry forgetting duplicate membership,
+  non-owner save truncating the owner's actual hash file, and a full queue
+  inventing proof context for a pre-existing member. Current-only persistence,
+  disabled/attached no-I/O returns, membership-only restore and atomic ordinary
+  admission correct those failures. The final filter/enqueue/remember section uses
+  current mode under handler -> cache -> synchronous queue. Cache rollback state
+  was removed; path-request rollback remains. Competing candidates enqueue once
+  and filter drops stay distinct from queue-overload counters.
+- All three outbound registration sites retain pre-handoff packet/recipient
+  bindings, including attached mode, and skip only membership in that mode.
+  Prepared explicit/implicit proof tests retain wrong-known-signer/untracked
+  negatives; declined prepared handoff remains side-effect-free. Existing outbound
+  pre-dispatch timing is preserved, not claimed as newly exact Python behavior for
+  failed/no-route sends. The private PacketCache has no external API exposure;
+  obsolete combined removal was deleted and combined update remains test-only.
+- A real authenticated Resource-control regression exposed wrong-interface Data
+  changing a pending Resource to Rejected. Current local Link interface selection
+  now precedes Resource/Data handling and forgets membership only on this failure.
+  Both inbound/outbound local Link cases remain pending on the wrong interface,
+  then accept identical correct-interface replay to the existing terminal result.
+  The existing generic Link-map lookup was moved to its Handler owner and reused.
+- The frozen `99de23c040d507e3fefca19e87b182302902725d` checkout is clean. A new
+  explicitly run differential covers all 21 filter contexts and 18,144 Cartesian
+  predicate cases. This is predicate evidence; production guards and valid native
+  packet-shape routing are separately bounded. Original wire hops are retained as
+  immutable filter input. Link destinations/LRPROOF defer to current drain state;
+  no stale queued remember flag or additional reservation registry was introduced.
+- Independent correctness and maintainability POST approve this foundation and
+  ordinary-admission checkpoint. Native transport tests pass 996 with ten ignored
+  (nine existing plus the new explicitly passed Python differential). The first
+  daemon run had 588 passed/one failure: a shutdown I/O-fault fixture used a disabled
+  transport, which now correctly skips hashlist I/O. The fixture now explicitly
+  enables its transport owner while preserving its error and subsequent path-table
+  and tunnel-write assertions; its focused regression passes. Final all-feature
+  daemon suite passes 589 with no ignores. Affected all-target/all-feature Clippy,
+  diagnostics scanner, formatting, boundaries, module-size and architecture checks
+  pass. Touched oversized test includes retain their namespaces under `/tests/`,
+  removing two more obsolete size exemptions. Logs include
+  `/tmp/lxmf-item4-cache-{admission-transport,transport-final,filter-reference}.log`,
+  `/tmp/lxmf-item4-cache-{queue-red,queue-green}.log`,
+  `/tmp/lxmf-item4-local-link-data-{red,green}.log`,
+  `/tmp/lxmf-item4-membership-{ttl-red,save-red,generation-tests,prepared-proof}.log`,
+  and `/tmp/lxmf-item4-cache-{daemon-tests,shutdown-fault-final,daemon-final}.log`.
+- Routing acceptance remains open: transit LRPROOF must bypass generic outbound
+  remembering; local pending LRPROOF needs generation-bound expected hops and the
+  remember-before-validation rule; transit direction/hops and authenticated
+  rebalancing must be enforced, including KeepAlive's separate forwarding path.
+  Queued Link-table insertion/removal, retained late proofs after teardown, and
+  local wrong-interface ordinary/Resource Data need the remaining composition
+  cases. These, the family lifecycle matrix, request/discovery/child policy and
+  deeper recovery still gate item 4. No hosted check, PR or merge yet.

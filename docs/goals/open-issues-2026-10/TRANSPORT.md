@@ -103,6 +103,34 @@ other rows use configured restart/native reconnect rather than speculative APIs.
 
 ## Duplicate and persistence contract
 
+The foundation now separates current/previous membership from the existing
+180-second proof/source records and retained Link receipts. Native maintenance
+rotates membership every 250 ms when current exceeds 500,000; the separate
+90-second TTL/Link cleanup remains unchanged. Production save writes current
+membership only; disabled/attached saves perform no I/O and restore creates no
+proof contexts. Outbound registration keeps recipient-bound proof context before
+handoff even in attached mode, while that mode skips local membership. The
+existing outbound pre-dispatch timing otherwise remains unchanged; this is not
+new evidence of Python-exact failed/no-route outbound remembering.
+
+Ordinary admission now repeats the filter, synchronously enqueues and remembers
+under one handler/cache/queue order using current attached mode. Queue rejection
+does not insert/promote membership or alter proof context; only path-request
+admission needs rollback. Original wire hops are immutable filter input despite
+later receive-hop accounting. Link destinations and LRPROOF defer remembering to
+current drain state. This shape boundary covers valid native protocol traffic;
+synthetic non-Link destination bits addressed to a Link-table ID are not evidence
+for that shortcut. An authenticated local Resource-control Data regression proves
+wrong-interface traffic leaves the transfer pending and forgets membership, while
+identical correct-interface replay reaches its existing terminal outcome.
+
+A frozen-Python differential covers all 21 contexts across 18,144 combinations of
+packet/destination type, hops, transport identity, attached mode and current/
+previous membership. This establishes the ordered filter predicate, including
+invalid producer combinations; stronger production ingress guards and Link routing
+are separate evidence. The following routing, proof-hop/rebalancing, pending and
+transit LRPROOF, and queued Link-state cases remain required before acceptance.
+
 - Preserve the frozen filter's ordered branches: attached-client bypass, foreign
   transport rejection, six context exemptions, Plain/Group rules, generation
   membership and Single-Announce replay. Inventory all 21 contexts separately
@@ -112,6 +140,14 @@ other rows use configured restart/native reconnect rather than speculative APIs.
   before signature validation. Preserve signed hop rebalancing and same-interface
   direction rules. Wrong-interface local Data forgets both generations so the
   identical frame can arrive correctly later.
+  Capture private expected proof hops from the generation's actual request
+  dispatch route, not the early timeout snapshot or a later mutable path lookup.
+  Authenticate allowed hop rebalancing before changing that state. KeepAlive's
+  separate relay path must use the same validated direction/hop decision.
+  Unknown local Link proofs must still reach retained receipt-key validation
+  after teardown; the local Data interface gate must not become a blanket Proof
+  restriction. Forwarded transit LRPROOF needs the existing send owner without
+  originating-outbound hash remembering.
 - Use the frozen one-million maintenance threshold and strict current-count
   greater-than-half rotation. Add 250 ms membership maintenance without moving
   existing 90-second TTL/Link-table cleanup. Between-job overshoot is not a hard

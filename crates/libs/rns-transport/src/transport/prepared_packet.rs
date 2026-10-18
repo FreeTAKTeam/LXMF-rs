@@ -79,7 +79,7 @@ impl TransportHandler {
         if !accept_packet_hash(packet_hash) {
             return None;
         }
-        cache.update(&packet);
+        self.register_outbound_packet(&mut cache, &packet);
         drop(cache);
         let dispatch = interfaces
             .send_with_announce_policy(

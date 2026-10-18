@@ -20,7 +20,7 @@ include!("tests_parts/bootstrap_ifac_tcp_startup_error.rs");
 
 include!("tests_parts/bootstrap_reports_auto_interface_as.rs");
 
-include!("tests_parts/bootstrap_restores_path_cache.rs");
+include!("tests/bootstrap_path_cache.rs");
 
 include!("tests_parts/durable_broker_bootstrap.rs");
 

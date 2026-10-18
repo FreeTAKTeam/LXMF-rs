@@ -77,8 +77,12 @@ roots now use the prepared policy path, retaining carrier defaults and control
 handles. Shared attachments commit transport mode before worker activation, and
 automatic TCP/Unix shared clients retain their plaintext contract while explicit
 Local configuration enforces IFAC. First-wire, cancellation, key-rotation and new
-accepted-client regressions pass locally. The remaining carrier lifecycle,
-duplicate-cache, request, discovery and deeper
+accepted-client regressions pass locally. Duplicate membership now uses independent
+current/previous generations with bounded maintenance and owner-only persistence.
+Ordinary queue admission commits filtering/enqueue/remembering together; full
+queues preserve proof state. A frozen 21-context differential qualifies the filter
+predicate, while Link routing/proof remembering and queued Link-state cases remain
+open. The remaining carrier lifecycle, request, discovery and deeper
 recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

@@ -26,7 +26,7 @@ pub(super) async fn handle_resource_proof(
     iface: AddressHash,
 ) {
     let mut handler = handler.lock().await;
-    let link = link_for_resource_packet(&handler, &packet).await;
+    let link = handler.local_link_for_packet(&packet).await;
     if let Some(link) = link {
         let mut link = link.lock().await;
         // Resource proofs are handled here instead of through
@@ -65,7 +65,7 @@ pub(super) async fn handle_link_resource_packet<'a>(
     iface: AddressHash,
     handler: &mut MutexGuard<'a, TransportHandler>,
 ) -> bool {
-    let link = link_for_resource_packet(handler, packet).await;
+    let link = handler.local_link_for_packet(packet).await;
     let Some(link) = link else {
         log::debug!(
             "[resource-diag] wire_resource_no_link node={} link={} ctx={:02x}",
@@ -202,26 +202,6 @@ pub(super) async fn handle_link_resource_packet<'a>(
     handler.resource_response_packets = responses;
     publish_resource_events(handler, events);
     true
-}
-
-async fn link_for_resource_packet(
-    handler: &TransportHandler,
-    packet: &Packet,
-) -> Option<Arc<Mutex<Link>>> {
-    let mut link = handler
-        .in_links
-        .get(&packet.destination)
-        .cloned()
-        .or_else(|| handler.out_links.get(&packet.destination).cloned());
-    if link.is_none() {
-        for candidate in handler.out_links.values() {
-            if *candidate.lock().await.id() == packet.destination {
-                link = Some(candidate.clone());
-                break;
-            }
-        }
-    }
-    link
 }
 
 fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Result<Packet, RnsError> {

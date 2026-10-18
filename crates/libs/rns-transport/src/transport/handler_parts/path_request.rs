@@ -5,7 +5,10 @@ impl TransportHandler {
         allowed_modes: Option<&[InterfaceMode]>,
     ) -> TxDispatchTrace {
         let packet = message.packet.clone();
-        self.packet_cache.lock().await.update(&packet);
+        {
+            let mut cache = self.packet_cache.lock().await;
+            self.register_outbound_packet(&mut cache, &packet);
+        }
         let dispatch = self
             .iface_manager
             .lock()

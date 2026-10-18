@@ -115,15 +115,14 @@ impl Transport {
     pub async fn save_packet_hashlist<P: AsRef<Path>>(&self, storage_path: P) -> io::Result<usize> {
         let hashes = {
             let handler = self.handler.lock().await;
-            if handler.config.transport_enabled && !handler.config.connected_to_shared_instance {
-                handler
-                    .packet_cache
-                    .try_lock()
-                    .map_err(|_| io::Error::other("packet cache is busy"))?
-                    .hashes()
-            } else {
-                Vec::new()
+            if !handler.config.transport_enabled || handler.config.connected_to_shared_instance {
+                return Ok(0);
             }
+            let cache = handler
+                .packet_cache
+                .try_lock()
+                .map_err(|_| io::Error::other("packet cache is busy"))?;
+            cache.hashes()
         };
         ReticulumPacketDiskCache::new(storage_path.as_ref())
             .save_packet_hashlist(storage_path, &hashes)
