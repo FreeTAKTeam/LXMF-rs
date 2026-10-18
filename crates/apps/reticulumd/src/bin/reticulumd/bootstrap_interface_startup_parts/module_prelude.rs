@@ -43,9 +43,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Default)]
-pub(super) struct InterfaceStartupBatch {
-    pub(super) startup_successes: usize,
-    pub(super) startup_failures: Vec<InterfaceStartupFailure>,
+pub(crate) struct InterfaceStartupBatch {
+    pub(crate) configured_roots: Vec<(usize, AddressHash)>,
+    pub(crate) startup_successes: usize,
+    pub(crate) startup_failures: Vec<InterfaceStartupFailure>,
     pub(super) seeded_hot_apply_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
     pub(super) tunnel_synth_ifaces: Vec<AddressHash>,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
@@ -76,13 +77,29 @@ pub(crate) struct AutoRuntimeRefresh {
 pub(crate) struct AutoRuntimeShutdown {
     pub(crate) host_iface: AddressHash,
     pub(crate) runtime: rns_transport::iface::auto_runtime::AutoDiscoveryRuntime,
+    #[cfg(test)]
     pub(crate) iface_manager: Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
 }
 
 impl AutoRuntimeShutdown {
-    pub(crate) async fn stop(self) -> bool {
+    pub(crate) async fn quiesce(self) {
         self.runtime.stop().await;
-        self.iface_manager.lock().await.stop_interface(self.host_iface)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn stop(self) -> bool {
+        let manager = self.iface_manager.clone();
+        let existed = manager.lock().await.online(&self.host_iface).is_some();
+        let mut native =
+            crate::configured_interface_runtime::NativeInterfaceRuntime::new(self.host_iface, None);
+        native.auto_shutdown = Some(self);
+        match crate::interface_hot_apply::stop_owned_native(&manager, None, native).await {
+            Ok(()) => existed,
+            Err(error) => {
+                log::warn!("[daemon] test Auto shutdown failed: {error}");
+                false
+            }
+        }
     }
 }
 
@@ -135,8 +152,8 @@ pub(crate) struct I2pRuntimeRefresh {
     pub(crate) status: rns_transport::iface::i2p::I2pRuntimeStatusHandle,
 }
 
-#[derive(Clone)]
 pub(crate) struct MeshtasticRuntimeRefresh {
+    pub(crate) simulation: tokio::task::JoinHandle<()>,
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: rns_transport::iface::meshtastic::MeshtasticRuntimeStatusHandle,
 }
@@ -153,6 +170,7 @@ pub(crate) enum TcpRuntimeStatusSource {
     Listener(rns_transport::iface::tcp_server::TcpListenerRuntimeStatusHandle),
 }
 
+#[cfg(test)]
 impl TcpRuntimeStatusSource {
     #[must_use]
     pub(crate) fn runtime_key(&self) -> &'static str {

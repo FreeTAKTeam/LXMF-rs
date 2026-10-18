@@ -16,6 +16,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
     let reticulum_storage_path = context.reticulum_storage_path;
     let transport_identity_hash = context.transport_identity_hash;
     let InterfaceStartupBatch {
+        configured_roots,
         startup_successes,
         startup_failures,
         seeded_hot_apply_interfaces,
@@ -43,8 +44,12 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         return;
     }
     let label = interface_label(iface, index);
+    let mut native_root = None;
     match iface.kind.as_str() {
         "tcp_server" | "backbone" => {
+            if selected_tcp_server.selected_index == Some(index) && iface.port.is_some() {
+                native_root = server_iface.copied();
+            }
             if let Some(seed) = startup_tcp_server_record(
                 index,
                 iface,
@@ -54,6 +59,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 record,
                 startup_failures,
             ) {
+                native_root = Some(seed.2);
                 seeded_hot_apply_interfaces.push(seed);
             }
         }
@@ -69,11 +75,13 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             )
             .await
             {
-                LocalUnixStartup::Active => {
+                LocalUnixStartup::Active(address) => {
+                    native_root = Some(address);
                     *startup_successes += 1;
                 }
                 LocalUnixStartup::Attached(client_iface) => {
                     *startup_successes += 1;
+                    native_root = Some(client_iface);
                     tunnel_synth_ifaces.push(client_iface);
                 }
                 LocalUnixStartup::Failed => {}
@@ -93,9 +101,10 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             {
                 LocalUnixStartup::Attached(client_iface) => {
                     *startup_successes += 1;
+                    native_root = Some(client_iface);
                     tunnel_synth_ifaces.push(client_iface);
                 }
-                LocalUnixStartup::Active | LocalUnixStartup::Failed => {}
+                LocalUnixStartup::Active(_) | LocalUnixStartup::Failed => {}
             }
         }
         "local" => {
@@ -113,6 +122,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 .await
                 {
                     *startup_successes += 1;
+                    native_root = Some(client_iface);
                     tunnel_synth_ifaces.push(client_iface);
                 }
             } else if iface.synthetic_shared_instance
@@ -129,11 +139,13 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 )
                 .await
                 {
-                    LocalTcpSidecarStartup::Active => {
+                    LocalTcpSidecarStartup::Active(address) => {
+                        native_root = Some(address);
                         *startup_successes += 1;
                     }
                     LocalTcpSidecarStartup::Attached(client_iface) => {
                         *startup_successes += 1;
+                        native_root = Some(client_iface);
                         tunnel_synth_ifaces.push(client_iface);
                     }
                     LocalTcpSidecarStartup::Failed => {}
@@ -147,7 +159,11 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 record,
                 startup_failures,
             ) {
+                native_root = Some(seed.2);
                 seeded_hot_apply_interfaces.push(seed);
+            }
+            if selected_tcp_server.selected_index == Some(index) && iface.port.is_some() {
+                native_root = server_iface.copied();
             }
         }
         "local_client" => {
@@ -163,6 +179,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root = Some(client_iface);
                 tunnel_synth_ifaces.push(client_iface);
             }
         }
@@ -181,6 +198,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root = Some(client_iface);
                 tunnel_synth_ifaces.push(client_iface);
             }
         }
@@ -193,6 +211,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             if startup_udp(args, iface, &label, transport, iface_manager, record, &mut sinks).await
             {
                 *startup_successes += 1;
+                native_root = udp_runtime_refreshes.last().map(|refresh| refresh.runtime_iface);
             }
         }
         "auto" => {
@@ -207,6 +226,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root = Some(refresh.runtime_iface);
                 auto_runtime_refreshes.push(refresh);
                 auto_runtime_shutdowns.push(shutdown);
             }
@@ -224,6 +244,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root = serial_runtime_refreshes.last().map(|refresh| refresh.runtime_iface);
             }
         }
         "weave" => {
@@ -236,6 +257,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                     name: label.clone(),
                     handle: refresh.handle.clone(),
                 });
+                native_root = Some(refresh.runtime_iface);
                 weave_runtime_refreshes.push(refresh);
             }
         }
@@ -252,6 +274,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root = kiss_runtime_refreshes.last().map(|refresh| refresh.runtime_iface);
             }
         }
         "kiss_tcp_client" => {
@@ -267,6 +290,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root = kiss_runtime_refreshes.last().map(|refresh| refresh.runtime_iface);
             }
         }
         "pipe" => {
@@ -274,6 +298,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 startup_pipe(iface, &label, iface_manager, record, startup_failures).await
             {
                 *startup_successes += 1;
+                native_root = Some(refresh.runtime_iface);
                 pipe_runtime_refreshes.push(refresh);
             }
         }
@@ -291,6 +316,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root = Some(refresh.runtime_iface);
                 i2p_runtime_refreshes.push(refresh);
             }
         }
@@ -299,6 +325,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 startup_meshtastic(iface, &label, iface_manager, record, startup_failures).await
             {
                 *startup_successes += 1;
+                native_root = Some(refresh.runtime_iface);
                 meshtastic_runtime_refreshes.push(refresh);
             }
         }
@@ -314,6 +341,8 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root =
+                    ble_gatt_runtime_refreshes.last().map(|refresh| refresh.runtime_iface);
             }
         }
         "reticulum_ble" => {
@@ -329,6 +358,8 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root =
+                    reticulum_ble_runtime_refreshes.last().map(|refresh| refresh.runtime_iface);
             }
         }
         "vrn76_kiss_ble" => {
@@ -339,6 +370,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 *startup_successes += 1;
                 #[cfg(feature = "vrn76-kiss-ble")]
                 if let Some(refresh) = startup.refresh {
+                    native_root = Some(refresh.runtime_iface);
                     vrn76_runtime_refreshes.push(refresh);
                 }
             }
@@ -349,6 +381,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             if started.started {
                 *startup_successes += 1;
                 if let Some(refresh) = started.refresh {
+                    native_root = Some(refresh.runtime_iface);
                     lora_runtime_refreshes.push(refresh);
                 }
                 if let Some(binding) = started.management_binding {
@@ -369,6 +402,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             .await
             {
                 *startup_successes += 1;
+                native_root = Some(refresh.runtime_iface);
                 rnode_multi_runtime_refreshes.push(refresh);
             }
         }
@@ -379,5 +413,8 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             iface.kind.clone(),
             format!("unsupported interface kind '{}'", iface.kind),
         ),
+    }
+    if let Some(address) = native_root {
+        configured_roots.push((index, address));
     }
 }

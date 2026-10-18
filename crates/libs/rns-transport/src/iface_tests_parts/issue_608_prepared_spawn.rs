@@ -87,3 +87,28 @@ async fn failed_root_preparation_never_constructs_worker_or_returns_a_live_handl
     assert!(manager.worker_tasks.is_empty());
     assert_eq!(manager.role(unrelated.address()), Some(IfaceRole::Unicast));
 }
+
+#[test]
+fn cancelled_parent_rejects_late_policy_inheritance_without_mutating_target() {
+    let mut manager = InterfaceManager::new(8);
+    let parent = manager.new_channel(8);
+    let target = manager.new_channel(8);
+    parent.stop.cancel();
+    assert!(!manager.inherit_runtime_config(*parent.address(), *target.address()));
+    let target_entry = manager
+        .ifaces
+        .iter()
+        .find(|iface| iface.address == *target.address())
+        .expect("unchanged target");
+    assert!(target_entry.parent.is_none());
+}
+
+#[test]
+fn cancelled_parent_rejects_late_virtual_registration_without_publication() {
+    let mut manager = InterfaceManager::new(8);
+    let parent = manager.new_channel(8);
+    let before = manager.interface_hashes();
+    parent.stop.cancel();
+    assert!(manager.register_virtual_iface(*parent.address(), IfaceRole::VirtualUnicast).is_none());
+    assert_eq!(manager.interface_hashes(), before);
+}

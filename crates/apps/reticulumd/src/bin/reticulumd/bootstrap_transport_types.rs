@@ -12,27 +12,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) delivery_source_hash: [u8; 16],
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) restored_path_identities: Vec<RestoredReticulumPathIdentity>,
-    pub(super) startup_successes: usize,
-    pub(super) startup_failures: Vec<InterfaceStartupFailure>,
-    pub(super) seeded_hot_apply_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
-    pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
-    pub(super) auto_runtime_shutdowns: Vec<AutoRuntimeShutdown>,
-    pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
-    pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
-    pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
-    pub(super) kiss_runtime_refreshes: Vec<KissRuntimeRefresh>,
-    pub(super) ble_gatt_runtime_refreshes: Vec<BleGattRuntimeRefresh>,
-    pub(super) reticulum_ble_runtime_refreshes: Vec<ReticulumBleRuntimeRefresh>,
-    pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
-    pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
-    pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
-    pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
-    pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
-    pub(super) meshtastic_runtime_refreshes: Vec<MeshtasticRuntimeRefresh>,
-    #[cfg(feature = "vrn76-kiss-ble")]
-    pub(super) vrn76_runtime_refreshes: Vec<Vrn76RuntimeRefresh>,
-    pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
-    pub(super) weave_control_bindings: Vec<WeaveControlBinding>,
+    pub(super) interfaces: InterfaceStartupBatch,
 }
 
 pub(super) struct TransportStartupInput<'a> {

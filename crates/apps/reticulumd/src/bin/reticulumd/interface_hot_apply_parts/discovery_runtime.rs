@@ -1,3 +1,6 @@
+#[cfg(test)]
+pub(super) use super::native_shutdown::stop_and_join;
+pub(super) use super::native_shutdown::stop_owned_native;
 use super::*;
 use rand_core::{OsRng, RngCore};
 use reticulum_daemon::config::{InterfaceConfig, ReticulumRuntimePolicy};
@@ -40,7 +43,7 @@ pub(crate) struct NativeDiscoveryConfig {
     gravity: i64,
     announces_to_internal: bool,
     allow_unverified: bool,
-    bootstrap: Vec<InterfaceConfig>,
+    bootstrap: Vec<(usize, InterfaceConfig)>,
     announce_defaults: (u64, u64, u64),
 }
 
@@ -63,8 +66,9 @@ impl NativeDiscoveryConfig {
             // Recipes come from the immutable startup configuration, never RPC status.
             bootstrap: bootstrap
                 .iter()
-                .filter(|iface| iface.enabled() && iface.bootstrap_only == Some(true))
-                .cloned()
+                .enumerate()
+                .filter(|(_, iface)| iface.enabled() && iface.bootstrap_only == Some(true))
+                .map(|(index, iface)| (index, iface.clone()))
                 .collect(),
             announce_defaults,
         })
@@ -220,16 +224,16 @@ impl NativeDiscovery {
         let key = ManagedInterfaceKey::Discovered(plan.endpoint_hash);
         managed.insert(
             key.clone(),
-            ManagedHotApplyInterface {
+            ManagedHotApplyInterface::active(
                 record,
                 address,
                 runtime_status,
-                origin: ManagedInterfaceOrigin::Discovered {
+                ManagedInterfaceOrigin::Discovered {
                     endpoint: plan.endpoint_hash,
                     source: plan.network_id,
                     down_since: None,
                 },
-            },
+            ),
         );
         self.lifecycle.monitor_interface(key.monitor_id());
         publish_live_runtime_records(managed, daemon);
@@ -290,7 +294,8 @@ async fn runtime_states(
         .iter()
         .map(|(key, active)| {
             let record = &active.record;
-            let registered = manager.online(&active.address).is_some();
+            let address = active.native.as_ref().map(|native| native.address);
+            let registered = address.is_some_and(|address| manager.online(&address).is_some());
             let (hash, source) = match &active.origin {
                 ManagedInterfaceOrigin::Discovered { endpoint, source, .. } => {
                     (Some(*endpoint), Some(source.clone()))
@@ -312,7 +317,7 @@ async fn runtime_states(
                         .as_ref()
                         .and_then(|settings| settings["bootstrap_only"].as_bool())
                         == Some(true),
-                online: manager.online(&active.address).unwrap_or(false),
+                online: address.and_then(|address| manager.online(&address)).unwrap_or(false),
                 down_since: None,
             }
         })
@@ -377,24 +382,17 @@ pub(super) fn publish_live_runtime_records(
     daemon: &RpcDaemon,
 ) {
     let mut records = daemon.interface_records();
-    for active in managed.values().filter(|active| {
-        !active.origin.configuration_owned()
-            || matches!(&active.runtime_status, Some(HotApplyRuntimeStatus::TcpClient(_)))
-    }) {
-        // Seeded status belongs to its existing native refresher until a replacement
-        // provides a retained status handle. Do not replay the startup snapshot.
-        if active.runtime_status.is_none()
-            && records.iter().any(|record| same_record(record, &active.record))
-        {
-            continue;
-        }
-        let mut changed = vec![active.record.clone()];
-        record_publication::committed_records(&mut changed, managed);
-        if let Some(record) = records.iter_mut().find(|record| same_record(record, &active.record))
-        {
-            *record = changed.remove(0);
+    for active in managed.values() {
+        let position = match &active.configured {
+            Some(binding) => Some(binding.position),
+            None => records.iter().position(|record| same_record(record, &active.record)),
+        };
+        if let Some(record) = position.and_then(|position| records.get_mut(position)) {
+            record_publication::project_native_record(record, active);
         } else {
-            records.extend(changed);
+            let mut record = active.record.clone();
+            record_publication::project_native_record(&mut record, active);
+            records.push(record);
         }
     }
     daemon.replace_interfaces(records);
@@ -422,10 +420,24 @@ pub(super) async fn detach_discovered(
     let active = managed
         .remove(&key)
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "discovered interface is absent"))?;
-    let stopped = stop_and_join(manager, transport, active.address).await;
+    let stopped = match active.native {
+        Some(native) => stop_owned_native(manager, transport, native).await,
+        None => Ok(()),
+    };
     if let Some(daemon) = daemon.and_then(Weak::upgrade) {
         let mut records = daemon.interface_records();
-        records.retain(|record| !same_record(record, &active.record));
+        if let Some(position) =
+            records.iter().position(|record| same_record(record, &active.record))
+        {
+            records.remove(position);
+            for entry in managed.values_mut() {
+                if let Some(binding) = &mut entry.configured {
+                    if binding.position > position {
+                        binding.position -= 1;
+                    }
+                }
+            }
+        }
         daemon.replace_interfaces(records);
     }
     stopped?;
@@ -434,47 +446,13 @@ pub(super) async fn detach_discovered(
     )
 }
 
-pub(super) async fn stop_and_join(
-    manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
-    transport: Option<&Arc<Transport>>,
-    address: AddressHash,
-) -> io::Result<()> {
-    let workers = manager.lock().await.take_worker_tree(address);
-    stop_hot_apply_interface(manager, transport, address).await;
-    let mut failure = None;
-    for mut worker in workers {
-        match tokio::time::timeout(Duration::from_secs(10), &mut worker).await {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                failure.get_or_insert_with(|| io::Error::other(error));
-            }
-            Err(error) => {
-                worker.abort();
-                match worker.await {
-                    Ok(()) => {}
-                    Err(error) if error.is_cancelled() => {}
-                    Err(error) => log::warn!(
-                        "[daemon] aborted interface worker failed address={address}: {error}"
-                    ),
-                }
-                failure.get_or_insert_with(|| {
-                    io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        format!("interface worker stop timed out address={address}: {error}"),
-                    )
-                });
-            }
-        }
-    }
-    match failure {
-        Some(error) => Err(error),
-        None => Ok(()),
-    }
-}
-
 #[cfg(test)]
 #[path = "../tests/interface_hot_apply/discovery_owner.rs"]
 mod owner_tests;
 #[cfg(test)]
 #[path = "../tests/interface_hot_apply/discovery_runtime.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/interface_hot_apply/configured_root_owner.rs"]
+mod configured_root_owner_tests;

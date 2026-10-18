@@ -36,7 +36,10 @@ pub(crate) fn build_config(iface: &InterfaceConfig) -> MeshtasticDaemonConfig {
     }
 }
 
-pub(crate) fn spawn_simulation_loopback(handle: MeshtasticInterfaceHandle, node_id: u32) {
+pub(crate) fn spawn_simulation_loopback(
+    handle: MeshtasticInterfaceHandle,
+    node_id: u32,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(frame) = handle.recv_transmit().await {
             if handle
@@ -47,7 +50,7 @@ pub(crate) fn spawn_simulation_loopback(handle: MeshtasticInterfaceHandle, node_
                 break;
             }
         }
-    });
+    })
 }
 
 #[cfg(test)]

@@ -1828,3 +1828,68 @@ validation only; terminal results and final-head review/CI/merge remain required
   behavior-preserving extraction. [BOOTSTRAP.md](BOOTSTRAP.md) records the
   remaining root/effect, status/control, restoration and twenty-family cutover.
   No family gate or whole item is promoted by this preparatory checkpoint.
+
+## Item 4 configured ownership and publication cutover
+
+- The typed startup batch now retains every actual configured root, original recipe
+  index, native status and unique effects in the existing mutation owner's map.
+  Inactive/rejected/validation-only records retain absence. Duplicate identities
+  use private occurrence bindings; protected records survive public four-kind
+  Apply, reorder and discovered-record removal. Native failed Pipe repair and
+  policy updates preserve the correct runtime metadata and binding.
+- One immediate/two-second Delay publication tick displaces seventeen detached
+  production refresh loops. Complete RNode/Weave projections exist before the
+  worker returns and clear after retirement; retained old handles lose their
+  native receiver. Generic cancel-aware adapter controls are explicitly narrower
+  than radio packet or family acceptance.
+- Bootstrap uniquely retains the mutation worker join while the daemon keeps its
+  bridge. Cancellation preserves that handle and its original failure. A reviewer
+  found that admission remained open during cleanup; the strengthened regression
+  fails in `/tmp/lxmf-item4-configured-owner-retiring-admission-red.log`, then passes
+  in `...-retiring-admission-green.log` after closing the existing receiver before
+  retirement. A colliding-root Apply test now waits for the actual completion event.
+- Native retirement fences/takes the current worker tree atomically. Ordinary and
+  virtual late-child controls fail before the admission fix (`...-admission-red.log`)
+  and pass afterward. The held-handler fence test confirms route cleanup after
+  manager removal, all captured joins and unrelated-root continuity. Error tests
+  settle every uncooperative/panicking worker or auxiliary before returning failure.
+- The missing native duplicate-KISS disable fails before cutover in
+  `/tmp/lxmf-item4-configured-owner-native-red.log`; subsequent focused native,
+  projection, control-receiver and cancellation runs pass. Earlier fixture-only
+  compile/configuration errors remain logged and are not production regressions.
+- Full daemon runs initially fail Auto's final exclusive-bind probes in
+  `...-daemon-second.log` and `...-daemon-final.log`; a separate stale Pipe readiness
+  snapshot also fails and is repaired by returning the native readiness projection.
+  Three predeclared inode-diagnostic cohorts retain results: first/third pass,
+  second fails two Auto probes. `...-auto-inodes-2.log` captures an original data
+  inode still present after stop with no descriptor left in the parent process.
+- A controlled Auto/Pipe cohort delays child exec entry by 50 ms. In
+  `...-auto-preexec.log` and `.trace`, pre-exec Pipe child PID 1135735 retains retired
+  Auto discovery inodes 1410573/1434705 and 1419959/1419960. The trace records its
+  successful `/usr/bin/cat` exec and corresponding CLOEXEC release. This directly
+  attributes that controlled failure; the natural untraced failures are consistent
+  with it, rather than individually PID-attributed. A broader whole-suite strace
+  diagnostic perturbs unrelated protocol timing and is stopped with exit 143
+  after confirming it has no child processes; it is not an acceptance result.
+- Seven Auto bootstrap tests now execute unchanged native assertions in separate
+  exact-case processes with case-specific child markers, successful status and
+  one passed/non-ignored test required. The same delayed-exec control passes all
+  seven in `...-auto-isolated-preexec.log`, compared with four earlier failures.
+  A normal isolated cohort also passes. No production sleep/retry, timing-budget
+  increase or shared-bind relaxation is introduced; temporary inode code is gone.
+- Final normal all-feature daemon validation passes 31 library and 630 binary tests
+  in `/tmp/lxmf-item4-configured-owner-daemon-isolated-final.log` (30.49 seconds for
+  binary tests). Affected transport validation passes 1,047 tests with 12 existing
+  ignored cases in `...-transport.log`. Default daemon check also passes, retaining
+  the existing optional RNode BLE dead-code warning. Both independent source POST
+  reviews approve this bounded cutover. Fresh affected all-target/all-feature
+  Clippy, Cargo fmt, changed include formatting, boundaries, module size,
+  architecture, diagnostics scanner, task-document links and diff checks pass.
+  The legacy included `bootstrap_parts/module_core.rs` retains its existing
+  formatting; its changed wiring is reviewed without reformatting the whole file.
+  Final gate logs use the `...-clippy-approved`, `...-architecture-approved`,
+  `...-diagnostics-approved`, `...-boundaries-approved`, `...-size-approved`,
+  `...-fmt-final`, `...-include-fmt-final` and `...-doc-links` suffixes.
+- [BOOTSTRAP.md](BOOTSTRAP.md) now marks root/effect retention and publication/
+  shutdown cutover locally verified. General trusted restoration, twenty-family
+  composition, whole-item release/integration, one PR and hosted CI remain open.

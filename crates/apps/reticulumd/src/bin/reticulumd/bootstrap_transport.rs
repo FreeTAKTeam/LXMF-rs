@@ -22,16 +22,17 @@ mod transport_destinations;
 use crate::bridge::PeerCrypto;
 use crate::interfaces::common::interface_label;
 use crate::Args;
-#[cfg(test)]
-pub(super) use interface_startup::LoraRuntimeStatusSource;
-#[cfg(feature = "vrn76-kiss-ble")]
+pub(crate) use interface_startup::LoraRuntimeStatusSource;
+#[cfg(all(test, feature = "vrn76-kiss-ble"))]
 pub(super) use interface_startup::Vrn76RuntimeRefresh;
+#[cfg(test)]
 pub(super) use interface_startup::{
-    AutoRuntimeRefresh, AutoRuntimeShutdown, BleGattRuntimeRefresh, I2pRuntimeRefresh,
-    KissRuntimeRefresh, LoraRuntimeRefresh, MeshtasticRuntimeRefresh, PipeRuntimeRefresh,
-    RNodeManagementBinding, RNodeMultiRuntimeRefresh, ReticulumBleRuntimeRefresh,
-    SerialRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource, UdpRuntimeRefresh,
-    WeaveControlBinding, WeaveRuntimeRefresh,
+    AutoRuntimeRefresh, BleGattRuntimeRefresh, I2pRuntimeRefresh, KissRuntimeRefresh,
+    LoraRuntimeRefresh, PipeRuntimeRefresh, RNodeMultiRuntimeRefresh, SerialRuntimeRefresh,
+    UdpRuntimeRefresh, WeaveRuntimeRefresh,
+};
+pub(crate) use interface_startup::{
+    AutoRuntimeShutdown, InterfaceStartupBatch, TcpRuntimeRefresh, TcpRuntimeStatusSource,
 };
 use path_restore::{
     mark_path_table_restore_status, mark_path_table_restore_status_on_enabled_interfaces,
@@ -115,6 +116,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut delivery_source_hash = [0u8; 16];
     let mut restored_path_identities = Vec::new();
     let mut startup_successes = 0usize;
+    let mut configured_roots = Vec::new();
     let mut startup_failures = Vec::new();
     let mut seeded_hot_apply_interfaces = Vec::new();
     let mut auto_runtime_refreshes = Vec::new();
@@ -284,6 +286,7 @@ pub(super) async fn start_transport_and_interfaces(
                 Some(transport_identity_hash),
             )
             .await;
+            configured_roots.extend(startup.configured_roots);
             startup_successes += startup.startup_successes;
             startup_failures.extend(startup.startup_failures);
             for iface in startup.tunnel_synth_ifaces {
@@ -356,6 +359,7 @@ pub(super) async fn start_transport_and_interfaces(
                 );
                 mark_interface_runtime_managed(&mut server_record, "daemon_transport");
                 mark_path_table_restore_status(&mut server_record, &path_table_restore_status);
+                configured_roots.push((configured_interfaces.len(), *active_iface));
                 configured_interfaces.push(server_record);
             }
         }
@@ -428,26 +432,30 @@ pub(super) async fn start_transport_and_interfaces(
         delivery_source_hash,
         configured_interfaces,
         restored_path_identities,
-        startup_successes,
-        startup_failures,
-        seeded_hot_apply_interfaces,
-        auto_runtime_refreshes,
-        auto_runtime_shutdowns,
-        pipe_runtime_refreshes,
-        udp_runtime_refreshes,
-        serial_runtime_refreshes,
-        kiss_runtime_refreshes,
-        ble_gatt_runtime_refreshes,
-        reticulum_ble_runtime_refreshes,
-        i2p_runtime_refreshes,
-        tcp_runtime_refreshes,
-        weave_runtime_refreshes,
-        rnode_multi_runtime_refreshes,
-        lora_runtime_refreshes,
-        meshtastic_runtime_refreshes,
-        #[cfg(feature = "vrn76-kiss-ble")]
-        vrn76_runtime_refreshes,
-        rnode_management_bindings,
-        weave_control_bindings,
+        interfaces: InterfaceStartupBatch {
+            configured_roots,
+            tunnel_synth_ifaces: Vec::new(),
+            startup_successes,
+            startup_failures,
+            seeded_hot_apply_interfaces,
+            auto_runtime_refreshes,
+            auto_runtime_shutdowns,
+            pipe_runtime_refreshes,
+            udp_runtime_refreshes,
+            serial_runtime_refreshes,
+            kiss_runtime_refreshes,
+            ble_gatt_runtime_refreshes,
+            reticulum_ble_runtime_refreshes,
+            i2p_runtime_refreshes,
+            tcp_runtime_refreshes,
+            weave_runtime_refreshes,
+            rnode_multi_runtime_refreshes,
+            lora_runtime_refreshes,
+            meshtastic_runtime_refreshes,
+            #[cfg(feature = "vrn76-kiss-ble")]
+            vrn76_runtime_refreshes,
+            rnode_management_bindings,
+            weave_control_bindings,
+        },
     }
 }

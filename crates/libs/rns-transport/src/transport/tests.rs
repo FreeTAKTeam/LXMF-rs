@@ -85,3 +85,6 @@ mod request_receipts;
 
 #[path = "tests/live_child_policy.rs"]
 mod live_child_policy;
+
+#[path = "tests_parts/interface_retirement_fence.rs"]
+mod interface_retirement_fence;

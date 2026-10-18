@@ -1,12 +1,14 @@
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) enum ManagedInterfaceKey {
     Configured(String),
+    Startup(usize),
     Discovered([u8; 32]),
 }
 
 impl ManagedInterfaceKey {
     pub(super) fn monitor_id(&self) -> String {
         match self {
+            Self::Startup(index) => format!("startup:{index}"),
             Self::Configured(key) => format!("configured:{key}"),
             Self::Discovered(endpoint) => format!("discovered:{}", hex::encode(endpoint)),
         }
@@ -15,7 +17,7 @@ impl ManagedInterfaceKey {
     pub(super) fn configured_name(&self) -> Option<&str> {
         match self {
             Self::Configured(name) => Some(name),
-            Self::Discovered(_) => None,
+            Self::Startup(_) | Self::Discovered(_) => None,
         }
     }
 }

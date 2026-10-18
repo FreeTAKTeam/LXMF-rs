@@ -1,5 +1,8 @@
 #[tokio::test]
 async fn configured_dispatch_preserves_mixed_order_selection_and_owned_effects() {
+    if auto_lifecycle_runs_in_child() {
+        return;
+    }
     let peer = std::net::TcpListener::bind("127.0.0.1:0").expect("hold TCP peer endpoint");
     let config = DaemonConfig::from_toml(&format!(
         r#"interfaces = [

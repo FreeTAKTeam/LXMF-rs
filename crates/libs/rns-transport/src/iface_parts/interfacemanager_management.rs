@@ -28,12 +28,26 @@ impl InterfaceManager {
     }
 
     /// Take worker handles before cancellation so a caller can confirm the
-    /// listener and any accepted children have released their resources.
+    /// listener and any accepted children have released their resources. This
+    /// does not fence new children; retirement uses `retire_worker_tree`.
     pub fn take_worker_tree(&mut self, address: AddressHash) -> Vec<tokio::task::JoinHandle<()>> {
         self.interface_tree_hashes(address)
             .into_iter()
             .filter_map(|address| self.worker_tasks.remove(&address))
             .collect()
+    }
+
+    /// Close child admission and take every existing worker under one manager borrow.
+    /// The caller must still perform Transport cleanup, even if another manager
+    /// operation garbage-collects the cancelled registrations before it runs.
+    pub fn retire_worker_tree(&mut self, address: AddressHash) -> Vec<tokio::task::JoinHandle<()>> {
+        let tree = self.interface_tree_hashes(address);
+        for iface in &self.ifaces {
+            if tree.contains(&iface.address) {
+                iface.stop.cancel();
+            }
+        }
+        tree.into_iter().filter_map(|address| self.worker_tasks.remove(&address)).collect()
     }
 
     pub fn stop_interface(&mut self, address: AddressHash) -> bool {

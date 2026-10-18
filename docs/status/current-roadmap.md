@@ -120,10 +120,16 @@ The deeper recovery matrix also passes all 24 Direct packet/Resource deliveries
 across three fresh three-relay topologies before and after middle replacement.
 Endpoint/edge processes and native Link caches persist; fresh edge routes bind
 to the replacement identity, and exact signed recipient bytes and independent
-sender receipts qualify each cell. A reviewed behavior-preserving per-recipe startup dispatcher now preserves
-original ordering, selected listeners and owned Auto effects; its mixed fixture
-and 31 library/617 binary daemon tests pass. The remaining carrier lifecycle/configured
-bootstrap ownership and whole-item integration/hosted work remain open in the
+sender receipts qualify each cell. The shared per-recipe dispatcher now transfers
+actual configured roots and unique effects into the existing mutation owner.
+Private occurrence bindings preserve duplicate/unnamed roots; one publication tick
+replaces detached refresh loops, controls retire with their native receivers, and
+cancelled shutdown awaits retain the original worker join. Tree retirement fences
+late children and still removes virtual routes after manager cleanup. Native
+controls and 31 library/630 binary daemon tests pass locally. Auto lifetime tests
+retain their immediate exclusive-bind checks in isolated processes after a traced
+Pipe fork/exec interference control. General trusted restoration, remaining carrier
+lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

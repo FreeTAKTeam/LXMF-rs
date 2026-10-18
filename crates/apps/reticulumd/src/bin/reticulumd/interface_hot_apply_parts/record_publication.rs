@@ -2,23 +2,56 @@ use super::*;
 
 pub(super) fn preserve_unmanaged_records(
     mut records: Vec<InterfaceRecord>,
+    managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     daemon: Option<&RpcDaemon>,
 ) -> Vec<InterfaceRecord> {
-    if let Some(daemon) = daemon {
-        for (index, current) in daemon.interface_records().into_iter().enumerate() {
-            if !matches!(current.kind.as_str(), "tcp_client" | "tcp_server" | "udp" | "pipe")
-                && !records.iter().any(|record| {
-                    record.kind == current.kind
-                        && record.name == current.name
-                        && record.host == current.host
-                        && record.port == current.port
+    let Some(daemon) = daemon else {
+        return records;
+    };
+    let current = daemon.interface_records();
+    let protected = current
+        .into_iter()
+        .enumerate()
+        .filter(|(position, record)| {
+            !matches!(record.kind.as_str(), "tcp_client" | "tcp_server" | "udp" | "pipe")
+                || managed.values().any(|entry| {
+                    !entry.origin.configuration_owned()
+                        && (entry
+                            .configured
+                            .as_ref()
+                            .is_some_and(|binding| binding.position == *position)
+                            || (entry.configured.is_none()
+                                && discovery_runtime::same_record(record, &entry.record)))
                 })
-            {
-                records.insert(index.min(records.len()), current);
+        })
+        .collect::<Vec<_>>();
+    // Preserve every existing protected occurrence. Unmatched unsupported records
+    // remain legacy display-only configuration and acquire no native ownership.
+    records.retain(|record| {
+        !protected.iter().any(|(_, protected)| {
+            discovery_runtime::same_record(record, protected)
+                || protected.name.is_some() && protected.name == record.name
+        })
+    });
+    let mut ordered = records.into_iter().map(|record| (None, record)).collect::<Vec<_>>();
+    for (position, record) in protected {
+        ordered.insert(position.min(ordered.len()), (Some(position), record));
+    }
+    for (key, entry) in managed.iter_mut() {
+        if let Some(binding) = entry.configured.as_mut() {
+            let position = if !entry.origin.configuration_owned() {
+                ordered.iter().position(|(previous, _)| *previous == Some(binding.position))
+            } else {
+                ordered.iter().position(|(_, record)| {
+                    hot_apply_interface_key(record).as_deref() == key.configured_name()
+                })
+            };
+            if let Some(position) = position {
+                binding.position = position;
             }
         }
     }
-    records
+    ordered.into_iter().map(|(_, record)| record).collect()
 }
 
 /// Keep the submitted order and disabled/startup-only entries while exposing
@@ -27,7 +60,7 @@ pub(super) fn committed_records(
     records: &mut [InterfaceRecord],
     managed: &HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
 ) {
-    for record in records {
+    for (position, record) in records.iter_mut().enumerate() {
         let key = hot_apply_interface_key(record);
         let active = key
             .as_ref()
@@ -40,11 +73,14 @@ pub(super) fn committed_records(
             .or_else(|| {
                 managed.values().find(|active| {
                     !active.origin.configuration_owned()
-                        && discovery_runtime::same_record(&active.record, record)
+                        && match &active.configured {
+                            Some(binding) => binding.position == position,
+                            None => discovery_runtime::same_record(&active.record, record),
+                        }
                 })
             });
         if !record.enabled {
-            if key.is_some() || record.kind == "backbone_client" {
+            if key.is_some() || active.is_some() || record.kind == "backbone_client" {
                 clear_inactive_runtime(record, "detached", "stopped", None);
             }
             continue;
@@ -61,59 +97,11 @@ pub(super) fn committed_records(
             );
             continue;
         };
-        let retained_runtime = if active.runtime_status.is_none() {
-            record
-                .settings
-                .as_ref()
-                .and_then(|settings| settings.get("_runtime"))
-                .and_then(serde_json::Value::as_object)
-                .cloned()
-        } else {
-            None
-        };
-        *record = active.record.clone();
-        if let Some(retained_runtime) = retained_runtime {
-            crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
-                *runtime = retained_runtime
-            });
-            continue;
-        }
-        let address = active.address.to_string();
-        mark_interface_startup_status(record, "spawned", None, Some(&address));
-        mark_interface_runtime_managed(record, "daemon_transport");
-        mark_interface_runtime_fields(record, "running", 0);
-        if let ManagedInterfaceOrigin::Discovered { endpoint, source, .. } = &active.origin {
-            crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
-                runtime.insert(
-                    "discovery".to_owned(),
-                    serde_json::json!({
-                        "endpoint_hash": hex::encode(endpoint), "network_id": source,
-                    }),
-                );
-            });
-        }
-        let status = match &active.runtime_status {
-            Some(HotApplyRuntimeStatus::TcpClient(status)) => {
-                ("tcp", "stream_status", status.to_json())
-            }
-            Some(HotApplyRuntimeStatus::TcpListener(status)) => {
-                ("tcp", "listener_status", status.to_json())
-            }
-            Some(HotApplyRuntimeStatus::Udp(status)) => ("udp", "status", status.to_json()),
-            Some(HotApplyRuntimeStatus::Pipe(status)) => ("pipe", "status", status.to_json()),
-            None => continue,
-        };
-        crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
-            let namespace = runtime.entry(status.0).or_insert_with(|| serde_json::json!({}));
-            if !namespace.is_object() {
-                *namespace = serde_json::json!({});
-            }
-            namespace[status.1] = status.2;
-        });
+        project_native_record(record, active);
     }
 }
 
-fn clear_inactive_runtime(
+pub(super) fn clear_inactive_runtime(
     record: &mut InterfaceRecord,
     startup: &str,
     runtime: &str,
@@ -122,4 +110,85 @@ fn clear_inactive_runtime(
     crate::bootstrap::with_interface_runtime_metadata(record, |metadata| metadata.clear());
     mark_interface_startup_status(record, startup, error, None);
     mark_interface_runtime_fields(record, runtime, 0);
+}
+
+pub(super) fn project_native_record(
+    record: &mut InterfaceRecord,
+    active: &ManagedHotApplyInterface,
+) {
+    let Some(native) = active.native.as_ref() else {
+        *record = active.record.clone();
+        return;
+    };
+    if active.configured.is_some() {
+        // Preserve trusted startup outcomes (attached, active, degraded) and metadata.
+        *record = active.record.clone();
+    } else if native.status.is_none() {
+        let previous =
+            record.settings.as_ref().and_then(|settings| settings.get("_runtime")).cloned();
+        *record = active.record.clone();
+        if let Some(previous) = previous.and_then(|previous| previous.as_object().cloned()) {
+            crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
+                let apply = runtime.get("apply").cloned();
+                runtime.extend(previous);
+                if let Some(apply) = apply {
+                    runtime.insert("apply".into(), apply);
+                }
+            });
+        }
+    } else {
+        *record = active.record.clone();
+        let address = native.address.to_string();
+        mark_interface_startup_status(record, "spawned", None, Some(&address));
+        mark_interface_runtime_managed(record, "daemon_transport");
+        mark_interface_runtime_fields(record, "running", 0);
+    }
+    if let ManagedInterfaceOrigin::Discovered { endpoint, source, .. } = &active.origin {
+        crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
+            runtime.insert(
+                "discovery".to_owned(),
+                serde_json::json!({"endpoint_hash": hex::encode(endpoint), "network_id": source}),
+            );
+        });
+    }
+    if let Some(status) = &native.status {
+        let (namespace, field, value) = status.projection();
+        crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
+            let namespace = runtime.entry(namespace).or_insert_with(|| serde_json::json!({}));
+            if !namespace.is_object() {
+                *namespace = serde_json::json!({});
+            }
+            namespace[field] = value;
+        });
+    }
+}
+
+pub(super) fn publish_control_bindings(
+    managed: &HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
+    daemon: &RpcDaemon,
+) {
+    use crate::bridge_rnode_management::{
+        DaemonRNodeManagementBinding, DaemonRNodeManagementBridge,
+    };
+    use crate::bridge_weave_control::{DaemonWeaveControlBinding, DaemonWeaveDisplayControlBridge};
+    let mut rnode = Vec::new();
+    let mut weave = Vec::new();
+    for native in managed.values().filter_map(|entry| entry.native.as_ref()) {
+        for (name, handle) in &native.rnode {
+            rnode.push(DaemonRNodeManagementBinding {
+                runtime_iface: native.address,
+                name: name.clone(),
+                handle: handle.clone(),
+            });
+        }
+        for (name, handle) in &native.weave {
+            weave.push(DaemonWeaveControlBinding {
+                runtime_iface: native.address,
+                name: name.clone(),
+                handle: handle.clone(),
+            });
+        }
+    }
+    daemon.set_rnode_management_bridge(Arc::new(DaemonRNodeManagementBridge::new(rnode)));
+    daemon.set_weave_display_control_bridge(Arc::new(DaemonWeaveDisplayControlBridge::new(weave)));
 }

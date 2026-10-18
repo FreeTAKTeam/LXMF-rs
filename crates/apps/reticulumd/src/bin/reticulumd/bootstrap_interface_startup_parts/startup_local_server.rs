@@ -1,12 +1,12 @@
 #[cfg_attr(not(unix), allow(dead_code))]
 enum LocalUnixStartup {
-    Active,
+    Active(AddressHash),
     Attached(AddressHash),
     Failed,
 }
 
 enum LocalTcpSidecarStartup {
-    Active,
+    Active(AddressHash),
     Attached(AddressHash),
     Failed,
 }
@@ -94,7 +94,7 @@ async fn startup_synthetic_local_tcp_sidecar(
     );
     let runtime_iface = local_iface.to_string();
     mark_interface_startup_status(record, "active", None, Some(runtime_iface.as_str()));
-    LocalTcpSidecarStartup::Active
+    LocalTcpSidecarStartup::Active(local_iface)
 }
 
 #[cfg(unix)]
@@ -186,7 +186,7 @@ async fn startup_local_unix(
     );
     let runtime_iface = local_iface.to_string();
     mark_interface_startup_status(record, "active", None, Some(runtime_iface.as_str()));
-    LocalUnixStartup::Active
+    LocalUnixStartup::Active(local_iface)
 }
 
 #[cfg(unix)]

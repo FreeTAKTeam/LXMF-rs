@@ -78,33 +78,33 @@ impl NativeDiscovery {
             let Some(key) = keys.get(&name) else {
                 continue;
             };
-            if let Some(active) = managed.remove(key) {
-                if let Err(error) = stop_and_join(manager, Some(transport), active.address).await {
-                    log::warn!("[daemon] bootstrap worker stop failed name={name}: {error}");
+            if let Some(active) = managed.get_mut(key) {
+                if let Some(native) = active.native.take() {
+                    if let Err(error) = stop_owned_native(manager, Some(transport), native).await {
+                        log::warn!("[daemon] bootstrap worker stop failed name={name}: {error}");
+                    }
                 }
-                let mut records = daemon.interface_records();
-                if let Some(record) =
-                    records.iter_mut().find(|record| same_record(record, &active.record))
-                {
-                    record.enabled = false;
-                    record_publication::committed_records(std::slice::from_mut(record), managed);
+                active.record.enabled = false;
+                record_publication::clear_inactive_runtime(
+                    &mut active.record,
+                    "detached",
+                    "stopped",
+                    None,
+                );
+                #[cfg(test)]
+                if let Some(name) = key.configured_name() {
+                    refreshes
+                        .tcp_listeners
+                        .lock()
+                        .expect("tcp listener refresh mutex poisoned")
+                        .remove(name);
+                    refreshes.udp.lock().expect("udp refresh mutex poisoned").remove(name);
+                    refreshes.pipe.lock().expect("pipe refresh mutex poisoned").remove(name);
                 }
-                daemon.replace_interfaces(records);
-                refreshes
-                    .tcp_listeners
-                    .lock()
-                    .expect("tcp listener refresh mutex poisoned")
-                    .remove(
-                        key.configured_name().expect("bootstrap interfaces retain configured keys"),
-                    );
-                refreshes.udp.lock().expect("udp refresh mutex poisoned").remove(
-                    key.configured_name().expect("bootstrap interfaces retain configured keys"),
-                );
-                refreshes.pipe.lock().expect("pipe refresh mutex poisoned").remove(
-                    key.configured_name().expect("bootstrap interfaces retain configured keys"),
-                );
             }
         }
+        record_publication::publish_control_bindings(managed, daemon);
+
         for name in plan.detach {
             // Integer projection can round the planner's boundary forward; the native
             // monotonic anchor remains the authority for the full twelve seconds.
@@ -152,13 +152,21 @@ impl NativeDiscovery {
         refreshes: &HotApplyRuntimeRefreshes,
         daemon: &Arc<RpcDaemon>,
     ) {
-        for iface in &self.config.bootstrap {
+        for (index, iface) in &self.config.bootstrap {
             let record = crate::bootstrap::interface_record_from_config(iface);
-            let Some(name) = hot_apply_interface_seed_key(&record) else {
-                continue;
-            };
-            let key = configured_key(&name);
-            if managed.contains_key(&key) {
+            let name = crate::interfaces::common::interface_label(iface, *index);
+            let key = managed
+                .iter()
+                .find_map(|(key, entry)| {
+                    entry
+                        .configured
+                        .as_ref()
+                        .filter(|binding| binding.recipe_index == *index)
+                        .map(|_| key.clone())
+                })
+                .or_else(|| hot_apply_interface_seed_key(&record).map(|name| configured_key(&name)))
+                .unwrap_or(ManagedInterfaceKey::Startup(*index));
+            if managed.get(&key).is_some_and(|entry| entry.native.is_some()) {
                 continue;
             }
             let spawned = match iface.kind.as_str() {
@@ -186,27 +194,32 @@ impl NativeDiscovery {
                     refreshes,
                     Some(&Arc::downgrade(daemon)),
                 );
-                let origin = ManagedInterfaceOrigin::configured(&record);
-                managed.insert(
-                    key,
-                    ManagedHotApplyInterface {
-                        record: record.clone(),
-                        address,
-                        runtime_status,
-                        origin,
-                    },
-                );
-                let mut changed = vec![record.clone()];
-                record_publication::committed_records(&mut changed, managed);
-                let mut records = daemon.interface_records();
-                if let Some(current) =
-                    records.iter_mut().find(|current| same_record(current, &record))
-                {
-                    *current = changed.remove(0);
+                if let Some(entry) = managed.get_mut(&key) {
+                    let mut restored = record.clone();
+                    mark_interface_startup_status(
+                        &mut restored,
+                        "spawned",
+                        None,
+                        Some(&address.to_string()),
+                    );
+                    mark_interface_runtime_fields(&mut restored, "running", 0);
+                    mark_interface_runtime_managed(&mut restored, "daemon_transport");
+                    entry.record = restored;
+                    entry.native = Some(NativeInterfaceRuntime::new(address, runtime_status));
                 } else {
-                    records.extend(changed);
+                    let origin = ManagedInterfaceOrigin::configured(&record);
+                    managed.insert(
+                        key,
+                        ManagedHotApplyInterface::active(
+                            record.clone(),
+                            address,
+                            runtime_status,
+                            origin,
+                        ),
+                    );
                 }
-                daemon.replace_interfaces(records);
+
+                publish_live_runtime_records(managed, daemon);
             }
         }
     }

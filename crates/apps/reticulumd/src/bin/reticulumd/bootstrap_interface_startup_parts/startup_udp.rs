@@ -140,6 +140,7 @@ where
                         AutoRuntimeShutdown {
                             host_iface,
                             runtime: activation.runtime,
+                            #[cfg(test)]
                             iface_manager: Arc::clone(iface_manager),
                         },
                     ))

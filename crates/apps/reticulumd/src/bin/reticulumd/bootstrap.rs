@@ -2,7 +2,9 @@ include!("bootstrap_parts/module_prelude.rs");
 
 #[path = "bootstrap_transport.rs"]
 mod transport_startup;
-pub(crate) use transport_startup::build_tcp_client_adapter;
+pub(crate) use transport_startup::{
+    build_tcp_client_adapter, AutoRuntimeShutdown, LoraRuntimeStatusSource,
+};
 
 #[path = "bootstrap_parts/configuration.rs"]
 mod configuration;

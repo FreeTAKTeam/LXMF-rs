@@ -34,7 +34,8 @@ async fn startup_meshtastic(
         startup_failures,
         label,
     )?;
-    meshtastic::spawn_simulation_loopback(simulation_handle, config.simulation_node_id);
+    let simulation =
+        meshtastic::spawn_simulation_loopback(simulation_handle, config.simulation_node_id);
     let runtime_iface_string = runtime_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface_string.as_str()));
     with_interface_runtime_metadata(record, |runtime| {
@@ -54,7 +55,7 @@ async fn startup_meshtastic(
         label,
         config.simulation_node_id
     );
-    Some(MeshtasticRuntimeRefresh { runtime_iface, status: runtime_status })
+    Some(MeshtasticRuntimeRefresh { runtime_iface, status: runtime_status, simulation })
 }
 
 fn startup_tcp_server_record(

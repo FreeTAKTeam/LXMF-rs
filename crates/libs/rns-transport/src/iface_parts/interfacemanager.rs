@@ -290,7 +290,7 @@ impl InterfaceManager {
     /// Register a virtual iface that shares its tx channel with an
     /// existing host iface. Used by the UDP multicast iface to pin
     /// per-peer point-to-point routes without spawning additional
-    /// sockets. Returns `None` if `host` is not registered.
+    /// sockets. Returns `None` if `host` is absent or retiring.
     ///
     /// The returned `AddressHash` is used by the transport's routing
     /// tables (path_table, link ingress_iface) so `Direct` tx
@@ -303,6 +303,9 @@ impl InterfaceManager {
         role: IfaceRole,
     ) -> Option<AddressHash> {
         let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
+        if host_iface.stop.is_cancelled() {
+            return None;
+        }
         let host_tx = host_iface.tx_send.clone();
         let host_online = host_iface.online.clone();
         let host_ifac_state = host_iface.ifac_state.clone();

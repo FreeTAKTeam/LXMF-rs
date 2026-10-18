@@ -24,7 +24,9 @@ pub(super) fn has_named(
     managed: &HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     name: &str,
 ) -> bool {
-    managed.values().any(|active| active.record.name.as_deref() == Some(name))
+    managed
+        .values()
+        .any(|active| active.native.is_some() && active.record.name.as_deref() == Some(name))
 }
 
 pub(super) fn info(name: &str, host: &str, port: u16) -> DiscoveredInterface {
@@ -97,12 +99,30 @@ async fn deliver_on_discovered_stream(host: &str) {
         .await
         .expect("packet deadline")
         .expect("packet event");
-    assert_eq!(received.address, active.address, "selected native discovery interface");
+    assert_eq!(
+        received.address,
+        active.native.as_ref().expect("active native root").address,
+        "selected native discovery interface"
+    );
     assert_eq!(received.packet.data, packet.data, "exact receiver bytes");
     let guard = manager.lock().await;
-    assert_eq!(guard.policy(&active.address).expect("policy").mode, InterfaceMode::Gateway);
-    assert_eq!(guard.announce_pacing(&active.address).expect("pacing").0, 5_000_000);
-    let shared = guard.shared_config(&active.address).expect("shared policy");
+    assert_eq!(
+        guard
+            .policy(&active.native.as_ref().expect("active native root").address)
+            .expect("policy")
+            .mode,
+        InterfaceMode::Gateway
+    );
+    assert_eq!(
+        guard
+            .announce_pacing(&active.native.as_ref().expect("active native root").address)
+            .expect("pacing")
+            .0,
+        5_000_000
+    );
+    let shared = guard
+        .shared_config(&active.native.as_ref().expect("active native root").address)
+        .expect("shared policy");
     assert_eq!(shared.announces_to_internal, None);
     assert_eq!(
         (shared.announce_rate_target, shared.announce_rate_grace, shared.announce_rate_penalty),
@@ -165,7 +185,13 @@ async fn initial_discovery_uses_retained_transport_entries_and_reserves_disabled
         manager
             .lock()
             .await
-            .policy(&named_active(&managed, "operator (2)").address)
+            .policy(
+                &named_active(&managed, "operator (2)")
+                    .native
+                    .as_ref()
+                    .expect("active native root")
+                    .address
+            )
             .expect("policy")
             .mode,
         InterfaceMode::Full
@@ -237,7 +263,11 @@ async fn external_apply_preserves_private_origin_and_rejects_forged_discovery_au
         .await
         .expect("native deadline")
         .expect("peer");
-    let address = named_active(&managed, "internal-peer").address;
+    let address = named_active(&managed, "internal-peer")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     let mut conflicting = named_active(&managed, "internal-peer").record.clone();
     conflicting.kind = "tcp_client".into();
     conflicting.port = Some(1);
@@ -259,7 +289,14 @@ async fn external_apply_preserves_private_origin_and_rejects_forged_discovery_au
         Some(&Arc::downgrade(&daemon)),
     )
     .await;
-    assert_eq!(named_active(&managed, "internal-peer").address, address);
+    assert_eq!(
+        named_active(&managed, "internal-peer")
+            .native
+            .as_ref()
+            .expect("active native root")
+            .address,
+        address
+    );
     assert_eq!(named_active(&managed, "internal-peer").record.port, candidate.port);
     assert!(named_active(&managed, "forged-origin").origin.configuration_owned());
     assert_eq!(
@@ -276,7 +313,14 @@ async fn external_apply_preserves_private_origin_and_rejects_forged_discovery_au
     )
     .await;
     assert!(!has_named(&managed, "forged-origin"));
-    assert_eq!(named_active(&managed, "internal-peer").address, address);
+    assert_eq!(
+        named_active(&managed, "internal-peer")
+            .native
+            .as_ref()
+            .expect("active native root")
+            .address,
+        address
+    );
     detach_discovered(
         &manager,
         &mut managed,
@@ -325,16 +369,16 @@ async fn native_monitor_never_detaches_early_at_fractional_or_skipped_tick_bound
     daemon.replace_interfaces(vec![record.clone()]);
     let mut managed = HashMap::from([(
         "fractional".into(),
-        ManagedHotApplyInterface {
+        ManagedHotApplyInterface::active(
             record,
-            address: *channel.address(),
-            runtime_status: None,
-            origin: ManagedInterfaceOrigin::Discovered {
+            *channel.address(),
+            None,
+            ManagedInterfaceOrigin::Discovered {
                 endpoint: [4; 32],
                 source: "network".into(),
                 down_since: None,
             },
-        },
+        ),
     )]);
     runtime.lifecycle.monitor_interface(configured_key("fractional").monitor_id());
     let refreshes = HotApplyRuntimeRefreshes::new();

@@ -29,3 +29,5 @@ include!("bootstrap_interface_startup_parts/startup_serial_kiss.rs");
 include!("bootstrap_interface_startup_parts/startup_ble.rs");
 
 include!("bootstrap_interface_startup_parts/startup_runtime_status.rs");
+
+include!("bootstrap_interface_startup_parts/owned_runtime.rs");

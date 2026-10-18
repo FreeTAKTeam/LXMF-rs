@@ -43,7 +43,7 @@ async fn restored_tcp_bootstrap_publishes_its_live_retained_status() {
         .expect("restored connection deadline")
         .expect("restored connection");
     let Some(HotApplyRuntimeStatus::TcpClient(status)) =
-        &named_active(&managed, "restored-tcp").runtime_status
+        &named_active(&managed, "restored-tcp").native.as_ref().expect("active native root").status
     else {
         panic!("retained TCP status");
     };
@@ -62,7 +62,13 @@ async fn restored_tcp_bootstrap_publishes_its_live_retained_status() {
         "restored TCP status comes from its retained native handle"
     );
     for (_, active) in managed.drain() {
-        stop_and_join(&manager, Some(&transport), active.address).await.expect("stop");
+        stop_and_join(
+            &manager,
+            Some(&transport),
+            active.native.as_ref().expect("active native root").address,
+        )
+        .await
+        .expect("stop");
     }
 }
 
@@ -98,12 +104,12 @@ async fn discovery_literal_names_cannot_replace_hidden_keys_or_trimmed_public_re
             info(&name, "127.0.0.2", discovered_peer.local_addr().expect("port").port());
         let mut managed = HashMap::from([(
             key.into(),
-            ManagedHotApplyInterface {
-                record: record.clone(),
+            ManagedHotApplyInterface::active(
+                record.clone(),
                 address,
                 runtime_status,
-                origin: ManagedInterfaceOrigin::Configured,
-            },
+                ManagedInterfaceOrigin::Configured,
+            ),
         )]);
         let mut runtime = discovery(root.path(), 1, false);
         runtime.admit(&candidate, &manager, &mut managed, &transport, &daemon).await;
@@ -116,9 +122,13 @@ async fn discovery_literal_names_cannot_replace_hidden_keys_or_trimmed_public_re
             2,
             "literal display name cannot replace a different private owner key"
         );
-        assert!(managed
-            .values()
-            .any(|active| active.address == address && active.origin.configuration_owned()));
+        assert!(managed.values().any(|active| active
+            .native
+            .as_ref()
+            .expect("active native root")
+            .address
+            == address
+            && active.origin.configuration_owned()));
         let records = daemon.interface_records();
         assert_eq!(
             records.len(),
@@ -131,7 +141,13 @@ async fn discovery_literal_names_cannot_replace_hidden_keys_or_trimmed_public_re
         assert!(records.iter().any(|current| current.name.as_deref() == Some(name.as_str())
             && current.port == candidate.port));
         for (_, active) in managed.drain() {
-            stop_and_join(&manager, Some(&transport), active.address).await.expect("stop");
+            stop_and_join(
+                &manager,
+                Some(&transport),
+                active.native.as_ref().expect("active native root").address,
+            )
+            .await
+            .expect("stop");
         }
     }
 }
@@ -262,16 +278,16 @@ async fn discovery_stop_joins_every_worker_even_when_the_first_worker_times_out(
     daemon.replace_interfaces(vec![record.clone()]);
     let mut managed = HashMap::from([(
         "uncooperative".into(),
-        ManagedHotApplyInterface {
+        ManagedHotApplyInterface::active(
             record,
             address,
-            runtime_status: None,
-            origin: ManagedInterfaceOrigin::Discovered {
+            None,
+            ManagedInterfaceOrigin::Discovered {
                 endpoint: [3; 32],
                 source: "network".into(),
                 down_since: None,
             },
-        },
+        ),
     )]);
     let result = detach_discovered(
         &manager,
@@ -330,8 +346,11 @@ async fn restored_bootstrap_binding_failure_uses_the_existing_status_refresh_own
     let mut managed = HashMap::new();
     let refreshes = HotApplyRuntimeRefreshes::new();
     runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
-    let Some(HotApplyRuntimeStatus::Udp(status)) =
-        &named_active(&managed, "bootstrap-status").runtime_status
+    let Some(HotApplyRuntimeStatus::Udp(status)) = &named_active(&managed, "bootstrap-status")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .status
     else {
         panic!("UDP status");
     };
@@ -353,9 +372,13 @@ async fn restored_bootstrap_binding_failure_uses_the_existing_status_refresh_own
         "bind_failed"
     );
     for (_, active) in managed.drain() {
-        stop_and_join(&manager, Some(&transport), active.address)
-            .await
-            .expect("joined failed worker");
+        stop_and_join(
+            &manager,
+            Some(&transport),
+            active.native.as_ref().expect("active native root").address,
+        )
+        .await
+        .expect("joined failed worker");
     }
 }
 
@@ -377,12 +400,7 @@ fn discovery_publication_preserves_unrelated_seeded_native_status() {
     daemon.replace_interfaces(vec![current.clone()]);
     let managed = HashMap::from([(
         "existing".into(),
-        ManagedHotApplyInterface {
-            record: seed,
-            address,
-            runtime_status: None,
-            origin: ManagedInterfaceOrigin::Configured,
-        },
+        ManagedHotApplyInterface::active(seed, address, None, ManagedInterfaceOrigin::Configured),
     )]);
     publish_live_runtime_records(&managed, &daemon);
     assert_eq!(
@@ -411,16 +429,16 @@ async fn discovery_down_time_is_anchored_after_a_contended_native_snapshot() {
     daemon.replace_interfaces(vec![record.clone()]);
     let mut managed = HashMap::from([(
         "contended".into(),
-        ManagedHotApplyInterface {
+        ManagedHotApplyInterface::active(
             record,
-            address: *channel.address(),
-            runtime_status: None,
-            origin: ManagedInterfaceOrigin::Discovered {
+            *channel.address(),
+            None,
+            ManagedInterfaceOrigin::Discovered {
                 endpoint: [4; 32],
                 source: "network".into(),
                 down_since: None,
             },
-        },
+        ),
     )]);
     let mut runtime = discovery(root.path(), 1, false);
     runtime.lifecycle.monitor_interface(configured_key("contended").monitor_id());
@@ -479,25 +497,25 @@ async fn discovery_bootstrap_lifecycle_uses_unnamed_and_padded_managed_keys() {
         let mut managed = HashMap::from([
             (
                 key.clone().into(),
-                ManagedHotApplyInterface {
+                ManagedHotApplyInterface::active(
                     record,
                     address,
                     runtime_status,
-                    origin: ManagedInterfaceOrigin::Configured,
-                },
+                    ManagedInterfaceOrigin::Configured,
+                ),
             ),
             (
                 "auto".into(),
-                ManagedHotApplyInterface {
-                    record: auto,
-                    address: *channel.address(),
-                    runtime_status: None,
-                    origin: ManagedInterfaceOrigin::Discovered {
+                ManagedHotApplyInterface::active(
+                    auto,
+                    *channel.address(),
+                    None,
+                    ManagedInterfaceOrigin::Discovered {
                         endpoint: [5; 32],
                         source: "network".into(),
                         down_since: None,
                     },
-                },
+                ),
             ),
         ]);
         let mut runtime = NativeDiscovery::new(
@@ -518,8 +536,8 @@ async fn discovery_bootstrap_lifecycle_uses_unnamed_and_padded_managed_keys() {
         let refreshes = HotApplyRuntimeRefreshes::new();
         runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
         assert!(
-            !managed.contains_key(&configured_key(&key)),
-            "bootstrap disable must address its managed key"
+            managed.get(&configured_key(&key)).is_some_and(|entry| entry.native.is_none()),
+            "bootstrap disable retains its recipe with explicit inactive native state"
         );
         assert!(!manager.lock().await.interface_hashes().contains(&address));
         channel.set_online(false);
@@ -529,7 +547,13 @@ async fn discovery_bootstrap_lifecycle_uses_unnamed_and_padded_managed_keys() {
             "trusted unnamed/padded recipe must restore with the same owner key"
         );
         for (_, active) in managed.drain() {
-            stop_and_join(&manager, Some(&transport), active.address).await.expect("stop");
+            stop_and_join(
+                &manager,
+                Some(&transport),
+                active.native.as_ref().expect("active native root").address,
+            )
+            .await
+            .expect("stop");
         }
     }
 }
@@ -739,25 +763,25 @@ async fn native_monitor_restores_the_trusted_udp_bootstrap_recipe_after_auto_pee
     let mut managed = HashMap::from([
         (
             "bootstrap".into(),
-            ManagedHotApplyInterface {
+            ManagedHotApplyInterface::active(
                 record,
                 address,
                 runtime_status,
-                origin: ManagedInterfaceOrigin::Configured,
-            },
+                ManagedInterfaceOrigin::Configured,
+            ),
         ),
         (
             "auto".into(),
-            ManagedHotApplyInterface {
-                record: auto,
-                address: *channel.address(),
-                runtime_status: None,
-                origin: ManagedInterfaceOrigin::Discovered {
+            ManagedHotApplyInterface::active(
+                auto,
+                *channel.address(),
+                None,
+                ManagedInterfaceOrigin::Discovered {
                     endpoint: [8; 32],
                     source: "network".into(),
                     down_since: None,
                 },
-            },
+            ),
         ),
     ]);
     let mut runtime = NativeDiscovery::new(
@@ -784,13 +808,15 @@ async fn native_monitor_restores_the_trusted_udp_bootstrap_recipe_after_auto_pee
     channel.set_online(false);
     runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
     let restored = &named_active(&managed, "bootstrap");
-    assert_ne!(restored.address, address);
+    assert_ne!(restored.native.as_ref().expect("active native root").address, address);
     assert!(restored.origin.configuration_owned());
     assert_eq!(
         restored.record.settings.as_ref().expect("trusted settings")["bootstrap_only"],
         true
     );
-    let Some(HotApplyRuntimeStatus::Udp(status)) = &restored.runtime_status else {
+    let Some(HotApplyRuntimeStatus::Udp(status)) =
+        &restored.native.as_ref().expect("active native root").status
+    else {
         panic!("restored UDP status");
     };
     timeout(Duration::from_secs(2), async {
@@ -802,7 +828,13 @@ async fn native_monitor_restores_the_trusted_udp_bootstrap_recipe_after_auto_pee
     .expect("trusted recipe bound exact port");
     assert!(UdpSocket::bind(addr).await.is_err());
     for (_, active) in managed.drain() {
-        stop_and_join(&manager, Some(&transport), active.address).await.expect("stop");
+        stop_and_join(
+            &manager,
+            Some(&transport),
+            active.native.as_ref().expect("active native root").address,
+        )
+        .await
+        .expect("stop");
     }
 }
 
@@ -844,7 +876,14 @@ async fn periodic_refill_uses_one_available_transport_candidate_and_reserves_a_q
         .name
         .as_deref()
         .is_some_and(|name| name.starts_with("periodic-"))));
-    let original = managed.values().next().expect("native candidate").address;
+    let original = managed
+        .values()
+        .next()
+        .expect("native candidate")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     let mut records = daemon.interface_records();
     for index in 0..2u8 {
         let channel = manager.lock().await.new_channel(1);
@@ -859,24 +898,35 @@ async fn periodic_refill_uses_one_available_transport_candidate_and_reserves_a_q
         records.push(record.clone());
         managed.insert(
             format!("reserved-{index}").into(),
-            ManagedHotApplyInterface {
+            ManagedHotApplyInterface::active(
                 record,
-                address: *channel.address(),
-                runtime_status: None,
-                origin: ManagedInterfaceOrigin::Discovered {
+                *channel.address(),
+                None,
+                ManagedInterfaceOrigin::Discovered {
                     endpoint: [index + 10; 32],
                     source: "network".into(),
                     down_since: None,
                 },
-            },
+            ),
         );
     }
     daemon.replace_interfaces(records);
     runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
     assert_eq!(managed.len(), 3, "one free slot equals maximum / 4 reservation");
-    assert!(managed.values().any(|active| active.address == original));
+    assert!(managed.values().any(|active| active
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address
+        == original));
     for (_, active) in managed.drain() {
-        stop_and_join(&manager, Some(&transport), active.address).await.expect("stop");
+        stop_and_join(
+            &manager,
+            Some(&transport),
+            active.native.as_ref().expect("active native root").address,
+        )
+        .await
+        .expect("stop");
     }
     drop(peers);
 }

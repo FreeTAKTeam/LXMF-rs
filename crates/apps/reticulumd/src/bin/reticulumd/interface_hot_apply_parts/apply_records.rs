@@ -8,33 +8,11 @@ pub(super) async fn apply_hot_apply_interface_records(
     refreshes: &HotApplyRuntimeRefreshes,
     daemon: Option<&Weak<RpcDaemon>>,
 ) -> Vec<InterfaceRecord> {
-    for active in managed.values().filter(|active| !active.origin.configuration_owned()) {
-        interfaces.retain(|record| {
-            let same_name = active.record.name.is_some() && record.name == active.record.name;
-            !same_name && !discovery_runtime::same_record(record, &active.record)
-        });
-        let mut record = active.record.clone();
-        if active.runtime_status.is_none() {
-            if let Some(current) = daemon.and_then(Weak::upgrade).and_then(|daemon| {
-                daemon
-                    .interface_records()
-                    .into_iter()
-                    .find(|current| discovery_runtime::same_record(current, &record))
-            }) {
-                if let Some(runtime) = current
-                    .settings
-                    .and_then(|mut settings| settings.as_object_mut()?.remove("_runtime"))
-                {
-                    crate::bootstrap::with_interface_runtime_metadata(&mut record, |metadata| {
-                        if let Some(runtime) = runtime.as_object() {
-                            *metadata = runtime.clone();
-                        }
-                    });
-                }
-            }
-        }
-        interfaces.push(record);
-    }
+    interfaces = record_publication::preserve_unmanaged_records(
+        interfaces,
+        managed,
+        daemon.and_then(Weak::upgrade).as_deref(),
+    );
     let mut effective = interfaces.clone();
     let desired = interfaces
         .into_iter()
@@ -71,14 +49,25 @@ pub(super) async fn apply_hot_apply_interface_records(
         };
         if should_remove {
             if let Some(current) = managed.remove(&key) {
-                refreshes
-                    .tcp_listeners
-                    .lock()
-                    .expect("tcp listener refresh mutex poisoned")
-                    .remove(name);
-                refreshes.udp.lock().expect("udp refresh mutex poisoned").remove(name);
-                refreshes.pipe.lock().expect("pipe refresh mutex poisoned").remove(name);
-                stop_hot_apply_interface(iface_manager, transport, current.address).await;
+                #[cfg(test)]
+                {
+                    refreshes
+                        .tcp_listeners
+                        .lock()
+                        .expect("tcp listener refresh mutex poisoned")
+                        .remove(name);
+                    refreshes.udp.lock().expect("udp refresh mutex poisoned").remove(name);
+                    refreshes.pipe.lock().expect("pipe refresh mutex poisoned").remove(name);
+                }
+                if let Some(native) = current.native {
+                    if let Err(error) =
+                        discovery_runtime::stop_owned_native(iface_manager, transport, native).await
+                    {
+                        log::warn!(
+                            "[daemon] replaced interface cleanup failed name={name}: {error}"
+                        );
+                    }
+                }
             }
         }
     }
@@ -88,14 +77,32 @@ pub(super) async fn apply_hot_apply_interface_records(
         if !record.enabled {
             continue;
         }
-        if let Some(current) = managed.get_mut(&key) {
+        if let Some(current) = managed.get_mut(&key).filter(|current| current.native.is_some()) {
+            let address = current.native.as_ref().expect("active entry has native state").address;
             let mut guard = iface_manager.lock().await;
-            match apply_record_runtime_config(&mut guard, current.address, &record) {
-                Ok(()) => current.record = record,
+            match apply_record_runtime_config(&mut guard, address, &record) {
+                Ok(()) => {
+                    let startup_runtime = current
+                        .configured
+                        .as_ref()
+                        .and_then(|_| current.record.settings.as_ref()?.get("_runtime").cloned());
+                    current.record = record;
+                    if let Some(runtime) =
+                        startup_runtime.and_then(|runtime| runtime.as_object().cloned())
+                    {
+                        crate::bootstrap::with_interface_runtime_metadata(
+                            &mut current.record,
+                            |metadata| {
+                                *metadata = runtime;
+                                metadata.remove("apply");
+                            },
+                        );
+                    }
+                }
                 Err(error) => {
                     log::warn!(
                         "[daemon] hot-apply policy rejected for interface {}: {error}",
-                        current.address
+                        address
                     );
                     crate::bootstrap::with_interface_runtime_metadata(
                         &mut current.record,
@@ -125,12 +132,12 @@ pub(super) async fn apply_hot_apply_interface_records(
             );
             managed.insert(
                 key,
-                ManagedHotApplyInterface {
+                ManagedHotApplyInterface::active(
                     record,
                     address,
                     runtime_status,
-                    origin: ManagedInterfaceOrigin::Configured,
-                },
+                    ManagedInterfaceOrigin::Configured,
+                ),
             );
         }
     }
@@ -146,10 +153,16 @@ pub(super) fn register_runtime_refresh(
     refreshes: &HotApplyRuntimeRefreshes,
     daemon: Option<&Weak<RpcDaemon>>,
 ) {
+    if let Some(HotApplyRuntimeStatus::Udp(status)) = runtime_status {
+        status.update(|status| status.iface = Some(address.to_string()));
+    }
+    let _ = daemon;
+    #[cfg(not(test))]
+    let _ = (key, record, refreshes);
+    #[cfg(test)]
     match runtime_status.cloned() {
         Some(HotApplyRuntimeStatus::TcpClient(_)) => {}
         Some(HotApplyRuntimeStatus::TcpListener(status)) => {
-            attach_hot_apply_tcp_listener_runtime_status(daemon, record, address, &status);
             refreshes.tcp_listeners.lock().expect("tcp listener refresh mutex poisoned").insert(
                 key.to_owned(),
                 HotApplyTcpListenerRefresh {
@@ -163,19 +176,17 @@ pub(super) fn register_runtime_refresh(
             status.update(|status| {
                 status.iface = Some(address.to_string());
             });
-            attach_hot_apply_udp_runtime_status(daemon, record, address, &status);
             refreshes.udp.lock().expect("udp refresh mutex poisoned").insert(
                 key.to_owned(),
                 HotApplyUdpRefresh { record: record.clone(), runtime_iface: address, status },
             );
         }
         Some(HotApplyRuntimeStatus::Pipe(status)) => {
-            attach_hot_apply_pipe_runtime_status(daemon, record, address, &status);
             refreshes.pipe.lock().expect("pipe refresh mutex poisoned").insert(
                 key.to_owned(),
                 HotApplyPipeRefresh { record: record.clone(), runtime_iface: address, status },
             );
         }
-        None => {}
+        _ => {}
     }
 }
