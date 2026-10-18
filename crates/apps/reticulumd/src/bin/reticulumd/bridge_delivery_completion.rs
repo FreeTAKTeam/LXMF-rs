@@ -1,5 +1,6 @@
 use super::{prepare_payload, prepare_propagation, DeliverySchedulerMetrics, ScheduledDelivery};
 use crate::bridge::delivery_attempt::DeliveryAttemptOutcome;
+use crate::bridge::delivery_task::DeliveryTask;
 use crate::bridge::RequestedDeliveryMethod;
 use rns_rpc::RpcDaemon;
 use std::sync::Arc;
@@ -41,9 +42,45 @@ async fn run_delivery(
     let _bytes = delivery._bytes;
     let mut task = delivery.task;
     task.stopping = Some(stopping.clone());
-    let prepared = prepare_payload(&task, &stamp_limit, &metrics, &peer).await;
+    run_attempts(&mut task, global_limit, peer_limit, stamp_limit, metrics, &peer, &mut stopping)
+        .await;
+    await_terminal_commit(&task, &mut stopping).await;
+}
+
+/// Fence accepted terminal publication, not transport handoff or unused receipt
+/// capacity. The receipt worker remains the only publisher/persistence owner.
+async fn await_terminal_commit(task: &DeliveryTask, stopping: &mut watch::Receiver<bool>) {
+    let mut completion = task.receipt_tx.terminal_completion_events();
+    loop {
+        match task.receipt_tx.terminal_pending(&task.message_id) {
+            Ok(false) => return,
+            Ok(true) => {},
+            Err(error) => log::error!(
+                "terminal persistence fence unavailable message_id={}; retaining delivery owner: {error}", task.message_id
+            ),
+        }
+        if *stopping.borrow() || stopping.has_changed().is_err() {
+            return;
+        }
+        tokio::select! {
+            _ = completion.changed() => {},
+            _ = stopping.changed() => {},
+        }
+    }
+}
+
+async fn run_attempts(
+    task: &mut DeliveryTask,
+    global_limit: Arc<Semaphore>,
+    peer_limit: Arc<Semaphore>,
+    stamp_limit: Arc<Semaphore>,
+    metrics: Arc<DeliverySchedulerMetrics>,
+    peer: &str,
+    stopping: &mut watch::Receiver<bool>,
+) {
+    let prepared = prepare_payload(task, &stamp_limit, &metrics, peer).await;
     let Some(mut prepared) = prepared else {
-        metrics.record_finished_before_delivery_for_peer(&peer);
+        metrics.record_finished_before_delivery_for_peer(peer);
         return;
     };
     if prepared.propagation.is_some() {
@@ -52,11 +89,11 @@ async fn run_delivery(
     }
     loop {
         if *stopping.borrow() || task.abort_if_cancelled("owner") {
-            metrics.record_finished_before_delivery_for_peer(&peer);
+            metrics.record_finished_before_delivery_for_peer(peer);
             return;
         }
         let preparation = if task.requested_method == RequestedDeliveryMethod::Propagated {
-            prepare_propagation(&task, &mut prepared, &stamp_limit, &metrics, &peer).await
+            prepare_propagation(task, &mut prepared, &stamp_limit, &metrics, peer).await
         } else {
             Ok(())
         };
@@ -73,11 +110,11 @@ async fn run_delivery(
                     _ = stopping.changed() => None,
                 };
                 let Some(permits) = permits else {
-                    metrics.record_finished_before_delivery_for_peer(&peer);
+                    metrics.record_finished_before_delivery_for_peer(peer);
                     return;
                 };
-                metrics.record_dequeued_for_peer(&peer);
-                metrics.record_started_for_peer(&peer);
+                metrics.record_dequeued_for_peer(peer);
+                metrics.record_started_for_peer(peer);
                 let outcome = task.run_prepared_attempt(&mut prepared).await;
                 drop(permits);
                 if matches!(
@@ -85,12 +122,12 @@ async fn run_delivery(
                     DeliveryAttemptOutcome::AwaitPath { .. }
                         | DeliveryAttemptOutcome::FallbackPropagation
                 ) {
-                    metrics.record_waiting_for_peer(&peer);
+                    metrics.record_waiting_for_peer(peer);
                 } else {
                     if outcome == DeliveryAttemptOutcome::DeferredStorage {
                         task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
                     }
-                    metrics.record_completed_for_peer(&peer);
+                    metrics.record_completed_for_peer(peer);
                     return;
                 }
                 outcome
@@ -98,11 +135,8 @@ async fn run_delivery(
         };
         match outcome {
             DeliveryAttemptOutcome::AwaitPath { destination } => {
-                if super::discovery::wait_for_identity(&task, destination, &mut stopping)
-                    .await
-                    .is_err()
-                {
-                    metrics.record_finished_before_delivery_for_peer(&peer);
+                if super::discovery::wait_for_identity(task, destination, stopping).await.is_err() {
+                    metrics.record_finished_before_delivery_for_peer(peer);
                     return;
                 }
             }
@@ -112,11 +146,11 @@ async fn run_delivery(
             }
             DeliveryAttemptOutcome::DeferredStorage => {
                 task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
-                metrics.record_finished_before_delivery_for_peer(&peer);
+                metrics.record_finished_before_delivery_for_peer(peer);
                 return;
             }
             _ => {
-                metrics.record_finished_before_delivery_for_peer(&peer);
+                metrics.record_finished_before_delivery_for_peer(peer);
                 return;
             }
         }

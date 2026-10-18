@@ -8,6 +8,7 @@ use tokio::sync::mpsc::{error::TrySendError, OwnedPermit, Sender};
 pub struct ReceiptPublisher {
     sender: Sender<ReceiptEvent>,
     terminal: Arc<Mutex<HashMap<String, Option<OwnedPermit<ReceiptEvent>>>>>,
+    completion: tokio::sync::watch::Sender<()>,
     stopping: Arc<AtomicBool>,
     failed: Arc<AtomicBool>,
 }
@@ -16,6 +17,7 @@ impl From<Sender<ReceiptEvent>> for ReceiptPublisher {
         Self {
             sender,
             terminal: Arc::new(Mutex::new(HashMap::new())),
+            completion: tokio::sync::watch::channel(()).0,
             stopping: Arc::new(AtomicBool::new(false)),
             failed: Arc::new(AtomicBool::new(false)),
         }
@@ -99,7 +101,17 @@ impl ReceiptPublisher {
                 // A duplicate callback shares the persistence owner until commit.
                 return Ok(());
             }
+            // Unreserved legacy terminal receipts also have a persistence owner
+            // once enqueue succeeds. Hold the map lock until registration so a
+            // fast consumer cannot acknowledge before the pending entry exists.
+            let id = event.message_id.clone();
+            self.send_unreserved(event)?;
+            terminal.insert(id, None);
+            return Ok(());
         }
+        self.send_unreserved(event)
+    }
+    fn send_unreserved(&self, event: ReceiptEvent) -> std::io::Result<()> {
         self.sender.try_send(event).map_err(|error| match error {
             TrySendError::Full(_) => {
                 std::io::Error::new(std::io::ErrorKind::WouldBlock, "receipt queue full")
@@ -109,10 +121,21 @@ impl ReceiptPublisher {
             }
         })
     }
+    /// True only after a terminal receipt was accepted for persistence.
+    /// An unused reservation is not pending, and queue acceptance is not commit.
+    pub fn terminal_pending(&self, message_id: &str) -> std::io::Result<bool> {
+        let terminal = self.terminal.lock().map_err(|e| std::io::Error::other(e.to_string()))?;
+        Ok(terminal.get(message_id).is_some_and(Option::is_none))
+    }
+    pub fn terminal_completion_events(&self) -> tokio::sync::watch::Receiver<()> {
+        self.completion.subscribe()
+    }
     pub fn complete_terminal(&self, message_id: &str) {
         match self.terminal.lock() {
             Ok(mut slots) => {
-                slots.remove(message_id);
+                if slots.remove(message_id).is_some() {
+                    self.completion.send_replace(());
+                }
             }
             Err(error) => log::error!("terminal receipt completion poisoned: {error}"),
         }
@@ -165,5 +188,41 @@ mod tests {
         publisher.complete_terminal("durable");
         publisher.stop_admission();
         assert!(publisher.reserve_terminal("next").is_err());
+    }
+    #[tokio::test]
+    async fn terminal_pending_tracks_accepted_work_and_commit_races() {
+        for reserved in [false, true] {
+            let (sender, mut receiver) = tokio::sync::mpsc::channel(2);
+            let publisher = ReceiptPublisher::from(sender);
+            if reserved {
+                publisher.reserve_terminal("message").unwrap();
+            }
+            assert!(!publisher.terminal_pending("message").unwrap());
+            let mut completion = publisher.terminal_completion_events();
+            publisher.try_send(ReceiptEvent::new("message", "delivered")).unwrap();
+            assert!(publisher.terminal_pending("message").unwrap());
+            publisher.try_send(ReceiptEvent::new("message", "failed: duplicate")).unwrap();
+            receiver.recv().await.unwrap();
+            assert!(receiver.try_recv().is_err());
+            // Completion after query but before waiting remains visible.
+            publisher.complete_terminal("message");
+            assert!(completion.has_changed().unwrap());
+            completion.changed().await.unwrap();
+            assert!(!publisher.terminal_pending("message").unwrap());
+            // Completion before subscribing requires no notification to finish.
+            let _late = publisher.terminal_completion_events();
+            assert!(!publisher.terminal_pending("message").unwrap());
+        }
+    }
+    #[tokio::test]
+    async fn refused_legacy_terminal_does_not_create_pending_work() {
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+        let publisher = ReceiptPublisher::from(sender);
+        publisher.try_send(ReceiptEvent::new("progress", "sending")).unwrap();
+        assert!(publisher.try_send(ReceiptEvent::new("legacy", "failed")).is_err());
+        assert!(!publisher.terminal_pending("legacy").unwrap());
+        receiver.recv().await.unwrap();
+        publisher.try_send(ReceiptEvent::new("legacy", "failed")).unwrap();
+        assert!(publisher.terminal_pending("legacy").unwrap());
     }
 }

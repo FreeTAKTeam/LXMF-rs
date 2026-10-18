@@ -311,3 +311,93 @@ async fn persisted_cancellation_ends_discovery_without_requeue_or_another_reques
     assert!(channel.tx_channel.try_recv().is_err());
     scheduler.shutdown();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn queued_terminal_retains_owner_until_commit_or_shutdown() {
+    use reticulum_daemon::receipt_bridge::ReceiptPublisher;
+    for shutdown_before_commit in [false, true] {
+        let (_directory, connection, mut task) = durable_task();
+        connection.execute_batch("DROP TRIGGER fail_prepared; CREATE TRIGGER fail_receipt BEFORE UPDATE OF receipt_status ON messages BEGIN SELECT RAISE(ABORT,'SDK_STORAGE_BROKER_FULL injected'); END;").expect("receipt fault");
+        // Invalid PoW cost fails before any transport handoff and publishes one terminal receipt.
+        task.stamp_cost = Some(256);
+        let id = task.message_id.clone();
+        let peer = task.destination_hex.clone();
+        let daemon = task.daemon.clone();
+        let (sender, receiver) = tokio::sync::mpsc::channel(2);
+        let publisher = ReceiptPublisher::from(sender);
+        publisher.reserve_terminal(&id).expect("terminal capacity");
+        task.receipt_tx = publisher.clone();
+        let receipt_owner = crate::receipt_worker::spawn_receipt_worker(
+            daemon.clone(),
+            receiver,
+            task.receipt_map.clone(),
+            task.outbound_resource_map.clone(),
+            publisher.clone(),
+        );
+        let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {
+            queue_capacity: 1,
+            ..Default::default()
+        });
+        let (stop, stopping) = tokio::sync::watch::channel(false);
+        let owner = tokio::spawn(completion::complete_delivery(
+            admitted(&scheduler, task),
+            Arc::new(Semaphore::new(1)),
+            Arc::new(Semaphore::new(1)),
+            Arc::new(Semaphore::new(1)),
+            scheduler.metrics.clone(),
+            peer,
+            stopping,
+        ));
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !publisher.terminal_pending(&id).expect("pending lookup") {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .expect("terminal queued");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!owner.is_finished(), "queue acceptance is not durable completion");
+        assert!(scheduler.owns_delivery(&id));
+        assert!(scheduler.reserve_message(&id, 4096).expect("duplicate").is_none());
+        assert_eq!(scheduler.backlog_limit.available_permits(), 0);
+        assert_eq!(scheduler.bytes.available_permits(), DELIVERY_RETAINED_BYTES as usize - 4096);
+        assert_eq!(state(&connection, &id), "scheduled");
+        if shutdown_before_commit {
+            stop.send_replace(true);
+            tokio::time::timeout(Duration::from_secs(2), owner)
+                .await
+                .expect("shutdown releases scheduler")
+                .expect("owner");
+            assert!(publisher.terminal_pending(&id).expect("pending survives shutdown"));
+            assert_eq!(
+                state(&connection, &id),
+                "scheduled",
+                "shutdown must not requeue an uncommitted terminal"
+            );
+            connection.execute_batch("DROP TRIGGER fail_receipt;").expect("recover storage");
+        } else {
+            connection.execute_batch("DROP TRIGGER fail_receipt;").expect("recover storage");
+            tokio::time::timeout(Duration::from_secs(3), owner)
+                .await
+                .expect("commit releases owner")
+                .expect("owner");
+            assert!(!publisher.terminal_pending(&id).expect("committed"));
+        }
+        tokio::time::timeout(Duration::from_secs(3), receipt_owner.drain())
+            .await
+            .expect("drain deadline")
+            .expect("receipt drained");
+        assert_eq!(state(&connection, &id), "terminal");
+        assert!(!scheduler.owns_delivery(&id));
+        assert_eq!(scheduler.backlog_limit.available_permits(), 1);
+        assert_eq!(scheduler.bytes.available_permits(), DELIVERY_RETAINED_BYTES as usize);
+        assert!(!publisher.terminal_pending(&id).expect("committed"));
+        let receipts: i64 = connection
+            .query_row("SELECT COUNT(*) FROM broker_events WHERE event_type='receipt'", [], |row| {
+                row.get(0)
+            })
+            .expect("receipt journal");
+        assert_eq!(receipts, 1);
+        scheduler.shutdown();
+    }
+}

@@ -483,3 +483,36 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   overload recovery, target/baseline mixed-peer traces and later successful SDK
   delivery after callback failure. Missing-identity waiting is now owned; this
   checkpoint does not claim the complete LXMF 1.2.0 lifecycle or hosted CI.
+
+### Item 3 accepted-terminal persistence fence checkpoint
+
+- PRE mapping rejected a blanket post-handoff terminal wait: the pinned router
+  removes Propagated work at SENT, while this repository correctly distinguishes
+  sent from delivered; packet receipt timeout/retry ownership is also unfinished.
+  This smaller slice fences only a terminal receipt already accepted by the
+  existing persistence worker, without changing those handoff/status semantics.
+- ReceiptPublisher now exposes pending accepted terminal work and completion
+  notifications. Unused reserved permits do not wait. Successful unreserved
+  legacy terminal enqueue registers under the same map lock; rejected enqueue
+  creates no pending entry. Duplicate callbacks share the existing worker.
+- A common scheduler epilogue runs before task/membership/count/byte guards drop.
+  It subscribes before checking pending state, covering commit/query/wait races.
+  It performs no receipt-status read and creates no competing terminal event.
+  Fatal persistence failure retains the fence until daemon shutdown; shutdown
+  releases scheduler capacity but preserves the pending worker event for drain.
+- A real SQLite receipt-write fault holds ownership and rejects duplicate admission
+  while terminal work is queued. Recovering storage commits exactly one journal
+  receipt then releases reservations. A separate shutdown variant preserves the
+  scheduled broker intent and pending publication until the worker drains.
+  Removing the epilogue call reproduced premature completion at the intended
+  assertion (exit 101); restoring it passes. Publisher tests cover both reserved
+  and legacy work, queue refusal, duplicates and completion races.
+- Correctness and POST/maintainability reviews accepted the fence. Local validation: 87 bridge tests,
+  12 receipt-related binary tests, four receipt publisher/library tests, four
+  receipt integration tests and the issue-369 scanner pass. All-feature daemon
+  library/binary Clippy, formatting, boundary, module-size and diff checks pass.
+  Logs: `/tmp/lxmf-item3-terminal-{red,bridge,publisher,receipt-worker,quality,clippy}.log`.
+- This does not retain all packet/Resource handoffs through delivery, implement
+  reference post-send retry policy, or recover lost Resource broadcasts. Those
+  require their explicit lifecycle cutover and target mixed-peer evidence before
+  the single item-3 PR is ready. No hosted check or item completion is claimed.

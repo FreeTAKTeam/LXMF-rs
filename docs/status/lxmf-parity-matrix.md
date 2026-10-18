@@ -74,6 +74,12 @@ Fifty exact-pin request-boundary cells and concurrent production lookups pass.
 Running normal stamp work and queued stamp waiters observe shutdown and release
 reservations. Local signed announce-ingress tests prove one send despite a
 simultaneous timer and duplicate notifications, without rebuilding durable bytes.
+Accepted terminal publication now keeps scheduler membership and count/byte
+reservations until the existing receipt worker confirms persistence or shutdown
+releases them for recovery. A real SQLite write fault proves queued acceptance
+cannot release the owner; recovery commits one receipt, and shutdown preserves
+the pending event for drain. Both reserved and accepted legacy terminals use the
+same fence; an unused reservation or rejected enqueue does not wait.
 Full post-send/Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.
