@@ -11,6 +11,7 @@ impl DeliveryTask {
         let result = build_outbound_payload(OutboundPayloadBuild {
             daemon: self.daemon.clone(),
             message_id: self.message_id.clone(),
+            stopping: self.stopping.clone(),
             source_hash: self.source_hash,
             destination: self.destination,
             title: self.title.clone(),
@@ -26,6 +27,9 @@ impl DeliveryTask {
         if let Some(work) = stamp_work {
             match &result {
                 Ok(_) => self.record_stamp_work_metadata("ready", work),
+                Err(err) if super::payload_builder::status_interrupted(err) => {
+                    self.record_stamp_work_metadata("interrupted", work);
+                }
                 Err(err) => {
                     let cancelled = match self.daemon.message_receipt_status(&self.message_id) {
                         Ok(status) => Self::is_cancelled_status(status.as_deref()),
@@ -37,7 +41,7 @@ impl DeliveryTask {
                             false
                         }
                     };
-                    if cancelled {
+                    if cancelled || self.stopping.as_ref().is_some_and(|stop| *stop.borrow()) {
                         self.record_stamp_work_metadata("cancelled", work);
                     } else {
                         self.record_stamp_work_metadata("failed", work);
@@ -52,11 +56,6 @@ impl DeliveryTask {
         }
 
         result
-    }
-
-    pub(super) fn requires_deferred_stamp_work(&self) -> bool {
-        self.requires_normal_deferred_stamp_work()
-            || self.requested_method == RequestedDeliveryMethod::Propagated
     }
 
     pub(super) fn requires_normal_deferred_stamp_work(&self) -> bool {

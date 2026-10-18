@@ -11,25 +11,43 @@ impl RpcDaemon {
             while let Ok(command) = rx.recv() {
                 match command {
                     EventSinkCommand::Publish { sink, sink_kind, envelope } => {
-                        let result = sink.publish(&envelope);
-                        let mut metrics = metrics.lock().expect("sdk_metrics mutex poisoned");
-                        match result {
-                            Ok(()) => {
-                                metrics.sdk_event_sink_publish_total =
-                                    metrics.sdk_event_sink_publish_total.saturating_add(1);
-                                Self::metrics_increment(
-                                    &mut metrics.sdk_event_sink_publish_by_kind,
-                                    sink_kind.as_str(),
+                        // Receipt state is committed before notification; hold no daemon locks
+                        // across this external callback and never retry its unknown side effects.
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            sink.publish(&envelope)
+                        }));
+                        let published = match result {
+                            Ok(Ok(())) => true,
+                            Ok(Err(error)) => {
+                                log::warn!(
+                                    "[daemon] event sink failed kind={} seq={} event={} error_kind={:?}",
+                                    sink_kind, envelope.seq_no, envelope.event.event_type, error.kind()
                                 );
+                                false
                             }
                             Err(_) => {
-                                metrics.sdk_event_sink_error_total =
-                                    metrics.sdk_event_sink_error_total.saturating_add(1);
-                                Self::metrics_increment(
-                                    &mut metrics.sdk_event_sink_errors_by_kind,
-                                    sink_kind.as_str(),
+                                log::error!(
+                                    "[daemon] event sink panicked kind={} seq={} event={}",
+                                    sink_kind, envelope.seq_no, envelope.event.event_type
                                 );
+                                false
                             }
+                        };
+                        let mut metrics = metrics.lock().expect("sdk_metrics mutex poisoned");
+                        if published {
+                            metrics.sdk_event_sink_publish_total =
+                                metrics.sdk_event_sink_publish_total.saturating_add(1);
+                            Self::metrics_increment(
+                                &mut metrics.sdk_event_sink_publish_by_kind,
+                                sink_kind.as_str(),
+                            );
+                        } else {
+                            metrics.sdk_event_sink_error_total =
+                                metrics.sdk_event_sink_error_total.saturating_add(1);
+                            Self::metrics_increment(
+                                &mut metrics.sdk_event_sink_errors_by_kind,
+                                sink_kind.as_str(),
+                            );
                         }
                     }
                     #[cfg(test)]

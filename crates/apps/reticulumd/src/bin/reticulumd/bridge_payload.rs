@@ -4,9 +4,23 @@ use rns_rpc::RpcDaemon;
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
 
+#[derive(Debug)]
+struct PayloadStatusUnavailable(String);
+impl std::fmt::Display for PayloadStatusUnavailable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+impl std::error::Error for PayloadStatusUnavailable {}
+
+pub(super) fn status_interrupted(error: &std::io::Error) -> bool {
+    error.get_ref().is_some_and(|source| source.is::<PayloadStatusUnavailable>())
+}
+
 pub(super) struct OutboundPayloadBuild {
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) message_id: String,
+    pub(super) stopping: Option<tokio::sync::watch::Receiver<bool>>,
     pub(super) source_hash: [u8; 16],
     pub(super) destination: [u8; 16],
     pub(super) title: String,
@@ -36,28 +50,33 @@ pub(super) async fn build_outbound_payload(
                 .include_ticket
                 .as_ref()
                 .map(|(expires_at, ticket)| (*expires_at, ticket.as_slice())),
-            || match input.daemon.message_receipt_status(&input.message_id) {
-                Ok(status) => {
-                    status.is_some_and(|status| status.trim().eq_ignore_ascii_case("cancelled"))
+            || {
+                if input.stopping.as_ref().is_some_and(|stop| *stop.borrow()) {
+                    return true;
                 }
-                Err(error) => {
-                    let mut guard = status_lookup_error
-                        .lock()
-                        .expect("outbound status lookup error mutex poisoned");
-                    if guard.is_none() {
-                        *guard = Some(error.to_string());
+                match input.daemon.message_receipt_status(&input.message_id) {
+                    Ok(status) => status
+                        .as_deref()
+                        .is_some_and(super::delivery_task::DeliveryTask::is_terminal_status),
+                    Err(error) => {
+                        let mut guard = status_lookup_error
+                            .lock()
+                            .expect("outbound status lookup error mutex poisoned");
+                        if guard.is_none() {
+                            *guard = Some(error.to_string());
+                        }
+                        true
                     }
-                    true
                 }
             },
         );
         if let Some(error) =
             status_lookup_error.into_inner().expect("outbound status lookup error mutex poisoned")
         {
-            return Err(std::io::Error::other(format!(
+            return Err(std::io::Error::other(PayloadStatusUnavailable(format!(
                 "receipt status lookup failed for message {}: {error}",
                 input.message_id
-            )));
+            ))));
         }
         result.map_err(std::io::Error::other)
     })

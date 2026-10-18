@@ -1,6 +1,3 @@
-use reticulum_daemon::receipt_bridge::ReceiptEvent;
-
-use crate::bridge::emit_receipt_event;
 use crate::direct_backchannel::DirectBackchannelLinks;
 
 use rns_rpc::{RpcDaemon, RpcRequest};
@@ -8,7 +5,7 @@ use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::destination::link::{Link, LinkEvent};
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 
-use rns_transport::hash::{AddressHash, Hash};
+use rns_transport::hash::AddressHash;
 
 use rns_transport::identity::{DecryptIdentity, Identity};
 
@@ -29,19 +26,30 @@ use sha2::Digest;
 
 use std::sync::Arc;
 
+#[cfg(test)]
 pub(super) fn spawn_inbound_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     control: PropagationControlContext,
     direct_backchannel_links: Option<DirectBackchannelLinks>,
-    receipt_tx: impl Into<reticulum_daemon::receipt_bridge::ReceiptPublisher>,
-    outbound_resource_map: OutboundResourceMap,
+) {
+    let resource_events = transport.resource_events();
+    spawn_inbound_worker_with_resource_events(
+        daemon, transport, control, direct_backchannel_links, resource_events,
+    );
+}
+
+pub(super) fn spawn_inbound_worker_with_resource_events(
+    daemon: Arc<RpcDaemon>,
+    transport: Arc<Transport>,
+    control: PropagationControlContext,
+    direct_backchannel_links: Option<DirectBackchannelLinks>,
+    mut rx: tokio::sync::broadcast::Receiver<rns_transport::resource::ResourceEvent>,
 ) {
     if control.enabled {
         control::spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
     }
     let resource_control = control.clone();
-    let receipt_tx = receipt_tx.into();
     let resource_outbound_sources = direct_backchannel_links.clone();
     spawn_packet_inbound_worker(
         daemon.clone(),
@@ -54,7 +62,6 @@ pub(super) fn spawn_inbound_worker(
             resource_control.delivery_destination.as_ref(),
         )
         .await;
-        let mut rx = transport.resource_events();
         loop {
             if let Ok(event) = rx.recv().await {
                 match event.kind {
@@ -148,44 +155,10 @@ pub(super) fn spawn_inbound_worker(
                             }
                         }
                     }
-                    ResourceEventKind::OutboundComplete => {
-                        handle_outbound_resource_completion(
-                            daemon.as_ref(),
-                            &outbound_resource_map,
-                            &receipt_tx,
-                            &event.hash,
-                        );
-                    }
-                    ResourceEventKind::OutboundFailed => {
-                        handle_outbound_resource_failure(
-                            daemon.as_ref(),
-                            &outbound_resource_map,
-                            &receipt_tx,
-                            &event.hash,
-                        );
-                    }
-                    ResourceEventKind::OutboundRejected => {
-                        handle_outbound_resource_rejection(
-                            &outbound_resource_map,
-                            &receipt_tx,
-                            &event.hash,
-                        );
-                    }
-                    ResourceEventKind::OutboundCancelled => {
-                        let resource_hash_hex = hex::encode(event.hash.as_slice());
-                        match take_outbound_resource_tracking(
-                            &outbound_resource_map,
-                            resource_hash_hex.as_str(),
-                        ) {
-                            Ok(_) => {}
-                            Err("resource not tracked") => log::debug!(
-                                "[daemon-rx] cancelled outbound resource already untracked hash={resource_hash_hex}"
-                            ),
-                            Err(error) => log::error!(
-                                "[daemon-rx] failed to clear cancelled outbound resource hash={resource_hash_hex}: {error}"
-                            ),
-                        }
-                    }
+                    // Retained delivery owners consume their native completion
+                    // watches. Broadcast traffic cannot publish or retire them.
+                    ResourceEventKind::OutboundComplete | ResourceEventKind::OutboundFailed
+                    | ResourceEventKind::OutboundRejected | ResourceEventKind::OutboundCancelled => {},
                     ResourceEventKind::InboundFailed(failure) => {
                         log::warn!(
                             "[daemon-rx] inbound resource failed link={} hash={} reason={} received={}/{}",
@@ -267,92 +240,12 @@ fn propagation_destination_hash_for_identity(identity: &Identity) -> String {
     hex::encode(&hash[..16])
 }
 
-fn handle_outbound_resource_completion(
-    daemon: &RpcDaemon,
-    outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
-    resource_hash: &Hash,
-) {
-    let resource_hash_hex = hex::encode(resource_hash.as_slice());
-    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
-        Ok(tracking) => {
-            daemon.record_outbound_peer_sent(&tracking.peer, tracking.bytes);
-            emit_receipt_event(
-                receipt_tx,
-                ReceiptEvent::new(tracking.message_id, tracking.sent_status)
-                    .with_resource_hash(resource_hash_hex)
-                    .with_peer(tracking.peer)
-                    .with_delivery_kind("resource-complete")
-                    .with_bytes(tracking.bytes),
-            );
-        }
-        Err(err) => {
-            log::warn!("[daemon-rx] outbound resource completion without tracking hash={}: {err}", resource_hash_hex);
-        }
-    }
-}
-
-fn handle_outbound_resource_failure(
-    daemon: &RpcDaemon,
-    outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
-    resource_hash: &Hash,
-) {
-    let resource_hash_hex = hex::encode(resource_hash.as_slice());
-    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
-        Ok(tracking) => {
-            daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
-            emit_receipt_event(
-                receipt_tx,
-                ReceiptEvent::new(tracking.message_id, "failed: resource transfer failed")
-                    .with_resource_hash(resource_hash_hex)
-                    .with_peer(tracking.peer)
-                    .with_delivery_kind("resource-failed")
-                    .with_bytes(tracking.bytes),
-            );
-        }
-        Err(err) => {
-            log::warn!("[daemon-rx] outbound resource failure without tracking hash={}: {err}", resource_hash_hex);
-        }
-    }
-}
-
-fn handle_outbound_resource_rejection(
-    outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
-    resource_hash: &Hash,
-) {
-    let resource_hash_hex = hex::encode(resource_hash.as_slice());
-    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
-        Ok(tracking) => {
-            emit_receipt_event(
-                receipt_tx,
-                ReceiptEvent::new(tracking.message_id, "rejected")
-                    .with_resource_hash(resource_hash_hex)
-                    .with_peer(tracking.peer)
-                    .with_delivery_kind("resource-rejected")
-                    .with_bytes(tracking.bytes),
-            );
-        }
-        Err(err) => {
-            log::warn!("[daemon-rx] outbound resource rejection without tracking hash={}: {err}", resource_hash_hex);
-        }
-    }
-}
-
 fn spawn_packet_inbound_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     control: PropagationControlContext,
     direct_backchannel_links: Option<DirectBackchannelLinks>,
 ) {
-    if let Some(backchannel_links) = direct_backchannel_links.as_ref() {
-        link_identification::spawn_identified_peer_workers(
-            transport.clone(),
-            backchannel_links.clone(),
-        );
-    }
-
     let daemon_inbound = daemon;
     let inbound_transport = transport;
     tokio::spawn(async move {

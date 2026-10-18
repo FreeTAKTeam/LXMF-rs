@@ -16,6 +16,7 @@ include!("tests_parts/unknown_path_request_answered_by_announce.rs");
 
 include!("tests_parts/pending_out_link_rediscovery.rs");
 include!("tests_parts/pending_out_link_establishment_timeout.rs");
+include!("tests_parts/concurrent_out_link_acquisition.rs");
 include!("tests_parts/receipt_handler_on_shared_transport.rs");
 
 include!("tests_parts/tunnel_restore_freshness.rs");
@@ -62,7 +63,12 @@ include!("tests_parts/accepted_child_ifac_rotation.rs");
 include!("tests_parts/reticulum_runtime_management.rs");
 
 include!("tests_parts/packet_proof_correlation.rs");
+include!("tests_parts/prepared_packet_proof.rs");
 
 include!("tests_parts/single_destination_delivery_proof.rs");
 
 include!("tests_parts/link_broadcast_helpers_route_via_bound_iface.rs");
+
+include!("tests_parts/resource_completion.rs");
+include!("tests_parts/link_lifecycle.rs");
+include!("tests_parts/link_packet_receipt.rs");

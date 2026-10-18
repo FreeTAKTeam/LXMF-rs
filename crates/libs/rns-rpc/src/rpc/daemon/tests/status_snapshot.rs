@@ -12,6 +12,8 @@ include!("status_snapshot_parts/propagation_enable_autopeer_maxdepth.rs");
 
 include!("status_snapshot_parts/announce_received_parses_delivery_st.rs");
 
+include!("status_snapshot_parts/announce_owner_wakeup.rs");
+
 include!("status_snapshot_parts/static_peer_path_response_announce_d.rs");
 
 include!("status_snapshot_parts/signed_inbound_ticket_accepts_python.rs");
@@ -60,7 +62,7 @@ include!("status_snapshot_parts/peer_sync_orders_offers_by_python_we.rs");
 
 include!("status_snapshot_parts/peer_sync_preserves_transfer_rate_wh.rs");
 
-include!("status_snapshot_parts/peer_sync_offers_low_value_stamped_e.rs");
+include!("status_snapshot_parts/peer_sync_stamp_floor.rs");
 
 include!("status_snapshot_parts/peer_sync_result_and_event_report_tr.rs");
 

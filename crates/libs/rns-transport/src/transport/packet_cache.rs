@@ -14,6 +14,7 @@ pub struct PacketTrack {
 }
 
 pub struct PacketCache {
+    pub(super) link_receipts: super::link_packet_receipt::LinkReceiptRegistry,
     map: HashMap<Hash, PacketTrack>,
     by_proof_destination: HashMap<AddressHash, Hash>,
     remove_cache: Vec<Hash>,
@@ -21,10 +22,16 @@ pub struct PacketCache {
 
 impl PacketCache {
     pub fn new() -> Self {
-        Self { map: HashMap::new(), by_proof_destination: HashMap::new(), remove_cache: Vec::new() }
+        Self {
+            link_receipts: Default::default(),
+            map: HashMap::new(),
+            by_proof_destination: HashMap::new(),
+            remove_cache: Vec::new(),
+        }
     }
 
     pub fn release(&mut self, duration: Duration) {
+        self.link_receipts.release();
         for entry in &self.map {
             if entry.1.time.elapsed() > duration {
                 self.remove_cache.push(*entry.0);

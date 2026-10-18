@@ -6,6 +6,23 @@ fn event_version() -> u16 {
     1
 }
 
+/// Trusted native propagation acknowledgement; neither variant means recipient delivery.
+/// This disposition is not accepted as an RPC request field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PropagationCustody {
+    Packet,
+    Resource,
+}
+
+impl PropagationCustody {
+    pub fn status(self) -> &'static str {
+        match self {
+            Self::Packet => "sent: propagated",
+            Self::Resource => "sent: propagated resource",
+        }
+    }
+}
+
 pub const CAPABILITY: &str = "sdk.capability.durable_broker_v1";
 pub const MAX_BATCH_BYTES: usize = 12 * 1024 * 1024;
 pub const MAX_BATCH_EVENTS: usize = 128;

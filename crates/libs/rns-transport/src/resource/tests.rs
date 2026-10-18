@@ -1297,6 +1297,7 @@ mod tests {
     include!("tests_collision.rs");
     include!("tests_fault_injection.rs");
     include!("tests_reader.rs");
+    include!("tests_completion.rs");
 
     fn resource_packet(context: PacketContext, payload: &[u8], destination: AddressHash) -> Packet {
         Packet {

@@ -1,6 +1,5 @@
 impl DeliveryTask {
-
-    fn cached_identity_for_destination(&self, destination_hash: AddressHash) -> Option<Identity> {
+    pub(super) fn cached_identity_for_destination(&self, destination_hash: AddressHash) -> Option<Identity> {
         identity_resolver::cached_identity_for_destination(
             destination_hash,
             self.peer_identity,
@@ -14,56 +13,6 @@ impl DeliveryTask {
         log_delivery_trace(&self.message_id, &self.destination_hex, "start", "delivery requested");
     }
 
-    #[cfg(test)]
-    pub(super) async fn run(self) {
-        self.start_delivery_trace();
-        if self.abort_if_cancelled("start") {
-            return;
-        }
-        let payload = match self.build_payload().await {
-            Ok(payload) => payload,
-            Err(err) => {
-                if self.abort_if_cancelled("payload") {
-                    return;
-                }
-                self.fail_payload_build(err);
-                return;
-            }
-        };
-        self.run_prepared(
-            PreparedDeliveryPayload {
-                lxmf_payload: payload,
-                propagation: None,
-            },
-            Arc::new(tokio::sync::Semaphore::new(1)),
-        )
-        .await;
-    }
-
-    pub(super) async fn run_prepared(
-        self,
-        prepared: PreparedDeliveryPayload,
-        stamp_limit: Arc<tokio::sync::Semaphore>,
-    ) {
-        if self.abort_if_cancelled("payload") {
-            return;
-        }
-        match self.requested_method {
-            RequestedDeliveryMethod::Direct => self.run_direct(prepared.lxmf_payload, stamp_limit).await,
-            RequestedDeliveryMethod::Opportunistic => {
-                self.run_opportunistic(prepared.lxmf_payload).await;
-            }
-            RequestedDeliveryMethod::Propagated => {
-                if let Some(propagation) = prepared.propagation {
-                    self.send_prepared_propagated(propagation).await;
-                } else {
-                    self.run_propagated(prepared.lxmf_payload, stamp_limit).await;
-                }
-            }
-            RequestedDeliveryMethod::Paper => {}
-        }
-    }
-
     pub(super) fn fail_payload_build(&self, err: std::io::Error) {
         emit_receipt_event(
             &self.receipt_tx,
@@ -71,246 +20,24 @@ impl DeliveryTask {
         );
     }
 
-    async fn run_propagated(self, payload: Vec<u8>, stamp_limit: Arc<tokio::sync::Semaphore>) {
-        if self.abort_if_cancelled("propagation") {
-            return;
-        }
-        let durable=match self.daemon.durable_prepared_payload(&self.message_id) {
-            Ok(Some(Some(value)))=>match crate::bridge::delivery_scheduler::decode_prepared(value) {Ok(prepared)=>{if let Some(propagation)=prepared.propagation {self.send_prepared_propagated(propagation).await;return;}true},Err(error)=>{log::error!("corrupt persisted propagation payload: {error}");return;}},
-            Ok(Some(None))=>true,Ok(None)=>false,Err(error)=>{log::error!("durable propagation lookup failed: {error}");return;},
-        };
-        let Some(context) = self.propagation_preparation_context().await else {
-            return;
-        };
-        log_delivery_trace(
-            &self.message_id,
-            &self.destination_hex,
-            "propagation",
-            "building propagation payload",
-        );
-        self.record_propagation_stamp_work_metadata("queued", context.target_cost, None);
-        let mut propagation_payload = None;
-        for attempt in 1..=2u32 {
-            let _stamp_permit = match stamp_limit.clone().acquire_owned().await {
-                Ok(permit) => permit,
-                Err(_) => {
-                    emit_receipt_event(
-                        &self.receipt_tx,
-                        ReceiptEvent::new(self.message_id, "failed: stamp worker stopped")
-                            .with_method("propagation"),
-                    );
-                    return;
-                }
-            };
-            self.record_propagation_stamp_attempt_metadata(context.target_cost, attempt);
-            if self.abort_if_cancelled("propagation") {
-                self.record_propagation_stamp_work_metadata("cancelled", context.target_cost, None);
-                return;
-            }
-            let result = propagation::build_propagation_payload_until_cancelled(
-                &payload,
-                &context.destination_identity,
-                context.target_cost,
-                || self.abort_if_cancelled("propagation-stamp"),
-            );
-            drop(_stamp_permit);
-            match result {
-                Ok(payload) => {
-                    propagation_payload = Some(payload);
-                    break;
-                }
-                Err(err) => {
-                    if self.abort_if_cancelled("propagation") {
-                        self.record_propagation_stamp_work_metadata(
-                            "cancelled",
-                            context.target_cost,
-                            None,
-                        );
-                        return;
-                    }
-                    if attempt < 2 {
-                        self.record_propagation_stamp_retry_metadata(
-                            context.target_cost,
-                            attempt,
-                            err.to_string(),
-                        );
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        continue;
-                    }
-                    self.record_propagation_stamp_work_metadata(
-                        "failed",
-                        context.target_cost,
-                        Some(err.to_string()),
-                    );
-                    emit_receipt_event(
-                        &self.receipt_tx,
-                        ReceiptEvent::new(self.message_id, format!("failed: {err}"))
-                            .with_method("propagation"),
-                    );
-                    return;
-                }
-            }
-        }
-        let Some(propagation_payload) = propagation_payload else {
-            return;
-        };
-        self.record_propagation_stamp_work_metadata(
-            "ready",
-            context.target_cost,
-            Some(propagation_payload.stamp_value.to_string()),
-        );
-        self.record_propagation_payload_metadata(&propagation_payload, context.target_cost);
-        let prepared=PreparedPropagationPayload {
-                propagation_node_hex: context.propagation_node_hex,
-                propagation_hash: context.propagation_hash,
-                target_cost: context.target_cost,
-                payload: propagation_payload,
-            };
-        if durable {
-            let encoded=crate::bridge::delivery_scheduler::encode_prepared(&PreparedDeliveryPayload {lxmf_payload:payload,propagation:Some(prepared)});
-            if let Err(error)=self.daemon.persist_durable_prepared_payload(&self.message_id,encoded.clone()) {
-                log::error!("propagation bytes were not committed; send suppressed: {error}");
-                if let Err(error)=self.daemon.defer_durable_dispatch(&self.message_id) {log::error!("durable propagation retry commit failed: {error}");}
-                return;
-            }
-            match crate::bridge::delivery_scheduler::decode_prepared(encoded) {Ok(value)=>if let Some(prepared)=value.propagation {self.send_prepared_propagated(prepared).await;},Err(error)=>log::error!("persisted propagation decode failed: {error}")}
-        } else {self.send_prepared_propagated(prepared).await;}
-    }
-
-    async fn send_prepared_propagated(self, prepared: PreparedPropagationPayload) {
-        if self.selected_propagation_node_is_local(prepared.propagation_node_hex.as_str()) {
-            match self.store_local_propagation_payload(
-                prepared.propagation_node_hex.as_str(),
-                &prepared.payload,
-            ) {
-                Ok(()) => {
-                    emit_receipt_event(
-                        &self.receipt_tx,
-                        ReceiptEvent::new(self.message_id, "sent: propagated resource")
-                            .with_method("propagation")
-                            .with_delivery_kind("local-propagation-store"),
-                    );
-                }
-                Err(err) => {
-                    emit_receipt_event(
-                        &self.receipt_tx,
-                        ReceiptEvent::new(self.message_id, format!("failed: {err}"))
-                            .with_method("propagation"),
-                    );
-                }
-            }
-            return;
-        }
-        let payload = prepared.payload.bytes;
-        log_delivery_trace(
-            &self.message_id,
-            &self.destination_hex,
-            "propagation",
-            format!(
-                "propagation payload ready bytes={} target_cost={}",
-                payload.len(),
-                prepared.target_cost
-            )
-            .as_str(),
-        );
-        if self.abort_if_cancelled("propagation") {
-            return;
-        }
-
-        log_delivery_trace(
-            &self.message_id,
-            &self.destination_hex,
-            "propagation",
-            "resolving propagation link",
-        );
-        let propagation_link = match self
-            .resolve_or_create_propagation_link(
-                &prepared.propagation_node_hex,
-                prepared.propagation_hash,
-            )
-            .await
-        {
-            Ok(link) => link,
-            Err(err) => {
-                emit_receipt_event(
-                    &self.receipt_tx,
-                    ReceiptEvent::new(self.message_id, format!("failed: {err}"))
-                        .with_method("propagation"),
-                );
-                return;
-            }
-        };
-        let (link_id, link_status) = {
-            let guard = propagation_link.lock().await;
-            (*guard.id(), guard.status())
-        };
-        log_delivery_trace(
-            &self.message_id,
-            &self.destination_hex,
-            "propagation",
-            format!("propagation link ready link={link_id} status={link_status:?}").as_str(),
-        );
-        if self.abort_if_cancelled("propagation") {
-            return;
-        }
-
-        if let Err(err) = self
-            .send_via_existing_link_mode(
-                "propagation",
-                prepared.propagation_node_hex.as_str(),
-                propagation_link,
-                &payload,
-                LinkModeStatuses {
-                    packet: "sent: propagated",
-                    resource: "sending: propagated resource",
-                    resource_sent: "sent: propagated resource",
-                },
-            )
-            .await
-        {
-            let detail = format!("propagated failed err={err}");
-            log_delivery_trace(&self.message_id, &self.destination_hex, "propagation", &detail);
-            emit_receipt_event(
-                &self.receipt_tx,
-                ReceiptEvent::new(self.message_id, format!("failed: {err}"))
-                    .with_method("propagation"),
-            );
-        }
-    }
-
-    async fn run_opportunistic(self, payload: Vec<u8>) {
-        if self.abort_if_cancelled("opportunistic") {
-            return;
-        }
+    pub(super) async fn run_opportunistic(&self, payload: &[u8]) -> DeliveryAttemptOutcome {
+        if let Err(outcome) = self.check_opportunistic_status() { return outcome; }
         let identity = match self.resolve_destination_identity().await {
-            Ok(Some(id)) => id,
-            Ok(None) => return,
-            Err(err) => {
-                log::warn!(
-                    "[daemon] {} resolve destination identity failed: {err}",
-                    self.message_id
-                );
-                return;
-            }
+            Ok(identity) => identity,
+            Err(outcome) => return outcome,
         };
         // Opportunistic SINGLE packets must carry LXMF wire bytes
         // without the destination prefix. Receivers prepend the
         // packet destination hash before unpacking.
-        let opportunistic_payload = opportunistic_payload(&payload, &self.destination);
-        if opportunistic_payload.len() > rns_transport::packet::PACKET_MDU {
+        let opportunistic_payload = opportunistic_payload(payload, &self.destination);
+        if opportunistic_payload.len() > lxmf::constants::ENCRYPTED_PACKET_MDU {
             log_delivery_trace(
                 &self.message_id,
                 &self.destination_hex,
                 "opportunistic",
                 "payload too large for single packet",
             );
-            self.run_opportunistic_link_fallback(
-                payload,
-                identity,
-                "payload too large for single packet",
-            )
-            .await;
-            return;
+            return DeliveryAttemptOutcome::LinkRequired;
         }
         let mut data = PacketDataBuffer::new();
         if data.write(opportunistic_payload).is_err() {
@@ -320,8 +47,7 @@ impl DeliveryTask {
                 "opportunistic",
                 "payload too large",
             );
-            self.run_opportunistic_link_fallback(payload, identity, "payload too large").await;
-            return;
+            return DeliveryAttemptOutcome::LinkRequired;
         }
 
         let mut packet = Packet {
@@ -356,10 +82,13 @@ impl DeliveryTask {
                 );
                 emit_receipt_event(
                     &self.receipt_tx,
-                    ReceiptEvent::new(self.message_id, "failed: opportunistic encrypt failed")
-                        .with_method("opportunistic"),
+                    ReceiptEvent::new(
+                        self.message_id.clone(),
+                        "failed: opportunistic encrypt failed",
+                    )
+                    .with_method("opportunistic"),
                 );
-                return;
+                return DeliveryAttemptOutcome::Terminal;
             }
         };
         let mut encrypted_data = PacketDataBuffer::new();
@@ -370,12 +99,10 @@ impl DeliveryTask {
                 "opportunistic",
                 "ciphertext too large",
             );
-            self.run_opportunistic_link_fallback(payload, identity, "ciphertext too large").await;
-            return;
+            return DeliveryAttemptOutcome::LinkRequired;
         }
         packet.data = encrypted_data;
         let packet_hash = hex::encode(packet.hash().to_bytes());
-        track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
         if log::log_enabled!(log::Level::Trace) {
             let detail = format!(
                 "sending packet_hash={} payload_len={} payload_prefix={}",
@@ -387,7 +114,27 @@ impl DeliveryTask {
         } else {
             log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", "sending");
         }
-        let trace = self.transport.send_prepared_packet_broadcast_with_trace(packet).await;
+        if let Err(outcome) = self.check_opportunistic_status() { return outcome; }
+        let mut stopped = DeliveryAttemptOutcome::Stopped;
+        let trace = match self.transport.send_prepared_single_packet_guarded_with_trace(
+            packet, identity, DestinationName::new("lxmf", "delivery"),
+            |hash| match self.check_opportunistic_status() {
+                Ok(()) => {
+                    track_receipt_mapping(&self.receipt_map, &hex::encode(hash.to_bytes()), &self.message_id);
+                    true
+                },
+                Err(outcome) => { stopped = outcome; false },
+            },
+        ).await {
+            Ok(Some(trace)) => trace,
+            Ok(None) => return stopped,
+            Err(error) => {
+                self.fail_payload_build(std::io::Error::other(format!(
+                    "opportunistic recipient binding failed for {}: {error}", self.destination_hex
+                )));
+                return DeliveryAttemptOutcome::Terminal;
+            }
+        };
         let trace_detail = send_trace_detail(trace);
         log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", &trace_detail);
         let outcome = trace.outcome;
@@ -408,77 +155,47 @@ impl DeliveryTask {
         }
         emit_receipt_event(
             &self.receipt_tx,
-            ReceiptEvent::new(self.message_id, send_outcome_status("opportunistic", outcome))
-                .with_packet_hash(packet_hash)
-                .with_method("opportunistic")
-                .with_delivery_kind("opportunistic-packet")
-                .with_bytes(opportunistic_payload.len()),
-        );
-    }
-
-    async fn run_opportunistic_link_fallback(
-        self,
-        payload: Vec<u8>,
-        identity: Identity,
-        reason: &str,
-    ) {
-        if self.abort_if_cancelled("opportunistic-link") {
-            return;
-        }
-        log_delivery_trace(
-            &self.message_id,
-            &self.destination_hex,
-            "opportunistic",
-            &format!("{reason}; falling back to link delivery"),
-        );
-        let destination_desc = DestinationDesc {
-            identity,
-            address_hash: self.destination_hash,
-            name: DestinationName::new("lxmf", "delivery"),
-        };
-        if let Err(err) = self
-            .send_via_link_mode(
-                "opportunistic-link",
-                self.destination_hex.as_str(),
-                destination_desc,
-                &payload,
-                LinkModeStatuses {
-                    packet: "sent: opportunistic link",
-                    resource: "sending: link resource",
-                    resource_sent: OUTBOUND_RESOURCE_SENT_STATUS,
+            ReceiptEvent::new(
+                self.message_id.clone(),
+                if send_outcome_is_sent(outcome) {
+                    send_outcome_status("opportunistic", outcome)
+                } else {
+                    "pending: opportunistic no route".to_string()
                 },
             )
-            .await
-        {
-            log_delivery_trace(
-                &self.message_id,
-                &self.destination_hex,
-                "opportunistic-link",
-                &format!("fallback failed err={err}"),
-            );
-            emit_receipt_event(
-                &self.receipt_tx,
-                ReceiptEvent::new(self.message_id, format!("failed: {err}"))
-                    .with_method("opportunistic-link"),
-            );
+            .with_packet_hash(packet_hash)
+            .with_method("opportunistic")
+            .with_delivery_kind("opportunistic-packet")
+            .with_bytes(opportunistic_payload.len()),
+        );
+        DeliveryAttemptOutcome::OpportunisticPacket
+    }
+
+    fn check_opportunistic_status(&self) -> Result<(), DeliveryAttemptOutcome> {
+        if self.stopping.as_ref().is_some_and(|stop| *stop.borrow()) {
+            return Err(DeliveryAttemptOutcome::Stopped);
+        }
+        match self.observe_delivery_terminal() {
+            Ok(false) => Ok(()),
+            Ok(true) => Err(DeliveryAttemptOutcome::Stopped),
+            Err(error) => {
+                log::warn!("opportunistic receipt observation unavailable message_id={}: {error}", self.message_id);
+                Err(DeliveryAttemptOutcome::AwaitStatus)
+            }
         }
     }
 
     pub(super) async fn resolve_destination_identity(
         &self,
-    ) -> Result<Option<Identity>, &'static str> {
-        let Some(identity) = self
+    ) -> Result<Identity, DeliveryAttemptOutcome> {
+        let identity = self
             .resolve_identity(
                 Some(self.destination_hex.as_str()),
                 self.destination_hash,
                 self.peer_identity,
                 "identity",
-                "failed: peer not announced",
             )
-            .await?
-        else {
-            return Ok(None);
-        };
+            .await?;
 
         match self.peer_crypto.lock() {
             Ok(mut peers) => {
@@ -493,6 +210,6 @@ impl DeliveryTask {
                 );
             }
         }
-        Ok(Some(identity))
+        Ok(identity)
     }
 }

@@ -147,100 +147,6 @@ impl Transport {
             .unwrap_or(crate::resource::DEFAULT_RESOURCE_INTERFACE_MTU)
     }
 
-    pub async fn send_resource(
-        &self,
-        link_id: &AddressHash,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-    ) -> Result<Hash, RnsError> {
-        self.send_resource_with_compression(link_id, data, metadata, true).await
-    }
-
-    /// Send a resource with explicit control over opportunistic compression.
-    ///
-    /// The default [`Self::send_resource`] path keeps the reference behavior
-    /// of trying bzip2 compression when it reduces the transfer. Callers
-    /// that need wire-level uncompressed data, such as `rncp --no-compress`,
-    /// can disable that choice without changing the resource framing.
-    pub async fn send_resource_with_compression(
-        &self,
-        link_id: &AddressHash,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-        auto_compress: bool,
-    ) -> Result<Hash, RnsError> {
-        self.send_resource_observed_with_compression(
-            link_id,
-            data,
-            metadata,
-            |_| {},
-            auto_compress,
-        )
-        .await
-    }
-
-    pub async fn send_resource_observed(
-        &self,
-        link_id: &AddressHash,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-        observe_resource: impl FnOnce(Hash),
-    ) -> Result<Hash, RnsError> {
-        self.send_resource_observed_with_compression(link_id, data, metadata, observe_resource, true)
-            .await
-    }
-
-    pub async fn send_resource_observed_with_compression(
-        &self,
-        link_id: &AddressHash,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-        observe_resource: impl FnOnce(Hash),
-        auto_compress: bool,
-    ) -> Result<Hash, RnsError> {
-        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
-        let iface = {
-            let link_guard = link.lock().await;
-            link_guard.ingress_iface()
-        };
-        let interface_mtu = self.resource_mtu_for_iface(iface).await;
-        // Prepared before the handler lock is taken, not under it. Building the
-        // advertisement compresses, encrypts and chunks the payload, which on a
-        // large send is a long time to hold a mutex every other link, announce
-        // and packet on this node also needs.
-        let prepared = {
-            let link_guard = link.lock().await;
-            // See `resource_wire.rs`: the negotiated link MTU, not the local
-            // interface alone, is what a fragment has to fit through.
-            let interface_mtu = interface_mtu.min(link_guard.link_mtu());
-            ResourceManager::prepare_send_with_compression(
-                &link_guard,
-                data,
-                metadata,
-                None,
-                false,
-                interface_mtu,
-                auto_compress,
-            )?
-        };
-        let mut handler = self.handler.lock().await;
-        let (resource_hash, packet) = handler.resource_manager.track_prepared(prepared);
-        observe_resource(resource_hash);
-        drop(handler);
-        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
-        let mut handler = self.handler.lock().await;
-        let sent =
-            matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
-        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
-        let events = handler.resource_manager.drain_events();
-        super::resource_wire::publish_resource_events(&handler, events);
-        if sent {
-            Ok(resource_hash)
-        } else {
-            Err(RnsError::ConnectionError)
-        }
-    }
-
     pub async fn send_response_resource(
         &self,
         link_id: &AddressHash,
@@ -364,32 +270,6 @@ impl Transport {
         super::resource_wire::publish_resource_events(&handler, events);
         if sent {
             Ok(resource_hash)
-        } else {
-            Err(RnsError::ConnectionError)
-        }
-    }
-
-    pub async fn cancel_resource(
-        &self,
-        link_id: &AddressHash,
-        resource_hash: Hash,
-    ) -> Result<bool, RnsError> {
-        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
-        let packet = {
-            let mut handler = self.handler.lock().await;
-            let link_guard = link.lock().await;
-            let packet = handler.resource_manager.cancel_outgoing(resource_hash, &link_guard)?;
-            let events = handler.resource_manager.drain_events();
-            super::resource_wire::publish_resource_events(&handler, events);
-            packet
-        };
-        let Some(packet) = packet else {
-            return Ok(false);
-        };
-
-        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
-        if matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast) {
-            Ok(true)
         } else {
             Err(RnsError::ConnectionError)
         }

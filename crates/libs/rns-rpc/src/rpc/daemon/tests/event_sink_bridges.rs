@@ -356,3 +356,123 @@ fn ble_and_capture_metrics_are_exposed_in_snapshot() {
         json!(1)
     );
 }
+
+struct RecoveringReceiptSink {
+    attempts: std::sync::atomic::AtomicUsize,
+    envelopes: Arc<Mutex<Vec<RpcEventSinkEnvelope>>>,
+}
+
+impl EventSinkBridge for RecoveringReceiptSink {
+    fn sink_id(&self) -> &str {
+        "recovering-receipt"
+    }
+    fn sink_kind(&self) -> &'static str {
+        "custom"
+    }
+    fn publish(&self, envelope: &RpcEventSinkEnvelope) -> std::io::Result<()> {
+        if envelope.event.event_type != "receipt" {
+            return Ok(());
+        }
+        match self.attempts.fetch_add(1, Ordering::SeqCst) {
+            0 => return Err(std::io::Error::other("notification rejected")),
+            1 => panic!("notification callback panicked"),
+            _ => {}
+        }
+        self.envelopes.lock().expect("recovered sink").push(envelope.clone());
+        Ok(())
+    }
+}
+
+#[test]
+fn sdk_event_sink_recovers_after_error_and_panic_without_rewriting_terminal_receipts() {
+    let dir = tempfile::tempdir().expect("temporary store");
+    let path = dir.path().join("messages.db");
+    let store = MessagesStore::open(&path).expect("persistent store");
+    let healthy = Arc::new(Mutex::new(Vec::new()));
+    let recovered = Arc::new(Mutex::new(Vec::new()));
+    let daemon = RpcDaemon::with_store_and_bridges_and_sinks(
+        store,
+        "callback-recovery".into(),
+        None,
+        None,
+        vec![
+            Arc::new(RecoveringReceiptSink {
+                attempts: std::sync::atomic::AtomicUsize::new(0),
+                envelopes: recovered.clone(),
+            }),
+            Arc::new(RecordingSink::new("healthy", "custom", false, healthy.clone())),
+        ],
+    );
+    let config = daemon
+        .handle_rpc(rpc_request(
+            5100,
+            "sdk_configure_v2",
+            json!({
+                "expected_revision": 0,
+                "patch": {"event_sink": {"enabled": true, "allow_kinds": ["custom"]}}
+            }),
+        ))
+        .expect("configure");
+    assert!(config.error.is_none());
+    daemon.flush_event_sink_worker_for_test();
+    healthy.lock().expect("healthy").clear();
+    for id in ["failed-error", "failed-panic", "later-delivery"] {
+        daemon
+            .store
+            .insert_message(&MessageRecord {
+                id: id.into(),
+                source: "src".into(),
+                destination: "dst".into(),
+                title: String::new(),
+                content: "body".into(),
+                timestamp: 1,
+                direction: "out".into(),
+                fields: None,
+                receipt_status: Some("sending".into()),
+            })
+            .expect("persist outgoing message");
+        let status = if id == "later-delivery" { "delivered" } else { "failed: no path" };
+        let result =
+            daemon.record_network_receipt(id, status, JsonMap::new()).expect("commit receipt");
+        assert_eq!(result["updated"], json!(true));
+        daemon.flush_event_sink_worker_for_test();
+        assert_eq!(
+            daemon.message_receipt_status(id).expect("stored status").as_deref(),
+            Some(status)
+        );
+    }
+    let repeated = daemon
+        .record_network_receipt("failed-panic", "delivered", JsonMap::new())
+        .expect("late receipt");
+    assert_eq!(repeated["updated"], json!(false));
+    assert_eq!(repeated["status"], json!("failed: no path"));
+    daemon.flush_event_sink_worker_for_test();
+    let healthy = healthy.lock().expect("healthy");
+    let receipts: Vec<_> =
+        healthy.iter().filter(|event| event.event.event_type == "receipt").collect();
+    assert_eq!(receipts.len(), 4, "healthy sink receives both failed and subsequent receipts");
+    assert_eq!(
+        receipts.iter().filter(|event| event.event.payload["updated"] == json!(true)).count(),
+        3
+    );
+    let recovered = recovered.lock().expect("recovered");
+    assert_eq!(recovered.len(), 2, "the same callback can handle later notifications");
+    assert_eq!(recovered[0].event.payload["message_id"], json!("later-delivery"));
+    let snapshot = daemon.metrics_snapshot();
+    assert_eq!(snapshot["counters"]["sdk_event_sink_error_total"], json!(2));
+    assert_eq!(snapshot["sdk_event_sink_errors_by_kind"]["custom"], json!(2));
+    drop(healthy);
+    drop(recovered);
+    drop(daemon);
+    let reopened = MessagesStore::open(&path).expect("reopen persisted store");
+    for (id, expected) in [
+        ("failed-error", "failed: no path"),
+        ("failed-panic", "failed: no path"),
+        ("later-delivery", "delivered"),
+    ] {
+        assert_eq!(
+            reopened.get_message(id).expect("read").expect("message").receipt_status.as_deref(),
+            Some(expected)
+        );
+    }
+}

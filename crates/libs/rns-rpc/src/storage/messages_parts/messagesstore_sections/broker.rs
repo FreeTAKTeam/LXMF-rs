@@ -20,10 +20,17 @@ impl MessagesStore {
         self.with_read_conn(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM broker_operations WHERE message_id=?1)",[id],|r|r.get(0)))
     }
     pub fn broker_prepared(&self,id:&str)->rusqlite::Result<Option<Option<JsonValue>>> {
+        if self.durable_broker_enabled()? {
+            self.broker_command(super::broker::BrokerCommand::ReservePropagationCustody { message_id: id.into() })?;
+        }
         self.with_read_conn(|conn| {
             let row:Option<Option<String>>=conn.query_row("SELECT prepared FROM broker_operations WHERE message_id=?1",[id],|r|r.get(0)).optional()?;
             row.map(|value|value.map(|s|serde_json::from_str(&s).map_err(|e|rusqlite::Error::ToSqlConversionFailure(Box::new(e)))).transpose()).transpose()
         })
+    }
+    /// Trusted native acknowledgement, distinct from final recipient delivery.
+    pub fn complete_propagation_custody(&self, id: &str, representation: crate::broker::PropagationCustody) -> rusqlite::Result<JsonValue> {
+        self.broker_command(super::broker::BrokerCommand::PropagationCustody { message_id: id.into(), representation })
     }
     pub fn broker_pending_dispatch(&self)->rusqlite::Result<Vec<(MessageRecord,crate::rpc::OutboundDeliveryOptions)>> {
         if !self.durable_broker_enabled()? {return Ok(Vec::new());}

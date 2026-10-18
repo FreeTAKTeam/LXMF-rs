@@ -93,6 +93,8 @@ allowed_library_edges = [
 ]
 allowed_app_edges = [
   "lxmf-cli->lxmf-sdk",
+  # Dev-only public SDK acceptance over the real canonical ZeroMQ service.
+  "reticulumd->lxmf-sdk",
   "reticulumd->lxmf-wire",
   "reticulumd->meshchat-api",
   "reticulumd->reticulum-rs-core",

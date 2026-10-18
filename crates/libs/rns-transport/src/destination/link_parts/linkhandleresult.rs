@@ -91,4 +91,5 @@ pub struct Link {
     channel_fast_rate_rounds: u8,
     channel_medium_rate_rounds: u8,
     event_tx: tokio::sync::broadcast::Sender<LinkEventData>,
+    data_signal: Option<(u8, tokio::sync::watch::Sender<bool>)>,
 }

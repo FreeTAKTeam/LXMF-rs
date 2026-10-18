@@ -1,4 +1,53 @@
 impl ResourceManager {
+    pub fn cancel_outgoing(
+        &mut self,
+        resource_hash: Hash,
+        link: &Link,
+    ) -> Result<Option<Packet>, RnsError> {
+        let active_hash = self.outgoing.iter().find_map(|(hash, sender)| {
+            (sender.original_hash == resource_hash).then_some((*hash, sender.link_id))
+        });
+        if let Some((active_hash, link_id)) = active_hash {
+            if link_id != *link.id() {
+                return Err(RnsError::InvalidArgument);
+            }
+            let packet = build_link_packet(
+                link,
+                PacketType::Data,
+                PacketContext::ResourceInitiatorCancel,
+                active_hash.as_slice(),
+            )?;
+            let sender = self
+                .outgoing
+                .remove(&active_hash)
+                .expect("outgoing sender existed before cancel packet");
+            self.outgoing_segment_chains.remove(&sender.original_hash);
+            self.events.push(ResourceEvent {
+                hash: sender.original_hash,
+                link_id: sender.link_id,
+                kind: ResourceEventKind::OutboundCancelled,
+            });
+            return Ok(Some(packet));
+        }
+
+        if self
+            .pending_outgoing
+            .get(&resource_hash)
+            .is_some_and(|sender| sender.link_id != *link.id())
+        {
+            return Err(RnsError::InvalidArgument);
+        }
+        if let Some(sender) = self.pending_outgoing.remove(&resource_hash) {
+            self.outgoing_segment_chains.remove(&sender.original_hash);
+            self.events.push(ResourceEvent {
+                hash: resource_hash,
+                link_id: sender.link_id,
+                kind: ResourceEventKind::OutboundCancelled,
+            });
+        }
+        Ok(None)
+    }
+
     pub fn remove_link_state(&mut self, link_id: AddressHash) {
         let mut failed_outbound = std::collections::HashSet::new();
         let pending_outgoing = std::mem::take(&mut self.pending_outgoing);

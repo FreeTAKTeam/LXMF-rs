@@ -55,7 +55,9 @@ pub enum BrokerCommand {
     Admit { owner: String, source: String, request: AdmitRequest },
     Reconcile { owner: String, source: String, request: ReconcileRequest },
     Prepared { message_id: String, payload: Value },
+    ReservePropagationCustody { message_id: String },
     DispatchState { message_id: String, state: String },
+    PropagationCustody { message_id: String, representation: PropagationCustody },
 }
 
 pub(crate) fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageRecord> {
@@ -107,7 +109,7 @@ fn append_budgeted(
         conn.query_row("SELECT next_position,used_bytes,budget FROM broker_meta", [], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })?;
-    let bytes = (payload.len() + destination.len() + kind.len() + 128) as i64;
+    let bytes = event_bytes(destination, kind, &payload);
     if !completion {
         physical_admission(conn, payload.len() as u64, budget as u64)?;
     }
@@ -130,6 +132,10 @@ fn append_budgeted(
         params![successor, bytes],
     )?;
     Ok(next)
+}
+
+fn event_bytes(destination: &str, kind: &str, encoded_payload: &str) -> i64 {
+    (encoded_payload.len() + destination.len() + kind.len() + 128) as i64
 }
 
 fn validate_key(value: &str) -> rusqlite::Result<()> {
@@ -305,55 +311,8 @@ fn insert_with_operation(
     Ok(true)
 }
 
-pub(crate) fn status_atomic(conn: &Connection, id: &str, status: &str) -> rusqlite::Result<()> {
-    let record = conn.query_row("SELECT id,source,destination,title,content,timestamp,direction,fields,receipt_status FROM messages WHERE id=?1",[id],record_from_row).optional()?;
-    if let Some(mut record) = record {
-        if record.receipt_status.as_deref().is_some_and(|existing| {
-            existing == status
-                || crate::storage::messages::MessagesStore::should_preserve_receipt_status(
-                    existing, status,
-                )
-        }) {
-            return Ok(());
-        }
-        record.receipt_status = Some(status.into());
-        let terminal = crate::storage::messages::MessagesStore::is_terminal_receipt_status(status);
-        let reservation: Option<i64> = conn
-            .query_row("SELECT bytes FROM broker_completions WHERE message_id=?1", [id], |r| {
-                r.get(0)
-            })
-            .optional()?;
-        mutation_admission(conn, !(terminal && reservation.is_some()))?;
-        conn.execute("UPDATE messages SET receipt_status=?1 WHERE id=?2", params![status, id])?;
-        if terminal {
-            let unused: Option<i64> = conn
-                .query_row(
-                    "SELECT prepared_reserve FROM broker_operations WHERE message_id=?1",
-                    [id],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            if let Some(unused) = unused {
-                conn.execute("UPDATE broker_meta SET used_bytes=used_bytes-?1", [unused])?;
-            }
-            conn.execute("UPDATE broker_operations SET state='terminal',prepared_reserve=0 WHERE message_id=?1",[id])?;
-            if let Some(bytes) = reservation {
-                conn.execute("UPDATE broker_meta SET used_bytes=used_bytes-?1", [bytes])?;
-                conn.execute("DELETE FROM broker_completions WHERE message_id=?1", [id])?;
-            }
-        }
-        let reason: String = status.chars().take(512).collect();
-        let payload = json!({"message_id":id,"status":reason,"reason_truncated":reason.len()!=status.len(),"message":{"id":record.id,"source":record.source,"destination":record.destination,"direction":record.direction}});
-        append_budgeted(
-            conn,
-            &local_destination(&record),
-            "receipt",
-            &payload,
-            terminal && reservation.is_some(),
-        )?;
-    }
-    Ok(())
-}
+mod receipt;
+pub(crate) use receipt::status_atomic;
 
 fn charge(conn: &Connection, bytes: i64) -> rusqlite::Result<()> {
     mutation_admission(conn, true)?;
