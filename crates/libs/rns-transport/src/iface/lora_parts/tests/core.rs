@@ -7,6 +7,9 @@ use super::*;
 
 include!("../ifac_runtime_tests.rs");
 
+#[path = "supervisor.rs"]
+mod supervisor;
+
 #[tokio::test]
 async fn command_response_task_cancels_stream_on_fatal_rnode_error() {
     let iface =
@@ -263,6 +266,7 @@ async fn lora_management_handle_writes_runtime_command_frame_over_duplex() {
         LoraStreamRun {
             interface: iface,
             cancel: task_cancel,
+            iface_stop: cancel.clone(),
             iface_address: crate::hash::AddressHash::default(),
             endpoint_label: "duplex-rnode".to_string(),
             config: LoraConfig::us915_default(),
@@ -431,6 +435,7 @@ async fn a_peer_that_stops_answering_the_probe_ends_the_stream() {
         LoraStreamRun {
             interface: iface,
             cancel: cancel.clone(),
+            iface_stop: cancel.clone(),
             iface_address: crate::hash::AddressHash::default(),
             endpoint_label: "silent-rnode".to_string(),
             config: LoraConfig::us915_default(),

@@ -894,7 +894,26 @@ is retained separately from the corrected successful comparison. Post-extraction
 tests pass the same counts. Both structural POST roles independently reconstruct
 and approve the unchanged source. Affected Clippy, architecture, boundaries,
 module size, explicit nine-file formatting and diff gates pass. No LoRa/RNode
-behavior or family promotion has occurred.
+behavior or family promotion occurred in that structural checkpoint (`581e9b52`).
+
+The next bounded native opening/supervisor increment retains 0/2 status reds,
+then 20/20 LoRa passes after contextual error publication. Using those failures
+as actual retry barriers, four serial/TCP × independent global/interface-stop
+cases fail their joins. Active-stream controls pass global stop and fail interface
+stop before the correction. Existing connect/retry waits now observe both stops;
+the private stream context cancels its existing child and then awaits the same
+KISS future/probe monitor. Corrected native tests pass 26/26 in 0.16 seconds.
+The first post-change compile failure for two missing private test fields is
+retained separately; PROGRESS.md gives exact scopes and corrections.
+
+Both bounded source POST roles and affected Clippy/diagnostics/architecture/
+boundary/size/explicit-formatting gates pass. These active controls are
+unpressured, use a sixty-second existing test startup guard and observe actual
+initial I/O, EOF and release of the monitor's interface owner. They do not prove
+independent protocol conformance or a stalled TCP connect syscall. Shared KISS
+pressure/cleanup, generic bearer and the two configured lifecycle traces remain
+open. The inventory stays thirteen of twenty; no row promotion or production
+timing/default change is inferred from this supervisor checkpoint.
 
 The locked-version [Tokio select documentation](https://docs.rs/tokio/1.53.2/tokio/macro.select.html)
 confirms ordered polling with `biased`, assigns fairness to that ordering and

@@ -122,6 +122,7 @@ impl LoraRuntimeStatusHandle {
 struct LoraStreamRun {
     interface: Arc<std::sync::Mutex<LoraInterface>>,
     cancel: tokio_util::sync::CancellationToken,
+    iface_stop: tokio_util::sync::CancellationToken,
     iface_address: crate::hash::AddressHash,
     endpoint_label: String,
     config: LoraConfig,

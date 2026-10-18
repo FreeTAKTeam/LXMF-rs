@@ -2240,6 +2240,51 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 LoRa/RNode opening-status and supervisor stop checkpoint
+
+- Structural checkpoint `581e9b52` precedes behavior. Two native owned missing
+  serial/refused TCP status cases fail before error publication (0/2 in 2.00
+  seconds), then the LoRa suite passes 20/20 in 0.16 seconds. One private helper
+  publishes contextual existing `last_command_error`/offline status and logs
+  it without credentials; successful startup retains its existing reset owner.
+  Logs: `/tmp/lxmf-item4-lora-opening-status-{red,green}.log`.
+- With failure publication as a deterministic retry barrier, serial/TCP crossed
+  with independent global/interface stops fail all four two-second joins while
+  the existing backoff stays sixty seconds. Two active-stream controls then
+  produce one pass (global control) and one interface-stop failure. Logs:
+  `/tmp/lxmf-item4-lora-retry-shutdown-red.log` (0/4, 2.01 seconds) and
+  `/tmp/lxmf-item4-lora-active-stop-red.log` (1/2, 2.00 seconds).
+- Existing native connect/retry waits now select both stops. The private stream
+  context retains interface stop; it cancels the existing child token, then
+  awaits the same KISS future and the already-owned probe monitor. There is no
+  new worker/API. Active controls observe actual native initialization bytes
+  as an entry barrier, peer EOF and weak interface-owner release. Their existing
+  configurable startup guard is sixty seconds so monitor expiry cannot mask
+  the targeted stop. It is not an independent protocol-conformance proof or a
+  production timer change. Backoff cases prove actual failed attempts and
+  pending retry cancellation; no stalled TCP connect syscall is claimed.
+- The first post-change command fails to compile because two old private test
+  contexts lack the added stop field; retained
+  `/tmp/lxmf-item4-lora-supervisor-green.log` is not passing evidence. Filling
+  those initializer fields leaves old assertions unchanged (with incidental
+  formatting in the existing IFAC fixture). The corrected run passes 26/26 in
+  0.16 seconds in `...-supervisor-corrected.log`.
+- Both bounded source POST roles approve. Affected all-target/all-feature
+  Clippy, diagnostics scanner #369, architecture, boundaries, module size,
+  explicit six-file formatting and diff checks pass in
+  `/tmp/lxmf-item4-lora-supervisor-{clippy,diagnostics,architecture,boundaries,size,fmt,diff}.log`.
+  Shared KISS pressure/cleanup, generic bearer and configured serial/TCP traces
+  remain pending. This checkpoint qualifies neither pressured retirement nor
+  the LoRa/RNode family row; thirteen of twenty rows remain locally qualified,
+  with seven families and whole-item integration/hosted/merge gates open.
+
+Commands: focused red filters `lora::tests::supervisor`, `retry_backoff_stops`
+and `lora_active_stream_stops` with
+`cargo test -p reticulum-rs-transport --lib`; final native command
+`cargo test -p reticulum-rs-transport --lib iface::lora::`.
+Clippy uses `-p reticulumd -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings`;
+the diagnostics command is `cargo test -p reticulumd --test code_quality_issue_369`.
+
 ## Item 4 LoRa/RNode software family preparation
 
 - Weave checkpoint `92627fa3` qualifies thirteen of twenty software rows.
@@ -2252,9 +2297,10 @@ validation only; terminal results and final-head review/CI/merge remain required
   and two active-stream controls for independent stop inputs,
   nine shared-KISS pressure cases plus normal shutdown/initial-failure controls, two configured
   serial/TCP traces and bounded fake-bearer attempts for both existing kinds.
-  Opening errors currently only log; retry waits/TCP connect and shared KISS or
-  bearer receive admission can hide cancellation. Generic bearer final status
-  can remain online. Reads owned by a platform backend remain single-owner.
+  At the preparation baseline, opening errors only logged and retry waits/TCP
+  connect could hide cancellation; the subsequent supervisor checkpoint above
+  corrects those gaps. Shared KISS/bearer receive pressure and generic bearer
+  final online status remain open. Platform backend reads stay single-owner.
 - Correctness PRE approves mechanical preparation and requires initial KISS
   write failure to retain its no-cleanup path. Independent global/interface-stop
   controls must cancel, then await the existing stream and probe monitor owner.
@@ -2279,9 +2325,9 @@ validation only; terminal results and final-head review/CI/merge remain required
   bodies, public paths/privacy and test names. Affected all-target/all-feature
   Clippy, architecture, boundaries, module size, explicit nine-file formatting
   and diff gates pass in `/tmp/lxmf-item4-lora-structure-*.log`.
-  No LoRa/RNode behavior change or qualification is claimed; all seven remaining
-  families/whole-item gates stay open. Physical/RF/public-network work is outside
-  this software scope.
+  That structural checkpoint changes no LoRa/RNode behavior or qualification;
+  all seven remaining families/whole-item gates stay open. Physical/RF/public-network
+  work is outside this software scope.
 
 ## Item 4 Weave configured PTY lifecycle qualification
 

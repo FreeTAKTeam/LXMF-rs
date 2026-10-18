@@ -13,7 +13,7 @@ where
         Some(run.startup_response_timeout),
     ));
 
-    run_kiss_stream_with_ifac(
+    let stream = run_kiss_stream_with_ifac(
         stream,
         KissStreamOptions {
             iface_address: run.iface_address,
@@ -33,13 +33,20 @@ where
             management_frame_rx: Some(run.management_frame_rx),
             runtime_status: None,
         },
-        stream_cancel,
+        stream_cancel.clone(),
         run.rx_channel,
         run.tx_channel,
         run.ifac_state,
         run.ifac_violations,
-    )
-    .await;
+    );
+    tokio::pin!(stream);
+    tokio::select! {
+        () = &mut stream => {}
+        () = run.iface_stop.cancelled() => {
+            stream_cancel.cancel();
+            stream.await;
+        }
+    }
     if let Err(err) = probe_status_task.await {
         if !err.is_cancelled() {
             log::warn!("LoRa probe status task failed iface={} err={}", run.iface_address, err);

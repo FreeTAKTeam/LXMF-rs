@@ -34,7 +34,7 @@ impl LoraInterface {
         let mut active_backoff = reconnect_backoff;
 
         loop {
-            if context.cancel.is_cancelled() {
+            if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
             }
 
@@ -49,13 +49,17 @@ impl LoraInterface {
                     {
                         Ok(port) => port,
                         Err(err) => {
-                            log::warn!(
-                                "failed to open LoRa serial device={} baud_rate={} err={}",
-                                device,
-                                baud_rate,
-                                err
+                            mark_lora_link_error(
+                                &context.inner,
+                                format!(
+                                    "failed to open LoRa serial iface={iface_address} device={device} baud_rate={baud_rate} err={err}"
+                                ),
                             );
-                            tokio::time::sleep(active_backoff).await;
+                            tokio::select! {
+                                _ = tokio::time::sleep(active_backoff) => {}
+                                _ = context.cancel.cancelled() => break,
+                                _ = iface_stop.cancelled() => break,
+                            }
                             active_backoff =
                                 bounded_backoff_next(active_backoff, max_reconnect_backoff);
                             continue;
@@ -79,6 +83,7 @@ impl LoraInterface {
                         LoraStreamRun {
                             interface: context.inner.clone(),
                             cancel: context.cancel.clone(),
+                            iface_stop: iface_stop.clone(),
                             iface_address,
                             endpoint_label: device.clone(),
                             config,
@@ -98,11 +103,23 @@ impl LoraInterface {
                     mark_lora_link_offline(&context.inner);
                 }
                 LoraEndpoint::Tcp { addr } => {
-                    let stream = match TcpStream::connect(addr.clone()).await {
+                    let connection = tokio::select! {
+                        result = TcpStream::connect(addr.clone()) => result,
+                        _ = context.cancel.cancelled() => break,
+                        _ = iface_stop.cancelled() => break,
+                    };
+                    let stream = match connection {
                         Ok(stream) => stream,
                         Err(err) => {
-                            log::warn!("failed to connect LoRa tcp addr={} err={}", addr, err);
-                            tokio::time::sleep(active_backoff).await;
+                            mark_lora_link_error(
+                                &context.inner,
+                                format!("failed to connect LoRa tcp iface={iface_address} addr={addr} err={err}"),
+                            );
+                            tokio::select! {
+                                _ = tokio::time::sleep(active_backoff) => {}
+                                _ = context.cancel.cancelled() => break,
+                                _ = iface_stop.cancelled() => break,
+                            }
                             active_backoff =
                                 bounded_backoff_next(active_backoff, max_reconnect_backoff);
                             continue;
@@ -125,6 +142,7 @@ impl LoraInterface {
                         LoraStreamRun {
                             interface: context.inner.clone(),
                             cancel: context.cancel.clone(),
+                            iface_stop: iface_stop.clone(),
                             iface_address,
                             endpoint_label: addr.clone(),
                             config,
@@ -145,10 +163,14 @@ impl LoraInterface {
                 }
             };
 
-            if context.cancel.is_cancelled() {
+            if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
             }
-            tokio::time::sleep(active_backoff).await;
+            tokio::select! {
+                _ = tokio::time::sleep(active_backoff) => {}
+                _ = context.cancel.cancelled() => break,
+                _ = iface_stop.cancelled() => break,
+            }
             active_backoff = bounded_backoff_next(active_backoff, max_reconnect_backoff);
         }
 
@@ -160,4 +182,11 @@ impl LoraInterface {
 
 fn mark_lora_link_offline(inner: &Arc<std::sync::Mutex<LoraInterface>>) {
     inner.lock().expect("lora interface mutex poisoned").mark_link_offline();
+}
+
+fn mark_lora_link_error(inner: &Arc<std::sync::Mutex<LoraInterface>>, error: String) {
+    log::warn!("{error}");
+    let mut interface = inner.lock().expect("lora interface mutex poisoned");
+    interface.mark_link_offline();
+    interface.last_command_error = Some(error);
 }

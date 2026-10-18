@@ -215,6 +215,12 @@ source reviews approve, final configured default/all-feature cases pass 2/2,
 and affected suites/Clippy/focused gates pass. The full default daemon run
 precedes a quiet-observer tightening covered by the final focused run; exact
 scopes and retained failures remain in the execution record.
+LoRa/RNode's next bounded supervisor increment now publishes contextual native
+opening errors and observes independent global/interface stop inputs through
+connect/retry and the existing stream/probe owner. Failure/stop regressions and
+the final 26-case native suite pass with independent source review and focused
+gates. Those active-stream controls are unpressured; shared KISS pressure,
+generic-bearer cleanup and configured-family traces still remain open.
 Thirteen of twenty declared software family rows are locally qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
