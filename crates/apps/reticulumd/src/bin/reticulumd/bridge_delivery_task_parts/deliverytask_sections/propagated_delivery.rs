@@ -19,13 +19,11 @@ impl DeliveryTask {
                 .store_local_propagation_payload(&prepared.propagation_node_hex, &prepared.payload)
             {
                 Ok(()) => {
-                    emit_receipt_event(
-                        &self.receipt_tx,
-                        ReceiptEvent::new(self.message_id.clone(), "sent: propagated resource")
+                    DeliveryAttemptOutcome::PropagationCustody(Box::new(
+                        ReceiptEvent::propagation_custody(self.message_id.clone(), rns_rpc::broker::PropagationCustody::Resource)
                             .with_method("propagation")
                             .with_delivery_kind("local-propagation-store"),
-                    );
-                    DeliveryAttemptOutcome::CompletedLocal
+                    ))
                 }
                 Err(error) => {
                     emit_receipt_event(

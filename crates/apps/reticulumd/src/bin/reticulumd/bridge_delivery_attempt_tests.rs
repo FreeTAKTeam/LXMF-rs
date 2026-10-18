@@ -13,7 +13,7 @@ fn committed_wire(task: &DeliveryTask) -> serde_json::Value {
     encode_prepared(&decode_prepared(value).expect("valid committed wire"))
 }
 
-async fn fallback_task() -> (
+pub(super) async fn fallback_task() -> (
     tempfile::TempDir,
     rusqlite::Connection,
     DeliveryTask,
@@ -98,40 +98,40 @@ async fn borrowed_fallback_commits_before_reuse_and_restores_exact_envelope() {
     assert_ne!(status["propagation"]["last_ingest_count"].as_u64(), Some(1));
 
     connection.execute_batch("DROP TRIGGER fail_prepared;").expect("recover storage");
-    assert_eq!(
+    assert!(matches!(
         {
             prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
                 .await
                 .expect("envelope");
             task.run_prepared_attempt(&mut prepared).await
         },
-        DeliveryAttemptOutcome::CompletedLocal
-    );
+        DeliveryAttemptOutcome::PropagationCustody(_)
+    ));
     let committed = encode_prepared(&prepared);
     assert_ne!(committed, initial);
     assert_eq!(committed_wire(&task), committed);
     // A closed stamp lane makes an accidental rebuild fail immediately.
     stamp.close();
-    assert_eq!(
+    assert!(matches!(
         {
             prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
                 .await
                 .expect("envelope");
             task.run_prepared_attempt(&mut prepared).await
         },
-        DeliveryAttemptOutcome::CompletedLocal
-    );
+        DeliveryAttemptOutcome::PropagationCustody(_)
+    ));
     assert_eq!(encode_prepared(&prepared), committed);
     prepared.propagation = None;
-    assert_eq!(
+    assert!(matches!(
         {
             prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
                 .await
                 .expect("envelope");
             task.run_prepared_attempt(&mut prepared).await
         },
-        DeliveryAttemptOutcome::CompletedLocal
-    );
+        DeliveryAttemptOutcome::PropagationCustody(_)
+    ));
     assert_eq!(
         encode_prepared(&prepared),
         committed,

@@ -310,13 +310,13 @@ async fn self_selected_propagation_node_stores_locally_without_link_activation()
         propagation_node_hex: Some(local_propagation_hash.clone()),
     };
 
-    let task_handle = tokio::spawn(task.run());
-    let receipt = tokio::time::timeout(Duration::from_secs(1), receipt_rx.recv())
-        .await
-        .expect("receipt")
-        .expect("receipt event");
+    let prepared = PreparedDeliveryPayload { lxmf_payload: task.build_payload().await.expect("payload"), propagation: None };
+    let outcome = tokio::time::timeout(Duration::from_secs(1), task.run_prepared(prepared, Arc::new(tokio::sync::Semaphore::new(1))))
+        .await.expect("local custody action");
+    let crate::bridge::delivery_attempt::DeliveryAttemptOutcome::PropagationCustody(receipt) = outcome else { panic!("local custody disposition expected"); };
     assert_eq!(receipt.status, "sent: propagated resource");
-    task_handle.await.expect("delivery task join");
+    assert_eq!(receipt.custody(), Some(rns_rpc::broker::PropagationCustody::Resource));
+    assert!(receipt_rx.try_recv().is_err(), "scheduler owns custody publication after releasing execution permits");
     while let Ok(Some(packet)) =
         tokio::time::timeout(Duration::from_millis(150), channel.tx_channel.recv()).await
     {

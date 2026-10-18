@@ -74,7 +74,7 @@ impl DeliveryTask {
                     &self.outbound_resource_map,
                 );
                 return match persisted {
-                    Ok(()) => {
+                    Ok(_) => {
                         self.receipt_tx.complete_terminal(&self.message_id);
                         true
                     }

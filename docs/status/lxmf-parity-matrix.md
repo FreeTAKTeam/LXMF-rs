@@ -131,9 +131,14 @@ accounting, duplicate and terminal ordering, fallback capacity, rollback and old
 preparation recovery after capacity returns. The trusted daemon entry now shares
 receipt locking, metadata and post-commit publication; five new tests plus an
 extended authenticated-RPC test cover authority, missing records, rollback,
-terminal ordering, ticket handling and restart. The receipt publisher and worker
-do not yet use this typed entry; queue-overload and retained-owner acceptance
-remain open.
+terminal ordering, ticket handling and restart. The receipt publisher and sole
+worker now use typed custody with paired reservations and retained commit
+observation. Local propagation waits outside execution permits while retaining
+admission; SQLite fault tests cover recovery, terminal supersession and shutdown,
+including an actual second-peer handoff during the wait. Transient permits retire
+after commit without consuming later recipient-terminal storage capacity. Paired
+admission currently covers only local propagation; the remote Resource producer
+and full retained Link owner still require cutover.
 Full Link/Resource post-send and Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.

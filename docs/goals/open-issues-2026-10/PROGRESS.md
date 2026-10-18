@@ -858,3 +858,43 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   remains reserved; indefinite unused queue permits would block unrelated traffic.
 - The receipt worker/publisher and retained Link owner are not wired to this entry
   yet. No item-3 PR, hosted CI, interoperability or completion is claimed.
+
+### Item 3 local custody publication and commit ownership
+
+- Connected typed custody events to the existing sole receipt worker. Atomic paired
+  queue reservations protect custody and recipient-terminal races; each accepted
+  disposition retains its own pending state. Custody observation reports Stored
+  or superseded by a committed terminal only after persistence. Worker failure
+  closes observation without inventing success. Ordinary sent text remains ordinary.
+- Local propagation returns a typed custody event to the scheduler after ingestion.
+  The scheduler drops execution permits before publishing/waiting, retains count,
+  bytes and membership, and retries only publication on queue backpressure. It
+  does not re-ingest or retransmit. Failed observation retains admission until
+  coordinated shutdown. A boxed event keeps the existing attempt/error enum small.
+- Committed custody retires unused transient reservations while preserving accepted
+  terminal work and its existing fence. Terminal commit likewise preserves accepted
+  custody. SQLite recipient-terminal capacity remains independent. Publication and
+  pending registration share one lock, with owner-failure checks repeated inside it.
+  Failed enqueue releases unused reservations.
+- Correctness review caught shutdown between native success and first publication;
+  fixed it by always attempting initial reserved publication, including during
+  shutdown, before leaving the observation wait. POST review caught new stranded
+  slots on remote legacy sends; paired admission now applies only to the selected
+  local typed producer until the remote retained owner lands.
+- Four publisher tests cover atomic rollback, saturation, duplicates, commit order,
+  sequential completion beyond queue capacity, late terminal admission and shutdown.
+  Three real worker tests cover SQLite retry with pending terminal work, terminal
+  supersession and fatal failure. Three local-owner tests cover admission retention,
+  real second-peer handoff while custody storage is blocked, shutdown after ingestion,
+  worker drain and fatal-failure ownership. The second peer learns its route from a
+  real signed announce. The former test-only local-send helper assertion was updated
+  to inspect the returned custody disposition; production owner tests prove commit.
+- Validation: 31 all-feature daemon library tests, 104 bridge tests, 6 receipt-worker
+  tests and 4 legacy receipt integration tests pass. Issue-369 scanning, all-feature
+  library/binary Clippy, formatting, boundaries, architecture and module-size checks
+  pass. Logs: `/tmp/lxmf-item3-custody-worker-{lib,bridge,receipts,legacy,quality,clippy,format,architecture,boundaries,size}.log`;
+  focused fault traces are in `/tmp/lxmf-item3-custody-{integration,owner}.log`.
+- Independent correctness and POST/maintainability reviews accepted this checkpoint.
+  Remote Resource-to-custody publication, the continuous retained Link owner and
+  mixed-reference acceptance remain pending. No item-3 PR, hosted CI or completion
+  is claimed.

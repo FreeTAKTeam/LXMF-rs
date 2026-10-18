@@ -3,7 +3,7 @@ use rns_transport::hash::AddressHash;
 
 /// One borrowed attempt's disposition. The scheduler owns the task and bytes;
 /// these variants do not themselves authorize another transmission.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum DeliveryAttemptOutcome {
     AwaitPath {
         destination: AddressHash,
@@ -14,7 +14,8 @@ pub(super) enum DeliveryAttemptOutcome {
     /// A status read failed; retry observation without publishing a competing terminal.
     AwaitStatus,
     ResourceOwned,
-    CompletedLocal,
+    /// Native custody is established; publish and await its commit outside execution permits.
+    PropagationCustody(Box<reticulum_daemon::receipt_bridge::ReceiptEvent>),
     /// The attempt owns terminal publication; its caller must not publish a second receipt.
     Terminal,
     Stopped,

@@ -2,7 +2,7 @@ use super::bridge_helpers::log_delivery_trace;
 use super::outbound_resources::{
     prune_outbound_resource_mappings_for_message, OutboundResourceMap,
 };
-use reticulum_daemon::receipt_bridge::{handle_receipt_event, ReceiptEvent};
+use reticulum_daemon::receipt_bridge::{commit_receipt_event, CustodyCommit, ReceiptEvent};
 use rns_rpc::RpcDaemon;
 use rns_transport::receipt::prune_receipt_mappings_for_message;
 use std::collections::HashMap;
@@ -36,20 +36,20 @@ pub(crate) fn persist_receipt_update(
     event: ReceiptEvent,
     receipt_map: &Arc<Mutex<HashMap<String, String>>>,
     outbound_resource_map: &OutboundResourceMap,
-) -> Result<(), std::io::Error> {
+) -> Result<Option<CustodyCommit>, std::io::Error> {
     let message_id = event.message_id.clone();
     let status = event.status.clone();
     let detail = format!("status={status}");
     log_delivery_trace(&message_id, "-", "receipt-update", &detail);
     let delivery_state = ReceiptDeliveryState::from_status(&status);
-    handle_receipt_event(daemon, event)?;
+    let custody = commit_receipt_event(daemon, event)?;
 
-    if delivery_state.should_prune_correlations() {
+    if custody.is_none() && delivery_state.should_prune_correlations() {
         prune_receipt_mappings_for_message(receipt_map, &message_id);
         prune_outbound_resource_mappings_for_message(outbound_resource_map, &message_id);
     }
     log_delivery_trace(&message_id, "-", "receipt-persist", "ok");
-    Ok(())
+    Ok(custody)
 }
 
 #[cfg(test)]

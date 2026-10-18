@@ -411,6 +411,8 @@ async fn queued_terminal_retains_owner_until_commit_or_shutdown() {
     }
 }
 
+#[path = "bridge_delivery_custody_tests.rs"]
+mod custody_tests;
 #[path = "bridge_delivery_proof_tests.rs"]
 mod proof_tests;
 #[path = "bridge_delivery_retry_owner_tests.rs"]

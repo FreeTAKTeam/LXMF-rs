@@ -68,15 +68,17 @@ pub(super) fn spawn_receipt_worker(
                 .await
                 .map_err(|error| error.to_string())?;
                 match outcome {
-                    Ok(()) => {
-                        if is_terminal(&event.status) {
+                    Ok(custody) => {
+                        if let Some(outcome) = custody {
+                            worker_publisher.complete_custody(&event.message_id, outcome);
+                        } else if is_terminal(&event.status) {
                             worker_publisher.complete_terminal(&event.message_id);
                         }
                         break;
                     }
                     Err(error) if retryable_storage(&error) => {
                         log::warn!(
-                            "terminal receipt persistence deferred message_id={}: {error}",
+                            "receipt persistence deferred message_id={}: {error}",
                             event.message_id
                         );
                         if *ending.borrow() {
@@ -142,6 +144,9 @@ fn retryable_storage(error: &std::io::Error) -> bool {
     }
     false
 }
+#[cfg(test)]
+#[path = "receipt_worker_custody_tests.rs"]
+mod custody_tests;
 #[cfg(test)]
 mod tests {
     use super::*;

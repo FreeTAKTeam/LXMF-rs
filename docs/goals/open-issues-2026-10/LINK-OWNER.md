@@ -239,12 +239,26 @@ or event. Legacy nonbroker messages keep their ordinary receipt handling, and
 later recipient terminal outcomes retain precedence. Existing post-lock event
 publication does not establish a new concurrent event-ordering guarantee.
 
-The sole receipt worker is not connected to this entry yet. Its integration must
-use separate custody and recipient-terminal queue reservations while a dispatch
-owner is active, plus disposition-specific commit acknowledgement. Queue admission
-is not commitment and absence from a map is not an acknowledgement. Paired admission
-must be atomic; duplicate events share their pending observation. Terminal commit
-can release unused custody capacity, but cannot discard an accepted custody event.
+The sole receipt worker now routes typed custody to this entry and acknowledges
+its committed disposition through retained observation: Stored or superseded by
+a committed terminal. A failed owner closes the observation without inventing
+success. Paired custody/terminal admission is atomic, and duplicate events share
+pending observation. Queue admission is not commitment. Terminal commit releases
+unused custody capacity while preserving any already accepted custody event.
+
+Local propagation now returns its successful native action as a typed event to
+the scheduler. After dropping execution permits, the same scheduler owner retries
+only event publication and waits for the worker commit, retaining count, bytes and
+membership. It never re-ingests or retransmits because publication is delayed.
+Owner failure retains admission until coordinated shutdown. Shutdown after native
+success still attempts reserved publication before leaving the observation wait,
+so the worker can drain it. Failed scheduler enqueue releases unused reservations.
+
+Paired queue admission is currently enabled only for a selected local propagation
+target, including explicit Direct fallback. Remote Resource sends still publish
+legacy statuses; reserving a new custody slot there before their cutover would
+leak it after success. Extend paired admission when the retained remote owner uses
+typed completion. Remote native Resource-to-custody integration remains pending.
 
 After explicit custody commit, dispatch-owner retirement releases unused queue
 permits under the publisher lock, preserving every accepted pending event and its
@@ -254,9 +268,11 @@ reserved for a possible later proof. Keeping unused queue permits indefinitely
 would eventually block unrelated sends after successful propagation. A terminal
 racing retirement either consumes its reserved slot or follows existing unreserved
 admission afterward; no guarantee of future queue acceptance is claimed. Acceptance
-must exercise more sequential custody completions than queue capacity without any
-later recipient proof, plus terminal races on both sides of retirement, failed
-terminal persistence, shutdown drain and retained SQLite terminal capacity.
+now exercises more sequential custody completions than queue capacity without any
+later recipient proof, terminal events on both sides of retirement, failed terminal
+persistence, shutdown drain and retained SQLite terminal capacity. A real SQLite
+fault test keeps local custody pending while another peer sends over a learned
+path; execution permits are available and admission remains retained until commit.
 
 ## Required acceptance
 

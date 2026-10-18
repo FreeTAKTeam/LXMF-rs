@@ -171,15 +171,26 @@ impl OutboundBridge for TransportBridge {
             return Ok(());
         }
 
+        let can_propagate = requested_method == RequestedDeliveryMethod::Propagated
+            || (requested_method == RequestedDeliveryMethod::Direct
+                && options.try_propagation_on_fail);
+        // Remote Resource publication remains legacy until the retained Link owner
+        // lands; only the local typed producer can retire a custody slot today.
+        let custody = can_propagate
+            && propagation_node_hex.as_deref().is_some_and(|node| {
+                daemon
+                    .local_propagation_hash()
+                    .is_some_and(|local| local.eq_ignore_ascii_case(node))
+            });
         if daemon.owns_durable_message(&record.id)?
-            && self.receipt_tx.reserve_terminal(&record.id).is_err()
+            && self.receipt_tx.reserve_completion(&record.id, custody).is_err()
         {
             self.receipt_tx.retire_committed(|id| {
                 daemon.message_receipt_status(id).map(|s| {
                     s.as_deref().is_some_and(reticulum_daemon::receipt_bridge::is_terminal)
                 })
             })?;
-            self.receipt_tx.reserve_terminal(&record.id)?;
+            self.receipt_tx.reserve_completion(&record.id, custody)?;
         }
         let task = DeliveryTask {
             stopping: None,
@@ -213,7 +224,11 @@ impl OutboundBridge for TransportBridge {
             try_propagation_on_fail: options.try_propagation_on_fail,
             propagation_node_hex,
         };
-        self.delivery_scheduler.enqueue_reserved(task, reservation)
+        let result = self.delivery_scheduler.enqueue_reserved(task, reservation);
+        if result.is_err() {
+            self.receipt_tx.release_unsent(&record.id);
+        }
+        result
     }
 
     fn delivery_pipeline_status(&self) -> Option<serde_json::Value> {

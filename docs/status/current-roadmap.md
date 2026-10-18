@@ -57,8 +57,12 @@ recipient-terminal capacity; restart cannot re-upload that committed operation.
 Older preparation reservations repair only their missing custody capacity through
 the shared writer when space is available. A trusted daemon custody entry now
 shares receipt locking and publication while rejecting caller-supplied custody
-fields and missing messages. Receipt-worker wiring, daemon ownership and reliable
-custody publication still require the planned cutover. See the
+fields and missing messages. The sole receipt worker now acknowledges typed
+custody after commit. Local propagation retains admission through that wait while
+releasing execution permits, and shutdown preserves accepted custody for drain.
+Unused transient reservations retire without spending later terminal storage
+capacity. Remote Link/Resource ownership and custody publication still require
+the planned cutover. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655

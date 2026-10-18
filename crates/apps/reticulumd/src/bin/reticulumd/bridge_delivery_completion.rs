@@ -158,6 +158,12 @@ async fn run_attempts(
                 metrics.record_started_for_peer(peer);
                 let outcome = task.run_prepared_attempt(&mut prepared).await;
                 drop(permits);
+                if let DeliveryAttemptOutcome::PropagationCustody(event) = outcome {
+                    metrics.record_waiting_for_peer(peer);
+                    await_custody_commit(task, *event, stopping).await;
+                    metrics.record_finished_before_delivery_for_peer(peer);
+                    return;
+                }
                 if matches!(
                     outcome,
                     DeliveryAttemptOutcome::AwaitPath { .. }
@@ -201,6 +207,56 @@ async fn run_attempts(
                 metrics.record_finished_before_delivery_for_peer(peer);
                 return;
             }
+        }
+    }
+}
+
+pub(super) async fn await_custody_commit(
+    task: &DeliveryTask,
+    event: reticulum_daemon::receipt_bridge::ReceiptEvent,
+    stopping: &mut watch::Receiver<bool>,
+) {
+    // The native custody action has already succeeded. Retry only publication,
+    // never ingestion or transmission, while retaining admission and signed bytes.
+    loop {
+        match task.receipt_tx.publish_custody(event.clone()) {
+            Ok(mut completion) => {
+                if *stopping.borrow() || stopping.has_changed().is_err() {
+                    return;
+                }
+                tokio::select! {
+                    result = completion.wait() => {
+                        if let Err(error) = result {
+                            log::error!("custody persistence unavailable message_id={}; retaining owner until shutdown: {error}", task.message_id);
+                            wait_for_shutdown(stopping).await;
+                        }
+                    },
+                    _ = stopping.changed() => {},
+                }
+                return;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if *stopping.borrow() || stopping.has_changed().is_err() {
+                    return;
+                }
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(50)) => {},
+                    _ = stopping.changed() => {},
+                }
+            }
+            Err(error) => {
+                log::error!("custody publication unavailable message_id={}; retaining owner until shutdown: {error}", task.message_id);
+                wait_for_shutdown(stopping).await;
+                return;
+            }
+        }
+    }
+}
+
+async fn wait_for_shutdown(stopping: &mut watch::Receiver<bool>) {
+    while !*stopping.borrow() {
+        if stopping.changed().await.is_err() {
+            break;
         }
     }
 }

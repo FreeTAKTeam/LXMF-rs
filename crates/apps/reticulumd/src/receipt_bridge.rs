@@ -8,10 +8,11 @@ use rns_transport::transport::{DeliveryReceipt, ReceiptHandler};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 mod custody;
-pub use custody::{is_terminal, ReceiptPublisher};
+pub use custody::{is_terminal, CustodyCommit, CustodyCompletion, ReceiptPublisher};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReceiptEvent {
+    custody: Option<rns_rpc::broker::PropagationCustody>,
     pub message_id: String,
     pub status: String,
     pub packet_hash: Option<String>,
@@ -27,6 +28,7 @@ pub struct ReceiptEvent {
 impl ReceiptEvent {
     pub fn new(message_id: impl Into<String>, status: impl Into<String>) -> Self {
         Self {
+            custody: None,
             message_id: message_id.into(),
             status: status.into(),
             packet_hash: None,
@@ -37,6 +39,37 @@ impl ReceiptEvent {
             bytes: None,
             link_id: None,
             stage: None,
+        }
+    }
+
+    pub fn propagation_custody(
+        message_id: impl Into<String>,
+        representation: rns_rpc::broker::PropagationCustody,
+    ) -> Self {
+        let mut event = Self::new(message_id, representation.status());
+        event.custody = Some(representation);
+        event
+    }
+
+    pub fn custody(&self) -> Option<rns_rpc::broker::PropagationCustody> {
+        self.custody
+    }
+
+    fn bound_completion_fields(&mut self) {
+        self.status = self.status.chars().take(512).collect();
+        for value in [
+            &mut self.packet_hash,
+            &mut self.resource_hash,
+            &mut self.peer,
+            &mut self.method,
+            &mut self.delivery_kind,
+            &mut self.link_id,
+            &mut self.stage,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            value.truncate(value.char_indices().nth(128).map_or(value.len(), |(index, _)| index));
         }
     }
 
@@ -158,6 +191,36 @@ impl ReceiptHandler for ReceiptBridge {
 }
 
 pub fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), std::io::Error> {
+    commit_receipt_event(daemon, event).map(|_| ())
+}
+
+pub fn commit_receipt_event(
+    daemon: &RpcDaemon,
+    event: ReceiptEvent,
+) -> Result<Option<CustodyCommit>, std::io::Error> {
+    if let Some(representation) = event.custody() {
+        let result = daemon.record_propagation_custody(
+            &event.message_id,
+            representation,
+            event
+                .rpc_params()
+                .as_object()
+                .cloned()
+                .ok_or_else(|| std::io::Error::other("receipt metadata is not an object"))?,
+        )?;
+        return match result.get("status").and_then(serde_json::Value::as_str) {
+            Some(status) if is_terminal(status) => Ok(Some(CustodyCommit::SupersededByTerminal)),
+            Some(status)
+                if status == rns_rpc::broker::PropagationCustody::Packet.status()
+                    || status == rns_rpc::broker::PropagationCustody::Resource.status() =>
+            {
+                Ok(Some(CustodyCommit::Stored))
+            }
+            _ => {
+                Err(std::io::Error::other("custody persistence returned no committed disposition"))
+            }
+        };
+    }
     record_receipt_status(
         &|_message_id: &str, _status: &str| {
             daemon.record_network_receipt(
@@ -177,7 +240,7 @@ pub fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(
     if event.status.eq_ignore_ascii_case("delivered") {
         daemon.record_message_delivery_receipt(event.message_id.as_str())?;
     }
-    Ok(())
+    Ok(None)
 }
 
 pub fn track_receipt_mapping(
