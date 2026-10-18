@@ -116,8 +116,13 @@ cases now pass: Rust default accepts Python, Python default rejects honest Rust
 with free slots and a working control, and Python override accepts Rust. Positive
 traces assert exact signed LXMF content on the selected native Backbone route and
 separate sender receipts. The honest Rust publisher identifies as LXMF-rs.
-The remaining carrier lifecycle and deeper
-recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
+The deeper recovery matrix also passes all 24 Direct packet/Resource deliveries
+across three fresh three-relay topologies before and after middle replacement.
+Endpoint/edge processes and native Link caches persist; fresh edge routes bind
+to the replacement identity, and exact signed recipient bytes and independent
+sender receipts qualify each cell. The remaining carrier lifecycle/configured
+bootstrap ownership and whole-item integration/hosted work remain open in the
+[execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655
 

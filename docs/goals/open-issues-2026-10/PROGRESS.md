@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; nine local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts, common live child policy, discovery configuration/planner preparation, bounded native discovery and three exact-target discovery process cases pass reviews and local checks. Remaining family lifecycle and deeper recovery gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; ten local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts, common live child policy, discovery preparation/runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. Remaining family lifecycle/configured-root ownership and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1761,3 +1761,48 @@ validation only; terminal results and final-head review/CI/merge remain required
 - Correctness and maintainability POST reviews approve the bounded process
   checkpoint after native-listener readiness is added. No source or proof blocker
   remains in this three-case scope; item 4 is not yet complete.
+
+## Item 4 deeper middle-relay replacement matrix
+
+- The predeclared three fresh topologies each complete all eight cells: small
+  Direct packet and 131,101-byte Direct Resource in both directions, before and
+  after middle replacement. RNS is clean `99de23c040d507e3fefca19e87b182302902725d`;
+  LXMF is clean `c3ff2d6dc2f256daab896dadc044dd5a913ecbb7`. Actual import paths and
+  one immutable daemon snapshot SHA256 are recorded. The Python shared owner,
+  attached Rust edge A, standalone middle B, standalone edge C and Python TCP
+  client have three-hop endpoint paths in all six phase snapshots.
+- Only B is terminated/joined and replaced at the same endpoints from a fresh
+  empty state directory with a different native identity. Endpoint/edge PIDs,
+  identities and native Link caches remain; no fixture teardown resets their
+  Links. Both edge remote routes must name the current middle identity before
+  traffic resumes. Fresh native route learning is distinct from restoration.
+- The explicit native-LXMF fixture mode retains LXMRouter's native packet,
+  Resource and keepalive behavior. Exact callback content/title/source/destination,
+  signature and Direct method are checked by message hash. Independent native
+  sender completion asserts packet/Resource representation, handoff Link ID and
+  Resource hash/Link identity where applicable. Final inbox counts require exactly
+  four unique recipients at each endpoint, eight per run and 24 distinct cells.
+- `/tmp/lxmf-item4-deep-relay-first.log` passes the entire first set in 127.38
+  seconds. Review tightens route readiness to require the new middle identity
+  at both edges and freezes the daemon executable; that full set passes in
+  `/tmp/lxmf-item4-deep-relay-fresh-paths.log` (104.93 seconds). Monotonic completion
+  fences then reject late control/probe success. The final candidate passes all
+  24 cells in `/tmp/lxmf-item4-deep-relay-strict-final.log` (104.92 seconds), with
+  maximum individual cells 15.128, 14.864 and 14.633 seconds by run. Native
+  recovery uses its normal retry; no retries-until-green or bound changes occur.
+- The original 60-second readiness, 30-second path/reconnect and shared 60-second
+  message qualification bounds remain. They are loopback acceptance windows,
+  not universal protocol maxima. An initial Rust wrapper imported many unused
+  helpers and failed Clippy; a small direct build/snapshot wrapper removes that
+  import without lint exemptions. Focused Clippy, formatting, Python compile,
+  boundaries, module size, actionlint and diff checks pass.
+- The older two-relay default/raw-Resource fixture separately passes in 36.95
+  seconds against RNS `99de23c` and canonical LXMF `727830c`, retaining default
+  fixture behavior. Its log is `/tmp/lxmf-item4-deep-relay-legacy-fixture.log`.
+  The new matrix is wired into normal Verify with separate feature references.
+  This closes the declared 24-cell deeper recovery gate locally. It does not
+  qualify remaining carrier families, hosted CI, physical or public networks.
+- Independent correctness and maintainability POST reviews verify the final
+  strict log's exact cell counts, unique hashes, replacement bindings, native
+  three-hop paths and immutable binary digest; both approve without remaining
+  blockers in this bounded slice.

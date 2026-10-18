@@ -175,6 +175,14 @@ jobs:
           cargo test -p reticulumd --test discovery_python_process \
             -- --ignored --nocapture --test-threads=1
 
+      - name: Verify three-relay middle replacement matrix
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF-feature
+        run: |
+          cargo test -p lxmf-cli --test deep_relay_recovery \
+            -- --ignored --nocapture --test-threads=1
+
       - name: Verify pinned Python executable rngit permission resolver
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity

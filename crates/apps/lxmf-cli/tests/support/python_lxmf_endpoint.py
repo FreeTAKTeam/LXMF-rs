@@ -42,7 +42,7 @@ OUTBOUND_STATE_NAMES = {
 
 
 class EndpointState:
-    def __init__(self, display_name: str, storage: Path):
+    def __init__(self, display_name: str, storage: Path, native_lxmf: bool = False):
         self.display_name = display_name
         self.storage = storage
         self.lock = threading.Lock()
@@ -66,6 +66,7 @@ class EndpointState:
         self.resource_gate_target = None
         self.resource_gate_installed = False
         self.preserve_router_resource_callback = False
+        self.native_lxmf = native_lxmf
         self.resource_request_original = RNS.Resource.request
         self.outbound_packet_drop_target = None
         self.outbound_packet_drop_count = 0
@@ -100,7 +101,8 @@ class EndpointState:
             self._on_link_established(link)
             self._on_raw_link_established(link)
 
-        self.delivery_destination.set_link_established_callback(observe_delivery_link)
+        if not self.native_lxmf:
+            self.delivery_destination.set_link_established_callback(observe_delivery_link)
         print("python_lxmf_endpoint: endpoint state ready", file=sys.stderr, flush=True)
 
     def _install_resource_gate(self) -> None:
@@ -321,6 +323,9 @@ class EndpointState:
                     "title": message.title_as_string(),
                     "content": message.content_as_string(),
                     "timestamp": message.timestamp,
+                    "method": message.method,
+                    "signature_validated": message.signature_validated,
+                    "content_sha256": hashlib.sha256(message.content).hexdigest(),
                 }
             )
 
@@ -441,7 +446,7 @@ class EndpointState:
             self.link = link
 
     def status(self) -> dict:
-        return {
+        result = {
             "delivery_destination_hash": self.delivery_destination.hash.hex(),
             "identity_hash": self.delivery_destination.identity.hash.hex(),
             "inbox_count": len(self.messages),
@@ -458,6 +463,16 @@ class EndpointState:
             },
             "link": self._link_snapshot(),
         }
+        if self.native_lxmf:
+            result["native_links"] = [
+                {"owner": owner, "destination": destination.hex(),
+                 "link_id": link.link_id.hex(), "status": LINK_STATUS_NAMES.get(link.status)}
+                for owner, links in (("direct", self.router.direct_links),
+                                     ("backchannel", self.router.backchannel_links))
+                for destination, link in list(links.items())
+            ]
+            result["references"] = {"rns": RNS.__file__, "lxmf": LXMF.__file__}
+        return result
 
     def announce(self) -> dict:
         self.router.announce(self.delivery_destination.hash)
@@ -588,6 +603,11 @@ class EndpointState:
             "state_name": OUTBOUND_STATE_NAMES.get(state, f"unknown_{state}"),
             "delivery_attempts": message.delivery_attempts,
             "progress": message.progress,
+            "method": message.method,
+            "representation": message.representation,
+            "handoff_link_id": message.ratchet_id.hex()
+            if message.method == LXMF.LXMessage.DIRECT and message.ratchet_id is not None
+            else None,
             "resource_id": getattr(message.resource_representation, "hash", b"").hex()
             if message.resource_representation is not None
             else None,
@@ -1005,12 +1025,13 @@ def main() -> None:
     parser.add_argument("--rnsconfig", required=True)
     parser.add_argument("--storage", required=True)
     parser.add_argument("--control-port", type=int, required=True)
+    parser.add_argument("--native-lxmf", action="store_true")
     args = parser.parse_args()
 
     storage = Path(args.storage)
     storage.mkdir(parents=True, exist_ok=True)
 
-    state = EndpointState(args.display_name, storage)
+    state = EndpointState(args.display_name, storage, args.native_lxmf)
     state.start(args.rnsconfig)
 
     print("python_lxmf_endpoint: starting control server", file=sys.stderr, flush=True)

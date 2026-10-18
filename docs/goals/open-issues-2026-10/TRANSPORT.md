@@ -267,6 +267,42 @@ deadlines beside the runnable case before its first run. Keep every run/result;
 after a confirmed fix, a new candidate runs the whole declared set. Do not accept
 retries-until-green or relax retry/timeout/performance policy.
 
+The runnable lane is `cargo test -p lxmf-cli --test deep_relay_recovery --
+--ignored --nocapture --test-threads=1`, with explicit absolute Python interpreter
+and clean reference paths. Before its first run, freeze RNS
+`99de23c040d507e3fefca19e87b182302902725d` and LXMF
+`c3ff2d6dc2f256daab896dadc044dd5a913ecbb7`. Each topology is Python shared owner
+→ attached Rust edge A → Rust middle B → Rust edge C → Python TCP client.
+All five processes share a 60-second readiness bound, path learning/reconnection
+has 30 seconds per phase, and each message has one shared 60-second bound for
+native recipient validation and independent sender completion. The baseline's
+six-second per-hop Link budget and LXMF's four-second processing interval inform
+this loopback qualification bound; it is not a universal worst-case guarantee
+for stale Link and retry behavior. No underlying timer is changed.
+
+Each phase sends exact small Direct packet and deterministic 131,101-byte Direct
+Resource content in both directions. Native source/destination/signature/method,
+sender representation, Link and Resource IDs and final exactly-once recipient
+counts identify all eight cells per topology. The Python fixture's explicit
+native-LXMF mode retains LXMRouter callbacks without raw-resource interception
+or keepalive wrappers. Only middle B is stopped/joined and replaced at the same
+endpoints with a fresh empty state directory and new identity. Endpoint/edge
+PIDs, identities and native Link-cache observations survive; the fixture does
+not clear or pre-teardown endpoint Links. Fresh path announcements/requests are
+normal protocol actions. Freshly learned paths are distinct from disk restoration.
+The entire three-run set must pass on a candidate; retain failures and diagnose
+them before a new candidate, without changing these bounds.
+
+The final strict-bound candidate now passes all 24 cells in 104.92 seconds.
+Both edge remote routes name the replacement middle identity before traffic;
+endpoint paths report three hops in every phase. One immutable executable is
+used across the set, native Link caches are retained, exact signed recipient
+content and independent sender representation/receipt checks pass. Maximum
+individual cells are 15.128, 14.864 and 14.633 seconds by run. The original
+two-relay/raw-Resource fixture also passes with its default mode. See PROGRESS.md
+for all candidate logs and review fixes. This is the finite local deeper gate;
+the family inventory and whole-item integration/hosted gates remain open.
+
 ## Gates
 
 Start with failing production-boundary regressions, then the smallest owner fix.
