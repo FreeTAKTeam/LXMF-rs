@@ -123,6 +123,14 @@ cover final recipient proof, dispatch failure, reset, rejection and cancellation
 actual event-broadcast overflow cannot erase a completed observed result. Legacy
 event behavior remains intact. This prerequisite does not yet make daemon custody
 or terminal persistence reliable under overload.
+The storage boundary now distinguishes trusted propagation custody from ordinary
+sent-status text. Custody commits status, journal and dispatch completion atomically,
+spends retained preparation capacity, and preserves recipient-terminal capacity.
+Seven storage regressions cover restart without redispatch, exact/full-budget
+accounting, duplicate and terminal ordering, fallback capacity, rollback and older
+preparation recovery after capacity returns. The daemon receipt publisher does not
+yet use this typed transaction; queue-overload and retained-owner acceptance remain
+open.
 Full Link/Resource post-send and Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.

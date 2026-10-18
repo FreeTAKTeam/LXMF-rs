@@ -206,6 +206,32 @@ Transport cache test now also preserves an unread successful result through actu
 failure-event overflow. These checks prove native observation, not the forthcoming
 daemon owner, durable custody, mixed-language interoperability or hardware behavior.
 
+## Storage custody prerequisite
+
+Ordinary `sent: propagated resource` receipt text leaves a durable operation
+scheduled, so restart recovery can upload it again. The trusted native path must
+use `PropagationCustody::{Packet,Resource}` through the existing shared writer.
+Its transaction records receipt status and journal event, changes dispatch state
+to `custody`, and spends unused preparation reservation. It preserves signed bytes
+and `broker_completions` capacity for a later recipient terminal outcome. Custody
+is local dispatch completion, not recipient delivery or a global terminal status.
+Duplicate custody and a recipient terminal already recorded are no-ops.
+
+Preparation retains the exact maximum serialized custody-event cost, including
+escaped identifiers. Restored older operations repair only a missing reservation
+shortfall through ordinary logical/physical admission before exposing prepared
+bytes. Identical preparation commits the same repair. Prior-run acknowledgements
+repair their actual event cost atomically with custody. Full storage defers repair;
+retry succeeds after capacity returns. Journal failure rolls back repair and all
+custody changes together. No migration scan or second writer is introduced.
+
+Seven focused storage tests exercise restart, exact/full-budget accounting,
+duplicate/terminal ordering, fallback capacity, repair and rollback. Generic
+sent-status text explicitly cannot establish trusted custody. This prerequisite
+is not connected to the daemon receipt worker yet. The retained owner still needs
+separate custody and recipient-terminal queue reservations, disposition-specific
+commit acknowledgement, and method-aware native completion handling.
+
 ## Required acceptance
 
 - Consume every covered reference row against the production owner decisions;

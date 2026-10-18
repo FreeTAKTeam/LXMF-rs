@@ -51,8 +51,12 @@ callers and preserves reset/restart races. Propagation cache misses preserve liv
 Links and Resources, with native state governing cache lifetime; daemon activation
 and transfer ownership remain pending. Native Resource sends can now register a
 retained logical completion result before dispatch; recipient proofs and failure
-outcomes survive legacy event-broadcast overflow. Daemon ownership and durable
-custody still require the planned cutover. See the
+outcomes survive legacy event-broadcast overflow. Storage now atomically records
+trusted propagation custody and retires dispatch intent without consuming later
+recipient-terminal capacity; restart cannot re-upload that committed operation.
+Older preparation reservations repair only their missing custody capacity through
+the shared writer when space is available. Daemon ownership and reliable custody
+publication still require the planned cutover. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655

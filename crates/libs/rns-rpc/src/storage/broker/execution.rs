@@ -122,9 +122,12 @@ pub fn execute(conn: &Connection, command: BrokerCommand) -> rusqlite::Result<Va
                 ));
             }
             if previous.as_deref() == Some(encoded.as_str()) {
+                super::receipt::ensure_custody_reserve(&tx, &message_id)?;
+                tx.commit()?;
                 return Ok(json!({"prepared":true}));
             }
             let (reserve,budget):(i64,i64)=tx.query_row("SELECT prepared_reserve,(SELECT budget FROM broker_meta) FROM broker_operations WHERE message_id=?1",[&message_id],|r|Ok((r.get(0)?,r.get(1)?)))?;
+            let custody_reserve = super::receipt::required_custody_reserve(&tx, &message_id)?;
             let prior_size = if let Some(previous) = previous {
                 if previous == encoded {
                     previous.len() as i64
@@ -144,10 +147,12 @@ pub fn execute(conn: &Connection, command: BrokerCommand) -> rusqlite::Result<Va
             } else {
                 0
             };
-            if encoded.len() as i64 > reserve.saturating_add(prior_size) {
+            if (encoded.len() as i64).saturating_add(custody_reserve)
+                > reserve.saturating_add(prior_size)
+            {
                 return Err(error(
                     "SDK_STORAGE_BROKER_EVENT_TOO_LARGE",
-                    "prepared wire bytes exceeded their reserved capacity",
+                    "prepared wire bytes would consume propagation custody capacity",
                 ));
             }
             physical_admission(&tx, encoded.len() as u64, budget as u64)?;
@@ -185,6 +190,13 @@ pub fn execute(conn: &Connection, command: BrokerCommand) -> rusqlite::Result<Va
                 tx.execute("UPDATE broker_operations SET state='queued',next_attempt_at=unixepoch()+5 WHERE message_id=?1 AND state='scheduled'",[&message_id])?
             };
             json!({"claimed":changed==1})
+        }
+        BrokerCommand::ReservePropagationCustody { message_id } => {
+            super::receipt::ensure_custody_reserve(&tx, &message_id)?;
+            json!({"reserved":true})
+        }
+        BrokerCommand::PropagationCustody { message_id, representation } => {
+            super::receipt::commit_custody(&tx, &message_id, representation)?
         }
         BrokerCommand::Inbound { record, raw_hex } => {
             let inserted = insert_atomic(&tx, &record, raw_hex.as_deref())?;

@@ -801,3 +801,32 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   prerequisite. Native observation is implemented; the daemon retained Link owner,
   reliable custody persistence, method-aware retries and target/baseline mixed-peer
   acceptance remain pending. No item-3 PR, hosted CI or completion is claimed.
+
+### Item 3 atomic propagation custody storage
+
+- Reproduced restart re-upload after the ordinary `sent: propagated resource`
+  status: it left the durable operation scheduled. Added a typed native custody
+  command through the shared writer that atomically updates status, journal and
+  dispatch state. Local dispatch completion remains distinct from recipient
+  delivery, and generic sent text cannot grant custody.
+- Custody spends retained preparation capacity while preserving signed bytes and
+  the separate recipient-terminal reservation. Preparation and one-way fallback
+  retain the exact maximum serialized custody-event cost. Duplicate custody and
+  already committed terminal outcomes spend nothing.
+- Review found that refusing older insufficient reservations permanently would
+  strand restored messages. Fixed this by repairing only the shortfall through
+  ordinary logical/physical admission in the existing writer. Restored reads and
+  identical preparation commit that repair before exposing bytes; prior-run
+  acknowledgements repair atomically with custody. Full storage defers repair
+  until capacity returns. Journal failure rolls back the repair too.
+- Seven focused regressions cover restart, exact/full-budget accounting, later
+  delivery/cancellation, duplicate ordering, fallback capacity, old reservation
+  recovery and journal rollback. The original restart counterfactual failed.
+  All-feature RPC tests pass 822 tests with 8 existing ignores. All-target,
+  all-feature RPC Clippy, issue-369 scanning, formatting, boundaries, architecture
+  and module-size checks pass. Test-helper lint findings were corrected.
+  Logs: `/tmp/lxmf-item3-custody-{red,focused,rpc,clippy,quality,format,architecture,boundaries,size}.log`.
+- Independent correctness and POST/maintainability reviews accepted the fix.
+  The typed transaction is a storage prerequisite; daemon receipt publication,
+  commit acknowledgement and retained Link ownership remain pending. No item-3
+  PR, hosted CI or completion is claimed.
