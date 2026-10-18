@@ -1,5 +1,4 @@
 impl Link {
-
     pub fn next_watchdog_deadline(&self, initiator: bool) -> Option<Instant> {
         match self.status {
             LinkStatus::Active => {
@@ -97,7 +96,8 @@ impl Link {
             LinkEvent::PeerIdentified(_) => "peer_identified",
             LinkEvent::Closed => "closed",
         };
-        let close_reason = if matches!(&event, LinkEvent::Closed) { self.close_reason } else { None };
+        let close_reason =
+            if matches!(&event, LinkEvent::Closed) { self.close_reason } else { None };
         if self
             .event_tx
             .send(LinkEventData {
@@ -211,6 +211,11 @@ impl Link {
         }
         self.channel_rx_ring.clear();
         self.data_signal = None;
+        // Keep the public old ID until request() computes its replacement, but
+        // reject old proof/dispatch state during this not-yet-requested interval.
+        self.proof_generation_ready = false;
+        self.expected_proof_hops = None;
+        self.proof_hops_rebalanced = false;
         self.status = LinkStatus::Pending;
         self.close_reason = None;
         self.start_establishment();

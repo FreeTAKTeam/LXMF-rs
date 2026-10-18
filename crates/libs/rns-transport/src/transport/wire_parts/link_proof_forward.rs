@@ -1,29 +1,14 @@
-async fn should_forward_link_table_proof(
+async fn forward_link_request_proof(
     packet: &Packet,
-    handler: &TransportHandler,
+    handler: &mut TransportHandler,
     iface: AddressHash,
-) -> bool {
-    if !handler.config.transport_enabled {
-        log::debug!(
-            "[tp-diag] link_proof_forward_skip node={} reason=transport_disabled link={} iface={}",
-            handler.config.name,
-            packet.destination,
-            iface
-        );
-        return false;
-    }
-
-    if packet.context != PacketContext::LinkRequestProof {
-        return true;
-    }
-    if packet.header.destination_type != DestinationType::Link {
-        log::debug!(
-            "[tp-diag] lrproof_forward_skip node={} reason=not_link_destination link={} iface={}",
-            handler.config.name,
-            packet.destination,
-            iface
-        );
-        return false;
+) -> Option<(Packet, AddressHash)> {
+    if packet.context != PacketContext::LinkRequestProof
+        || packet.header.packet_type != PacketType::Proof
+        || packet.header.destination_type != DestinationType::Link
+        || !handler.can_relay_link(&packet.destination, iface).await
+    {
+        return None;
     }
 
     let Some((original_destination, expected_iface)) =
@@ -35,7 +20,7 @@ async fn should_forward_link_table_proof(
             packet.destination,
             iface
         );
-        return false;
+        return None;
     };
     if expected_iface != iface {
         log::debug!(
@@ -45,11 +30,26 @@ async fn should_forward_link_table_proof(
             expected_iface,
             iface
         );
-        return false;
+        return None;
     }
 
-    let Some(destination) = handler.single_out_destinations.get(&original_destination).cloned()
-    else {
+    let authenticated = if let Some(destination) =
+        handler.single_out_destinations.get(&original_destination).cloned()
+    {
+        let destination = destination.lock().await;
+        if crate::destination::link::validate_link_request_proof_packet(
+            &destination.desc,
+            &packet.destination,
+            packet,
+        )
+        .is_err()
+        {
+            log::debug!("[tp-diag] lrproof_forward_skip node={} reason=invalid_signature_or_shape link={} dst={} iface={}",
+                handler.config.name, packet.destination, original_destination, iface);
+            return None;
+        }
+        true
+    } else {
         if handler.link_table.allows_shared_owner_proof_on_iface(&packet.destination, iface) {
             log::debug!(
                 "[tp-diag] lrproof_forward_trust_shared_owner node={} link={} dst={} iface={}",
@@ -58,31 +58,17 @@ async fn should_forward_link_table_proof(
                 original_destination,
                 iface
             );
-            return true;
+            false
+        } else {
+            log::debug!("[tp-diag] lrproof_forward_skip node={} reason=missing_destination_identity link={} dst={}",
+                handler.config.name, packet.destination, original_destination);
+            return None;
         }
-        log::debug!(
-            "[tp-diag] lrproof_forward_skip node={} reason=missing_destination_identity link={} dst={}",
-            handler.config.name,
-            packet.destination,
-            original_destination
-        );
-        return false;
     };
-    let destination = destination.lock().await;
-
-    let valid = crate::destination::link::validate_link_request_proof_packet(
-        &destination.desc,
-        &packet.destination,
-        packet,
-    )
-    .is_ok();
-    log::debug!(
-        "[tp-diag] lrproof_forward_validate node={} link={} dst={} iface={} valid={}",
-        handler.config.name,
-        packet.destination,
-        original_destination,
-        iface,
-        valid
-    );
-    valid
+    let previous_hops = handler.link_table.remaining_hops(&packet.destination);
+    let forwarded = handler.link_table.handle_proof(packet)?;
+    if authenticated && previous_hops != Some(packet.header.hops) {
+        handler.path_table.rebalance_hops(&original_destination, packet.header.hops);
+    }
+    Some(forwarded)
 }

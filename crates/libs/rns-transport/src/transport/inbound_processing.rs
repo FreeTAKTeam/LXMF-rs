@@ -259,7 +259,10 @@ pub(super) async fn process_inbound_message(
     } else {
         handler.ingress_route_iface(&packet, message.address, message.source).await
     };
-    let wrong_local_data_iface = if packet.header.packet_type == PacketType::Data
+    let table_owns_packet = handler.link_table.knows(&packet.destination)
+        && handler.can_relay_link(&packet.destination, route_iface).await;
+    let wrong_local_data_iface = if !table_owns_packet
+        && packet.header.packet_type == PacketType::Data
         && packet.header.destination_type == DestinationType::Link
     {
         if let Some(link) = handler.local_link_for_packet(&packet).await {

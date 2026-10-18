@@ -128,8 +128,38 @@ A frozen-Python differential covers all 21 contexts across 18,144 combinations o
 packet/destination type, hops, transport identity, attached mode and current/
 previous membership. This establishes the ordered filter predicate, including
 invalid producer combinations; stronger production ingress guards and Link routing
-are separate evidence. The following routing, proof-hop/rebalancing, pending and
-transit LRPROOF, and queued Link-state cases remain required before acceptance.
+are separate evidence. The next routing checkpoint now binds native pending proof
+hops at the request generation's first actual dispatch, including unknown 128 and
+shared zero/one-hop routes. Pending retries retain that binding and the one-shot
+rebalance marker; public restart clears both. A valid exact-shape, matching-mode
+proof can authorize one observed-hop rebalance, changing only an existing path's
+hop field. The hop header itself is not signed. Equal-hop local selection remembers
+before ordinary validation; invalid mismatches remain unremembered. Selection,
+remembering and activation hold the same Link generation guard.
+Public restart preserves the old displayed ID until its next request exists; a
+private readiness fence rejects old dispatch/proof state in that interval. Normal
+Pending retries retain readiness and binding, while standalone request/proof
+primitives remain route-unbound only after they have actually made a request.
+
+Transit entries capture their selected path's remaining distance. Valid first
+proofs on the recorded next interface can rebalance that distance; validated
+entries reject later changes. Identityless shared-owner handoff retains its
+explicit trust exception: unknown distance binds to the first owner observation,
+without inventing a path or overriding a known identity's signature requirement.
+Validated transit LRPROOF uses the existing dispatch tail without originating
+duplicate remembering, so repeated identical proofs still forward. Data, ordinary
+proofs, Resource traffic and KeepAlive now share one early interface/hop gate.
+Same-interface routes accept either stored distance only on that recorded
+interface; rejecting a third interface is a stronger Rust guard than the frozen
+same-interface branch. This is bounded source-grounded/native evidence, not a claim
+that all stateful Python behavior is identical.
+
+Actual enqueue/dequeue regressions cover table insertion, expiry and proof
+activation before drain, local restart/replacement, wrong-interface Resource Data,
+and retained packet proofs across teardown/replacement/TTL expiry. Native and
+daemon fixture checks remain separate from the pinned Python Resource round trip.
+These qualify the listed routing cells; the remaining family lifecycle, request,
+discovery, live child policy and deeper process-recovery gates still apply.
 
 - Preserve the frozen filter's ordered branches: attached-client bypass, foreign
   transport rejection, six context exemptions, Plain/Group rules, generation

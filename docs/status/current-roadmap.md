@@ -81,8 +81,13 @@ accepted-client regressions pass locally. Duplicate membership now uses independ
 current/previous generations with bounded maintenance and owner-only persistence.
 Ordinary queue admission commits filtering/enqueue/remembering together; full
 queues preserve proof state. A frozen 21-context differential qualifies the filter
-predicate, while Link routing/proof remembering and queued Link-state cases remain
-open. The remaining carrier lifecycle, request, discovery and deeper
+predicate. Native Link routing now binds pending proofs to the request generation,
+preserves retry binding, applies one valid-proof-authorized hop rebalance, and
+remembers local matching-hop proofs before validation. Transit LRPROOF replay
+avoids originating hash remembering; ordinary Link and KeepAlive routing share
+validated interface/hop checks. Actual queue changes and retained late-receipt
+regressions pass. A pinned Python Resource round trip also passes. The remaining
+carrier lifecycle, request, discovery, live child policy and deeper
 recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

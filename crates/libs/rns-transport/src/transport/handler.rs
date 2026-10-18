@@ -134,6 +134,14 @@ impl TransportHandler {
             &packet,
             self.config.connected_to_shared_instance,
         );
+        if packet.header.packet_type == PacketType::LinkRequest {
+            let request_id = crate::destination::link::LinkId::from(&packet);
+            if let Some(link) = self.out_links.get(&packet.destination) {
+                link.lock()
+                    .await
+                    .bind_request_hops(request_id, self.path_table.hops_to(&packet.destination));
+            }
+        }
         let packet = route.packet;
         if let Some(iface) = route.next_iface {
             let dispatch =

@@ -28,6 +28,7 @@ async fn routed_link_packets_follow_recorded_interfaces_without_a_destination_pa
             requester.address,
             destination.desc.address_hash,
             responder.address,
+            0,
         );
         assert!(guard.link_table.handle_proof(&establishment_proof).is_some());
     }
@@ -87,6 +88,7 @@ async fn routed_link_packets_follow_recorded_interfaces_without_a_destination_pa
         requester.address,
         destination.desc.address_hash,
         responder.address,
+        0,
     );
     let mut unvalidated_proof = proof;
     unvalidated_proof.destination = *pending.id();

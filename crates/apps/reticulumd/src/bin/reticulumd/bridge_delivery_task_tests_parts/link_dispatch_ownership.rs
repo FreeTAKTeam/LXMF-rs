@@ -45,10 +45,29 @@ pub(in crate::bridge) async fn task_with_active_link(
     let mut inbound =
         Link::new_from_request(&request.packet, remote.sign_key().clone(), destination, events)
             .expect("Link request parses");
-    assert!(matches!(
-        link.lock().await.handle_packet(&inbound.prove(), iface),
-        rns_transport::destination::link::LinkHandleResult::Activated
-    ));
+    let id = *link.lock().await.id();
+    let mut link_events = task.transport.out_link_events();
+    channel
+        .rx_channel
+        .send(rns_transport::iface::RxMessage {
+            address: iface,
+            packet: inbound.prove(),
+            source: rns_transport::iface::IfaceSource::None,
+        })
+        .await
+        .expect("proof enters native ingress");
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let event = link_events.recv().await.expect("native Link activation event");
+            if event.id == id
+                && matches!(event.event, rns_transport::destination::link::LinkEvent::Activated)
+            {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("proof validates and activates through native hop selection");
     // A real active Link whose bound interface can no longer accept output.
     drop(channel);
     (task, link, receipts)

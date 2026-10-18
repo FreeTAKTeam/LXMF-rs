@@ -13,5 +13,6 @@ include!("link_parts/link.rs");
 include!("link_parts/clamp_link_signalling.rs");
 
 include!("link/proof.rs");
+include!("link/proof_hops.rs");
 
 include!("link_parts/link_status_predicates_make_lifecycl.rs");

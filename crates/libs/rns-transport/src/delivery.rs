@@ -207,8 +207,10 @@ mod tests {
             tx,
         )
         .expect("link request should parse");
+        let mut proof = inbound.prove();
+        proof.header.hops = link.lock().await.expected_proof_hops().expect("native request bound");
         assert!(matches!(
-            link.lock().await.handle_packet(&inbound.prove(), iface),
+            link.lock().await.handle_packet(&proof, iface),
             crate::destination::link::LinkHandleResult::Activated
         ));
 

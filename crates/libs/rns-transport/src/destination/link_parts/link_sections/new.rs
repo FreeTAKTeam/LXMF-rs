@@ -9,6 +9,9 @@ impl Link {
             close_reason: None,
             destination,
             ingress_iface: None,
+            proof_generation_ready: false,
+            expected_proof_hops: None,
+            proof_hops_rebalanced: false,
             priv_identity: PrivateIdentity::new_from_rand(OsRng),
             peer_identity: Identity::default(),
             identified_peer_identity: None,
@@ -65,6 +68,8 @@ impl Link {
             self.data_signal = None;
             self.refresh_local_identity();
             self.start_establishment();
+            self.expected_proof_hops = None;
+            self.proof_hops_rebalanced = false;
         }
 
         let mut packet_data = PacketDataBuffer::new();
@@ -102,6 +107,7 @@ impl Link {
         self.status = LinkStatus::Pending;
         self.close_reason = None;
         self.id = LinkId::from(&packet);
+        self.proof_generation_ready = true;
         self.derived_key = DerivedKey::new_empty();
         self.session_cipher = None;
         self.request_time = Instant::now();
@@ -250,35 +256,38 @@ impl Link {
                 // fixed buffer made those decrypts fail silently.
                 let mut buffer = vec![0u8; packet.data.as_slice().len().max(PACKET_MDU)];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
-                    if packet.context == PacketContext::None && matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+                    if packet.context == PacketContext::None
+                        && matches!(self.status, LinkStatus::Active | LinkStatus::Stale)
+                    {
                         self.observe_data_signal(plain_text);
                     }
                     self.note_inbound(packet.context);
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
-                    let (request_id, response_accepted) = if packet.context == PacketContext::Request {
-                        let hash = packet.hash().to_bytes();
-                        let mut id = [0u8; ADDRESS_HASH_SIZE];
-                        id.copy_from_slice(&hash[..ADDRESS_HASH_SIZE]);
-                        (Some(id), true)
-                    } else if packet.context == PacketContext::Response {
-                        match response_envelope_metadata(plain_text) {
-                            Some((id, response_size)) => {
-                                let accepted = id.as_ref().is_none_or(|id| {
-                                    self.take_response_limit_if_allowed(id, response_size)
-                                });
-                                (id, accepted)
+                    let (request_id, response_accepted) =
+                        if packet.context == PacketContext::Request {
+                            let hash = packet.hash().to_bytes();
+                            let mut id = [0u8; ADDRESS_HASH_SIZE];
+                            id.copy_from_slice(&hash[..ADDRESS_HASH_SIZE]);
+                            (Some(id), true)
+                        } else if packet.context == PacketContext::Response {
+                            match response_envelope_metadata(plain_text) {
+                                Some((id, response_size)) => {
+                                    let accepted = id.as_ref().is_none_or(|id| {
+                                        self.take_response_limit_if_allowed(id, response_size)
+                                    });
+                                    (id, accepted)
+                                }
+                                None => {
+                                    log::warn!(
+                                        "link({}): response is not a valid request envelope",
+                                        self.id
+                                    );
+                                    (None, true)
+                                }
                             }
-                            None => {
-                                log::warn!(
-                                    "link({}): response is not a valid request envelope",
-                                    self.id
-                                );
-                                (None, true)
-                            }
-                        }
-                    } else {
-                        (None, true)
-                    };
+                        } else {
+                            (None, true)
+                        };
                     if !response_accepted {
                         log::warn!(
                             "link({}): response exceeded the pending request size limit",

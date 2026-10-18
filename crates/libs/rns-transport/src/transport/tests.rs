@@ -76,4 +76,6 @@ include!("tests_parts/link_broadcast_helpers_route_via_bound_iface.rs");
 include!("tests_parts/resource_completion.rs");
 include!("tests_parts/link_lifecycle.rs");
 include!("tests_parts/cache_local_link_ingress.rs");
+include!("tests_parts/cache_transit_link_proof.rs");
+include!("tests_parts/cache_pending_link_proof.rs");
 include!("tests_parts/link_packet_receipt.rs");

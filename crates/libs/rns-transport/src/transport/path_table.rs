@@ -167,6 +167,12 @@ impl PathTable {
         self.map.get(destination).map_or(super::PATHFINDER_M as u8, |entry| entry.hops)
     }
 
+    pub(super) fn rebalance_hops(&mut self, destination: &AddressHash, hops: u8) {
+        if let Some(entry) = self.map.get_mut(destination) {
+            entry.hops = hops;
+        }
+    }
+
     #[cfg(test)]
     pub fn handle_announce(
         &mut self,

@@ -6,6 +6,12 @@ pub enum LinkHandleResult {
     KeepAlive,
 }
 
+pub(crate) enum PendingProofSelection {
+    Rejected,
+    Matched,
+    Rebalanced,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum LinkWatchdogAction {
@@ -55,6 +61,9 @@ pub struct Link {
     close_reason: Option<LinkCloseReason>,
     destination: DestinationDesc,
     ingress_iface: Option<AddressHash>,
+    proof_generation_ready: bool,
+    expected_proof_hops: Option<u8>,
+    proof_hops_rebalanced: bool,
     priv_identity: PrivateIdentity,
     peer_identity: Identity,
     identified_peer_identity: Option<Identity>,

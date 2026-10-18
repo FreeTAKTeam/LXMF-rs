@@ -67,17 +67,28 @@ async fn unknown_owner_local_link_request_uses_only_shared_iface_and_records_ret
     assert_eq!(forwarded.packet.header.header_type, HeaderType::Type1);
     assert_eq!(forwarded.packet.transport, None);
     let signalling = &forwarded.packet.data.as_slice()[forwarded.packet.data.len() - 3..];
-    let advertised_mtu = ((signalling[0] as usize) << 16)
-        | ((signalling[1] as usize) << 8)
-        | signalling[2] as usize;
+    let advertised_mtu =
+        ((signalling[0] as usize) << 16) | ((signalling[1] as usize) << 8) | signalling[2] as usize;
     assert_eq!(advertised_mtu & 0x1f_ffff, 500, "upstream MTU clamps the link request");
-    assert!(matches!(ingress.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
-    assert!(matches!(owner_server.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
-    assert!(matches!(ordinary.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
+    assert!(matches!(
+        ingress.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    assert!(matches!(
+        owner_server.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    assert!(matches!(
+        ordinary.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
 
     let mut handler = transport.handler.lock().await;
     let link_id = LinkId::from(&forwarded.packet);
-    assert_eq!(handler.link_table.proof_validation_context(&link_id), Some((destination.address_hash, shared_iface)));
+    assert_eq!(
+        handler.link_table.proof_validation_context(&link_id),
+        Some((destination.address_hash, shared_iface))
+    );
     let proof = Packet {
         header: Header {
             destination_type: DestinationType::Link,
@@ -89,7 +100,8 @@ async fn unknown_owner_local_link_request_uses_only_shared_iface_and_records_ret
         data: PacketDataBuffer::new_from_slice(b"proof"),
         ..Default::default()
     };
-    let (returned_proof, return_iface) = handler.link_table.handle_proof(&proof).expect("recorded return route");
+    let (returned_proof, return_iface) =
+        handler.link_table.handle_proof(&proof).expect("recorded return route");
     assert_eq!(return_iface, ingress_iface);
     assert_eq!(returned_proof.destination, link_id);
     assert_eq!(handler.link_table.original_destination(&link_id), Some(destination.address_hash));
@@ -139,11 +151,7 @@ async fn shared_owner_handoff_accepts_identityless_proof_only_from_recorded_owne
     }
 
     let make_proof = |destination_type| Packet {
-        header: Header {
-            destination_type,
-            packet_type: PacketType::Proof,
-            ..Default::default()
-        },
+        header: Header { destination_type, packet_type: PacketType::Proof, ..Default::default() },
         context: PacketContext::LinkRequestProof,
         destination: link_id,
         data: PacketDataBuffer::new_from_slice(b"shared-owner proof"),
@@ -151,13 +159,12 @@ async fn shared_owner_handoff_accepts_identityless_proof_only_from_recorded_owne
     };
 
     handle_proof(make_proof(DestinationType::Link), transport.handler.clone(), other_iface).await;
-    handle_proof(
-        make_proof(DestinationType::Single),
-        transport.handler.clone(),
-        shared_iface,
-    )
-    .await;
-    assert!(matches!(ingress.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
+    handle_proof(make_proof(DestinationType::Single), transport.handler.clone(), shared_iface)
+        .await;
+    assert!(matches!(
+        ingress.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
     assert_eq!(transport.handler.lock().await.link_table.active_len(), 0);
 
     let accepted_proof = make_proof(DestinationType::Link);
@@ -167,6 +174,25 @@ async fn shared_owner_handoff_accepts_identityless_proof_only_from_recorded_owne
     assert_eq!(returned.packet.destination, link_id);
     assert_eq!(returned.packet.data.as_slice(), accepted_proof.data.as_slice());
     assert_eq!(transport.handler.lock().await.link_table.active_len(), 1);
+    assert_eq!(transport.handler.lock().await.link_table.remaining_hops(&link_id), Some(0));
+    assert!(
+        transport.handler.lock().await.path_table.get(&destination.address_hash).is_none(),
+        "trusted owner observation does not manufacture an authenticated path"
+    );
+    let mut changed_hops = accepted_proof.clone();
+    changed_hops.header.hops = 2;
+    handle_proof(changed_hops, transport.handler.clone(), shared_iface).await;
+    assert!(ingress.tx_channel.try_recv().is_err(), "trusted first observation is frozen");
+    assert_eq!(transport.handler.lock().await.link_table.remaining_hops(&link_id), Some(0));
+    transport.handler.lock().await.single_out_destinations.insert(
+        destination.address_hash,
+        Arc::new(Mutex::new(SingleOutputDestination::new(identity, destination.name))),
+    );
+    handle_proof(accepted_proof, transport.handler.clone(), shared_iface).await;
+    assert!(
+        ingress.tx_channel.try_recv().is_err(),
+        "known identity validation cannot fall back to opaque owner trust"
+    );
 }
 
 #[tokio::test]
@@ -199,6 +225,7 @@ async fn ordinary_transit_link_proof_still_needs_destination_identity() {
         ingress_iface,
         identity.address_hash,
         upstream_iface,
+        0,
     );
 
     let proof = Packet {
@@ -214,8 +241,14 @@ async fn ordinary_transit_link_proof_still_needs_destination_identity() {
     };
     handle_proof(proof, transport.handler.clone(), upstream_iface).await;
 
-    assert!(matches!(ingress.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
-    assert!(matches!(upstream.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
+    assert!(matches!(
+        ingress.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    assert!(matches!(
+        upstream.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
     assert_eq!(transport.handler.lock().await.link_table.active_len(), 0);
 }
 
@@ -246,8 +279,14 @@ async fn ordinary_unknown_link_request_stays_dropped_when_not_shared_connected()
 
     super::path::handle_link_request(&request, ingress_iface, transport.handler.lock().await).await;
 
-    assert!(matches!(ingress.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
-    assert!(matches!(ordinary.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
+    assert!(matches!(
+        ingress.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    assert!(matches!(
+        ordinary.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
     assert_eq!(transport.handler.lock().await.link_table.len(), 0);
 }
 
@@ -280,7 +319,13 @@ async fn unknown_owner_local_link_request_is_not_reflected_to_shared_ingress() {
 
     super::path::handle_link_request(&request, ingress_iface, transport.handler.lock().await).await;
 
-    assert!(matches!(shared_ingress.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
-    assert!(matches!(ordinary.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)));
+    assert!(matches!(
+        shared_ingress.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    assert!(matches!(
+        ordinary.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
     assert_eq!(transport.handler.lock().await.link_table.len(), 0);
 }

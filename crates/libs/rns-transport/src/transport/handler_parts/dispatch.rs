@@ -17,11 +17,29 @@ impl TransportHandler {
         message: TxMessage,
         handoff: impl FnOnce(&TxDispatchTrace),
     ) -> TxDispatchTrace {
-        let packet = message.packet.clone();
         {
             let mut cache = self.packet_cache.lock().await;
-            self.register_outbound_packet(&mut cache, &packet);
+            self.register_outbound_packet(&mut cache, &message.packet);
         }
+        self.dispatch_observed(message, handoff).await
+    }
+
+    /// The validated relay path mirrors Python's raw LRPROOF transmit: retain
+    /// packet context without originating-outbound duplicate remembering.
+    pub(super) async fn send_transit_link_request_proof(
+        &self,
+        message: TxMessage,
+    ) -> TxDispatchTrace {
+        self.packet_cache.lock().await.track_packet(&message.packet);
+        self.dispatch_observed(message, |_| {}).await
+    }
+
+    async fn dispatch_observed(
+        &self,
+        message: TxMessage,
+        handoff: impl FnOnce(&TxDispatchTrace),
+    ) -> TxDispatchTrace {
+        let packet = message.packet.clone();
         let announce_policy = if packet.header.packet_type == PacketType::Announce
             && matches!(message.tx_type, TxMessageType::Broadcast(_))
         {

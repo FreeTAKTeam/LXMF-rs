@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; three local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) records ownership, finite cells and validation boundaries. IFAC/publication, configured startup, and duplicate foundation/ordinary admission checkpoints pass bounded reviews and local checks. Remaining routing, lifecycle, request, discovery and deeper recovery gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; four local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) records ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission and native Link routing checkpoints pass bounded reviews and local checks. Remaining lifecycle, request, discovery, child policy and deeper recovery gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1427,3 +1427,76 @@ validation only; terminal results and final-head review/CI/merge remain required
   local wrong-interface ordinary/Resource Data need the remaining composition
   cases. These, the family lifecycle matrix, request/discovery/child policy and
   deeper recovery still gate item 4. No hosted check, PR or merge yet.
+
+### Item 4 native Link routing checkpoint
+
+- Duplicate foundation committed as `0dc92b4d`. Test-first regressions reproduced
+  generic outbound remembering of the first forwarded transit LRPROOF, missing
+  local matching-hop invalid-proof membership, unchanged paths after a valid
+  mismatch, and KeepAlive forwarding from an unrelated interface on an unvalidated
+  Link. Preserve the failing logs; the fixes stay in the existing Link, LinkTable,
+  PacketCache and dispatch owners.
+- Native first request dispatch binds private expected hops to the current Link
+  ID and actual selected route, including unknown 128 and shared zero/one. Pending
+  retries retain the binding and one-shot rebalance marker. Restart clears both;
+  delayed old requests cannot bind a restarted generation. Local proof selection,
+  remembering and validation hold one generation guard. Equal-hop invalid input
+  is sticky; a mismatch needs exact 96/99-byte shape, matching mode and valid
+  destination signature before one observed-hop rebalance. Unsigned 97/98-byte
+  suffixes and a valid signature for the wrong cipher mode are negative controls.
+  Only an existing path's hop field changes; the hop header itself is unsigned.
+- Transit request routing records remaining hops from its path. Valid first
+  proofs on the recorded next interface may rebalance; validated entries reject
+  later mismatches. Identityless SharedOwnerHandoff keeps explicit unknown
+  distance and first-owner-observation binding, without inventing a destination
+  path or falling back after a known identity fails validation. Transit LRPROOF
+  calls the common dispatch tail without originating hash remembering. Repeated
+  valid proofs forward; invalid signatures/wrong interfaces do not become sticky.
+- Data, ordinary proofs, Resource traffic and KeepAlive use one early validated
+  interface/direction/hop decision. The old KeepAlive helper/bypass was removed,
+  including its empty-payload indexing hazard. Same-interface routes accept either
+  stored distance only on that interface; third-interface rejection is a stronger
+  Rust guard than the frozen same-interface branch. Rejected transit Data creates
+  no source/proof context. Current transport/local-client eligibility controls
+  table precedence; local Data recovery remains distinct from Proof acceptance.
+- Actual preprocess/enqueue/dequeue tests span table insertion, pending expiry,
+  proof activation, and local restart/replacement. The retained original packet
+  proof is queued before teardown, then validates after replacement and TTL
+  cleanup. Native unit fixtures exercise direction/hop combinations and failed
+  state immutability. Twelve synthetic Channel/delivery/MTU tests now provide
+  their direct Link call's bound post-ingress hop count. Seven daemon tests shared
+  another direct zero-hop fixture; that fixture now sends the real signed proof
+  through native ingress and waits for its exact Link activation event.
+- Transport passes 1,011 with ten unchanged ignores; daemon library passes 31
+  and daemon binary passes 589 with no ignores. The initial daemon run's seven
+  synthetic-fixture failures remain in its log. Pinned RNS
+  `99de23c040d507e3fefca19e87b182302902725d` passes the real
+  `rust_to_python_raw_resource_roundtrip` (one test, sender completion and Python
+  acknowledgement), separate from native/source-grounded routing evidence.
+  This is not the deeper mixed-process relay matrix or broad Python state parity.
+- A main-agent follow-up red exposed the distinct public `restart()` interval:
+  it intentionally preserves the old public ID before the next request exists.
+  A private readiness bit now fences hop binding, pending selection and direct
+  proof activation in that interval, while clearing expected hops/rebalance state.
+  The old signed proof was not previously ingressed in the regression. Actual
+  queued drain and delayed old dispatch cannot mutate membership/path/activation;
+  the subsequently constructed and dispatched new generation activates normally.
+  Both reviewers approve this correction. Full transport/daemon suites, affected
+  Clippy, formatting and module-size checks pass after it. Logs are
+  `/tmp/lxmf-item4-routing-explicit-restart-{red,green,native}.log` and
+  `/tmp/lxmf-item4-routing-restart-{transport,daemon,clippy,size}.log`.
+- Logs: `/tmp/lxmf-item4-transit-lrproof-{red,green}.log`,
+  `/tmp/lxmf-item4-pending-hops-{red,green}.log`,
+  `/tmp/lxmf-item4-proof-hops-shape.log`,
+  `/tmp/lxmf-item4-transit-hop-{red,green}.log`,
+  `/tmp/lxmf-item4-routing-transport-{first,final}.log`,
+  `/tmp/lxmf-item4-routing-daemon{,-bin,-bin-final}.log`, and
+  `/tmp/lxmf-item4-routing-python-resource.log`.
+- Independent correctness and maintainability POST approve this bounded routing
+  checkpoint without an actionable remaining finding. Affected all-target/
+  all-feature Clippy, formatting (including explicit included-file checks),
+  boundaries, module size, architecture and issue-369 scanner pass. The final
+  focused transit-dispatch regression also passes. Gate logs are
+  `/tmp/lxmf-item4-routing-{clippy-last,quality,architecture,boundaries,size-final,dispatch-last}.log`.
+  The carrier lifecycle matrix, request receipts, discovery runtime, child-policy
+  propagation and deeper recovery still gate item 4. No hosted check, PR or merge.
