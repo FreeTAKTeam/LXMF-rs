@@ -26,14 +26,23 @@ pub(super) async fn spawn_trusted_stream(
 }
 
 pub(super) async fn spawn_hot_apply_interface(
-    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
-    transport: Option<&Arc<Transport>>,
+    context: NativeInterfaceContext<'_>,
     record: &InterfaceRecord,
 ) -> Option<(AddressHash, Option<HotApplyRuntimeStatus>)> {
+    let NativeInterfaceContext { iface_manager, transport, reconnect_events } = context;
     let mode = interface_record_mode(record);
     let result = match record.kind.as_str() {
         "tcp_client" => {
-            let adapter = TcpClient::new(tcp_endpoint(record)?);
+            let adapter = match interface_hot_apply_parts::record_tcp_client::adapter(
+                record,
+                reconnect_events,
+            ) {
+                Ok(adapter) => adapter,
+                Err(error) => {
+                    log::warn!("[daemon] hot-apply tcp_client rejected: {error}");
+                    return None;
+                }
+            };
             let status = adapter.runtime_status_handle();
             let address = {
                 let mut manager = iface_manager.lock().await;
@@ -45,6 +54,13 @@ pub(super) async fn spawn_hot_apply_interface(
                     |manager, address| apply_record_runtime_config(manager, address, record),
                 )
             };
+            if let (Ok(address), Some(transport)) = (address.as_ref(), transport) {
+                if !transport.synthesize_tunnel_on_interface(*address).await {
+                    log::warn!(
+                        "[daemon] new TCP client could not synthesize tunnel iface={address}"
+                    );
+                }
+            }
             address.map(|address| (address, Some(HotApplyRuntimeStatus::TcpClient(status))))
         }
         "tcp_server" => {

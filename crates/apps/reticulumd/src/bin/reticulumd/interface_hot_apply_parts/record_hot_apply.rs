@@ -17,6 +17,9 @@ pub(crate) fn validate_hot_apply_uniqueness(
     let mut seen_tcp_server_wildcard_bind_ports = std::collections::HashSet::new();
     let mut seen_udp_bind_addresses = std::collections::HashSet::new();
     for record in interfaces {
+        if record.kind == "tcp_client" && record.enabled {
+            super::record_tcp_client::configuration(record)?;
+        }
         if record.kind == "tcp_server" {
             let bind_addr = tcp_server_bind_addr(record)?;
             if record.enabled && !seen_tcp_server_bind_addresses.insert(bind_addr.clone()) {
@@ -156,6 +159,7 @@ pub(crate) fn hot_apply_interface_record_changed(
         || current.enabled != next.enabled
         || current.host != next.host
         || current.port != next.port
+        || (current.kind == "tcp_client" && super::record_tcp_client::changed(current, next))
         || (current.kind == "tcp_server"
             && tcp_server_client_mtu(current) != tcp_server_client_mtu(next))
         || (current.kind == "tcp_server"

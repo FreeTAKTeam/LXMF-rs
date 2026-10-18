@@ -10,6 +10,9 @@ mod restore_controls;
 #[path = "bootstrap_transport_restore_replacement.rs"]
 mod restore_replacement;
 
+#[path = "bootstrap_tcp_client_options_tests.rs"]
+mod tcp_client_options;
+
 async fn start_fixture(
     args: &Args,
     config: &DaemonConfig,

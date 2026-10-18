@@ -281,10 +281,13 @@ async fn external_apply_preserves_private_origin_and_rejects_forged_discovery_au
     };
     let refreshes = HotApplyRuntimeRefreshes::new();
     let applied = apply_hot_apply_interface_records(
-        &manager,
+        NativeInterfaceContext {
+            iface_manager: &manager,
+            transport: Some(&transport),
+            reconnect_events: None,
+        },
         &mut managed,
         vec![conflicting, forged],
-        Some(&transport),
         &refreshes,
         Some(&Arc::downgrade(&daemon)),
     )
@@ -304,10 +307,13 @@ async fn external_apply_preserves_private_origin_and_rejects_forged_discovery_au
         1
     );
     apply_hot_apply_interface_records(
-        &manager,
+        NativeInterfaceContext {
+            iface_manager: &manager,
+            transport: Some(&transport),
+            reconnect_events: None,
+        },
         &mut managed,
         vec![],
-        Some(&transport),
         &refreshes,
         None,
     )

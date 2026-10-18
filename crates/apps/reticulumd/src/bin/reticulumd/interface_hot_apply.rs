@@ -29,7 +29,7 @@ pub(crate) use interface_hot_apply_parts::record_hot_apply::mark_tcp_server_reco
 use interface_hot_apply_parts::record_hot_apply::{
     apply_record_runtime_config, hot_apply_interface_key, hot_apply_interface_record_changed,
     hot_apply_interface_seed_key as record_hot_apply_interface_seed_key, interface_record_mode,
-    mark_pipe_record_runtime_status, mark_udp_record_runtime_status, pipe_adapter, tcp_endpoint,
+    mark_pipe_record_runtime_status, mark_udp_record_runtime_status, pipe_adapter,
     tcp_server_bind_addr, tcp_server_client_mtu, udp_bind_and_forward_addr,
     validate_hot_apply_uniqueness,
 };
@@ -70,6 +70,17 @@ use discovery_runtime::{ManagedInterfaceOrigin, NativeDiscovery};
 #[path = "interface_hot_apply_parts/managed_interface_key.rs"]
 mod managed_interface_key;
 use managed_interface_key::ManagedInterfaceKey;
+
+#[derive(Clone, Copy)]
+struct NativeInterfaceContext<'a> {
+    iface_manager: &'a Arc<tokio::sync::Mutex<InterfaceManager>>,
+    transport: Option<&'a Arc<Transport>>,
+    reconnect_events: Option<&'a Sender<AddressHash>>,
+}
+
+#[cfg(test)]
+#[path = "tests/interface_hot_apply/tcp_options.rs"]
+mod tcp_options_tests;
 
 fn configured_key(name: &str) -> ManagedInterfaceKey {
     ManagedInterfaceKey::Configured(name.to_owned())

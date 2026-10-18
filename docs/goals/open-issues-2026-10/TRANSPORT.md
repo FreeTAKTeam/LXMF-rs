@@ -102,6 +102,45 @@ IFAC evidence. Physical equipment, RF and public networks remain outside this PR
 Only TCP client/server, UDP and Pipe currently support live named management;
 other rows use configured restart/native reconnect rather than speculative APIs.
 
+### TCP family constructor cutover board
+
+Checkpoint `3b3b6723` qualifies trusted general restoration under BOOTSTRAP.md.
+The first family exploration found a connected constructor gap before running
+the finite TCP listener/client lifecycle cases: public/named TCP replacement
+uses a bare client, ignores immutable client options for replacement, and loses
+initial/reconnect tunnel synthesis. Startup already owns these defaults/hooks.
+The separate public listener IPv6 omission stays in the listener case.
+
+| Task | Owner / input / files | Output and evidence |
+| --- | --- | --- |
+| TCP client constructor alignment | Main agent; existing client builder, InterfaceRecord projection, mutation/named/spawn paths and their tests | Three native controls first: refused endpoint with zero retries, option-only native replacement, malformed option rejection before queueing. Reuse schema normalization/validation before retirement and the same canonical projection for construction/change detection |
+| Reconnect hook preservation | Same worker and retained ConfiguredStartupRuntime; a borrowed native input value may group manager/transport/sender references | Clone sender only into the adapter. Observe authenticated initial tunnel output for a new root and later reconnect synthesis; preserve unrelated roots and join shutdown. No new task, registry, constructor defaults or retained Args |
+| Finite TCP family scenarios | Existing configured startup and native/RPC fixtures after the constructor cutover review | TCP named IFAC rollback/reload/detach/reattach; configured TCP and Backbone client refusal/reconnect/restart variants; configured Backbone listener child rotation/restart. Preserve named-kind restrictions |
+
+Both source PRE reviews approve the narrow borrowed input context, with schema,
+initial synthesis and shutdown controls required. Implementation stays sequential
+with the main agent; read-only reviews gate each bounded checkpoint. Packet
+barriers stay two seconds, a five-second reconnect is bounded at eight seconds,
+and management retains its three-second readiness/twenty-second reply bounds.
+No retries-until-green or physical/RF/public-network expansion qualify these rows.
+
+The constructor controls change each of the five immutable options alone and
+require a fresh connection plus the old connection's EOF. The configured named
+trace declares five connections: initial, failed-listener rollback, rollback
+reconnect, successful client replacement and replacement reconnect. Each must
+deliver a fresh signed tunnel request and exact authenticated data. The failed
+replacement uses an occupied test-owned listener to reach actual bind failure;
+rollback must retain the old client options, reconnect hook and unrelated traffic.
+
+The three native controls retain pre-fix failures; the strengthened final run
+passes 23 TCP-related cases. Construction/change detection now share schema
+normalization/validation and the existing startup builder; replacement/rollback
+adapters retain initial and reconnect tunnel hooks. The five-connection trace
+passes with signed IFAC output, old/new MTU, unrelated traffic and joined shutdown.
+Both independent POST reviews approve; 31 library/646 binary daemon tests and
+focused gates pass. These qualify the two constructor tasks, with finite TCP
+family scenarios still pending.
+
 ## Duplicate and persistence contract
 
 The foundation now separates current/previous membership from the existing

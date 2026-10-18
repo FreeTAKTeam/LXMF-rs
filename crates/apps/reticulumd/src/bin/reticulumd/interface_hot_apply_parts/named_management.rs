@@ -108,10 +108,9 @@ fn is_manageable(record: &InterfaceRecord) -> bool {
 }
 
 pub(super) async fn apply(
-    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
+    context: NativeInterfaceContext<'_>,
     managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     action: NamedInterfaceAction<'_>,
-    transport: Option<&Arc<Transport>>,
     refreshes: &HotApplyRuntimeRefreshes,
     daemon: Option<&Weak<RpcDaemon>>,
 ) -> io::Result<Value> {
@@ -149,10 +148,9 @@ pub(super) async fn apply(
             let next = with_named_record(&current, index, record);
             validate_hot_apply_uniqueness(&next)?;
             let mut applied = apply_hot_apply_interface_records(
-                iface_manager,
+                context,
                 managed,
                 next.clone(),
-                transport,
                 refreshes,
                 Some(&Arc::downgrade(&daemon)),
             )
@@ -170,16 +168,8 @@ pub(super) async fn apply(
                     if let Some(index) = index {
                         rollback[index].enabled = false;
                     }
-                    stop_named(
-                        iface_manager,
-                        managed,
-                        name,
-                        rollback.clone(),
-                        transport,
-                        refreshes,
-                        &daemon,
-                    )
-                    .await?;
+                    stop_named(context, managed, name, rollback.clone(), refreshes, &daemon)
+                        .await?;
                     Err(error)
                 }
             }
@@ -203,8 +193,7 @@ pub(super) async fn apply(
                     next.push(record);
                 }
             }
-            stop_named(iface_manager, managed, name, next.clone(), transport, refreshes, &daemon)
-                .await?;
+            stop_named(context, managed, name, next.clone(), refreshes, &daemon).await?;
             Ok(
                 json!({ "name": name, "operation": operation, "complete": true, "state": "detached" }),
             )
@@ -230,21 +219,11 @@ pub(super) async fn apply(
                 Some(index) => detached[index].enabled = false,
                 None => detached.push(InterfaceRecord { enabled: false, ..old.clone() }),
             }
-            stop_named(
-                iface_manager,
-                managed,
-                name,
-                detached.clone(),
-                transport,
-                refreshes,
-                &daemon,
-            )
-            .await?;
+            stop_named(context, managed, name, detached.clone(), refreshes, &daemon).await?;
             let mut applied = apply_hot_apply_interface_records(
-                iface_manager,
+                context,
                 managed,
                 next.clone(),
-                transport,
                 refreshes,
                 Some(&Arc::downgrade(&daemon)),
             )
@@ -258,22 +237,13 @@ pub(super) async fn apply(
                     )
                 }
                 Err(replacement_error) => {
-                    stop_named(
-                        iface_manager,
-                        managed,
-                        name,
-                        detached.clone(),
-                        transport,
-                        refreshes,
-                        &daemon,
-                    )
-                    .await?;
+                    stop_named(context, managed, name, detached.clone(), refreshes, &daemon)
+                        .await?;
                     let restored = with_named_record(&current, index, old);
                     let mut restored_applied = apply_hot_apply_interface_records(
-                        iface_manager,
+                        context,
                         managed,
                         restored.clone(),
-                        transport,
                         refreshes,
                         Some(&Arc::downgrade(&daemon)),
                     )
@@ -287,16 +257,9 @@ pub(super) async fn apply(
                             )))
                         }
                         Err(rollback_error) => {
-                            if let Err(error) = stop_named(
-                                iface_manager,
-                                managed,
-                                name,
-                                detached,
-                                transport,
-                                refreshes,
-                                &daemon,
-                            )
-                            .await
+                            if let Err(error) =
+                                stop_named(context, managed, name, detached, refreshes, &daemon)
+                                    .await
                             {
                                 log::warn!("[daemon] failed rollback cleanup name={name}: {error}");
                             }
@@ -339,14 +302,14 @@ fn with_named_record(
 }
 
 async fn stop_named(
-    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
+    context: NativeInterfaceContext<'_>,
     managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     name: &str,
     desired: Vec<InterfaceRecord>,
-    transport: Option<&Arc<Transport>>,
     refreshes: &HotApplyRuntimeRefreshes,
     daemon: &Arc<RpcDaemon>,
 ) -> io::Result<()> {
+    let NativeInterfaceContext { iface_manager, transport, .. } = context;
     #[cfg(test)]
     {
         refreshes.tcp_listeners.lock().expect("tcp listener refresh mutex poisoned").remove(name);
@@ -360,10 +323,9 @@ async fn stop_named(
         None => Ok(()),
     };
     let applied = apply_hot_apply_interface_records(
-        iface_manager,
+        context,
         managed,
         desired,
-        transport,
         refreshes,
         Some(&Arc::downgrade(daemon)),
     )

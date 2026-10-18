@@ -75,6 +75,13 @@ pub(super) async fn run_interface_mutation_worker(
     runtime: MutationRuntime,
 ) -> io::Result<()> {
     let MutationRuntime { transport, refreshes, daemon, discovery, configured_startup } = runtime;
+    let native_context = NativeInterfaceContext {
+        iface_manager: &iface_manager,
+        transport: transport.as_ref(),
+        reconnect_events: configured_startup
+            .as_ref()
+            .map(ConfiguredStartupRuntime::reconnect_events),
+    };
     let mut publication = tokio::time::interval(std::time::Duration::from_secs(2));
     publication.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut discovery = discovery.map(NativeDiscovery::new);
@@ -111,10 +118,9 @@ pub(super) async fn run_interface_mutation_worker(
             InterfaceHotApplyCommand::Shutdown => break,
             InterfaceHotApplyCommand::Apply { interfaces, reload_timestamp } => {
                 let applied = apply_hot_apply_interface_records(
-                    &iface_manager,
+                    native_context,
                     &mut managed,
                     interfaces,
-                    transport.as_ref(),
                     &refreshes,
                     daemon.as_ref(),
                 )
@@ -161,10 +167,9 @@ pub(super) async fn run_interface_mutation_worker(
                     .await
                 } else {
                     named_management::apply(
-                        &iface_manager,
+                        native_context,
                         &mut managed,
                         named_management::NamedInterfaceAction::new(&operation, &name, configured),
-                        transport.as_ref(),
                         &refreshes,
                         daemon.as_ref(),
                     )

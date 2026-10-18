@@ -51,10 +51,9 @@ async fn named_retirement_joins_every_uncooperative_child_before_returning_its_e
         ManagedHotApplyInterface::active(record, address, None, ManagedInterfaceOrigin::Configured),
     )]);
     let error = named_management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         named_management::NamedInterfaceAction::new("detach", "stuck", None),
-        None,
         &HotApplyRuntimeRefreshes::new(),
         Some(&Arc::downgrade(&daemon)),
     )

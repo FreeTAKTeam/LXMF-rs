@@ -106,10 +106,16 @@ async fn discovery_literal_names_cannot_replace_hidden_keys_or_trimmed_public_re
         let manager = transport.iface_manager();
         let daemon = Arc::new(RpcDaemon::test_instance());
         daemon.replace_interfaces(vec![record.clone()]);
-        let (address, runtime_status) =
-            spawn_hot_apply_interface(&manager, Some(&transport), &record)
-                .await
-                .expect("configured worker");
+        let (address, runtime_status) = spawn_hot_apply_interface(
+            NativeInterfaceContext {
+                iface_manager: &manager,
+                transport: Some(&transport),
+                reconnect_events: None,
+            },
+            &record,
+        )
+        .await
+        .expect("configured worker");
         let (_configured_connection, _) = timeout(Duration::from_secs(2), configured_peer.accept())
             .await
             .expect("configured connection deadline")
@@ -504,8 +510,16 @@ async fn discovery_bootstrap_lifecycle_uses_unnamed_and_padded_managed_keys() {
         let transport = transport(false, false);
         let manager = transport.iface_manager();
         let daemon = Arc::new(RpcDaemon::test_instance());
-        let (address, runtime_status) =
-            spawn_hot_apply_interface(&manager, Some(&transport), &record).await.expect("worker");
+        let (address, runtime_status) = spawn_hot_apply_interface(
+            NativeInterfaceContext {
+                iface_manager: &manager,
+                transport: Some(&transport),
+                reconnect_events: None,
+            },
+            &record,
+        )
+        .await
+        .expect("worker");
         let channel = manager.lock().await.new_channel(1);
         channel.set_online(true);
         let auto = InterfaceRecord {
@@ -784,9 +798,16 @@ async fn native_monitor_restores_the_trusted_udp_bootstrap_recipe_after_auto_pee
     let transport = transport(false, false);
     let manager = transport.iface_manager();
     let daemon = Arc::new(RpcDaemon::test_instance());
-    let (address, runtime_status) = spawn_hot_apply_interface(&manager, Some(&transport), &record)
-        .await
-        .expect("bootstrap worker");
+    let (address, runtime_status) = spawn_hot_apply_interface(
+        NativeInterfaceContext {
+            iface_manager: &manager,
+            transport: Some(&transport),
+            reconnect_events: None,
+        },
+        &record,
+    )
+    .await
+    .expect("bootstrap worker");
     let channel = manager.lock().await.new_channel(1);
     channel.set_online(true);
     let auto = InterfaceRecord {

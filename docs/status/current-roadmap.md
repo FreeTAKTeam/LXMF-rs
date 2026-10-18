@@ -134,7 +134,11 @@ while retaining their separate strict policy. The same worker now retains narrow
 startup context and joins reconnect completion. Trusted restoration preserves
 original recipe identity, current publication slots, common/degraded status and
 first control visibility. Native KISS authentication/reorder, TCP endpoint
-replacement/continuity and failed listener retry controls pass. Remaining carrier
+replacement/continuity and failed listener retry controls pass. Public/named TCP
+clients now reuse schema-validated startup options and preserve initial/reconnect
+tunnel hooks through replacement and failed-reload rollback. Five option-only
+native replacements and signed/authenticated rollback/reconnect traffic pass;
+full daemon validation passes 31 library/646 binary tests. Remaining carrier
 lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

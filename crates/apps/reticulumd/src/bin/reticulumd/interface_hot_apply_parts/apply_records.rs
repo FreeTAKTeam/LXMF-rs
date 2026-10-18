@@ -1,13 +1,13 @@
 use super::*;
 
 pub(super) async fn apply_hot_apply_interface_records(
-    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
+    context: NativeInterfaceContext<'_>,
     managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     mut interfaces: Vec<InterfaceRecord>,
-    transport: Option<&Arc<Transport>>,
     refreshes: &HotApplyRuntimeRefreshes,
     daemon: Option<&Weak<RpcDaemon>>,
 ) -> Vec<InterfaceRecord> {
+    let NativeInterfaceContext { iface_manager, transport, .. } = context;
     interfaces = record_publication::preserve_unmanaged_records(
         interfaces,
         managed,
@@ -119,9 +119,7 @@ pub(super) async fn apply_hot_apply_interface_records(
             }
             continue;
         }
-        if let Some((address, runtime_status)) =
-            spawn_hot_apply_interface(iface_manager, transport, &record).await
-        {
+        if let Some((address, runtime_status)) = spawn_hot_apply_interface(context, &record).await {
             register_runtime_refresh(
                 &name,
                 &record,

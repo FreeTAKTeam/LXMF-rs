@@ -13,6 +13,10 @@ pub(crate) struct ConfiguredStartupRuntime {
 }
 
 impl ConfiguredStartupRuntime {
+    pub(crate) fn reconnect_events(&self) -> &tokio::sync::mpsc::Sender<AddressHash> {
+        &self.reconnect_events
+    }
+
     #[cfg(test)]
     pub(crate) async fn for_test(
         transport: &Arc<Transport>,

@@ -1994,3 +1994,43 @@ validation only; terminal results and final-head review/CI/merge remain required
   matrix record bounded restoration separately from the remaining twenty-family
   matrix, whole-item release/integration, one PR, hosted CI and merge. No physical,
   RF, public-network or whole-issue completion claim is made.
+
+## Item 4 TCP client constructor alignment
+
+- Checkpoint `3b3b6723` completed trusted restoration. Family exploration then
+  found that public/named client replacement omitted existing immutable options
+  and tunnel hooks. The same native mutation owner now borrows manager, Transport
+  and the retained reconnect sender for Apply, named operations and rollback.
+  Only adapters clone the sender; retirement still joins the original completion.
+- Raw-record construction and change detection share one narrow projection into
+  DaemonConfig normalization/validation and the existing startup builder. The
+  authoritative kind/endpoint and five constructor options are admitted; unrelated
+  settings and runtime metadata do not select a constructor. Validation precedes
+  queue acknowledgement/retirement and emits value-free errors. Initial tunnel
+  synthesis occurs after releasing the manager guard; native reconnect uses the
+  same startup hook. No new defaults, tasks, registry or retained Args are added.
+- Three actual native regressions fail before the fix in
+  `/tmp/lxmf-item4-tcp-options-native-red.log`: exhausted zero-retry refusal,
+  immutable option-only replacement and malformed options acknowledged as valid.
+  Their first green is `...-green.log`. The strengthened final control changes all
+  five options individually, requiring each fresh connection and old-peer EOF.
+- The configured/named trace checks invalid Apply and invalid configuration
+  preservation, real occupied-listener replacement failure and old-client
+  rollback, rollback reconnect, successful client replacement and reconnect.
+  All five native connections receive fresh correctly signed/authenticated tunnel
+  requests with the source identity/current native full hash. Exact bidirectional
+  authenticated traffic, retained old/new MTU, unrelated TCP traffic/address and
+  joined shutdown pass. The final focused run passes 23 TCP-related tests in
+  `...-strengthened.log` (5.13 seconds). Earlier hook-fixture compilation failures
+  remain recorded; the fixture now uses public destination/identity APIs without
+  widening production visibility.
+- Both independent final source POST reviews approve. Full all-feature daemon
+  validation passes 31 library and 646 binary tests in `...-daemon.log` (30.23
+  seconds for binary tests). All-target/all-feature daemon Clippy, default check,
+  architecture, diagnostics scanner, Cargo formatting, boundaries and module size
+  pass with the `/tmp/lxmf-item4-tcp-options-` prefix and corresponding gate names.
+  Existing manifest/optional BLE/profile-helper warnings remain baseline output.
+  The two existing TCP runtime-settings tests move unchanged into a test child
+  module to preserve the 1,200-line test limit. These are constructor/ownership
+  controls; finite carrier composition, whole-item integration, PR, hosted CI and
+  merge remain open.
