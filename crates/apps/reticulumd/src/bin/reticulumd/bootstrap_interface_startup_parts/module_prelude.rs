@@ -42,6 +42,7 @@ use rns_transport::transport::Transport;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[derive(Default)]
 pub(super) struct InterfaceStartupBatch {
     pub(super) startup_successes: usize,
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,

@@ -120,7 +120,9 @@ The deeper recovery matrix also passes all 24 Direct packet/Resource deliveries
 across three fresh three-relay topologies before and after middle replacement.
 Endpoint/edge processes and native Link caches persist; fresh edge routes bind
 to the replacement identity, and exact signed recipient bytes and independent
-sender receipts qualify each cell. The remaining carrier lifecycle/configured
+sender receipts qualify each cell. A reviewed behavior-preserving per-recipe startup dispatcher now preserves
+original ordering, selected listeners and owned Auto effects; its mixed fixture
+and 31 library/617 binary daemon tests pass. The remaining carrier lifecycle/configured
 bootstrap ownership and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

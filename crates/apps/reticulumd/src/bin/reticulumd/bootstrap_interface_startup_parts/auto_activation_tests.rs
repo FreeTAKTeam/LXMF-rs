@@ -7,6 +7,8 @@ use rns_transport::iface::auto::{
 use rns_transport::iface::auto_runtime::AutoRuntimePlan;
 use rns_transport::iface::InterfaceManager;
 
+include!("tests/configured_dispatch_order.rs");
+
 fn startup_test_args() -> Args {
     Args {
         rpc: None,

@@ -1319,3 +1319,5 @@ display/status payload, and operator-workflow combinations remains pending.
   backpressure evidence.
 - Nightly mesh, soak, and embedded HIL workflows provide additional operational
   evidence, but do not promote unsupported interface families to `done`.
+
+| `#649 configured recipe dispatcher preparation` | Existing daemon configured startup loop and per-recipe dispatcher | verified locally | unit, native software | Mixed ordered startup preserves original indices, disabled entries, selected listener accounting, Auto injection and unique shutdown, seeds, tunnel and status effects. Baseline and extracted characterization pass; 31 library/617 binary daemon tests and focused gates pass; two independent reviews approve. | Behavior-preserving preparation only. Configured root/effect ownership, restoration, status/control cutover and finite family composition remain open under BOOTSTRAP.md. |

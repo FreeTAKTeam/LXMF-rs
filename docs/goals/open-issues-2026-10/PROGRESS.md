@@ -1806,3 +1806,25 @@ validation only; terminal results and final-head review/CI/merge remain required
   strict log's exact cell counts, unique hashes, replacement bindings, native
   three-hop paths and immutable binary digest; both approve without remaining
   blockers in this bounded slice.
+
+## Item 4 configured dispatcher preparation
+
+- The initial configured loop now delegates each enabled recipe to one callable
+  dispatcher, preserving the original index, label, selected-listener context,
+  sequential Auto builder calls and all 21 startup-batch fields. The borrowed
+  context lasts only for this call; no CLI credentials become retained state.
+- A mixed startup characterization passes before and after extraction: disabled
+  entries, a unique successful Auto runtime, selected listener annotation,
+  unknown-family and Auto failures, UDP, Pipe, TCP client and shadowed listener.
+  It checks ordered records/failures/seeds, listener accounting, tunnel/status
+  effects, native worker joins and Auto listener release. Two initial fixture
+  errors (worker API and existing error prefix) are retained in the logs; they
+  are not claimed as production defects.
+- Final all-feature daemon tests pass 31 library and 617 binary tests in
+  `/tmp/lxmf-item4-bootstrap-dispatch-daemon.log`. Affected all-target Clippy,
+  Cargo fmt, explicit changed include-file formatting, boundaries, module size,
+  architecture, diagnostics scanner and diff checks pass.
+- Independent correctness and maintainability POST reviews approve the bounded
+  behavior-preserving extraction. [BOOTSTRAP.md](BOOTSTRAP.md) records the
+  remaining root/effect, status/control, restoration and twenty-family cutover.
+  No family gate or whole item is promoted by this preparatory checkpoint.

@@ -10,6 +10,8 @@ include!("bootstrap_interface_startup_parts/startup_vrn76_kiss_ble.rs");
 
 include!("bootstrap_interface_startup_parts/startup_configured.rs");
 
+include!("bootstrap_interface_startup_parts/startup_configured_recipe.rs");
+
 include!("bootstrap_interface_startup_parts/startup_misc.rs");
 
 include!("bootstrap_interface_startup_parts/startup_local_server.rs");
