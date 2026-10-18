@@ -111,9 +111,12 @@ Native packet provenance, blackholes, contention-safe downtime, session detach
 suppression, key collisions, whole-tree stop and retained status refresh pass
 bounded regressions. Trusted bootstrap recovery covers four managed kinds plus
 private Backbone clients; broader family recipes remain open. A local daemon
-process connects to a test-owned socket, while the three exact-target Python
-process traces remain pending. The honest Rust publisher identifies as LXMF-rs.
-The remaining carrier lifecycle, target discovery process traces and deeper
+process connects to a test-owned socket. The three exact-target Python process
+cases now pass: Rust default accepts Python, Python default rejects honest Rust
+with free slots and a working control, and Python override accepts Rust. Positive
+traces assert exact signed LXMF content on the selected native Backbone route and
+separate sender receipts. The honest Rust publisher identifies as LXMF-rs.
+The remaining carrier lifecycle and deeper
 recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

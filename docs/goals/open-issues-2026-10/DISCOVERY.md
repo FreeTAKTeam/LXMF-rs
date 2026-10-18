@@ -2,8 +2,9 @@
 
 This refines [PLAN.md](PLAN.md) and [TRANSPORT.md](TRANSPORT.md) after local
 checkpoint `f5be0db8`. Configuration/planner preparation and a bounded native
-runtime now pass local review; target-process and full-family qualification
-remain open. These are local checkpoints, not another PR. Exact target RNS is
+runtime now pass local review. Three target-process cases now pass locally;
+full-family qualification remains open. These are local checkpoints, not another
+PR. Exact target RNS is
 `7f2b3b9b524c9386316379af1313b43a5e4f7a5d`; canonical pins are unchanged.
 
 ## Owner and cutover
@@ -97,7 +98,7 @@ and [missed-tick policy](https://docs.rs/tokio/latest/tokio/time/enum.MissedTick
 | Pure planner gaps — locally verified | Policy-aware initial delegate, endpoint exclusions and collision allocation through existing planner | Exact target controlled predicate/name cases; old callers preserve defaults; malformed/missing/old/current implementation and version, override and unsupported-type controls |
 | Native discovery composition — bounded local verification | Trusted origin inside existing worker, initial/persisted/wakeup/periodic path, prepared carrier and truthful status | Native IPv4/IPv6 exact packet provenance; competing names/keys/endpoints/slots; external Apply retention; forged metadata rejection; blackhole authority and weak-queue closure. Local daemon-process connection also passes; this is not a Python peer trace |
 | Monitor and operator intent — bounded local verification | Existing lifecycle planner, native stop/join, session endpoint suppression, trusted four-kind plus Backbone bootstrap recipes | Fractional/skipped ticks, native observation time after lock acquisition, recovery, teardown, failed/successful explicit attach, detached endpoint suppression and dropped-owner cleanup; exact bootstrap keys and retained UDP/TCP status refresh. Other family recipes remain open |
-| Target process traces — pending | Three fresh local topologies at exact target | Rust accepts qualified Python by default; Python rejects honest Rust by default with positive readiness control; Python override accepts honest Rust. Prove the selected native interface and exact receiver bytes, not a connection counter alone |
+| Target process traces — locally verified | Three fresh local topologies at exact target | Rust accepts qualified Python by default; Python rejects honest Rust by default with positive readiness control; Python override accepts honest Rust. Exact recipient bytes, signatures, native interface/parent and sender delivery receipts are independently asserted |
 
 The native worker starts after the complete startup snapshot and can create the
 transport for discovery-only configurations. Its existing managed map uses a
@@ -130,6 +131,38 @@ the honest Rust advertisement was decoded/persisted with its real implementation
 metadata. Retain every failed run and repair causes without
 increasing these bounds or rerunning until green. This is separate from the
 three-run deeper relay replacement matrix in TRANSPORT.md.
+
+The executable case is `cargo test -p reticulumd --test discovery_python_process
+-- --ignored --nocapture --test-threads=1`, with absolute `LXMF_PYTHON_BIN`,
+`RETICULUM_PY_REPO` and `LXMF_PY_REPO` environment paths. The wrapper fails closed
+on unclean/wrong revisions or unexpected import paths. RNS uses the exact target
+above; LXMF 1.2 uses `c3ff2d6dc2f256daab896dadc044dd5a913ecbb7` for native stamping
+and delivery. These are feature-lane pins, not canonical reference promotion.
+Normal Verify now includes the same three cases; hosted results remain pending.
+
+Real production-signed discovery crosses the UDP bootstrap carrier. Positive
+cases remove that native UDP interface before destination announcement, then
+correlate the exact captured native packet bytes with the asynchronously delivered
+LXMF object's packed bytes/hash. Assertions include exact NUL/UTF-8 title/content,
+source/destination, signature, opportunistic method, native receiving interface
+object and accepted parent where applicable. Rust's learned route is tied to its
+selected client or accepted child's parent, and its sender receipt is checked
+separately. Default rejection begins after authenticated honest Rust persistence
+and qualified Python control traffic. In-process interface/free-slot checks run
+every 25 ms; cumulative Rust listener checks run every 500 ms, respecting existing
+RPC limits. Native listener readiness is required before traffic and throughout
+the negative interval, so a failed advertised bind cannot satisfy rejection.
+The final successful trace observes 10.03 seconds, 395 native samples,
+20 cumulative listener samples, three free slots and no Rust connection.
+
+The first invocation used unresolved relative environment paths; no peer cases
+ran. The first native set passed override/rejection and exposed a fixture RPC
+envelope error in Rust-default. The stronger next set passed both positive cases
+but exhausted the production RPC rate limit in its rejection observer. The paced
+candidate passes all three in 12.84 seconds. Review then adds explicit native
+listener readiness and listening-state sampling; the stronger final set passes
+all three in 12.80 seconds with unchanged protocol/security settings and bounds.
+All logs remain in PROGRESS.md; failures were not hidden.
 
 Main implements sequentially. PRE, correctness and maintainability POST reviews
 gate checkpoints. Run focused regressions first, affected full suites/Clippy,

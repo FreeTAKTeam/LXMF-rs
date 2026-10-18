@@ -20,6 +20,7 @@ env:
   PYTHON_RETICULUM_PARITY_REF: 99de23c040d507e3fefca19e87b182302902725d
   PYTHON_RETICULUM_FEATURE_REF: 7f2b3b9b524c9386316379af1313b43a5e4f7a5d
   PYTHON_LXMF_REF: 727830cefda83d9c6e3982b48675425f3f988f9c
+  PYTHON_LXMF_FEATURE_REF: c3ff2d6dc2f256daab896dadc044dd5a913ecbb7
 
 jobs:
   hil-pr:
@@ -158,6 +159,21 @@ jobs:
           cargo test -p rns-tools --test rngit_python_interop \
             rns_1_5_5_markdown_download::python_1_5_5_link_receives_converted_markdown_download \
             -- --ignored --exact --nocapture
+
+      - name: Checkout pinned Python LXMF 1.2 feature target
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/LXMF
+          ref: ${{ env.PYTHON_LXMF_FEATURE_REF }}
+          path: LXMF-feature
+
+      - name: Verify native discovery against Python 1.5.5
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-feature
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF-feature
+        run: |
+          cargo test -p reticulumd --test discovery_python_process \
+            -- --ignored --nocapture --test-threads=1
 
       - name: Verify pinned Python executable rngit permission resolver
         env:

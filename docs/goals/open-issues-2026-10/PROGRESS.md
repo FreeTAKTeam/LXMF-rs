@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; eight local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts, common live child policy, discovery configuration/planner preparation and bounded native discovery pass reviews and local checks. Remaining family lifecycle, target discovery process traces and deeper recovery gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; nine local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts, common live child policy, discovery configuration/planner preparation, bounded native discovery and three exact-target discovery process cases pass reviews and local checks. Remaining family lifecycle and deeper recovery gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1717,3 +1717,47 @@ validation only; terminal results and final-head review/CI/merge remain required
   checkpoint with no source blockers. The three declared target-process traces,
   remaining family composition and deeper relay replacement evidence still gate
   item 4. No PR, hosted CI, merge or broad qualification is claimed.
+
+## Item 4 exact-target discovery process traces
+
+- Three fresh topologies pass against clean RNS `7f2b3b9b524c9386316379af1313b43a5e4f7a5d`
+  and LXMF `c3ff2d6dc2f256daab896dadc044dd5a913ecbb7`, with exact revisions,
+  actual import paths, isolated storage/ports and owned child cleanup enforced.
+  The predeclared 15-second readiness and shared 30-second discovery/traffic
+  bounds remain unchanged. No production source or security policy changes.
+- Rust's default admission accepts the real Python publisher; Python's override
+  admits the honest Rust publisher. After discovery, native UDP is detached
+  before destination announcement, and the Rust route/native parent and Python
+  receiving object identify the selected Backbone connection. Exact captured
+  packed bytes correlate to native LXMF callbacks with NUL/UTF-8 title/content,
+  correct source/destination, valid signature and opportunistic method. Sender
+  delivered receipts are independent assertions.
+- Python's default rejects Rust only after authenticating and persisting its
+  `LXMF-rs`/`0.14.0` metadata. A separate genuine qualified Python publisher is
+  discovered and receives exact control bytes. The subsequent 10.02-second
+  rejection interval retains three free slots across 395 native observations,
+  with 20 cumulative Rust listener observations and no accepted Rust connection
+  or Python endpoint reservation in any visible state.
+- `/tmp/lxmf-item4-discovery-process-first.log` records an environment path error
+  before any peer ran. `/tmp/lxmf-item4-discovery-process-native-first.log` passes
+  two cases and retains the Rust-default fixture envelope error. The strengthened
+  `/tmp/lxmf-item4-discovery-process-provenance.log` passes both positives but
+  retains RPC rate limiting caused by its 25 ms observer. Only RPC sampling is
+  paced to 500 ms; native sampling, production limits and the ten-second window
+  are retained. `/tmp/lxmf-item4-discovery-process-paced.log` passes all three in
+  12.84 seconds. No run is relabelled or overwritten.
+- Maintainability review strengthens the negative control by requiring the
+  advertised Rust native listener to reach listening readiness before traffic
+  and remain listening at every paced sample; a failed bind cannot masquerade
+  as policy rejection. No preflight connection contaminates its zero-accept
+  count. `/tmp/lxmf-item4-discovery-process-listener-ready.log` passes all three
+  in 12.80 seconds; rejection observes 10.03 seconds and the same 395/20 native
+  and cumulative listener samples.
+- The three ignored opt-in cases are wired into normal Verify with separate
+  feature checkouts, preserving canonical pins. Focused Clippy, Cargo formatting,
+  Python compile, diff, module size and actionlint (without optional shellcheck
+  or pyflakes) pass. Hosted execution and the
+  overall item-4 family/deeper matrix remain pending.
+- Correctness and maintainability POST reviews approve the bounded process
+  checkpoint after native-listener readiness is added. No source or proof blocker
+  remains in this three-case scope; item 4 is not yet complete.

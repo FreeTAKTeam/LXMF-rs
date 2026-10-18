@@ -31,8 +31,10 @@ download trace, not general Markdown renderer parity.
 
 The discovery library planner applies the 1.5.5 safe default. The later item-4
 native checkpoint now consumes it in the existing interface mutation worker and
-creates prepared live clients; the three exact-target Python process traces
-remain pending. `rnstatus --discovered` shows filtered human
+creates prepared live clients. Three exact-target Python process cases now pass
+for both default policies and Python's explicit override, including honest Rust
+metadata, exact recipient content/native provenance and separate sender receipts.
+`rnstatus --discovered` shows filtered human
 rows while JSON retains the unfiltered discovery set, matching the Python
 display boundary. The Rust publisher already requires `publish_ifac` and
 configured IFAC fields; encoding now drops empty or literal `None` values. The
@@ -47,8 +49,8 @@ retain Python's ordering against the fixed 1.5.2 minimum. The override now feeds
 native admission, initial/persisted/periodic paths and monitoring. Bounded native
 tests cover exact packet provenance, blackholes, operator suppression, contention
 and teardown; trusted bootstrap composition covers four managed kinds plus
-private Backbone clients. Broader family recovery and target-process evidence
-remain open in [DISCOVERY.md](../goals/open-issues-2026-10/DISCOVERY.md). The Rust
+private Backbone clients. Broader family recovery remains open in
+[DISCOVERY.md](../goals/open-issues-2026-10/DISCOVERY.md). The Rust
 publisher retains its honest LXMF-rs implementation metadata.
 
 Local-client forced bitrate is applied before the accepted stream worker runs,

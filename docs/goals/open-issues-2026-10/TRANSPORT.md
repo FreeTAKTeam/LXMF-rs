@@ -251,7 +251,12 @@ recipes. Actual packet provenance and status, key collisions, manager contention
 whole-tree stop and record retirement pass bounded native regressions. The
 validated-event fixture preserves honest LXMF-rs metadata and proves persistence
 before queue admission; outer network authentication is not its scope. Other
-bootstrap family recipes and all three declared Python process cases remain open.
+bootstrap family recipes remain open. All three declared Python process cases
+now pass with honest implementation metadata, exact recipient bytes/signatures,
+selected native path/parent and independent sender receipts. Default rejection
+retains free capacity and a real qualified positive control for at least ten
+seconds. This closes those three discovery process cells, not the family or
+deeper relay matrix.
 
 The deeper relay lane will extend the existing Python shared-owner/client and
 Rust-relay fixture to three Rust relays. Predeclare three fresh process runs,
