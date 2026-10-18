@@ -25,17 +25,34 @@ pub(super) fn preserve_unmanaged_records(
 /// only the policy the native mutation owner actually installed.
 pub(super) fn committed_records(
     records: &mut [InterfaceRecord],
-    managed: &HashMap<String, ManagedHotApplyInterface>,
+    managed: &HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
 ) {
     for record in records {
-        let Some(key) = hot_apply_interface_key(record) else {
-            continue;
-        };
+        let key = hot_apply_interface_key(record);
+        let active = key
+            .as_ref()
+            .and_then(|key| managed.get(&configured_key(key)))
+            .filter(|active| {
+                active.origin.configuration_owned()
+                    && active.record.kind == record.kind
+                    && active.record.name == record.name
+            })
+            .or_else(|| {
+                managed.values().find(|active| {
+                    !active.origin.configuration_owned()
+                        && discovery_runtime::same_record(&active.record, record)
+                })
+            });
         if !record.enabled {
-            clear_inactive_runtime(record, "detached", "stopped", None);
+            if key.is_some() || record.kind == "backbone_client" {
+                clear_inactive_runtime(record, "detached", "stopped", None);
+            }
             continue;
         }
-        let Some(active) = managed.get(&key) else {
+        let Some(active) = active else {
+            if key.is_none() {
+                continue;
+            }
             clear_inactive_runtime(
                 record,
                 "failed",
@@ -44,11 +61,37 @@ pub(super) fn committed_records(
             );
             continue;
         };
+        let retained_runtime = if active.runtime_status.is_none() {
+            record
+                .settings
+                .as_ref()
+                .and_then(|settings| settings.get("_runtime"))
+                .and_then(serde_json::Value::as_object)
+                .cloned()
+        } else {
+            None
+        };
         *record = active.record.clone();
+        if let Some(retained_runtime) = retained_runtime {
+            crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
+                *runtime = retained_runtime
+            });
+            continue;
+        }
         let address = active.address.to_string();
         mark_interface_startup_status(record, "spawned", None, Some(&address));
         mark_interface_runtime_managed(record, "daemon_transport");
         mark_interface_runtime_fields(record, "running", 0);
+        if let ManagedInterfaceOrigin::Discovered { endpoint, source, .. } = &active.origin {
+            crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
+                runtime.insert(
+                    "discovery".to_owned(),
+                    serde_json::json!({
+                        "endpoint_hash": hex::encode(endpoint), "network_id": source,
+                    }),
+                );
+            });
+        }
         let status = match &active.runtime_status {
             Some(HotApplyRuntimeStatus::TcpClient(status)) => {
                 ("tcp", "stream_status", status.to_json())

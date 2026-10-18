@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; seven local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts, common live child policy and discovery configuration/planner preparation pass bounded reviews and local checks. Remaining family lifecycle, discovery runtime and deeper recovery gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; eight local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts, common live child policy, discovery configuration/planner preparation and bounded native discovery pass reviews and local checks. Remaining family lifecycle, target discovery process traces and deeper recovery gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1656,3 +1656,64 @@ validation only; terminal results and final-head review/CI/merge remain required
   bootstrap restoration and all three declared process cases remain open.
   Family lifecycle and deeper mixed-process recovery still gate item 4; no PR,
   hosted check, merge or broad runtime qualification is claimed here.
+
+## Item 4 bounded native discovery and monitoring
+
+- The existing interface mutation worker now owns initial admission, persisted
+  live observations, five-second periodic refill/monitoring and prepared stream
+  installation. Startup publishes its complete snapshot first. Discovery-only
+  configurations create a transport; attached clients do not run admission.
+  A weak sender applies bounded backpressure after persistence without extending
+  worker lifetime. External Apply preserves private discovery origins; caller
+  `_runtime` cannot grant them. A private configured/discovered key enum keeps
+  literal names, hidden configured keys and endpoint identities distinct in the
+  existing managed map. Snapshot reverse lookups are ephemeral.
+- Admission rechecks source, both native blackhole identities, endpoint, name,
+  slot and session suppression. Default qualification remains verified RNS
+  1.5.2+, and the parsed explicit override is now wired to admission. Linux uses
+  the existing private Backbone builder, other platform selection remains
+  ordinary TCP. Announce defaults are parsed privately from the same immutable
+  snapshot with independent fallback; public struct layouts remain unchanged.
+- Native status observation owns the first-down monotonic anchor. Fractional
+  timing, skipped ticks, recovery and manager contention cannot authorize early
+  teardown. Periodic refill chooses one available transport candidate while
+  preserving the quarter-slot reservation. Manual detach suppresses the endpoint
+  before stopping; failed configured attach/reload retains it, including a failed
+  operation whose rollback succeeds. Successful requested native readiness clears
+  it. Every owned worker is joined/aborted before returning a stop diagnostic,
+  and record absence is published even on that error path.
+- Trusted bootstrap recipes cover the existing four managed kinds plus private
+  Backbone clients. Exact keys support unnamed and padded configured names.
+  Restored UDP/listener/pipe status uses existing refresh workers; retained TCP
+  handles publish native connection state through the mutation owner. Other
+  families remain open. A failed UDP bind can still spend the existing five-second
+  retry sleep before cancellation; this checkpoint does not qualify that family
+  error-lifecycle cell.
+- The first daemon-process probe fails to connect with the pre-runtime binary
+  and passes with the new native worker; logs are
+  `/tmp/lxmf-item4-discovery-native-{red,green}.log`. It connects to a test-owned
+  socket, not a Python peer. Native IPv4 and IPv6 tests additionally assert exact
+  packet bytes and selected interface identity. The validated-event test proves
+  persistence-before-admission and rejects a disallowed source. It begins after
+  outer event validation and preserves honest publisher metadata `LXMF-rs`.
+- Retained real regressions cover native-only/network blackholes, backdated
+  downtime, erased unrelated status, incorrect unnamed bootstrap lookup, workers
+  left alive after stop failure, unpublished removal, missing restored UDP
+  refresh and configured/discovered key/name collisions. Logs use
+  `/tmp/lxmf-item4-discovery-{owner-native-blackhole-red,review-controls-red2,stop-red,publication-red,key-red,key-partial-red,key-green}.log`.
+  The definitive TCP red waits for native connected state and then reproduces
+  the old publication predicate in
+  `/tmp/lxmf-item4-discovery-tcp-status-definitive-red.log`.
+- Two initial assertions were fixture errors: production advertises `LXMF-rs`,
+  and server acceptance can precede the client's connected status. Correcting
+  these assumptions does not change production identity or relax a deadline.
+  The final full all-feature daemon run passes 31 library and 616 binary tests
+  in `/tmp/lxmf-item4-discovery-native-daemon-green.log`. Transport passes 1,044
+  with 12 explicit opt-in ignores. Affected all-target/all-feature Clippy passes
+  in `/tmp/lxmf-item4-discovery-native-clippy-final.log`. Cargo fmt, explicit
+  changed include-file formatting, diff, boundaries, size, architecture and
+  issue-369 checks pass. Preexisting bootstrap-core formatting is retained.
+- Independent correctness and maintainability POST reviews approve this bounded
+  checkpoint with no source blockers. The three declared target-process traces,
+  remaining family composition and deeper relay replacement evidence still gate
+  item 4. No PR, hosted CI, merge or broad qualification is claimed.

@@ -29,9 +29,10 @@ the Rust server with bytes matching Python's MarkdownToMicron on that fixture.
 The same exact-tag check is now in normal Verify CI. This is one converted
 download trace, not general Markdown renderer parity.
 
-The discovery library planner applies the 1.5.5 safe default; production
-`reticulumd` has no discovery auto-connect worker, so the configuration knobs
-do not yet create live interfaces. `rnstatus --discovered` shows filtered human
+The discovery library planner applies the 1.5.5 safe default. The later item-4
+native checkpoint now consumes it in the existing interface mutation worker and
+creates prepared live clients; the three exact-target Python process traces
+remain pending. `rnstatus --discovered` shows filtered human
 rows while JSON retains the unfiltered discovery set, matching the Python
 display boundary. The Rust publisher already requires `publish_ifac` and
 configured IFAC fields; encoding now drops empty or literal `None` values. The
@@ -42,8 +43,13 @@ with a private, independently falling-back unverified override. An additive
 policy-aware initial planner reserves names and applies endpoint exclusions.
 A controlled exact-target comparison passes 78 qualification cases, nine
 endpoints and sequential name collisions; large numeric version components
-retain Python's ordering against the fixed 1.5.2 minimum. The override is not yet
-wired to a native auto-connect worker, so this does not change the runtime gap.
+retain Python's ordering against the fixed 1.5.2 minimum. The override now feeds
+native admission, initial/persisted/periodic paths and monitoring. Bounded native
+tests cover exact packet provenance, blackholes, operator suppression, contention
+and teardown; trusted bootstrap composition covers four managed kinds plus
+private Backbone clients. Broader family recovery and target-process evidence
+remain open in [DISCOVERY.md](../goals/open-issues-2026-10/DISCOVERY.md). The Rust
+publisher retains its honest LXMF-rs implementation metadata.
 
 Local-client forced bitrate is applied before the accepted stream worker runs,
 and virtual children inherit their parent's initial announce cap and policy.

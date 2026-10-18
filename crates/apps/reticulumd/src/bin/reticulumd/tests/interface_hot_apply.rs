@@ -322,7 +322,8 @@ async fn hot_apply_removes_tcp_server_when_disabled_closes_listener() {
     )
     .await;
 
-    let address = managed.get("listener").expect("managed tcp_server").address;
+    let address =
+        managed.get(&super::configured_key("listener")).expect("managed tcp_server").address;
     assert!(refreshes
         .tcp_listeners
         .lock()
@@ -383,7 +384,8 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
     )
     .await;
 
-    let address = managed.get("loopback").expect("managed tcp client").address;
+    let address =
+        managed.get(&super::configured_key("loopback")).expect("managed tcp client").address;
     let manager = iface_manager.lock().await;
     let path_table_identity = manager
         .tcp_client_path_table_metadata(&address)
@@ -418,7 +420,8 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
     )
     .await;
 
-    let updated_address = managed.get("loopback").expect("replaced TCP client").address;
+    let updated_address =
+        managed.get(&super::configured_key("loopback")).expect("replaced TCP client").address;
     assert_ne!(updated_address, address);
     let manager = iface_manager.lock().await;
     let updated_identity = manager
@@ -438,11 +441,12 @@ async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
         *manager.new_channel(8).address()
     };
     let mut managed = HashMap::from([(
-        "loopback".to_string(),
+        "loopback".to_string().into(),
         ManagedHotApplyInterface {
             record: tcp_record("loopback", "127.0.0.1", 1),
             address,
             runtime_status: None,
+            origin: super::ManagedInterfaceOrigin::Configured,
         },
     )]);
     let mut record = tcp_record("loopback", "127.0.0.1", 1);
@@ -508,7 +512,7 @@ async fn hot_apply_spawns_udp_unicast_listener_with_runtime_metadata() {
     assert!(udp_status.get("forward_addr").is_some_and(|value| value.is_null()));
     assert!(udp_status.get("iface").is_some_and(|value| value.is_null()));
 
-    let address = managed.get("udp-loopback").expect("managed udp").address;
+    let address = managed.get(&super::configured_key("udp-loopback")).expect("managed udp").address;
     let manager = iface_manager.lock().await;
     assert_eq!(manager.role(&address), Some(IfaceRole::Unicast));
     assert_eq!(manager.mode(&address), Some(InterfaceMode::Full));
@@ -771,7 +775,7 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
         None,
     )
     .await;
-    let first = managed.get("udp-loopback").expect("first udp").address;
+    let first = managed.get(&super::configured_key("udp-loopback")).expect("first udp").address;
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
@@ -782,7 +786,7 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
     )
     .await;
 
-    let second = managed.get("udp-loopback").expect("second udp").address;
+    let second = managed.get(&super::configured_key("udp-loopback")).expect("second udp").address;
     assert_ne!(first, second);
     let manager = iface_manager.lock().await;
     assert_eq!(manager.role(&first), None);
@@ -799,11 +803,12 @@ async fn hot_apply_replaces_startup_seeded_udp_when_bind_changes() {
         channel.address
     };
     let mut managed = HashMap::from([(
-        "udp-loopback".to_string(),
+        "udp-loopback".to_string().into(),
         ManagedHotApplyInterface {
             record: udp_record("udp-loopback", "127.0.0.1", 4242),
             address: first,
             runtime_status: None,
+            origin: super::ManagedInterfaceOrigin::Configured,
         },
     )]);
 
@@ -818,7 +823,8 @@ async fn hot_apply_replaces_startup_seeded_udp_when_bind_changes() {
     )
     .await;
 
-    let second = managed.get("udp-loopback").expect("replacement udp").address;
+    let second =
+        managed.get(&super::configured_key("udp-loopback")).expect("replacement udp").address;
     assert_ne!(first, second);
     let manager = iface_manager.lock().await;
     assert_eq!(manager.role(&first), None);
@@ -835,11 +841,12 @@ async fn hot_apply_removes_startup_seeded_udp_when_disabled() {
         channel.address
     };
     let mut managed = HashMap::from([(
-        "udp-loopback".to_string(),
+        "udp-loopback".to_string().into(),
         ManagedHotApplyInterface {
             record: udp_record("udp-loopback", "127.0.0.1", 4242),
             address,
             runtime_status: None,
+            origin: super::ManagedInterfaceOrigin::Configured,
         },
     )]);
     let mut disabled = udp_record("udp-loopback", "127.0.0.1", 4242);
@@ -876,7 +883,7 @@ async fn hot_apply_replaces_pipe_when_command_changes() {
         None,
     )
     .await;
-    let first = managed.get("pipe-cat").expect("first pipe").address;
+    let first = managed.get(&super::configured_key("pipe-cat")).expect("first pipe").address;
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
@@ -887,7 +894,7 @@ async fn hot_apply_replaces_pipe_when_command_changes() {
     )
     .await;
 
-    let second = managed.get("pipe-cat").expect("replacement pipe").address;
+    let second = managed.get(&super::configured_key("pipe-cat")).expect("replacement pipe").address;
     assert_ne!(first, second);
     let manager = iface_manager.lock().await;
     assert_eq!(manager.role(&first), None);

@@ -2,13 +2,26 @@ use super::*;
 use reticulum_daemon::config::ReticulumRuntimePolicy;
 use std::path::Path;
 
-#[derive(Default)]
 pub(super) struct ParsedRuntimePolicy {
     policy: ReticulumRuntimePolicy,
     allow_unverified: bool,
+    announce_defaults: (u64, u64, u64),
+}
+
+impl Default for ParsedRuntimePolicy {
+    fn default() -> Self {
+        Self {
+            policy: ReticulumRuntimePolicy::default(),
+            allow_unverified: false,
+            announce_defaults: (3600, 5, 0),
+        }
+    }
 }
 
 impl ParsedRuntimePolicy {
+    pub(super) fn announce_defaults(&self) -> (u64, u64, u64) {
+        self.announce_defaults
+    }
     pub(super) fn into_parts(self) -> (ReticulumRuntimePolicy, bool) {
         (self.policy, self.allow_unverified)
     }
@@ -70,7 +83,31 @@ fn load_with(
             false
         }
     };
-    (daemon, ParsedRuntimePolicy { policy, allow_unverified }, rejected)
+    let mut announce_defaults = [3600, 5, 0];
+    if let Ok(document) = input.parse::<toml::Value>() {
+        for ((name, fallback), output) in
+            [("default_ar_target", 3600), ("default_ar_grace", 5), ("default_ar_penalty", 0)]
+                .into_iter()
+                .zip(&mut announce_defaults)
+        {
+            if let Some(value) = document.get("reticulum").and_then(|table| table.get(name)) {
+                match value.as_integer().and_then(|value| u64::try_from(value).ok()) {
+                    Some(0) => *output = fallback,
+                    Some(value) => *output = value,
+                    None => log::warn!("[daemon] invalid discovery announce default option={name}; using carrier default"),
+                }
+            }
+        }
+    }
+    (
+        daemon,
+        ParsedRuntimePolicy {
+            policy,
+            allow_unverified,
+            announce_defaults: (announce_defaults[0], announce_defaults[1], announce_defaults[2]),
+        },
+        rejected,
+    )
 }
 
 fn rejected_ifac_interface_records(source: &str) -> Vec<InterfaceRecord> {
@@ -150,6 +187,24 @@ mod tests {
                 .expect("existing daemon view remains valid")
                 .reticulum_transport_enabled());
             assert!(rejected.is_empty());
+        }
+    }
+
+    #[test]
+    fn discovery_announce_defaults_preserve_target_zero_and_invalid_fallbacks() {
+        for (setting, expected) in [
+            ("", (3600, 5, 0)),
+            ("default_ar_target=120\ndefault_ar_grace=3\ndefault_ar_penalty=8", (120, 3, 8)),
+            ("default_ar_target=0\ndefault_ar_grace=0\ndefault_ar_penalty=0", (3600, 5, 0)),
+            ("default_ar_target=-2\ndefault_ar_grace='invalid'", (3600, 5, 0)),
+        ] {
+            let input =
+                configured(&format!("autoconnect_unverified_implementations=true\n{setting}"));
+            let (daemon, parsed, _) = load_with(Path::new("config"), |_| Ok(input));
+            assert!(daemon.is_some());
+            assert!(parsed.allow_unverified, "independent additive option");
+            assert_eq!(parsed.policy.max_autoconnected_interfaces, 3);
+            assert_eq!(parsed.announce_defaults(), expected);
         }
     }
 

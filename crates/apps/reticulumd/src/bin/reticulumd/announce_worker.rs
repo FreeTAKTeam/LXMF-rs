@@ -27,6 +27,7 @@ pub(super) struct DiscoveryWorkerConfig {
     pub local_identity: PrivateIdentity,
     pub network_identity: Option<PrivateIdentity>,
     pub outbound: Vec<crate::discovery_publish::OutboundDiscoveryAnnouncement>,
+    pub observations: Option<crate::interface_hot_apply::DiscoveryObservationSender>,
 }
 
 pub(super) fn spawn_announce_worker(
@@ -176,8 +177,15 @@ async fn ingest_discovery_announce(event: &AnnounceEvent, config: &DiscoveryWork
             return;
         }
     };
-    if let Err(error) = InterfaceDiscoveryStore::new(&config.storage_path).observe(record) {
-        log::warn!("[daemon] failed to persist discovered interface: {error}");
+    match InterfaceDiscoveryStore::new(&config.storage_path).observe(record) {
+        Ok(record) => {
+            if let Some(observations) = &config.observations {
+                if let Err(error) = observations.observed(record).await {
+                    log::warn!("[daemon] persisted discovery observation could not reach native owner: {error}");
+                }
+            }
+        }
+        Err(error) => log::warn!("[daemon] failed to persist discovered interface: {error}"),
     }
 }
 
@@ -186,6 +194,111 @@ mod tests {
     use super::*;
     use crate::discovery_publish::OutboundDiscoveryAnnouncement;
     use rns_transport::discovery::announce::{decode_announce, DiscoverableInterface};
+
+    #[tokio::test]
+    async fn validated_live_discovery_is_persisted_before_native_mutation_admission() {
+        use crate::interface_hot_apply::{InterfaceHotApplyBridge, NativeDiscoveryConfig};
+        use reticulum_daemon::config::ReticulumRuntimePolicy;
+        use rns_transport::destination::SingleOutputDestination;
+        use rns_transport::discovery::DiscoveryListFilter;
+        use rns_transport::packet::PacketDataBuffer;
+        use rns_transport::transport::TransportConfig;
+        use tokio::time::{timeout, Duration};
+
+        let root = tempfile::tempdir().expect("discovery root");
+        let peer = tokio::net::TcpListener::bind("127.0.0.2:0").await.expect("native peer");
+        let publisher = PrivateIdentity::new_from_name("honest-discovery-publisher");
+        let local_identity = PrivateIdentity::new_from_name("discovery-receiver");
+        let network_id = hex::encode(publisher.address_hash().as_slice());
+        let transport = Arc::new(Transport::new(TransportConfig::new(
+            "discovery-receiver",
+            &local_identity,
+            true,
+        )));
+        let daemon = Arc::new(RpcDaemon::test_instance());
+        let policy = ReticulumRuntimePolicy {
+            discover_interfaces: true,
+            max_autoconnected_interfaces: 1,
+            ..Default::default()
+        };
+        let bridge = InterfaceHotApplyBridge::spawn_with_discovery(
+            transport.clone(),
+            Vec::new(),
+            Arc::downgrade(&daemon),
+            NativeDiscoveryConfig::new(root.path().to_owned(), &policy, true, &[], (3600, 5, 0)),
+        );
+        let interface = DiscoverableInterface {
+            interface_type: "BackboneInterface".into(),
+            transport: false,
+            transport_id: publisher.address_hash().as_slice().try_into().expect("identity"),
+            name: "validated-live-peer".into(),
+            reachable_on: Some("127.0.0.2".into()),
+            port: Some(peer.local_addr().expect("peer endpoint").port()),
+            operator_lxmf_address: None,
+            latitude: None,
+            longitude: None,
+            height: None,
+            ifac_netname: None,
+            ifac_netkey: None,
+            frequency: None,
+            bandwidth: None,
+            spreading_factor: None,
+            coding_rate: None,
+            modulation: None,
+            channel: None,
+        };
+        let payload = encode_announce(&interface, 1, None::<fn(&[u8]) -> Option<Vec<u8>>>)
+            .expect("honest implementation payload");
+        let name = DestinationName::new("rnstransport", "discovery.interface");
+        let event = AnnounceEvent {
+            destination: Arc::new(tokio::sync::Mutex::new(SingleOutputDestination::new(
+                *publisher.as_identity(),
+                name,
+            ))),
+            app_data: PacketDataBuffer::new_from_slice(&payload),
+            ratchet: None,
+            name_hash: name.as_name_hash_slice().try_into().expect("name hash"),
+            hops: 1,
+            interface: vec![1; 16],
+        };
+        let mut config = DiscoveryWorkerConfig {
+            storage_path: root.path().to_owned(),
+            allowed_network_ids: vec!["unapproved-source".into()],
+            required_value: 1,
+            local_identity,
+            network_identity: None,
+            outbound: Vec::new(),
+            observations: Some(bridge.discovery_observations()),
+        };
+        ingest_discovery_announce(&event, &config).await;
+        let store = InterfaceDiscoveryStore::new(root.path());
+        assert!(store
+            .list(now_epoch_secs_u64() as f64, &[], DiscoveryListFilter::default())
+            .expect("no rejected persistence")
+            .is_empty());
+        assert!(daemon.interface_records().is_empty());
+        config.allowed_network_ids = vec![network_id.clone()];
+        ingest_discovery_announce(&event, &config).await;
+        let (_connection, _) = timeout(Duration::from_secs(2), peer.accept())
+            .await
+            .expect("live observation connection deadline")
+            .expect("native connection");
+        let retained = store
+            .list(now_epoch_secs_u64() as f64, &[network_id], DiscoveryListFilter::default())
+            .expect("persisted validated observation");
+        assert_eq!(retained.len(), 1);
+        assert_eq!(retained[0].impl_name.as_deref(), Some("LXMF-rs"));
+        assert!(!retained[0].transport, "live callbacks do not apply the transport-list filter");
+        assert_eq!(daemon.interface_records()[0].name.as_deref(), Some("validated-live-peer"));
+        drop(bridge);
+        timeout(Duration::from_secs(2), async {
+            while !transport.interface_hashes().await.is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("native owner shutdown");
+    }
 
     #[test]
     fn rns_1_5_encrypted_discovery_cross_node_uses_shared_network_identity() {

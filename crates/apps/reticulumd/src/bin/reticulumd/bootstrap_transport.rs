@@ -5,6 +5,7 @@ use super::{
 };
 #[path = "bootstrap_interface_startup.rs"]
 mod interface_startup;
+pub(crate) use interface_startup::build_tcp_client_adapter;
 #[path = "bootstrap_transport_path_restore.rs"]
 mod path_restore;
 #[path = "bootstrap_transport_reconnect_synthesizer.rs"]
@@ -82,6 +83,7 @@ pub(super) async fn start_transport_and_interfaces(
         propagation_announce_config,
         local_hops_delta,
         inbound_queue_limits,
+        discovery_enabled,
     } = input;
 
     for record in &mut configured_interfaces {
@@ -97,6 +99,7 @@ pub(super) async fn start_transport_and_interfaces(
     let has_enabled_configured_interface =
         daemon_config.is_some_and(|config| config.interfaces.iter().any(|iface| iface.enabled()));
     let transport_required = args.zmq_durable_broker
+        || discovery_enabled
         || selected_tcp_server.bind_addr.is_some()
         || has_enabled_configured_interface;
 

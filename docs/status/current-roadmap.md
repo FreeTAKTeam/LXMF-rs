@@ -105,9 +105,15 @@ The pure planner reserves collision suffixes, excludes unsafe endpoint classes,
 and accepts the explicit qualification override through an additive initial
 planning method. A controlled exact-1.5.5 comparison covers 78 qualification
 cases, nine endpoints and sequential names, including large version components.
-The private override is parsed but awaits native worker composition; this is
-not a live auto-connect or process interoperability claim.
-The remaining carrier lifecycle, discovery and deeper
+The existing mutation worker now consumes that policy for prepared native
+admission, persisted live observations and five-second refill/monitoring.
+Native packet provenance, blackholes, contention-safe downtime, session detach
+suppression, key collisions, whole-tree stop and retained status refresh pass
+bounded regressions. Trusted bootstrap recovery covers four managed kinds plus
+private Backbone clients; broader family recipes remain open. A local daemon
+process connects to a test-owned socket, while the three exact-target Python
+process traces remain pending. The honest Rust publisher identifies as LXMF-rs.
+The remaining carrier lifecycle, target discovery process traces and deeper
 recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

@@ -239,6 +239,10 @@ impl Transport {
         self.handler.lock().await.config.set_connected_to_shared_instance(connected);
     }
 
+    pub async fn connected_to_shared_instance(&self) -> bool {
+        self.handler.lock().await.config.connected_to_shared_instance
+    }
+
     /// Commit attached-client mode before releasing an owned worker's start
     /// gate. A closed gate or already-cancelled interface leaves mode unchanged.
     /// This contains no packet I/O, callbacks or await while holding the handler.

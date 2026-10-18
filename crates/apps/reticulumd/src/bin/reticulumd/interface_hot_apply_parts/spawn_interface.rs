@@ -1,5 +1,30 @@
 use super::*;
 
+pub(super) async fn spawn_trusted_stream(
+    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
+    config: &reticulum_daemon::config::InterfaceConfig,
+) -> Option<(AddressHash, Option<HotApplyRuntimeStatus>)> {
+    let (Some(host), Some(port)) = (config.host.as_deref(), config.port) else {
+        return None;
+    };
+    let adapter =
+        crate::bootstrap::build_tcp_client_adapter(format!("{host}:{port}"), config, None);
+    let status = adapter.runtime_status_handle();
+    match crate::interfaces::common::spawn_configured(
+        &mut *iface_manager.lock().await,
+        adapter,
+        TcpClient::spawn,
+        IfaceRole::Unicast,
+        config,
+    ) {
+        Ok(address) => Some((address, Some(HotApplyRuntimeStatus::TcpClient(status)))),
+        Err(error) => {
+            log::warn!("[daemon] trusted stream policy rejected name={:?}: {error}", config.name);
+            None
+        }
+    }
+}
+
 pub(super) async fn spawn_hot_apply_interface(
     iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
     transport: Option<&Arc<Transport>>,

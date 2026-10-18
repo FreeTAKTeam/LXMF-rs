@@ -52,4 +52,5 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
     pub(super) local_hops_delta: bool,
     pub(super) inbound_queue_limits: InboundQueueLimits,
+    pub(super) discovery_enabled: bool,
 }

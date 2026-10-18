@@ -1,8 +1,9 @@
 # Item 4 discovery runtime contract
 
 This refines [PLAN.md](PLAN.md) and [TRANSPORT.md](TRANSPORT.md) after local
-checkpoint `f5be0db8`. It is preparation, not completed discovery qualification
-or another PR. Exact target RNS is
+checkpoint `f5be0db8`. Configuration/planner preparation and a bounded native
+runtime now pass local review; target-process and full-family qualification
+remain open. These are local checkpoints, not another PR. Exact target RNS is
 `7f2b3b9b524c9386316379af1313b43a5e4f7a5d`; canonical pins are unchanged.
 
 ## Owner and cutover
@@ -76,8 +77,9 @@ and [missed-tick policy](https://docs.rs/tokio/latest/tokio/time/enum.MissedTick
 - Keep public named attach/reload config-backed and restricted to its existing
   four kinds. Origin-checked discovery detach can stop an internal Backbone and
   suppress that endpoint for this native owner's session. A successful configured
-  attach/reload to the endpoint clears suppression at native readiness/rollback
-  success, not queue acknowledgement; failures retain it. Do not
+  attach/reload to the endpoint clears suppression only when the requested
+  operation succeeds at native readiness, not queue acknowledgement. A failed
+  reload retains suppression even when rollback succeeds. Do not
   recover a detached recipe from public status or caller metadata. A new owner
   starts a new session. Non-config discovered-name attach/reload is not added.
 - Bootstrap-only disable/restore uses trusted startup recipes, not public status
@@ -91,11 +93,34 @@ and [missed-tick policy](https://docs.rs/tokio/latest/tokio/time/enum.MissedTick
 
 | Task | Main-agent output | Evidence gate |
 | --- | --- | --- |
-| Immutable config and policy | Private parsed views, one file snapshot, unchanged public structs | Valid/default/invalid override, independent old typed-view fallbacks, snapshot replacement race and existing bootstrap malformed-IFAC regressions |
-| Pure planner gaps | Policy-aware initial delegate, endpoint exclusions and collision allocation through existing planner | Exact target controlled predicate/name cases; old callers preserve defaults; malformed/missing/old/current implementation and version, override and unsupported-type controls |
-| Native discovery composition | Trusted origin inside existing worker, initial/persisted/wakeup/periodic path, prepared carrier and truthful status | Real connection and exact packet provenance, competing name/endpoint/slot records, failed install rollback, external Apply retention, forged metadata rejection and unrelated traffic continuity |
-| Monitor and operator intent | Existing lifecycle planner, native stop/join, session endpoint suppression, bootstrap recipes | Five-second scheduling and twelve-second boundary, recovery, automatic teardown, bootstrap restore, success/failure attach/reload, detach/wakeup races and dropped-owner cleanup |
-| Target process traces | Three fresh local topologies at exact target | Rust accepts qualified Python by default; Python rejects honest Rust by default with positive readiness control; Python override accepts honest Rust. Prove the selected native interface and exact receiver bytes, not a connection counter alone |
+| Immutable config and policy — locally verified | Private parsed views, one file snapshot, unchanged public structs | Valid/default/invalid override, independent old typed-view fallbacks, snapshot replacement race and existing bootstrap malformed-IFAC regressions |
+| Pure planner gaps — locally verified | Policy-aware initial delegate, endpoint exclusions and collision allocation through existing planner | Exact target controlled predicate/name cases; old callers preserve defaults; malformed/missing/old/current implementation and version, override and unsupported-type controls |
+| Native discovery composition — bounded local verification | Trusted origin inside existing worker, initial/persisted/wakeup/periodic path, prepared carrier and truthful status | Native IPv4/IPv6 exact packet provenance; competing names/keys/endpoints/slots; external Apply retention; forged metadata rejection; blackhole authority and weak-queue closure. Local daemon-process connection also passes; this is not a Python peer trace |
+| Monitor and operator intent — bounded local verification | Existing lifecycle planner, native stop/join, session endpoint suppression, trusted four-kind plus Backbone bootstrap recipes | Fractional/skipped ticks, native observation time after lock acquisition, recovery, teardown, failed/successful explicit attach, detached endpoint suppression and dropped-owner cleanup; exact bootstrap keys and retained UDP/TCP status refresh. Other family recipes remain open |
+| Target process traces — pending | Three fresh local topologies at exact target | Rust accepts qualified Python by default; Python rejects honest Rust by default with positive readiness control; Python override accepts honest Rust. Prove the selected native interface and exact receiver bytes, not a connection counter alone |
+
+The native worker starts after the complete startup snapshot and can create the
+transport for discovery-only configurations. Its existing managed map uses a
+private key enum to distinguish configured keys from discovery endpoint hashes;
+the per-snapshot lookup is ephemeral, not a second registry. Display names never
+act as native keys. Native blackholes check both network and transport identity.
+The first-down anchor is captured after native status observation, preventing
+time spent waiting for the manager from becoming claimed downtime.
+
+Private startup parsing retains the reference announce defaults (3,600 seconds,
+grace 5, penalty 0) independently of the unverified override. Zero/invalid values
+follow the documented fallback. Public configuration layouts remain unchanged.
+Restored UDP/listener/pipe carriers reuse their existing status refreshers;
+retained TCP-client handles are sampled by the mutation owner. Stop/join settles
+every owned worker before returning an error and publishes retired record absence
+even when stopping reports a diagnostic. This does not qualify every carrier's
+bind-failure cancellation behavior.
+
+The validated-event regression proves persistence precedes mutation admission,
+and uses the production publisher's honest implementation `LXMF-rs`. It begins at
+the validated event boundary; it does not prove outer network authentication.
+Full final daemon validation passes 31 library and 616 binary tests. See
+[PROGRESS.md](PROGRESS.md) for retained failures, exact local checks and limits.
 
 For the three target process traces, declare 15 seconds for readiness and
 30 seconds for discovery/connection/traffic in each fresh topology. Default

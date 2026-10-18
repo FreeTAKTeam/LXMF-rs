@@ -58,8 +58,19 @@ use spawn_interface::spawn_hot_apply_interface;
 #[path = "interface_hot_apply_parts/apply_records.rs"]
 mod apply_records;
 use apply_records::apply_hot_apply_interface_records;
+#[path = "interface_hot_apply_parts/discovery_runtime.rs"]
+mod discovery_runtime;
 #[path = "interface_hot_apply_parts/record_publication.rs"]
 mod record_publication;
+pub(super) use discovery_runtime::{DiscoveryObservationSender, NativeDiscoveryConfig};
+use discovery_runtime::{ManagedInterfaceOrigin, NativeDiscovery};
+#[path = "interface_hot_apply_parts/managed_interface_key.rs"]
+mod managed_interface_key;
+use managed_interface_key::ManagedInterfaceKey;
+
+fn configured_key(name: &str) -> ManagedInterfaceKey {
+    ManagedInterfaceKey::Configured(name.to_owned())
+}
 
 #[derive(Clone)]
 pub(super) struct InterfaceHotApplyBridge {
@@ -119,7 +130,7 @@ impl InterfaceHotApplyBridge {
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
     ) -> Self {
-        Self::spawn_inner(iface_manager, seeded, None, None)
+        Self::spawn_inner(iface_manager, seeded, None, None, None)
     }
 
     #[cfg(test)]
@@ -128,15 +139,35 @@ impl InterfaceHotApplyBridge {
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
         daemon: Weak<RpcDaemon>,
     ) -> Self {
-        Self::spawn_inner(iface_manager, seeded, None, Some(daemon))
+        Self::spawn_inner(iface_manager, seeded, None, Some(daemon), None)
     }
 
+    #[cfg(test)]
     pub(super) fn spawn_with_transport_and_daemon(
         transport: Arc<Transport>,
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
         daemon: Weak<RpcDaemon>,
     ) -> Self {
-        Self::spawn_inner(transport.iface_manager(), seeded, Some(transport), Some(daemon))
+        Self::spawn_with_discovery(transport, seeded, daemon, None)
+    }
+
+    pub(super) fn spawn_with_discovery(
+        transport: Arc<Transport>,
+        seeded: Vec<(String, InterfaceRecord, AddressHash)>,
+        daemon: Weak<RpcDaemon>,
+        discovery: Option<NativeDiscoveryConfig>,
+    ) -> Self {
+        Self::spawn_inner(
+            transport.iface_manager(),
+            seeded,
+            Some(transport),
+            Some(daemon),
+            discovery,
+        )
+    }
+
+    pub(super) fn discovery_observations(&self) -> DiscoveryObservationSender {
+        DiscoveryObservationSender::new(self.tx.downgrade())
     }
 
     fn spawn_inner(
@@ -144,6 +175,7 @@ impl InterfaceHotApplyBridge {
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
         transport: Option<Arc<Transport>>,
         daemon: Option<Weak<RpcDaemon>>,
+        discovery: Option<NativeDiscoveryConfig>,
     ) -> Self {
         let (tx, rx) = channel(INTERFACE_HOT_APPLY_QUEUE_CAPACITY);
         let record_publisher = daemon.clone();
@@ -158,6 +190,7 @@ impl InterfaceHotApplyBridge {
             transport.clone(),
             refreshes.clone(),
             daemon,
+            discovery,
         ));
         Self {
             tx,
@@ -265,6 +298,7 @@ enum InterfaceHotApplyCommand {
         configured: Option<InterfaceRecord>,
         reply: std::sync::mpsc::SyncSender<Result<serde_json::Value, io::Error>>,
     },
+    DiscoveryObserved(Box<rns_transport::discovery::DiscoveredInterface>),
 }
 
 #[derive(Clone)]
@@ -272,6 +306,7 @@ struct ManagedHotApplyInterface {
     record: InterfaceRecord,
     address: AddressHash,
     runtime_status: Option<HotApplyRuntimeStatus>,
+    origin: ManagedInterfaceOrigin,
 }
 
 async fn run_interface_mutation_worker(
@@ -281,15 +316,39 @@ async fn run_interface_mutation_worker(
     transport: Option<Arc<Transport>>,
     refreshes: HotApplyRuntimeRefreshes,
     daemon: Option<Weak<RpcDaemon>>,
+    discovery: Option<NativeDiscoveryConfig>,
 ) {
     let mut managed = seeded
         .into_iter()
         .map(|(key, record, address)| {
-            (key, ManagedHotApplyInterface { record, address, runtime_status: None })
+            let origin = ManagedInterfaceOrigin::configured(&record);
+            (key.into(), ManagedHotApplyInterface { record, address, runtime_status: None, origin })
         })
-        .collect::<HashMap<_, _>>();
+        .collect::<HashMap<ManagedInterfaceKey, _>>();
 
-    while let Some(command) = rx.recv().await {
+    let mut discovery = discovery.map(NativeDiscovery::new);
+    if let (Some(discovery), Some(transport), Some(daemon)) =
+        (discovery.as_mut(), transport.as_ref(), daemon.as_ref().and_then(Weak::upgrade))
+    {
+        discovery.initial(&iface_manager, &mut managed, transport, &daemon).await;
+    }
+    let mut monitor = tokio::time::interval_at(
+        tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+        std::time::Duration::from_secs(5),
+    );
+    monitor.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        let command = tokio::select! {
+            command = rx.recv() => match command { Some(command) => command, None => break },
+            _ = monitor.tick(), if discovery.is_some() => {
+                if let (Some(discovery), Some(transport), Some(daemon)) = (
+                    discovery.as_mut(), transport.as_ref(), daemon.as_ref().and_then(Weak::upgrade),
+                ) {
+                    discovery.monitor(&iface_manager, &mut managed, transport, &refreshes, &daemon).await;
+                }
+                continue;
+            }
+        };
         match command {
             InterfaceHotApplyCommand::Apply { interfaces, reload_timestamp } => {
                 let interfaces = record_publication::preserve_unmanaged_records(
@@ -322,21 +381,73 @@ async fn run_interface_mutation_worker(
                 }
             }
             InterfaceHotApplyCommand::Manage { operation, name, configured, reply } => {
-                let result = named_management::apply(
-                    &iface_manager,
-                    &mut managed,
-                    named_management::NamedInterfaceAction::new(&operation, &name, configured),
-                    transport.as_ref(),
-                    &refreshes,
-                    daemon.as_ref(),
-                )
-                .await;
+                let endpoint =
+                    configured.as_ref().and_then(discovery_runtime::record_endpoint_hash);
+                let discovered_key = discovery_runtime::key_for_discovered_name(&managed, &name);
+                let discovered = discovered_key
+                    .as_ref()
+                    .and_then(|key| managed.get(key))
+                    .and_then(|active| active.origin.endpoint_hash());
+                if operation == "detach" {
+                    if let (Some(discovery), Some(endpoint)) = (discovery.as_mut(), discovered) {
+                        if let Some(key) = &discovered_key {
+                            discovery.suppress(endpoint, key);
+                        }
+                    }
+                }
+                let result = if operation == "detach" && discovered.is_some() {
+                    discovery_runtime::detach_discovered(
+                        &iface_manager,
+                        &mut managed,
+                        &name,
+                        transport.as_ref(),
+                        daemon.as_ref(),
+                    )
+                    .await
+                } else {
+                    named_management::apply(
+                        &iface_manager,
+                        &mut managed,
+                        named_management::NamedInterfaceAction::new(&operation, &name, configured),
+                        transport.as_ref(),
+                        &refreshes,
+                        daemon.as_ref(),
+                    )
+                    .await
+                };
+                if let Some(discovery) = discovery.as_mut() {
+                    if result.is_ok() {
+                        if let Some(endpoint) = endpoint.filter(|_| operation != "detach") {
+                            discovery.allow(endpoint);
+                        }
+                    }
+                }
                 if reply.send(result).is_err() {
                     log::warn!(
                         "[daemon] named interface management reply was not received operation={operation} name={name}"
                     );
                 }
             }
+            InterfaceHotApplyCommand::DiscoveryObserved(info) => {
+                if let (Some(discovery), Some(transport), Some(daemon)) = (
+                    discovery.as_mut(),
+                    transport.as_ref(),
+                    daemon.as_ref().and_then(Weak::upgrade),
+                ) {
+                    discovery.admit(&info, &iface_manager, &mut managed, transport, &daemon).await;
+                }
+            }
+        }
+    }
+    for (_, active) in managed.drain() {
+        if let Err(error) =
+            discovery_runtime::stop_and_join(&iface_manager, transport.as_ref(), active.address)
+                .await
+        {
+            log::warn!(
+                "[daemon] mutation owner shutdown did not confirm worker exit address={}: {error}",
+                active.address
+            );
         }
     }
 }
@@ -350,7 +461,17 @@ enum HotApplyRuntimeStatus {
 }
 
 pub(super) fn hot_apply_interface_seed_key(record: &InterfaceRecord) -> Option<String> {
-    record_hot_apply_interface_seed_key(record)
+    if record.kind == "backbone_client" {
+        record
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .or_else(|| Some(format!("backbone:{}:{}", record.host.as_deref()?, record.port?)))
+    } else {
+        record_hot_apply_interface_seed_key(record)
+    }
 }
 
 #[cfg(test)]

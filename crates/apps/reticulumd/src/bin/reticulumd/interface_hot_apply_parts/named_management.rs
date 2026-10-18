@@ -110,7 +110,7 @@ fn is_manageable(record: &InterfaceRecord) -> bool {
 
 pub(super) async fn apply(
     iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
-    managed: &mut HashMap<String, ManagedHotApplyInterface>,
+    managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     action: NamedInterfaceAction<'_>,
     transport: Option<&Arc<Transport>>,
     refreshes: &HotApplyRuntimeRefreshes,
@@ -122,6 +122,14 @@ pub(super) async fn apply(
     })?;
     let current = daemon.interface_records();
     let index = named_record_index(&current, name)?;
+    if managed.values().any(|active| {
+        !active.origin.configuration_owned() && active.record.name.as_deref() == Some(name)
+    }) {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "internal interface requires its native owner",
+        ));
+    }
     if index.is_some_and(|index| !is_manageable(&current[index])) {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -130,7 +138,7 @@ pub(super) async fn apply(
     }
     match operation {
         "attach" => {
-            if managed.contains_key(name) {
+            if managed.contains_key(&configured_key(name)) {
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
                     format!("interface {name:?} is already active"),
@@ -150,7 +158,7 @@ pub(super) async fn apply(
                 Some(&Arc::downgrade(&daemon)),
             )
             .await;
-            match wait_ready(managed.get(name)).await {
+            match wait_ready(managed.get(&configured_key(name))).await {
                 Ok(()) => {
                     daemon.replace_interfaces(next);
                     Ok(
@@ -178,7 +186,7 @@ pub(super) async fn apply(
             }
         }
         "detach" => {
-            let current_managed = managed.get(name).ok_or_else(|| {
+            let current_managed = managed.get(&configured_key(name)).ok_or_else(|| {
                 io::Error::new(io::ErrorKind::NotFound, format!("interface {name:?} is not active"))
             })?;
             if current_managed.record.name.as_deref() != Some(name) {
@@ -205,7 +213,7 @@ pub(super) async fn apply(
         }
         "reload" => {
             let old = managed
-                .get(name)
+                .get(&configured_key(name))
                 .ok_or_else(|| {
                     io::Error::new(
                         io::ErrorKind::NotFound,
@@ -243,7 +251,7 @@ pub(super) async fn apply(
                 Some(&Arc::downgrade(&daemon)),
             )
             .await;
-            match wait_ready(managed.get(name)).await {
+            match wait_ready(managed.get(&configured_key(name))).await {
                 Ok(()) => {
                     daemon.replace_interfaces(next);
                     Ok(
@@ -271,7 +279,7 @@ pub(super) async fn apply(
                         Some(&Arc::downgrade(&daemon)),
                     )
                     .await;
-                    match wait_ready(managed.get(name)).await {
+                    match wait_ready(managed.get(&configured_key(name))).await {
                         Ok(()) => {
                             daemon.replace_interfaces(restored);
                             Err(io::Error::other(format!(
@@ -320,14 +328,14 @@ fn with_named_record(
 
 async fn stop_named(
     iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
-    managed: &mut HashMap<String, ManagedHotApplyInterface>,
+    managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     name: &str,
     desired: Vec<InterfaceRecord>,
     transport: Option<&Arc<Transport>>,
     refreshes: &HotApplyRuntimeRefreshes,
     daemon: &Arc<RpcDaemon>,
 ) -> io::Result<()> {
-    let tasks = if let Some(active) = managed.get(name) {
+    let tasks = if let Some(active) = managed.get(&configured_key(name)) {
         iface_manager.lock().await.take_worker_tree(active.address)
     } else {
         Vec::new()

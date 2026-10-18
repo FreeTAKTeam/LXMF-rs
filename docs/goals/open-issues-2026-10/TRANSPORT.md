@@ -244,8 +244,14 @@ the private additive override cannot invalidate otherwise valid established
 views. Initial planning gains explicit policy while old callers retain verified
 defaults. Native endpoint exclusions and collision allocation match the pinned
 target's controlled predicates, including arbitrary-size version components
-against the fixed minimum. Runtime admission, monitoring, bootstrap recipes,
-suppression and the three declared process cases remain open.
+against the fixed minimum. The eighth local slice now connects this policy to
+the existing mutation worker, with native initial/live/periodic admission,
+monitoring, session suppression and trusted four-kind plus Backbone bootstrap
+recipes. Actual packet provenance and status, key collisions, manager contention,
+whole-tree stop and record retirement pass bounded native regressions. The
+validated-event fixture preserves honest LXMF-rs metadata and proves persistence
+before queue admission; outer network authentication is not its scope. Other
+bootstrap family recipes and all three declared Python process cases remain open.
 
 The deeper relay lane will extend the existing Python shared-owner/client and
 Rust-relay fixture to three Rust relays. Predeclare three fresh process runs,

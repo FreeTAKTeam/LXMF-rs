@@ -122,7 +122,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     local_identity_hash.copy_from_slice(identity.address_hash().as_slice());
     let (daemon_config, parsed_runtime_policy, rejected_ifac_interfaces) =
         configuration::load(args.config.as_deref());
-    let (reticulum_runtime_policy, _allow_unverified_discovery) = parsed_runtime_policy.into_parts();
+    let discovery_announce_defaults = parsed_runtime_policy.announce_defaults();
+    let (reticulum_runtime_policy, allow_unverified_discovery) = parsed_runtime_policy.into_parts();
     let network_identity = reticulum_runtime_policy
         .network_identity_path
         .as_ref()
@@ -184,6 +185,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         propagation_announce_config: propagation_node_config.announce_config,
         local_hops_delta: reticulum_runtime_policy.local_hops_delta(),
         inbound_queue_limits: reticulum_runtime_policy.inbound_queue_limits(),
+        discovery_enabled: reticulum_runtime_policy.discover_interfaces,
     })
     .await;
 
@@ -335,17 +337,6 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 probe_receipts,
             ),
         ));
-        daemon.set_interface_mutation_bridge(Arc::new(
-            InterfaceHotApplyBridge::spawn_with_transport_and_daemon(
-                transport.clone(),
-                seeded_hot_apply_interfaces,
-                Arc::downgrade(&daemon),
-            )
-            .with_management_config(
-                args.config.clone(),
-                reticulum_runtime_policy.interface_management_enabled,
-            ),
-        ));
     }
     if !rnode_management_bindings.is_empty() {
         let bindings = rnode_management_bindings
@@ -380,6 +371,22 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     daemon.set_propagation_destination_hash(propagation_destination_hash_hex.clone());
     let discovery_interfaces = configured_interfaces.clone();
     daemon.replace_interfaces(configured_interfaces);
+    let mut discovery_observations = None;
+    if let Some(transport) = transport.as_ref() {
+        let discovery = crate::interface_hot_apply::NativeDiscoveryConfig::new(
+            reticulum_storage_path.clone(),
+            &reticulum_runtime_policy,
+            allow_unverified_discovery,
+            daemon_config.as_ref().map_or(&[], |config| config.interfaces.as_slice()),
+            discovery_announce_defaults,
+        );
+        let discovery_enabled = discovery.is_some();
+        let mutation = InterfaceHotApplyBridge::spawn_with_discovery(
+            transport.clone(), seeded_hot_apply_interfaces, Arc::downgrade(&daemon), discovery,
+        ).with_management_config(args.config.clone(), reticulum_runtime_policy.interface_management_enabled);
+        if discovery_enabled { discovery_observations = Some(mutation.discovery_observations()); }
+        daemon.set_interface_mutation_bridge(Arc::new(mutation));
+    }
     spawn_auto_runtime_status_refresher(daemon.clone(), auto_runtime_refreshes);
     spawn_pipe_runtime_status_refresher(daemon.clone(), pipe_runtime_refreshes);
     spawn_udp_runtime_status_refresher(daemon.clone(), udp_runtime_refreshes);
@@ -578,6 +585,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 local_identity: discovery_identity,
                 network_identity: transport_network_identity,
                 outbound,
+                observations: discovery_observations,
             }
         });
         spawn_announce_worker(

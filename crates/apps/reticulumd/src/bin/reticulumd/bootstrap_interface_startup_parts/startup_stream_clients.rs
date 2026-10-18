@@ -146,7 +146,7 @@ async fn startup_tcp_client(
     Some(client_iface)
 }
 
-fn build_tcp_client_adapter(
+pub(crate) fn build_tcp_client_adapter(
     endpoint: String,
     iface: &InterfaceConfig,
     stream_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,

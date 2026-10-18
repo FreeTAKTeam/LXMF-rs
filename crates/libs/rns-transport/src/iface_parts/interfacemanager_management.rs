@@ -84,6 +84,13 @@ impl InterfaceManager {
         self.ifaces.iter().map(|iface| iface.address).collect()
     }
 
+    pub fn online(&self, address: &AddressHash) -> Option<bool> {
+        self.ifaces
+            .iter()
+            .find(|iface| iface.address == *address)
+            .map(|iface| !iface.stop.is_cancelled() && iface.online.load(Ordering::Acquire))
+    }
+
     pub fn display_name(&self, address: &AddressHash) -> Option<&str> {
         self.ifaces
             .iter()
