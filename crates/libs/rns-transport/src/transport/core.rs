@@ -266,18 +266,40 @@ impl Transport {
         bind_addr: String,
         forward_addr: Option<String>,
     ) -> (AddressHash, crate::iface::udp::UdpRuntimeStatusHandle) {
+        self.try_add_multicast_udp_interface_with_status(
+            bind_addr,
+            forward_addr,
+            crate::iface::InterfaceMode::default(),
+            |_, _| Ok::<(), std::convert::Infallible>(()),
+        )
+        .await
+        .unwrap_or_else(|never| match never {})
+    }
+
+    pub async fn try_add_multicast_udp_interface_with_status<P, E>(
+        &self,
+        bind_addr: String,
+        forward_addr: Option<String>,
+        mode: crate::iface::InterfaceMode,
+        prepare: P,
+    ) -> Result<(AddressHash, crate::iface::udp::UdpRuntimeStatusHandle), E>
+    where
+        P: FnOnce(&mut crate::iface::InterfaceManager, AddressHash) -> Result<(), E>,
+    {
         let (iface_hash, peer_routing, status) = {
             let mut mgr = self.iface_manager.lock().await;
             let (iface_hash, peer_routing, status) =
-                crate::iface::udp::spawn_multicast_udp_with_status(
+                crate::iface::udp::try_spawn_multicast_udp_with_status(
                     &mut mgr,
                     bind_addr,
                     forward_addr,
-                );
+                    mode,
+                    prepare,
+                )?;
             (iface_hash, peer_routing, status)
         };
         self.handler.lock().await.register_multicast_peer_routing(iface_hash, peer_routing);
-        (iface_hash, status)
+        Ok((iface_hash, status))
     }
 
     pub fn channel(&self, link_id: AddressHash) -> TransportChannel {

@@ -182,12 +182,7 @@ impl InterfaceManager {
         R: std::future::Future<Output = ()> + Send + 'static,
         R::Output: Send + 'static,
     {
-        let context = self.new_context_with_role_and_mode(inner, role, mode);
-        let address = *context.channel.address();
-
-        self.worker_tasks.insert(address, task::spawn(worker(context)));
-
-        address
+        self.spawn_as_with_mode_and_handle(inner, worker, role, mode).0
     }
 
     pub fn spawn_as_with_mode_and_handle<T: Interface, F, R>(
@@ -202,13 +197,10 @@ impl InterfaceManager {
         R: std::future::Future<Output = ()> + Send + 'static,
         R::Output: Send + 'static,
     {
-        let context = self.new_context_with_role_and_mode(inner, role, mode);
-        let address = *context.channel.address();
-        let handle = context.inner.clone();
-
-        self.worker_tasks.insert(address, task::spawn(worker(context)));
-
-        (address, handle)
+        self.try_spawn_as_with_mode_and_handle(inner, worker, role, mode, |_, _| {
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .unwrap_or_else(|never| match never {})
     }
 
     pub fn role(&self, address: &AddressHash) -> Option<IfaceRole> {

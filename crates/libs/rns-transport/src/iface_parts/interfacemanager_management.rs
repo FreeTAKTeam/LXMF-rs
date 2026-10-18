@@ -199,33 +199,13 @@ impl InterfaceManager {
         address: AddressHash,
         shared_config: InterfaceSharedConfig,
     ) -> bool {
-        let default_size_bytes = self
-            .ifaces
-            .iter()
-            .find(|iface| iface.address == address)
-            .map_or(DEFAULT_IFAC_SIZE_BYTES, |iface| iface.ifac_default_size_bytes);
-        let Ok(ifac_context) =
-            shared_config.ifac_context_with_default_size(default_size_bytes)
-        else {
-            log::warn!("rejecting invalid IFAC configuration for interface {address}");
-            return false;
-        };
-        let mut updated = false;
-        for iface in &mut self.ifaces {
-            if iface.address == address || iface.parent == Some(address) {
-                let inherit_ifac = iface.address == address || iface.inherit_ifac;
-                iface.shared_config = if inherit_ifac {
-                    shared_config.clone()
-                } else {
-                    shared_config_without_ifac(&shared_config)
-                };
-                if let Ok(mut state) = iface.ifac_state.write() {
-                    *state = if inherit_ifac { ifac_context.clone() } else { None };
-                }
-                updated |= iface.address == address;
+        match self.try_set_shared_config(address, shared_config) {
+            Ok(updated) => updated,
+            Err(error) => {
+                log::warn!("rejecting shared configuration for interface {address}: {error}");
+                false
             }
         }
-        updated
     }
 
     /// Apply a shared configuration while exposing invalid IFAC material to
@@ -242,6 +222,28 @@ impl InterfaceManager {
             .map_or(DEFAULT_IFAC_SIZE_BYTES, |iface| iface.ifac_default_size_bytes);
         let ifac_context =
             shared_config.ifac_context_with_default_size(default_size_bytes)?;
+        // Virtual children share their parent's lock. Acquire each distinct
+        // state once, in interface order, before publishing anything. The
+        // manager lock serializes configuration writers; packet codecs take
+        // only one state lock. No await or external call occurs under guards.
+        let mut states: Vec<(IfacState, bool)> = Vec::new();
+        for iface in &self.ifaces {
+            if (iface.address == address || iface.parent == Some(address))
+                && !states.iter().any(|(state, _)| Arc::ptr_eq(state, &iface.ifac_state))
+            {
+                states.push((
+                    iface.ifac_state.clone(),
+                    iface.address == address || iface.inherit_ifac,
+                ));
+            }
+        }
+        let mut guards = states
+            .iter()
+            .map(|(state, _)| state.write().map_err(|_| crate::error::RnsError::ConnectionError))
+            .collect::<Result<Vec<_>, _>>()?;
+        for (guard, (_, inherit_ifac)) in guards.iter_mut().zip(&states) {
+            **guard = if *inherit_ifac { ifac_context.clone() } else { None };
+        }
         let mut updated = false;
         for iface in &mut self.ifaces {
             if iface.address == address || iface.parent == Some(address) {
@@ -251,9 +253,6 @@ impl InterfaceManager {
                 } else {
                     shared_config_without_ifac(&shared_config)
                 };
-                if let Ok(mut state) = iface.ifac_state.write() {
-                    *state = if inherit_ifac { ifac_context.clone() } else { None };
-                }
                 updated |= iface.address == address;
             }
         }

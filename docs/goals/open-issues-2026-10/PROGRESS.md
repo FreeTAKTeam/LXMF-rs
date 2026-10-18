@@ -7,8 +7,8 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | --- | --- | --- | --- |
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
-| 3. LXMF 1.2.0 | Local acceptance; final review/CI pending | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); runtime/test checkpoint `5a0a30f55eac94f6bf5dcb7963f5be28771a8abd` | Both clean complete compatibility matrices pass 30/30; canonical SDK failure recovery and all 47/263 production-owner traces pass. Workspace tests/Clippy pass; release-check retains the existing package conflict. Fresh final-head hosted checks and merge remain required. |
-| 4. Transport and RNS 1.5.5 | Pending | — | — |
+| 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
+| 4. Transport and RNS 1.5.5 | In progress; PRE reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) records ownership, finite cells and validation boundaries. First slice addresses raw IFAC configuration and policy-before-worker activation. No acceptance or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1224,3 +1224,97 @@ validation only; terminal results and final-head review/CI/merge remain required
   now updated, and corrected one existing roadmap release-heading link. Historical
   checkpoint prose retains its original scope. Final-head hosted CI/merge remain
   required; no package publication or broad parity promotion is implied.
+
+### Item 3 final hosted evidence and merge
+
+- Final head `609edf12f738b1021eaaad963e828f0495544bee` changes only five
+  documentation files from the clean locally qualified runtime/test head.
+  [CI 39112075697](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39112075697),
+  [Verify 39112075772](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39112075772)
+  and [Independent interoperability 39112075773](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39112075773)
+  succeeded. All 20 applicable checks passed; the publication job was deliberately
+  inapplicable. The three native required contexts remain bound to Actions app
+  15368 on this exact head. Protection readback matches the approved policy.
+- Hosted Verify's uploaded matrix passes all 30 cases (23 live, seven local)
+  without skips/ignores at baseline LXMF `727830ce` and RNS `99de23c0`; its PR HIL
+  controller passes 23 cases (12 virtual, 11 Python-reference), one attempt each.
+  Target LXMF 1.2.0 qualification remains the separate local clean 30/30 run.
+  Artifacts are retained under `target/interop/item3/hosted-609edf12/`.
+- The hosted matrix SHA-256 is
+  `0578d62c2d840dbe2bc6b79f237846a8d655b41819be707bfa6cb00de8e5cbfa`.
+  The independent archive SHA-256 is
+  `723e573e0eea4f3df01fe5aaca279d2353c642b992e31bd98689c2f635c7f811`,
+  matching its sidecar and separately downloaded report bytes. Its existing
+  compatibility gate accepts 79 PASS, three known peer-divergence FAIL and two
+  dependency BLOCKED results. The signatures/owners match the unchanged explicit
+  policy; this is not an 84/84 pass or expanded performance qualification.
+- GitHub's tested synthetic merge `60584c368b90b0ae5c68ba16b3f97531ba2ec0b3`
+  has the recorded head and base `23a96a4a` as parents. Independent verification
+  approved the scoped merge after checking reports, JUnit, pins and final checks.
+  No review threads remained; GitHub reported CLEAN/MERGEABLE. A normal squash
+  merge, without admin bypass or remote branch deletion, completed at
+  2026-10-18T09:14:46Z. Fetched main contains `9c277477`, whose parent is the
+  recorded base and whose tree equals the tested merge candidate's tree.
+- The broader #648 delta gaps, physical/public-network boundaries and existing
+  release-check registry conflict remain open. Item 3 completes the approved
+  four-slice increment, not every accumulated Python feature.
+
+## Item 4 PRE and starting boundary
+
+- Live #608/#609/#649 and all 22 open issues were refreshed; no issue was added or
+  closed since the acceptance map. Item 4 begins only after verified item-3 merge.
+- Independent PRE exploration identified root workers starting before IFAC policy
+  publication, raw-record alias drift, TTL-based duplicate membership instead of
+  Python generations, and disabled/attached persistence truncating the owner's
+  hash file. Existing child preparation, IFAC wire codecs and lifecycle evidence
+  are reused, not replaced.
+- Discovery qualification already exists in the library; its daemon consumer,
+  atomic name/endpoint admission and operator-detach coordination are missing.
+  Request response limits/broadcast waiters do not establish pending request
+  receipt ownership. Live mode/outgoing/gravity/pacing setters miss existing
+  children. See TRANSPORT.md for the accepted owner boundaries and required cases.
+- The current-session versus persisted manual-detach lifetime was asked as an
+  optional preference while CI ran. Without a different response, the proposed
+  rule is session intent, cleared by successful explicit reattach/reload or a new
+  daemon owner. It is an explicit Rust extension; Python does not define a
+  persistent suppression/reset contract. IFAC work does not depend on this choice.
+
+### Item 4 first IFAC/publication checkpoint
+
+- Three public SDK v2/canonical ZeroMQ to production UDP regressions first failed
+  on plaintext admission or selection of the wrong pass phrase. One resolver now
+  applies nonempty startup alias precedence and retains byte-significant legacy
+  RPC credentials. Matching ingress/first egress, negative-key controls, IFAC
+  provenance and exact rejection counters pass.
+- Shared IFAC publication now fails before changing any state or metadata when
+  a parent, inherited child or plaintext local child's state lock is poisoned.
+  Virtual aliases are deduplicated. Prepared manager spawn retains legacy APIs,
+  carrier defaults, control handles and worker-tree lifecycle; invalid preparation
+  never constructs a worker. All four live hot-apply families use preparation,
+  including the existing multicast routing owner without a lock-order inversion.
+- The existing native mutation worker owns committed interface records. The
+  additive bridge defaults preserve synchronous legacy behavior; real native
+  commands return queued/incomplete. The RPC caller no longer overwrites a fast
+  native result or emits premature completion. Complete ordered snapshots retain
+  disabled, unmanaged, old-active and failed-replacement outcomes as applicable.
+- Independent POST found stale inactive bindings, malformed caller runtime
+  metadata panicking the worker, lost reload completion and the TCP status key.
+  The actual malformed-RPC regression reproduced the panic before correction.
+  Fixes discard caller runtime metadata, clear inactive bindings, retain reload
+  context through the same command and use `tcp.stream_status`. Both independent
+  reviewers rechecked and approved this focused checkpoint without a remaining
+  concrete finding. Bootstrap and all later item-4 slices remain outstanding.
+- Final local validation: all-feature daemon binary 580 passed, zero ignored;
+  all-feature transport library 972 passed, nine existing ignored; all-feature
+  RPC library 807 passed, eight existing ignored. The manager subset is 80
+  passed/two existing ignored. All three expanded record-publication tests and
+  three SDK alias tests pass, including blocked worker, ordered replacements,
+  copied-live detach/failed replacement, later reload/TCP continuation and cleanup.
+- Affected-package all-target/all-feature Clippy, formatting, issue-369 scanner,
+  boundaries, module size and architecture checks pass. Logs are
+  `/tmp/lxmf-item4-{daemon,transport}-slice1.log`,
+  `/tmp/lxmf-item4-rpc-final-slice1.log`,
+  `/tmp/lxmf-item4-clippy-final-slice1.log`,
+  `/tmp/lxmf-item4-record-publication-final.log`, and the focused before/after logs.
+  No item-4 full workspace/release/reference run, hosted check, PR or merge has
+  happened yet. The next slice cuts over configured bootstrap roots.

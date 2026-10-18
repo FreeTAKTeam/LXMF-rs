@@ -18,6 +18,11 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 
+#[cfg(feature = "zmq-pipeline-rpc")]
+#[path = "interface_hot_apply/issue_608_ifac_aliases.rs"]
+mod issue_608_ifac_aliases;
+#[path = "interface_hot_apply/issue_608_record_publication.rs"]
+mod issue_608_record_publication;
 #[path = "interface_hot_apply/issue_608_udp_bind_retry.rs"]
 mod issue_608_udp_bind_retry;
 #[path = "interface_hot_apply/named_management.rs"]
@@ -112,6 +117,7 @@ fn test_bridge(
         tx,
         config_path: None,
         management_enabled: true,
+        record_publisher: None,
         tcp_listener_refreshes: tcp_listener_refreshes(),
         udp_refreshes: udp_refreshes(),
         pipe_refreshes: pipe_refreshes(),

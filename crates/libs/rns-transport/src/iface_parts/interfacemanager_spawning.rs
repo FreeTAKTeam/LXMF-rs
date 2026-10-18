@@ -1,4 +1,49 @@
 impl InterfaceManager {
+    /// Install synchronous runtime policy before creating or polling the worker
+    /// future. Failed preparation removes the new interface without starting a
+    /// task; successful tasks retain the normal worker-tree lifecycle owner.
+    pub fn try_spawn_as_with_mode<T: Interface, F, R, P, E>(
+        &mut self,
+        inner: T,
+        worker: F,
+        role: IfaceRole,
+        mode: InterfaceMode,
+        prepare: P,
+    ) -> Result<AddressHash, E>
+    where
+        F: FnOnce(InterfaceContext<T>) -> R,
+        R: std::future::Future<Output = ()> + Send + 'static,
+        P: FnOnce(&mut Self, AddressHash) -> Result<(), E>,
+    {
+        self.try_spawn_as_with_mode_and_handle(inner, worker, role, mode, prepare)
+            .map(|(address, _)| address)
+    }
+
+    /// Prepared spawn that also retains the carrier's existing control handle.
+    pub fn try_spawn_as_with_mode_and_handle<T: Interface, F, R, P, E>(
+        &mut self,
+        inner: T,
+        worker: F,
+        role: IfaceRole,
+        mode: InterfaceMode,
+        prepare: P,
+    ) -> Result<(AddressHash, Arc<Mutex<T>>), E>
+    where
+        F: FnOnce(InterfaceContext<T>) -> R,
+        R: std::future::Future<Output = ()> + Send + 'static,
+        P: FnOnce(&mut Self, AddressHash) -> Result<(), E>,
+    {
+        let context = self.new_context_with_role_and_mode(inner, role, mode);
+        let address = *context.channel.address();
+        if let Err(error) = prepare(self, address) {
+            self.stop_interface(address);
+            return Err(error);
+        }
+        let handle = context.inner.clone();
+        self.worker_tasks.insert(address, task::spawn(worker(context)));
+        Ok((address, handle))
+    }
+
     /// Spawn an accepted child only after copying its parent's runtime policy.
     /// This ensures the worker's first poll cannot observe default IFAC state.
     pub fn spawn_inheriting<T: Interface, F, R>(

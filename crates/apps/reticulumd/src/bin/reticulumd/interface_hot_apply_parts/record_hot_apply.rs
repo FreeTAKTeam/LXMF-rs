@@ -456,7 +456,10 @@ pub(crate) fn apply_record_runtime_config(
     manager: &mut InterfaceManager,
     address: AddressHash,
     record: &InterfaceRecord,
-) {
+) -> Result<(), rns_transport::error::RnsError> {
+    if !manager.try_set_shared_config(address, interface_record_shared_config(record))? {
+        return Err(rns_transport::error::RnsError::InvalidArgument);
+    }
     manager.set_tcp_client_path_table_metadata(
         address,
         crate::tcp_client_path_table::from_record(record),
@@ -469,7 +472,7 @@ pub(crate) fn apply_record_runtime_config(
         setting_u64(record, "bitrate").unwrap_or(62_500),
         setting_u64(record, "announce_cap").unwrap_or(2),
     );
-    manager.set_shared_config(address, interface_record_shared_config(record));
+    Ok(())
 }
 
 pub(crate) fn interface_record_mode(record: &InterfaceRecord) -> InterfaceMode {

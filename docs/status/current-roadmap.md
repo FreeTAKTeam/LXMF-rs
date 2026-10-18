@@ -54,13 +54,27 @@ propagation announces exchange honest `lxmd`/`1.2.0` and `reticulumd`/`0.14.0`
 metadata. The 16 KB Resource lane explicitly uses a 1 MB Python receiving policy;
 upstream's new 1 KB default remains a documented difference.
 
-These results qualify the scoped increment, with final-head review and hosted CI
-still required before merge. Workspace tests and all-feature Clippy pass. The
+The scoped increment merged in [PR #673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673)
+at `9c27747753488ed950c52a2c7717ddec14478786`, after independent review and
+verification of final head `609edf12`: 20 successful hosted checks and one
+deliberately inapplicable publication skip. Hosted baseline compatibility passed
+30/30 and PR HIL passed 23/23 on first attempts. The independent peer gate passed
+with its existing explicit divergences (79 pass, three peer failures and two
+dependency-blocked cases), not an 84-case pass. Workspace tests and all-feature Clippy pass. The
 release-check reaches the pre-existing published ZeroMQ/UUID dependency conflict;
 it does not pass and no release readiness is claimed. The
 [accumulated delta ledger](lxmf-1.2.0-delta.md) preserves file-export,
 source-blackhole and autonomous-peer gaps. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-software-qualification-issue-648).
+
+Item 4 is in progress on that merge. Its first IFAC slice resolves raw SDK
+credential aliases consistently, publishes shared policy fallibly, and installs
+hot-apply policy before starting workers. The existing mutation worker now owns
+committed interface records; native SDK/RPC calls explicitly acknowledge queued
+work, while actual status and completion events come from the worker. Focused
+wire, rollback, ordering and record-retention regressions pass. Configured bootstrap
+roots and the remaining carrier, duplicate-cache, request, discovery and deeper
+recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655
 

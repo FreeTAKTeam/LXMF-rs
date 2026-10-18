@@ -51,13 +51,22 @@ use interface_hot_apply_parts::udp_runtime_refresh::{
 mod interface_hot_apply_parts;
 #[path = "interface_hot_apply_parts/named_management.rs"]
 mod named_management;
+#[path = "interface_hot_apply_parts/spawn_interface.rs"]
+mod spawn_interface;
 use named_management::stop_hot_apply_interface;
+use spawn_interface::spawn_hot_apply_interface;
+#[path = "interface_hot_apply_parts/apply_records.rs"]
+mod apply_records;
+use apply_records::apply_hot_apply_interface_records;
+#[path = "interface_hot_apply_parts/record_publication.rs"]
+mod record_publication;
 
 #[derive(Clone)]
 pub(super) struct InterfaceHotApplyBridge {
     tx: Sender<InterfaceHotApplyCommand>,
     config_path: Option<PathBuf>,
     management_enabled: bool,
+    record_publisher: Option<Weak<RpcDaemon>>,
     #[cfg(test)]
     tcp_listener_refreshes: Arc<StdMutex<HashMap<String, HotApplyTcpListenerRefresh>>>,
     #[cfg(test)]
@@ -137,6 +146,7 @@ impl InterfaceHotApplyBridge {
         daemon: Option<Weak<RpcDaemon>>,
     ) -> Self {
         let (tx, rx) = channel(INTERFACE_HOT_APPLY_QUEUE_CAPACITY);
+        let record_publisher = daemon.clone();
         let refreshes = HotApplyRuntimeRefreshes::new();
         if let Some(daemon) = daemon.clone() {
             refreshes.spawn_refreshers(daemon);
@@ -153,6 +163,7 @@ impl InterfaceHotApplyBridge {
             tx,
             config_path: None,
             management_enabled: true,
+            record_publisher,
             #[cfg(test)]
             tcp_listener_refreshes: refreshes.tcp_listeners,
             #[cfg(test)]
@@ -163,11 +174,20 @@ impl InterfaceHotApplyBridge {
     }
 }
 
-impl InterfaceMutationBridge for InterfaceHotApplyBridge {
-    fn apply_interfaces(
+impl InterfaceHotApplyBridge {
+    fn queue_interfaces(
         &self,
-        interfaces: Vec<InterfaceRecord>,
+        mut interfaces: Vec<InterfaceRecord>,
+        reload_timestamp: Option<i64>,
     ) -> Result<Vec<InterfaceRecord>, io::Error> {
+        // Runtime metadata is native output, never configuration authority.
+        for record in &mut interfaces {
+            if let Some(settings) =
+                record.settings.as_mut().and_then(serde_json::Value::as_object_mut)
+            {
+                settings.remove("_runtime");
+            }
+        }
         validate_hot_apply_uniqueness(&interfaces)?;
         validate_hot_apply_ifac_configuration(&interfaces)?;
         let effective = interfaces
@@ -190,8 +210,9 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
                 record
             })
             .collect::<Vec<_>>();
-        self.tx.try_send(InterfaceHotApplyCommand::Apply { interfaces }).map_err(|error| {
-            match error {
+        self.tx
+            .try_send(InterfaceHotApplyCommand::Apply { interfaces, reload_timestamp })
+            .map_err(|error| match error {
                 TrySendError::Full(_) => {
                     io::Error::new(io::ErrorKind::WouldBlock, "interface mutation queue is full")
                 }
@@ -199,9 +220,29 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
                     io::ErrorKind::BrokenPipe,
                     "interface mutation worker is not running",
                 ),
-            }
-        })?;
+            })?;
         Ok(effective)
+    }
+}
+
+impl InterfaceMutationBridge for InterfaceHotApplyBridge {
+    fn publishes_interface_records(&self) -> bool {
+        self.record_publisher.as_ref().and_then(Weak::upgrade).is_some()
+    }
+
+    fn apply_interfaces(
+        &self,
+        interfaces: Vec<InterfaceRecord>,
+    ) -> Result<Vec<InterfaceRecord>, io::Error> {
+        self.queue_interfaces(interfaces, None)
+    }
+
+    fn reload_interfaces(
+        &self,
+        interfaces: Vec<InterfaceRecord>,
+        timestamp: i64,
+    ) -> Result<Vec<InterfaceRecord>, io::Error> {
+        self.queue_interfaces(interfaces, Some(timestamp))
     }
 
     fn manage_named_interface(
@@ -216,6 +257,7 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
 enum InterfaceHotApplyCommand {
     Apply {
         interfaces: Vec<InterfaceRecord>,
+        reload_timestamp: Option<i64>,
     },
     Manage {
         operation: String,
@@ -249,8 +291,12 @@ async fn run_interface_mutation_worker(
 
     while let Some(command) = rx.recv().await {
         match command {
-            InterfaceHotApplyCommand::Apply { interfaces } => {
-                apply_hot_apply_interface_records(
+            InterfaceHotApplyCommand::Apply { interfaces, reload_timestamp } => {
+                let interfaces = record_publication::preserve_unmanaged_records(
+                    interfaces,
+                    daemon.as_ref().and_then(Weak::upgrade).as_deref(),
+                );
+                let applied = apply_hot_apply_interface_records(
                     &iface_manager,
                     &mut managed,
                     interfaces,
@@ -259,6 +305,21 @@ async fn run_interface_mutation_worker(
                     daemon.as_ref(),
                 )
                 .await;
+                if let Some(daemon) = daemon.as_ref().and_then(Weak::upgrade) {
+                    daemon.replace_interfaces(applied.clone());
+                    daemon.publish_event(rns_rpc::RpcEvent {
+                        event_type: "interfaces_updated".to_string(),
+                        payload: serde_json::json!({
+                            "interfaces": applied, "queued": false, "complete": true,
+                        }),
+                    });
+                    if let Some(timestamp) = reload_timestamp {
+                        daemon.publish_event(rns_rpc::RpcEvent {
+                            event_type: "config_reloaded".to_string(),
+                            payload: serde_json::json!({ "timestamp": timestamp }),
+                        });
+                    }
+                }
             }
             InterfaceHotApplyCommand::Manage { operation, name, configured, reply } => {
                 let result = named_management::apply(
@@ -280,107 +341,6 @@ async fn run_interface_mutation_worker(
     }
 }
 
-async fn apply_hot_apply_interface_records(
-    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
-    managed: &mut HashMap<String, ManagedHotApplyInterface>,
-    interfaces: Vec<InterfaceRecord>,
-    transport: Option<&Arc<Transport>>,
-    refreshes: &HotApplyRuntimeRefreshes,
-    daemon: Option<&Weak<RpcDaemon>>,
-) {
-    let desired = interfaces
-        .into_iter()
-        .filter_map(|record| {
-            let key = hot_apply_interface_key(&record)?;
-            Some((key, record))
-        })
-        .collect::<HashMap<_, _>>();
-
-    let current_keys = managed.keys().cloned().collect::<Vec<_>>();
-    for key in current_keys {
-        let should_remove = match (managed.get(&key), desired.get(&key)) {
-            (Some(current), Some(next)) => {
-                !next.enabled || hot_apply_interface_record_changed(&current.record, next)
-            }
-            (Some(_), None) => true,
-            (None, _) => false,
-        };
-        if should_remove {
-            if let Some(current) = managed.remove(&key) {
-                refreshes
-                    .tcp_listeners
-                    .lock()
-                    .expect("tcp listener refresh mutex poisoned")
-                    .remove(&key);
-                refreshes.udp.lock().expect("udp refresh mutex poisoned").remove(&key);
-                refreshes.pipe.lock().expect("pipe refresh mutex poisoned").remove(&key);
-                stop_hot_apply_interface(iface_manager, transport, current.address).await;
-            }
-        }
-    }
-
-    for (key, record) in desired {
-        if !record.enabled {
-            continue;
-        }
-        if let Some(current) = managed.get_mut(&key) {
-            let mut guard = iface_manager.lock().await;
-            apply_record_runtime_config(&mut guard, current.address, &record);
-            current.record = record;
-            continue;
-        }
-        if let Some((address, runtime_status)) =
-            spawn_hot_apply_interface(iface_manager, transport, &record).await
-        {
-            match runtime_status.clone() {
-                Some(HotApplyRuntimeStatus::TcpClient(_)) => {}
-                Some(HotApplyRuntimeStatus::TcpListener(status)) => {
-                    attach_hot_apply_tcp_listener_runtime_status(daemon, &record, address, &status);
-                    refreshes
-                        .tcp_listeners
-                        .lock()
-                        .expect("tcp listener refresh mutex poisoned")
-                        .insert(
-                            key.clone(),
-                            HotApplyTcpListenerRefresh {
-                                record: record.clone(),
-                                runtime_iface: address,
-                                status,
-                            },
-                        );
-                }
-                Some(HotApplyRuntimeStatus::Udp(status)) => {
-                    status.update(|status| {
-                        status.iface = Some(address.to_string());
-                    });
-                    attach_hot_apply_udp_runtime_status(daemon, &record, address, &status);
-                    refreshes.udp.lock().expect("udp refresh mutex poisoned").insert(
-                        key.clone(),
-                        HotApplyUdpRefresh {
-                            record: record.clone(),
-                            runtime_iface: address,
-                            status,
-                        },
-                    );
-                }
-                Some(HotApplyRuntimeStatus::Pipe(status)) => {
-                    attach_hot_apply_pipe_runtime_status(daemon, &record, address, &status);
-                    refreshes.pipe.lock().expect("pipe refresh mutex poisoned").insert(
-                        key.clone(),
-                        HotApplyPipeRefresh {
-                            record: record.clone(),
-                            runtime_iface: address,
-                            status,
-                        },
-                    );
-                }
-                None => {}
-            }
-            managed.insert(key, ManagedHotApplyInterface { record, address, runtime_status });
-        }
-    }
-}
-
 #[derive(Clone)]
 enum HotApplyRuntimeStatus {
     TcpClient(TcpRuntimeStatusHandle),
@@ -391,100 +351,6 @@ enum HotApplyRuntimeStatus {
 
 pub(super) fn hot_apply_interface_seed_key(record: &InterfaceRecord) -> Option<String> {
     record_hot_apply_interface_seed_key(record)
-}
-
-async fn spawn_hot_apply_interface(
-    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
-    transport: Option<&Arc<Transport>>,
-    record: &InterfaceRecord,
-) -> Option<(AddressHash, Option<HotApplyRuntimeStatus>)> {
-    let mode = interface_record_mode(record);
-    let (address, runtime_status) = match record.kind.as_str() {
-        "tcp_client" => {
-            let adapter = TcpClient::new(tcp_endpoint(record)?);
-            let status = adapter.runtime_status_handle();
-            let address = {
-                let mut manager = iface_manager.lock().await;
-                manager.spawn_as_with_mode(adapter, TcpClient::spawn, IfaceRole::Unicast, mode)
-            };
-            (address, Some(HotApplyRuntimeStatus::TcpClient(status)))
-        }
-        "tcp_server" => {
-            let bind_addr = match tcp_server_bind_addr(record) {
-                Ok(bind_addr) => bind_addr,
-                Err(error) => {
-                    log::warn!(
-                        "[daemon] hot-apply tcp_server rejected invalid bind address: {}",
-                        error
-                    );
-                    return None;
-                }
-            };
-            let mut adapter = TcpServer::new(bind_addr, iface_manager.clone());
-            if let Some(client_mtu) = tcp_server_client_mtu(record) {
-                adapter = adapter.with_client_mtu(client_mtu);
-            }
-            let status = adapter.runtime_status_handle();
-            let address = {
-                let mut manager = iface_manager.lock().await;
-                manager.spawn_as_with_mode(adapter, TcpServer::spawn, IfaceRole::Unicast, mode)
-            };
-            (address, Some(HotApplyRuntimeStatus::TcpListener(status)))
-        }
-        "udp" => {
-            let (bind_addr, forward_addr) = match udp_bind_and_forward_addr(record) {
-                Ok(addresses) => addresses,
-                Err(error) => {
-                    log::warn!(
-                        "[daemon] hot-apply udp rejected invalid bind/forward address: {error}"
-                    );
-                    return None;
-                }
-            };
-            let adapter = UdpInterface::new(bind_addr.clone(), forward_addr.clone());
-            if adapter.is_multicast() {
-                let transport = transport?;
-                let (address, status) = transport
-                    .add_multicast_udp_interface_with_status(bind_addr, forward_addr)
-                    .await;
-                (address, Some(HotApplyRuntimeStatus::Udp(status)))
-            } else {
-                let status = adapter.runtime_status_handle();
-                (
-                    iface_manager.lock().await.spawn_as_with_mode(
-                        adapter,
-                        UdpInterface::spawn,
-                        IfaceRole::Unicast,
-                        mode,
-                    ),
-                    Some(HotApplyRuntimeStatus::Udp(status)),
-                )
-            }
-        }
-        "pipe" => {
-            let adapter = match pipe_adapter(record) {
-                Ok(adapter) => adapter,
-                Err(error) => {
-                    log::warn!("[daemon] hot-apply pipe rejected invalid command: {error}");
-                    return None;
-                }
-            };
-            let status = adapter.runtime_status_handle();
-            let address = iface_manager.lock().await.spawn_as_with_mode(
-                adapter,
-                PipeInterface::spawn,
-                IfaceRole::Unicast,
-                mode,
-            );
-            (address, Some(HotApplyRuntimeStatus::Pipe(status)))
-        }
-        _ => return None,
-    };
-    {
-        let mut guard = iface_manager.lock().await;
-        apply_record_runtime_config(&mut guard, address, record);
-    }
-    Some((address, runtime_status))
 }
 
 #[cfg(test)]

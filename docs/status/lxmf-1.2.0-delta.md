@@ -56,4 +56,9 @@ ZeroMQ/UUID conflict after its software test stages; it is not a release pass.
 
 The [roadmap](current-roadmap.md), [parity matrix](lxmf-parity-matrix.md) and
 [execution contract](../goals/open-issues-2026-10/LINK-OWNER.md) remain authoritative.
-Final-head review/CI are still required before item 3 can merge.
+Item 3 merged in [PR #673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673)
+at `9c27747753488ed950c52a2c7717ddec14478786`, after final-head review and
+verification of 20 successful hosted checks and one deliberate publication skip.
+Hosted baseline compatibility passes 30/30 and PR HIL passes 23/23 on first
+attempts. The independent peer gate retains three known peer failures and two
+dependency-blocked cases alongside 79 passes; it is not full peer conformance.
