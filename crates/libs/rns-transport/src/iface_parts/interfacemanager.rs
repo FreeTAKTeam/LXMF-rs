@@ -238,37 +238,53 @@ impl InterfaceManager {
         self.ifaces.iter().find(|i| i.full_hash == *full_hash).map(|i| i.address)
     }
 
+    /// Update the registered interface and its current descendants.
     pub fn set_mode(&mut self, address: AddressHash, mode: InterfaceMode) -> bool {
-        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
-            iface.mode = mode;
-            true
-        } else {
-            false
+        if !self.ifaces.iter().any(|iface| iface.address == address) {
+            return false;
         }
+        let tree = self.interface_tree_hashes(address);
+        for iface in &mut self.ifaces {
+            if tree.contains(&iface.address) {
+                iface.mode = mode;
+            }
+        }
+        true
     }
 
+    /// Update the registered interface and its current descendants.
     pub fn set_outgoing(&mut self, address: AddressHash, outgoing: bool) -> bool {
-        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
-            iface.outgoing = outgoing;
-            true
-        } else {
-            false
+        if !self.ifaces.iter().any(|iface| iface.address == address) {
+            return false;
         }
+        let tree = self.interface_tree_hashes(address);
+        for iface in &mut self.ifaces {
+            if tree.contains(&iface.address) {
+                iface.outgoing = outgoing;
+            }
+        }
+        true
     }
 
+    /// Update subsequent pacing decisions throughout the registered subtree;
+    /// existing queue timestamps and eligibility deadlines stay committed.
     pub fn set_announce_pacing(
         &mut self,
         address: AddressHash,
         bitrate_bps: u64,
         cap_percent: u64,
     ) -> bool {
-        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
-            iface.announce_bitrate_bps = bitrate_bps;
-            iface.announce_cap_percent = cap_percent;
-            true
-        } else {
-            false
+        if !self.ifaces.iter().any(|iface| iface.address == address) {
+            return false;
         }
+        let tree = self.interface_tree_hashes(address);
+        for iface in &mut self.ifaces {
+            if tree.contains(&iface.address) {
+                iface.announce_bitrate_bps = bitrate_bps;
+                iface.announce_cap_percent = cap_percent;
+            }
+        }
+        true
     }
 
     /// Register a virtual iface that shares its tx channel with an

@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; five local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) and [REQUESTS.md](REQUESTS.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing and request receipts pass bounded reviews and local checks. Remaining family lifecycle, discovery, child policy and deeper recovery gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; six local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) and [REQUESTS.md](REQUESTS.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts and common live child policy pass bounded reviews and local checks. Remaining family lifecycle, discovery and deeper recovery gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1580,3 +1580,44 @@ validation only; terminal results and final-head review/CI/merge remain required
   slice. This is a local checkpoint, with no item-4 PR, hosted evidence or merge.
   Family lifecycle, discovery runtime, live child-policy propagation and the
   predeclared deeper mixed-process recovery matrix still gate item 4.
+
+## Item 4 common live child-policy checkpoint
+
+- The four existing InterfaceManager setters now use the same registered
+  subtree relationship owner as stop/join. Mode, outgoing, gravity and announce
+  pacing update under the existing mutable manager owner. Root registration is
+  checked first: an unknown address cannot mutate even an orphan record linked
+  to it. A child-address update preserves ancestors, siblings and other trees.
+  No new owner, registry, worker, public option or IFAC publication path.
+- Native controls cover accepted, virtual, nested and plaintext-local children,
+  later-created inheritance and unchanged IFAC choices. Actual direct handoff
+  respects updated outgoing; recursive path-request filtering reads updated
+  mode on a nonvirtual child so broadcast exclusion cannot mask stale policy.
+- A queued announce retains its original timestamp and eligibility deadline
+  across setters. Updated outgoing blocks release without dropping it; reenabling
+  releases under the new pacing values while preserving its original mode
+  admission. Existing PathTable entries are not rewritten. Reusing one exact
+  signed equal-hop/equal-emitted announcement verifies child gravity changes the
+  tie result, including rereading the current existing-path policy.
+- The definitive four regressions first fail against target-only setters, then
+  pass with subtree propagation. The initial pacing fixture used the explicitly
+  unpaced targeted-send helper; it was corrected to production general broadcast
+  before the definitive red run. Logs retain both attempts:
+  `/tmp/lxmf-item4-child-policy-{red,red2,green,final-focused,focused-last}.log`.
+- Independent PRE approved the existing-owner scope. Correctness POST requested
+  capturing queued_at before the setters as well as before blocked release;
+  the tightened control does both. Correctness and maintainability POST approve
+  this bounded slice. Full all-feature transport passes 1,041 with 11 explicit
+  ignores; all-feature daemon passes 31 library and 589 binary tests. Affected
+  all-target/all-feature Clippy, architecture, diagnostics, explicit included-file
+  rustfmt, Cargo fmt, boundaries and module size pass. Explicit formatting of
+  the touched included management file exposed Clippy's existing descending
+  comparator lint; stable `sort_by_key(Reverse(...))` retains bitrate order and
+  its existing focused priority regression passes. No lint exemption was added.
+  Logs: `/tmp/lxmf-item4-child-policy-{transport,daemon,clippy,architecture,diagnostics,size,boundaries,fmt}.log`.
+  Final lint/sort checks are
+  `/tmp/lxmf-item4-child-policy-{clippy-green,prioritize}.log`; explicit final
+  size/format logs use `size-last` and `fmt-last` suffixes.
+- This is common native-owner evidence. Carrier-specific startup/reconnect/error
+  composition, discovery runtime and predeclared deeper mixed-process recovery
+  still gate item 4. No item-4 PR, hosted check, merge or physical claim.

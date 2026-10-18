@@ -69,3 +69,7 @@ include!("iface_tests.rs");
 #[cfg(test)]
 #[path = "iface/tests/shared_client_ifac.rs"]
 mod shared_client_ifac;
+
+#[cfg(test)]
+#[path = "iface/tests/live_child_policy.rs"]
+mod live_child_policy;

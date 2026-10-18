@@ -82,3 +82,6 @@ include!("tests_parts/link_packet_receipt.rs");
 
 #[path = "tests/request_receipts.rs"]
 mod request_receipts;
+
+#[path = "tests/live_child_policy.rs"]
+mod live_child_policy;

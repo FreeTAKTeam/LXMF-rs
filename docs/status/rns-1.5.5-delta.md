@@ -44,9 +44,12 @@ item-4 follow-up adds the native receipt book and packet/Resource owner describe
 in [REQUESTS.md](../goals/open-issues-2026-10/REQUESTS.md), with exact 1.5.5
 controlled guard comparisons, native signed ACK/Resource phase tests and real
 rncp/rngit baseline/target traces. These bounded software checks do not complete
-the broader transport/discovery acceptance. Live changes to a parent's announce pacing do
-not currently propagate to existing virtual children. Neither gap is hidden by
-the 1.5.5 feature pin.
+the broader transport/discovery acceptance. The subsequent common child-policy
+slice also propagates live mode, outgoing, gravity and announce pacing through
+registered descendants, with native dispatch/queue/routing controls. Existing
+queue timestamps/deadlines and PathTable entries remain committed. This qualifies
+the shared owner, not all carrier-specific lifecycle or Python process transitions;
+those boundaries are not hidden by the 1.5.5 feature pin.
 
 Named attach/detach/reload now has focused local tests for real TCP listener
 operations, failed bind and pipe spawn, reload rollback, disabled policy,

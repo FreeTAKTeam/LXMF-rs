@@ -95,7 +95,11 @@ Native lifecycle retirement/shutdown settles retained observers before removing
 their owner, and utility clients can abandon optional cancellation/close I/O
 after native cleanup commits. See the bounded
 [request contract](../goals/open-issues-2026-10/REQUESTS.md) for evidence and limits.
-The remaining carrier lifecycle, discovery, live child policy and deeper
+The common InterfaceManager setters now propagate mode, outgoing, gravity and
+announce pacing through registered descendants. Native dispatch, queued release
+and exact signed-announce tie-breaking qualify the live consumers while preserving
+IFAC choices, unrelated trees and committed queue/path state.
+The remaining carrier lifecycle, discovery and deeper
 recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

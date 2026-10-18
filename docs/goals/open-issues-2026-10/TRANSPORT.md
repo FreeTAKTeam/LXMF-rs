@@ -54,7 +54,8 @@ one worker later stops. Automatic shared TCP/Unix accepted clients opt into the
 frozen plaintext exception using the existing trusted synthetic-origin marker;
 explicit Local records retain configured IFAC. Real stream and daemon regressions
 cover first traffic, rejection, parent rotation, new children and cleanup. Live
-non-IFAC child-policy propagation is still required.
+non-IFAC child-policy propagation has the common owner qualification below;
+family-specific lifecycle composition remains required.
 
 The existing native mutation worker now also owns committed interface-record
 publication. Opted-in SDK/RPC commands report queued/incomplete, and completion
@@ -191,6 +192,23 @@ discovery, live child policy and deeper process-recovery gates still apply.
   and proof bindings, threshold boundaries and generation displacement/restart.
 
 ## Request, discovery and recovery evidence
+
+The common live child-policy slice uses the existing InterfaceManager tree
+relationship owner in `set_mode`, `set_outgoing`, `set_gravity` and
+`set_announce_pacing`. A registered target and all current descendants change
+together under its existing mutable owner; unknown roots cannot mutate even an
+orphan record, and a child-address operation preserves ancestors, siblings and
+unrelated trees. Accepted, virtual, nested and plaintext-local children retain
+their IFAC choices; later-created children retain normal inheritance. No new
+registry, public option, lifecycle task or IFAC policy path is introduced.
+
+Existing queue timestamps/deadlines and PathTable entries remain committed.
+Subsequent recursive path-request eligibility reads the new mode; direct sends
+read outgoing, and queue release reads outgoing/pacing without redoing the mode
+admission made when queued. A repeated exact signed equal-hop/equal-emitted
+announce proves live child gravity decides path tie-breaking. These native
+dispatch/queue/routing checks qualify the common owner, not every family-specific
+restart/error cell or Python process-level policy transition.
 
 Single-packet Python RequestReceipt remains SENT even after its PacketReceipt is
 proved. Request-Resource completion sets DELIVERED. Timeout or response rejection

@@ -9,7 +9,10 @@ impl InterfaceManager {
         self.worker_tasks.retain(|address, task| active.contains(address) && !task.is_finished());
     }
 
-    fn interface_tree_hashes(&self, address: AddressHash) -> std::collections::HashSet<AddressHash> {
+    fn interface_tree_hashes(
+        &self,
+        address: AddressHash,
+    ) -> std::collections::HashSet<AddressHash> {
         let mut tree = std::collections::HashSet::from([address]);
         loop {
             let previous_len = tree.len();
@@ -26,10 +29,7 @@ impl InterfaceManager {
 
     /// Take worker handles before cancellation so a caller can confirm the
     /// listener and any accepted children have released their resources.
-    pub fn take_worker_tree(
-        &mut self,
-        address: AddressHash,
-    ) -> Vec<tokio::task::JoinHandle<()>> {
+    pub fn take_worker_tree(&mut self, address: AddressHash) -> Vec<tokio::task::JoinHandle<()>> {
         self.interface_tree_hashes(address)
             .into_iter()
             .filter_map(|address| self.worker_tasks.remove(&address))
@@ -55,9 +55,7 @@ impl InterfaceManager {
     pub fn lowest_interface_bitrate(&self) -> Option<u64> {
         self.ifaces
             .iter()
-            .filter(|iface| {
-                !iface.stop.is_cancelled() && iface.online.load(Ordering::Acquire)
-            })
+            .filter(|iface| !iface.stop.is_cancelled() && iface.online.load(Ordering::Acquire))
             .map(|iface| iface.announce_bitrate_bps)
             .filter(|bitrate| *bitrate > 0)
             .min()
@@ -76,10 +74,10 @@ impl InterfaceManager {
     }
 
     pub fn policy(&self, address: &AddressHash) -> Option<InterfacePolicy> {
-        self.ifaces.iter().find(|i| i.address == *address).map(|iface| InterfacePolicy {
-            mode: iface.mode,
-            gravity: iface.gravity,
-        })
+        self.ifaces
+            .iter()
+            .find(|i| i.address == *address)
+            .map(|iface| InterfacePolicy { mode: iface.mode, gravity: iface.gravity })
     }
 
     pub fn interface_hashes(&self) -> std::collections::HashSet<AddressHash> {
@@ -169,13 +167,19 @@ impl InterfaceManager {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.gravity)
     }
 
+    /// Update live policy throughout the registered subtree. Existing paths
+    /// are reconsidered only when the normal routing owner handles an announce.
     pub fn set_gravity(&mut self, address: AddressHash, gravity: i64) -> bool {
-        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
-            iface.gravity = gravity;
-            true
-        } else {
-            false
+        if !self.ifaces.iter().any(|iface| iface.address == address) {
+            return false;
         }
+        let tree = self.interface_tree_hashes(address);
+        for iface in &mut self.ifaces {
+            if tree.contains(&iface.address) {
+                iface.gravity = gravity;
+            }
+        }
+        true
     }
 
     pub fn set_shared_instance(&mut self, address: AddressHash, enabled: bool) -> bool {
@@ -220,8 +224,7 @@ impl InterfaceManager {
             .iter()
             .find(|iface| iface.address == address)
             .map_or(DEFAULT_IFAC_SIZE_BYTES, |iface| iface.ifac_default_size_bytes);
-        let ifac_context =
-            shared_config.ifac_context_with_default_size(default_size_bytes)?;
+        let ifac_context = shared_config.ifac_context_with_default_size(default_size_bytes)?;
         // Virtual children share their parent's lock. Acquire each distinct
         // state once, in interface order, before publishing anything. The
         // manager lock serializes configuration writers; packet codecs take
@@ -269,15 +272,11 @@ impl InterfaceManager {
     }
 
     pub fn prioritize_interfaces(&mut self) {
-        self.ifaces.sort_by(|left, right| {
-            right.announce_bitrate_bps.cmp(&left.announce_bitrate_bps)
-        });
+        self.ifaces.sort_by_key(|iface| std::cmp::Reverse(iface.announce_bitrate_bps));
     }
 }
 
-fn shared_config_without_ifac(
-    shared_config: &InterfaceSharedConfig,
-) -> InterfaceSharedConfig {
+fn shared_config_without_ifac(shared_config: &InterfaceSharedConfig) -> InterfaceSharedConfig {
     let mut child_config = shared_config.clone();
     child_config.ifac_size = None;
     child_config.network_name = None;
