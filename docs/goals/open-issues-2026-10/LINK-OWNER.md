@@ -227,10 +227,36 @@ custody changes together. No migration scan or second writer is introduced.
 
 Seven focused storage tests exercise restart, exact/full-budget accounting,
 duplicate/terminal ordering, fallback capacity, repair and rollback. Generic
-sent-status text explicitly cannot establish trusted custody. This prerequisite
-is not connected to the daemon receipt worker yet. The retained owner still needs
-separate custody and recipient-terminal queue reservations, disposition-specific
-commit acknowledgement, and method-aware native completion handling.
+sent-status text explicitly cannot establish trusted custody.
+
+`RpcDaemon::record_propagation_custody` now provides the trusted native entry into
+this transaction. A private, non-deserializable disposition shares the ordinary
+receipt status lock and trace/ticket/event publication. Explicit ID and canonical
+typed status override metadata; ordinary RPC fields cannot select custody. An
+identical previously stored sent string still needs the custody transaction.
+Missing messages fail before publication; storage failure emits no success trace
+or event. Legacy nonbroker messages keep their ordinary receipt handling, and
+later recipient terminal outcomes retain precedence. Existing post-lock event
+publication does not establish a new concurrent event-ordering guarantee.
+
+The sole receipt worker is not connected to this entry yet. Its integration must
+use separate custody and recipient-terminal queue reservations while a dispatch
+owner is active, plus disposition-specific commit acknowledgement. Queue admission
+is not commitment and absence from a map is not an acknowledgement. Paired admission
+must be atomic; duplicate events share their pending observation. Terminal commit
+can release unused custody capacity, but cannot discard an accepted custody event.
+
+After explicit custody commit, dispatch-owner retirement releases unused queue
+permits under the publisher lock, preserving every accepted pending event and its
+acknowledgement. The existing terminal fence still waits for an already accepted
+terminal. Unlike transient queue permits, SQLite recipient-terminal capacity stays
+reserved for a possible later proof. Keeping unused queue permits indefinitely
+would eventually block unrelated sends after successful propagation. A terminal
+racing retirement either consumes its reserved slot or follows existing unreserved
+admission afterward; no guarantee of future queue acceptance is claimed. Acceptance
+must exercise more sequential custody completions than queue capacity without any
+later recipient proof, plus terminal races on both sides of retirement, failed
+terminal persistence, shutdown drain and retained SQLite terminal capacity.
 
 ## Required acceptance
 

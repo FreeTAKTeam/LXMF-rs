@@ -55,8 +55,10 @@ outcomes survive legacy event-broadcast overflow. Storage now atomically records
 trusted propagation custody and retires dispatch intent without consuming later
 recipient-terminal capacity; restart cannot re-upload that committed operation.
 Older preparation reservations repair only their missing custody capacity through
-the shared writer when space is available. Daemon ownership and reliable custody
-publication still require the planned cutover. See the
+the shared writer when space is available. A trusted daemon custody entry now
+shares receipt locking and publication while rejecting caller-supplied custody
+fields and missing messages. Receipt-worker wiring, daemon ownership and reliable
+custody publication still require the planned cutover. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655

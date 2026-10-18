@@ -128,9 +128,12 @@ sent-status text. Custody commits status, journal and dispatch completion atomic
 spends retained preparation capacity, and preserves recipient-terminal capacity.
 Seven storage regressions cover restart without redispatch, exact/full-budget
 accounting, duplicate and terminal ordering, fallback capacity, rollback and older
-preparation recovery after capacity returns. The daemon receipt publisher does not
-yet use this typed transaction; queue-overload and retained-owner acceptance remain
-open.
+preparation recovery after capacity returns. The trusted daemon entry now shares
+receipt locking, metadata and post-commit publication; five new tests plus an
+extended authenticated-RPC test cover authority, missing records, rollback,
+terminal ordering, ticket handling and restart. The receipt publisher and worker
+do not yet use this typed entry; queue-overload and retained-owner acceptance
+remain open.
 Full Link/Resource post-send and Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.

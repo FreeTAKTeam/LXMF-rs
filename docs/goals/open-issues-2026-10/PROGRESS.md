@@ -830,3 +830,31 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   The typed transaction is a storage prerequisite; daemon receipt publication,
   commit acknowledgement and retained Link ownership remain pending. No item-3
   PR, hosted CI or completion is claimed.
+
+### Item 3 trusted daemon custody entry
+
+- Extracted the existing receipt application block without introducing a second
+  status lock or persistence authority. `record_propagation_custody` selects a
+  private, non-deserializable disposition and derives ID/status from typed native
+  arguments. Ordinary RPC fields cannot grant custody; identical prior sent text
+  still requires the atomic dispatch-completion transaction.
+- Reused metadata, trace, ticket and event handling. Custody does not mark a ticket
+  delivered; later recipient delivery still does. Storage failure returns before
+  success publication. Review found missing messages could resemble idempotent
+  success; typed custody now returns NotFound with no event/trace, preserving the
+  existing ordinary receipt contract.
+- Five new daemon tests and an extended authenticated-RPC regression cover those
+  boundaries, terminal ordering, nonbroker compatibility and restart. The positive
+  authorization test required its fixture identity bridge to list its imported
+  identity; production authorization was unchanged. All seven focused broker
+  tests pass. All-feature RPC tests pass 827 tests with 8 existing ignores;
+  all-target/all-feature RPC Clippy, issue-369 scanning, formatting, boundaries,
+  architecture and module-size checks pass. Logs:
+  `/tmp/lxmf-item3-custody-daemon-{focused,auth,rpc,clippy,quality,format,architecture,boundaries,size}.log`.
+- Independent correctness and POST reviews accepted this prerequisite. Recorded
+  the upcoming queue lifecycle in LINK-OWNER: paired transient permits cover the
+  admitted owner and custody/terminal race, while explicit committed retirement
+  releases unused permits and preserves accepted work. SQLite terminal capacity
+  remains reserved; indefinite unused queue permits would block unrelated traffic.
+- The receipt worker/publisher and retained Link owner are not wired to this entry
+  yet. No item-3 PR, hosted CI, interoperability or completion is claimed.
