@@ -2240,6 +2240,46 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 generic RNode bearer admission and terminal status checkpoint
+
+- Shared KISS checkpoint `e4b3347a` precedes this existing-owner change. Six
+  injected software cases cover full receive admission, healthy terminal status
+  and caller-owned failure/authentication/rotation/fresh retry for each existing
+  BLE and Bluetooth Classic kind. Startup observation keeps seven seconds for
+  the unchanged five-second validator; later packet/pressure/join bounds remain
+  two seconds. No native Bluetooth API or hardware is invoked.
+- First red `/tmp/lxmf-item4-lora-bearer-red.log` is 0/6 in 7.02 seconds: four
+  production failures and two fixture close-count assumptions. Existing startup
+  already closes after open failure and retries an idempotent close if that
+  cleanup failed. Both PRE roles approve retaining two close calls for that
+  failed-open/failed-close phase and one terminal close per opened attempt.
+  The corrected command selected all six cases again, rather than just its
+  intended caller filter; `...-bearer-caller-red.log` is 0/6 in 7.02 seconds,
+  now exposing the intended stalled admission, stale online and lost cleanup
+  diagnostic failures. Neither first run is discarded or called acceptance.
+- RX admission reuses `run_or_cancel` and exits to its existing cleanup owner.
+  The platform's bounded `runtime.poll()` remains the sole read owner, with no
+  outer timeout, competing worker or native retry added. Final publication sets
+  only offline state; cleanup errors append without replacing the read error,
+  metadata or traffic. Existing startup cleanup and backend contracts stay intact.
+- Current-thread pressure cases hold the exact capacity-one sentinel through
+  cancellation and join; consumed authenticated input is a processing barrier,
+  while retained sentinel/no second packet proves no cancelled admission.
+  Independent global/interface inputs are both covered. Caller traces reject
+  plaintext/wrong keys, authenticate exact eight-byte IFAC ingress/egress,
+  rotate live policy at the same root and use a fresh caller-created backend,
+  native address, key, counters and status after failure. Retired status remains
+  unchanged. These are software bearer boundary observations, not RF delivery.
+- Final `cargo test -p reticulum-rs-transport --lib rnode_bearer_interface::tests`
+  passes 11/11 in 10.15 seconds in `...-bearer-green.log`, including the prior
+  delayed native-read single-owner regression. Both source POST roles approve.
+  Affected all-target/all-feature Clippy, diagnostics #369 (1/1), architecture,
+  boundaries, size and explicit four-file formatting pass in
+  `/tmp/lxmf-item4-lora-bearer-{clippy,diagnostics,architecture,boundaries,size,fmt}.log`.
+  The two configured LoRa/RNode traces remain open; no family promotion follows
+  this checkpoint. Thirteen of twenty rows, seven families plus whole-item
+  integration, one PR, hosted CI and merge remain unchanged.
+
 ## Item 4 shared KISS pending-I/O retirement checkpoint
 
 - Supervisor checkpoint `b1d7e536` precedes this bounded shared-owner change.
@@ -2271,8 +2311,9 @@ validation only; terminal results and final-head review/CI/merge remain required
 - Affected Clippy, diagnostics #369, architecture, boundaries, module size,
   explicit three-file formatting and diff gates pass in
   `/tmp/lxmf-item4-lora-kiss-{clippy,diagnostics,architecture,boundaries,size,fmt,diff}.log`.
-  Generic bearer and configured LoRa/RNode traces remain open. This native
-  shared-owner checkpoint does not qualify that family row: current totals
+  At that shared-KISS checkpoint, generic bearer and configured LoRa/RNode
+  traces remained open; the later bearer checkpoint is recorded above. This native
+  shared-owner checkpoint did not qualify that family row: totals
   remain thirteen of twenty, seven families plus whole-item integration/one
   PR/hosted CI/merge outstanding. No physical/RF/public-network evidence.
 
@@ -2343,8 +2384,9 @@ the diagnostics command is `cargo test -p reticulumd --test code_quality_issue_3
   At the preparation baseline, opening errors only logged and retry waits/TCP
   connect could hide cancellation; the subsequent supervisor checkpoint above
   corrects those gaps. Shared KISS pressure was documented next and is qualified
-  separately above; generic bearer pressure/final status remain open. Platform
-  backend reads stay single-owner.
+  separately above; generic bearer pressure/final status were then pending
+  and are covered by the later bearer checkpoint above. Platform backend reads
+  stay single-owner.
 - Correctness PRE approves mechanical preparation and requires initial KISS
   write failure to retain its no-cleanup path. Independent global/interface-stop
   controls must cancel, then await the existing stream and probe monitor owner.

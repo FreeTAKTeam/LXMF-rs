@@ -929,8 +929,9 @@ receiver qualify this native owner; they do not imply configured-family proof.
 Both source POST roles and affected gates pass. Default transport passes 1,054
 tests and transport all-feature 1,083, each with twelve existing ignores; default
 daemon passes 31/678, including configured Serial/KISS. Exact commands/results
-are in PROGRESS.md. Generic bearer and configured LoRa/RNode traces remain
-pending; family totals stay thirteen of twenty, with seven families and the
+are in PROGRESS.md. At that shared-KISS checkpoint, generic bearer and configured
+LoRa/RNode traces were pending; the later bearer checkpoint follows below.
+Family totals stayed thirteen of twenty, with seven families and the
 whole-item integration/one PR/hosted CI/merge still open. No physical or
 public-network activity is used.
 
@@ -947,12 +948,31 @@ configured status/setup three, and configured owner shutdown ten. Native LoRa
 retry can use its existing validated 50/100 ms test configuration; long-backoff
 regressions deliberately retain a value above the owner's join bound. Preserve
 the existing 3.5-second detect probe, fourteen-second TCP silence timeout and
-probe-monitor startup policy. Configured restarts use native defaults first,
+probe-monitor startup policy. Generic bearer startup validation gets seven
+seconds to include its unchanged five-second monitor deadline; packet, pressure
+and joined-stop bounds remain two seconds after that readiness barrier. The
+generic set is six cases: full receive queue, terminal offline cancellation and
+caller-owned failure/rotation/read-error/changed-key retry for each existing kind.
+Configured restarts use native defaults first,
 then a valid explicit MTU 200. Only owned local state, PTYs, loopback sockets
 and injected software bearers are used; no hardware, Bluetooth scan, RF or
 public-network activity. Main-agent PRE/structural POST/source POST and affected
 gates precede row qualification. Six other families and whole-item integration,
 one PR, hosted CI and merge would remain afterward.
+
+The following generic bearer checkpoint preserves two sequential close attempts
+only when failed-open cleanup itself fails, as the existing runtime already
+requires; each opened attempt has one terminal close call. First red is 0/6
+(four production failures and two fixture assumptions), then the corrected six
+cases all fail on full RX cancellation, healthy final online state and lost
+cleanup diagnostics. Reusing existing admission cancellation and final status
+ownership produces 11/11 passes, including five prior controls. Exact held queue
+contents, both stop inputs, authenticated eight-byte IFAC/rotation, read plus
+close error retention and fresh caller-created attempts provide software bearer
+proof without changing native read ownership or startup timing. Both source
+POST roles and focused gates pass; PROGRESS.md retains commands, logs and scopes.
+Only the two configured LoRa/RNode serial/TCP traces remain for this family;
+current qualification remains thirteen of twenty, with no physical claim.
 
 ### Raw IFAC type preparation for UDP composition
 

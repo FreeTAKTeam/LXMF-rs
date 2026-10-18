@@ -64,6 +64,13 @@ pub(super) fn set_error_status(status: &Arc<Mutex<serde_json::Value>>, error: &s
     object.insert("last_command_error".to_string(), serde_json::Value::String(error.to_string()));
 }
 
+pub(super) fn mark_offline_status(status: &Arc<Mutex<serde_json::Value>>) {
+    let mut guard = status.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(object) = guard.as_object_mut() {
+        object.insert("online".to_string(), serde_json::Value::Bool(false));
+    }
+}
+
 pub(super) fn append_error_status(status: &Arc<Mutex<serde_json::Value>>, error: &str) {
     let mut guard = status.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let previous = guard

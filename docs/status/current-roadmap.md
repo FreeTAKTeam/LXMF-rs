@@ -225,8 +225,12 @@ alongside exact ready-shutdown and initial-error/no-cleanup controls (15 total).
 Initial failure and interrupted I/O append no shutdown bytes; ordinary ready
 cleanup remains intact. Independent source reviews and affected gates pass;
 default transport passes 1,054, transport all-feature 1,083 (twelve existing
-ignores each) and default daemon 31/678. Generic-bearer cleanup and configured
-LoRa/RNode family traces still remain open.
+ignores each) and default daemon 31/678. A subsequent generic bearer checkpoint
+reuses cancellation for receive admission, publishes final offline state and
+retains cleanup errors beside the original failure. Six new cases for the two
+existing bearer kinds and five prior controls pass with independent source
+review and focused gates, while native read ownership and timing remain intact.
+Configured LoRa/RNode serial/TCP family traces still remain open.
 Thirteen of twenty declared software family rows are locally qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
