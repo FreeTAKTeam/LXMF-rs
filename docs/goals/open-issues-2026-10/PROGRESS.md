@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; six local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md) and [REQUESTS.md](REQUESTS.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts and common live child policy pass bounded reviews and local checks. Remaining family lifecycle, discovery and deeper recovery gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; seven local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts, common live child policy and discovery configuration/planner preparation pass bounded reviews and local checks. Remaining family lifecycle, discovery runtime and deeper recovery gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -1621,3 +1621,38 @@ validation only; terminal results and final-head review/CI/merge remain required
 - This is common native-owner evidence. Carrier-specific startup/reconnect/error
   composition, discovery runtime and predeclared deeper mixed-process recovery
   still gate item 4. No item-4 PR, hosted check, merge or physical claim.
+
+## Item 4 discovery configuration and planner preparation
+
+- PRE approved the existing-worker contract in DISCOVERY.md. This bounded slice
+  extracts startup configuration loading to one immutable read, retaining
+  independent daemon/runtime/rejected-IFAC fallbacks and both exhaustive public
+  struct layouts. The additive private unverified option falls back independently
+  on malformed input. Four tests cover default/true/false/invalid values,
+  malformed interface versus valid runtime, actual file replacement during the
+  only read, and absent/unreadable/invalid established configuration.
+- The existing initial planner delegates to an additive policy-aware variant.
+  Endpoint exclusions apply even with override, and each planned name reserves
+  its collision suffix for later candidates. Three focused regressions pass;
+  the definitive red run first exposes invalid-loopback admission and duplicate
+  names. Existing verified-default callers remain unchanged.
+- A controlled subprocess imports the exact clean target commit
+  `7f2b3b9b524c9386316379af1313b43a5e4f7a5d` and compares 78 qualification cases,
+  nine endpoint classes and sequential collision allocation. Its first run
+  exposes valid large version components rejected by u32 parsing. Saturating
+  numeric parsing preserves Python's ordering against the fixed minimum, and
+  the complete probe passes. This is predicate/name evidence, not a live peer
+  or general discovery callback trace. Logs preserve red/green results in
+  `/tmp/lxmf-item4-discovery-{planner-red,planner-green,target-planner-red,target-planner-green}.log`.
+- Correctness and maintainability POST both approve this bounded preparation.
+  All-feature transport passes 1,044 with 12 explicit ignores, all-feature
+  daemon binary passes 593, and affected all-target/all-feature Clippy passes.
+  Cargo fmt, explicit new/changed planner/include formatting, diagnostics,
+  boundaries, module size and architecture pass. The extracted bootstrap core
+  retains its preexisting formatting rather than introducing an unrelated
+  whole-file rewrite. Logs use `/tmp/lxmf-item4-discovery-prep-*.log`.
+- The parsed private override is deliberately not yet consumed by production
+  admission. Native discovery composition, monitoring, suppression, trusted
+  bootstrap restoration and all three declared process cases remain open.
+  Family lifecycle and deeper mixed-process recovery still gate item 4; no PR,
+  hosted check, merge or broad runtime qualification is claimed here.

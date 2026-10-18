@@ -99,6 +99,14 @@ The common InterfaceManager setters now propagate mode, outgoing, gravity and
 announce pacing through registered descendants. Native dispatch, queued release
 and exact signed-announce tie-breaking qualify the live consumers while preserving
 IFAC choices, unrelated trees and committed queue/path state.
+Discovery preparation now parses all startup configuration views from one file
+snapshot while preserving independent fallbacks and exhaustive public structs.
+The pure planner reserves collision suffixes, excludes unsafe endpoint classes,
+and accepts the explicit qualification override through an additive initial
+planning method. A controlled exact-1.5.5 comparison covers 78 qualification
+cases, nine endpoints and sequential names, including large version components.
+The private override is parsed but awaits native worker composition; this is
+not a live auto-connect or process interoperability claim.
 The remaining carrier lifecycle, discovery and deeper
 recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

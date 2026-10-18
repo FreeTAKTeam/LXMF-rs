@@ -37,6 +37,14 @@ display boundary. The Rust publisher already requires `publish_ifac` and
 configured IFAC fields; encoding now drops empty or literal `None` values. The
 sample I2P discovery entry already uses `.b32.i2p`.
 
+The item-4 preparation now reads startup configuration once for all typed views,
+with a private, independently falling-back unverified override. An additive
+policy-aware initial planner reserves names and applies endpoint exclusions.
+A controlled exact-target comparison passes 78 qualification cases, nine
+endpoints and sequential name collisions; large numeric version components
+retain Python's ordering against the fixed 1.5.2 minimum. The override is not yet
+wired to a native auto-connect worker, so this does not change the runtime gap.
+
 Local-client forced bitrate is applied before the accepted stream worker runs,
 and virtual children inherit their parent's initial announce cap and policy.
 At v0.13.0 Rust had no equivalent retained pending Link request state. The later

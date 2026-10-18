@@ -238,6 +238,15 @@ Python's default rejection of Rust is a result, not an invitation to impersonate
 RNS. Session detach suppression is explicit Rust operator intent; failed explicit
 reattach preserves it and queued discovery work rechecks it before commit.
 
+The seventh local slice prepares configuration and pure planning under
+[DISCOVERY.md](DISCOVERY.md). All typed startup views use one immutable read;
+the private additive override cannot invalidate otherwise valid established
+views. Initial planning gains explicit policy while old callers retain verified
+defaults. Native endpoint exclusions and collision allocation match the pinned
+target's controlled predicates, including arbitrary-size version components
+against the fixed minimum. Runtime admission, monitoring, bootstrap recipes,
+suppression and the three declared process cases remain open.
+
 The deeper relay lane will extend the existing Python shared-owner/client and
 Rust-relay fixture to three Rust relays. Predeclare three fresh process runs,
 four delivery cells (small Direct and Direct Resource in both directions), each

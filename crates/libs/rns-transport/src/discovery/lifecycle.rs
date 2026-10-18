@@ -144,15 +144,30 @@ impl InterfaceDiscoveryLifecycle {
         existing: &[RuntimeInterfaceState],
         maximum: usize,
     ) -> Vec<AutoconnectPlan> {
+        self.initial_autoconnect_with_policy(
+            discovered,
+            existing,
+            maximum,
+            AutoconnectInterfacePolicy::default(),
+        )
+    }
+
+    pub fn initial_autoconnect_with_policy(
+        &mut self,
+        discovered: &[DiscoveredInterface],
+        existing: &[RuntimeInterfaceState],
+        maximum: usize,
+        policy: AutoconnectInterfacePolicy<'_>,
+    ) -> Vec<AutoconnectPlan> {
         let mut simulated = existing.to_vec();
         let mut plans = Vec::new();
         for info in discovered {
             if autoconnect_count(&simulated) >= maximum {
                 break;
             }
-            if let Some(plan) = plan_autoconnect(info, &simulated) {
+            if let Some(plan) = plan_autoconnect_with_policy(info, &simulated, policy) {
                 simulated.push(RuntimeInterfaceState {
-                    id: info.name.clone(),
+                    id: plan.name.clone(),
                     autoconnect_hash: Some(plan.endpoint_hash),
                     autoconnect_source: Some(plan.network_id.clone()),
                     target_host: Some(plan.target_host.clone()),
@@ -255,7 +270,13 @@ pub fn plan_autoconnect_with_policy(
     existing: &[RuntimeInterfaceState],
     policy: AutoconnectInterfacePolicy<'_>,
 ) -> Option<AutoconnectPlan> {
+    let target_host = info.reachable_on.as_deref()?;
     if info.interface_type != "BackboneInterface"
+        || super::is_invalid_ip_address(target_host)
+        || super::is_onion_address(target_host)
+        || target_host
+            .parse::<std::net::Ipv6Addr>()
+            .is_ok_and(|address| address.octets()[0] & 0xfe == 0x02)
         || interface_exists(info, existing)
         || (!policy.allow_unverified && !verified_autoconnect_implementation(info))
     {
@@ -263,8 +284,8 @@ pub fn plan_autoconnect_with_policy(
     }
     Some(AutoconnectPlan {
         endpoint_hash: endpoint_hash(info),
-        name: info.name.clone(),
-        target_host: info.reachable_on.clone()?,
+        name: autoconnect_name(&info.name, existing),
+        target_host: target_host.to_owned(),
         target_port: info.port?,
         transport_identity: info.transport_id.clone(),
         network_id: info.network_id.clone(),
@@ -274,6 +295,21 @@ pub fn plan_autoconnect_with_policy(
         gravity: policy.gravity,
         announces_to_internal: policy.announces_to_internal,
     })
+}
+
+fn autoconnect_name(name: &str, existing: &[RuntimeInterfaceState]) -> String {
+    let occupied = |name: &str| existing.iter().any(|interface| interface.id == name);
+    if !occupied(name) {
+        return name.to_owned();
+    }
+    let mut suffix = 2usize;
+    loop {
+        let candidate = format!("{name} ({suffix})");
+        if !occupied(&candidate) {
+            return candidate;
+        }
+        suffix += 1;
+    }
 }
 
 fn verified_autoconnect_implementation(info: &DiscoveredInterface) -> bool {
@@ -293,7 +329,11 @@ fn version_tuple(value: &str) -> Option<Vec<u32>> {
         if digits.is_empty() {
             break;
         }
-        components.push(digits.parse().ok()?);
+        // Saturation preserves ordering against the fixed 1.5.2 minimum, including Python's
+        // arbitrarily large numeric components, without rejecting otherwise valid versions.
+        components.push(digits.bytes().fold(0u32, |value, digit| {
+            value.saturating_mul(10).saturating_add(u32::from(digit - b'0'))
+        }));
     }
     (!components.is_empty()).then_some(components)
 }
