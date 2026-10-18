@@ -477,6 +477,40 @@ The mechanical root/accept extraction preserves behavior and public wrappers;
 21 existing I2P tests still pass in `...-refactor.log`. No I2P row is qualified
 by this structural step; the behavior correction and full trace remain pending.
 
+POST review of the six-case green finds a connected shared-stream gap before
+qualification: `tcp_client::run_hdlc_stream_with_runtime_and_ifac` awaits RX queue
+admission and packet/keepalive write/flush outside cancellation. New mandatory
+I2P joins can therefore wait until the outer daemon abort if established streams
+are backpressured. Extend this board by five focused shared-owner regressions:
+`hdlc_shutdown_joins_full_receive_handoff`,
+`hdlc_shutdown_joins_blocked_packet_write`,
+`hdlc_shutdown_joins_blocked_packet_flush`,
+`hdlc_shutdown_joins_blocked_keepalive_write`, and
+`hdlc_shutdown_joins_blocked_keepalive_flush`. Use the actual full native RX
+channel and bounded Tokio duplex writer; an owned AsyncWrite observer supplies
+write-progress/flush-entry barriers, with an explicit pending flush only in the
+flush cases. Keep the queue/peer blocked through cancellation, then require
+joined completion and peer EOF within two seconds. Cover global cancellation,
+interface stop and RX EOF's internal stream stop without changing timers.
+
+Allowed additional files are the existing shared HDLC function in
+`iface/tcp_client.rs`, its private `tcp_client_parts/hdlc_stream.rs` extraction
+if required to stay within module policy, and focused tests under that module's
+`tests/` directory. Preserve every forwarding API/caller, error context, framing,
+IFAC order, queue and watchdog behavior. First retain five pre-fix results and
+verify a mechanical extraction with the existing shared-stream regressions;
+then cancellation-select only blocked handoffs. No alternate stream owner,
+registry, dependency or abort-as-success. This is a POST correctness correction
+within item 4, not a new family or an extra PR.
+Both PRE roles approve this correction. The shared function is mechanically
+extracted into a 349-line private module with the existing crate-visible path
+re-exported. Both structural POST reviews approve unchanged text/behavior;
+40 existing TCP-client tests pass in `/tmp/lxmf-item4-i2p-hdlc-refactor.log`.
+Pinned Tokio source documents that cancelling `write_all` can leave a partial
+write. Cancellation here retires that stream generation: never resume the tail
+or emit successful write/keepalive events. Queue/peer barriers stay held until
+joined completion; the internal-stop case half-closes only the peer's input.
+
 ### Raw IFAC type preparation for UDP composition
 
 Checkpoint `c5ee78f50a3e8f13c5a1f0e3537f6d4702558694` records the reviewed

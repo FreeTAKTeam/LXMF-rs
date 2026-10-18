@@ -2240,6 +2240,18 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 shared HDLC shutdown preparation
+
+- I2P's six configured traces pass after its initial ownership/redaction fix,
+  but correctness POST finds established shared HDLC I/O can still block the
+  new mandatory joins. Qualification remains withheld. Both PRE roles approve
+  five additional blocked-handoff regressions and a minimum shared-owner fix.
+- Main mechanically extracts the existing shared function into a private
+  349-line module, preserving its crate-visible path/signature through a
+  re-export. Both structural POST roles approve exact behavior preservation;
+  40 existing TCP-client tests pass in 6.00 seconds in
+  `/tmp/lxmf-item4-i2p-hdlc-refactor.log`. Blocked-I/O correction remains pending.
+
 ## Item 4 I2P orchestration preparation
 
 - Both PRE roles approve the finite I2P board in TRANSPORT.md. Existing native
