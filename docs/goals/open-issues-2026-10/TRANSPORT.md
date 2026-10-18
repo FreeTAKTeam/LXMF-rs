@@ -77,7 +77,7 @@ other rows remain open. Record exact test names/results when qualified.
 | --- | --- | --- |
 | TCP server / Backbone | Four declared native traces plus alias admission controls qualify applicable configured error, child rotation, named TCP rollback/reload/detach/attach, restart and unrelated traffic | Locally qualified for these software lifecycle traces; exact-`localhost` IPv6 wire coverage depends on a dual resolver environment. Whole-item integration/hosted CI remain pending |
 | TCP / Backbone client | Declared configured refusal, same-socket activation, live key change, reconnect, changed-key restart and exact unrelated traffic; preceding named constructor/hook traces | Locally qualified for these software lifecycle traces; whole-item integration/hosted CI remain pending |
-| UDP unicast | Daemon/mixed rejection, rotation/restart, failed replacement retry | Raw-record alias/type collisions and named-management composition |
+| UDP unicast | Daemon/mixed rejection, rotation/restart, failed replacement retry; raw IFAC alias/type admission and retained SDK native traffic | Named-management lifecycle composition |
 | UDP multicast | Production multicast routing helper and common codec | Authenticated ingress/egress, virtual peer rotation, replacement/restart |
 | Pipe | Authenticated cat roundtrip, wrong-key rejection, ordinary child cleanup | Configured startup failure, IFAC rotation/respawn/detach |
 | Serial | Authenticated production stream, open/write failure primitives | Configured PTY open/error/reopen and changed-key restart |
@@ -212,6 +212,44 @@ Correctness POST adds both-order expanded/bracketed IPv6 loopback and wildcard
 controls: textual `::1` alone is not a numeric bind identity. Canonical numeric
 endpoint keys and the existing conservative wildcard-port guard must cover those
 aliases before queueing. This is the same bind-admission owner, without DNS I/O.
+
+### Raw IFAC type preparation for UDP composition
+
+Checkpoint `c5ee78f50a3e8f13c5a1f0e3537f6d4702558694` records the reviewed
+TCP/Backbone lifecycle traces. UDP exploration finds a common raw-record gap:
+`as_str` ignores malformed credential aliases and `as_u64` treats a negative or
+malformed bit count as absent. This can acknowledge a malformed replacement or
+lose the presence check that forbids size-without-credentials plaintext.
+Typed startup already rejects non-string credentials, deserializes a signed
+integer size, and preserves negative sizes as present zero/default. It remains
+the scalar-type/presence contract; legacy RPC alias names remain additive.
+
+| Task | Main-agent files and owner | Required evidence |
+| --- | --- | --- |
+| Raw IFAC scalar admission | Existing `ifac_validation.rs` before queueing; `record_settings.rs` conversion/alias ordering; focused tests | All present non-null credential aliases in object settings must be strings, including lower-priority aliases; size must be a signed integer and normalize negative to present zero as typed startup does. Preserve absent/null options, empty-string fallback, byte-significant whitespace and existing opaque settings metadata. Keep the existing static invalid-IFAC error and crypto validation |
+| Authority and native preservation | Same alias lists shared by validation/conversion, existing SDK v2/typed ZeroMQ UDP fixture | Finite invalid-type/presence controls fail before fix. A malformed SDK replacement is rejected with value-free diagnostics; prior native root/policy remains and exact authenticated ingress/egress still succeeds. Queue admission cannot retire an unrelated root |
+| Later UDP family traces | Existing startup/mutation and multicast peer-route owner | Named unicast management and authenticated multicast virtual-peer rotation/replacement remain subsequent work; this preparation alone promotes neither UDP row |
+
+Implementation stays with the main agent after read-only PRE review. No new
+schema, credential precedence, default, worker, registry or public management
+kind is introduced. Existing typed schema/normalization defines signed/null
+semantics. Inspection of the metadata owner finds explicit compatibility for
+non-object settings, preserved under `configured_settings`. Both PRE reviewers
+approve retaining that path rather than inventing a global settings schema.
+Validate only top-level object IFAC leaves, without recursively interpreting
+opaque/nested metadata. The first container-rejection assertion was an incorrect
+new fixture assumption; it becomes positive admission/envelope preservation.
+Preserve packet and cleanup bounds, then run focused regressions,
+diagnostics, affected daemon validation and the usual source/architecture gates.
+
+The preparation is now locally verified. Four genuine contract regressions and
+the real SDK malformed-replacement acknowledgement retain pre-fix failures; six
+controls and the SDK/ZeroMQ native trace pass after the correction. Shared alias
+lists, signed presence and static errors preserve existing compatibility. A
+following valid mutation, retained UDP authentication, unrelated TCP traffic and
+joined cleanup pass. Both source POST reviews approve, and full daemon validation
+passes 31 library/660 binary tests plus focused gates. Neither UDP family row is
+promoted by this input-boundary evidence alone.
 
 ## Duplicate and persistence contract
 

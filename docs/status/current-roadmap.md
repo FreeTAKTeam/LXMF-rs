@@ -146,7 +146,13 @@ unrelated traffic. Listener preference forwarding, native IPv4 fallback and
 tested numeric/wildcard bind collisions are covered; local IPv6 wire evidence
 uses a dual-loopback hostname with separate exact-`localhost` preparation controls.
 Both independent source reviews approve, and final daemon validation passes
-31 library/653 binary tests. Remaining carrier
+31 library/653 binary tests. Raw IFAC admission now rejects malformed object
+credentials/sizes before queueing and preserves signed negative-size presence
+as typed startup does. Shared alias lists retain precedence, null/empty fallback
+and whitespace; opaque settings metadata stays compatible. A real SDK/ZeroMQ
+rejection/recovery trace preserves authenticated UDP, unrelated TCP and joined
+cleanup. Six focused controls and 31 library/660 binary daemon tests pass with
+independent source POST approval. Remaining carrier
 lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

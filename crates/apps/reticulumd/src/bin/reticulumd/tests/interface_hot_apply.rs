@@ -18,6 +18,8 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 
+#[path = "interface_hot_apply/ifac_types.rs"]
+mod ifac_types;
 #[cfg(feature = "zmq-pipeline-rpc")]
 #[path = "interface_hot_apply/issue_608_ifac_aliases.rs"]
 mod issue_608_ifac_aliases;

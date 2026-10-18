@@ -2104,3 +2104,50 @@ validation only; terminal results and final-head review/CI/merge remain required
   evidence. Other carrier rows, whole-item integration/release checks, one PR,
   exact-head hosted CI and merge remain open. No physical/RF/public-network or
   whole-issue qualification is inferred from these traces.
+
+## Item 4 raw IFAC scalar admission
+
+- Checkpoint `c5ee78f50a3e8f13c5a1f0e3537f6d4702558694` records TCP/Backbone
+  composition. UDP exploration then finds malformed credential aliases ignored
+  during raw conversion and signed-size presence lost through `as_u64`. This
+  preparation keeps the existing validator before queueing and the native crypto
+  owner, without claiming UDP family completion.
+- Validation and conversion now share the same ordered alias lists. Every
+  present, non-null top-level IFAC alias must be a string, even when a valid
+  preferred alias shadows it. Size admission matches typed startup's signed
+  integer contract; negative values, including i64::MIN, become present Some(0),
+  selecting the carrier default with credentials and rejecting size without
+  credentials. Existing crypto validation retains flooring/maximum rules and
+  the existing typed value-free error. Generic numeric-setting helpers do not
+  change; absent/null values, empty fallback and whitespace bytes remain intact.
+- Source inspection revises an initial test assumption: arbitrary scalar/array
+  settings are explicitly preserved as `configured_settings` by existing
+  metadata helpers. Both PRE reviewers approve preserving that compatibility.
+  Validation reads only recognized top-level object leaves, never interpreting
+  opaque or nested metadata as IFAC. The initial
+  `/tmp/lxmf-item4-ifac-types-red.log` has one pass/five failures, including that
+  withdrawn container assumption. The corrected contract red in
+  `...-contract-red.log` has two passes/four genuine failures. All six controls
+  pass in `...-green.log`, including malformed lower aliases, float/string/bool
+  sizes, signed overflow/boundaries, empty/null fallback, signed presence and
+  positive opaque-envelope preservation.
+- A real SDK v2/typed ZeroMQ trace first establishes exact authenticated UDP and
+  unrelated native TCP traffic. Its malformed object replacement is incorrectly
+  acknowledged before the fix in `...-sdk-red.log` (0.06 seconds). After the fix,
+  object-valued credentials, an integral float size and negative size without
+  credentials reject with static value-free errors. Both native addresses and
+  the old key remain, exact authenticated/binary traffic still passes, and a
+  following valid command completes through the actual mutation event. Owned
+  shutdown joins native workers and the canonical router. The full trace passes
+  in `...-sdk-green.log` (2.04 seconds); its explicit three-second bound-status
+  observation retains two-second packet barriers and ten-second native cleanup.
+- Both independent source POST reviews approve. Full all-feature daemon tests
+  pass 31 library and 660 binary cases in `...-daemon.log` (30.56 seconds for
+  binary tests). The existing typed-startup negative-size regression passes in
+  `...-startup-contract.log`. All-target/all-feature daemon Clippy, default
+  check, architecture, diagnostics scanner, Cargo/include formatting, boundaries,
+  module size and task-link/diff checks pass with corresponding
+  `/tmp/lxmf-item4-ifac-types-` suffixes. Existing baseline warnings remain.
+- This qualifies raw-input preparation only. Named UDP lifecycle and multicast
+  virtual-peer composition, other family rows, whole-item integration, one PR,
+  exact-head hosted CI and merge remain open.
