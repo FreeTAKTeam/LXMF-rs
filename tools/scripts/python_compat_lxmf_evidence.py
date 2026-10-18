@@ -23,7 +23,9 @@ def native_completion(batch, message_id, status, kind, method, peer, link_mdu=No
                 if row["event_type"] == "receipt"
                 and row["payload"].get("message_id") == message_id
                 and row["payload"].get("updated") is True]
-    assert not any(row["status"].startswith("failed:") for row in receipts), receipts
+    observed_statuses = [row["status"].strip().lower() for row in receipts]
+    assert not any(status.startswith("failed") or status in {"rejected", "cancelled", "expired"}
+                   for status in observed_statuses), receipts
     statuses = {"sent: propagated", "sent: propagated resource"} if status == "custody" else {status}
     completed = [row for row in receipts if row["status"] in statuses]
     assert len(completed) == 1, receipts

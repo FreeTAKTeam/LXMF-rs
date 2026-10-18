@@ -1141,3 +1141,9 @@ validation only; terminal results and final-head review/CI/merge remain required
   This is not a full workspace pass or a confirmed production fix. Keep the
   failure log `/tmp/lxmf-item3-workspace-tests.log` and rerun the complete suite
   separately from the mixed-peer processes to qualify this boundary.
+- Incremental correctness review found that the new native evidence helper
+  rejected failure but could accept custody followed by `rejected`, `cancelled`
+  or `expired`. The focused negative regression failed for all three before the
+  correction; it now rejects every negative terminal in the captured history.
+  Log: `/tmp/lxmf-item3-negative-terminal-before.log`. No owner/state behavior
+  changes are involved; this tightens the successful-live-lane evidence gate.

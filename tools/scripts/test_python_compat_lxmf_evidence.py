@@ -111,15 +111,21 @@ class NativeCompletionEvidenceTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     self.check(evidence)
 
-    def test_failed_or_duplicate_outcomes_are_not_accepted_as_custody(self):
+    def test_duplicate_outcomes_are_not_accepted_as_custody(self):
         evidence = self.evidence()
         evidence["events"].append(copy.deepcopy(evidence["events"][0]))
         with self.assertRaises(AssertionError):
             self.check(evidence)
-        evidence["events"][1]["payload"]["status"] = "failed: transfer"
-        with self.assertRaises(AssertionError):
-            self.check(evidence)
 
+    def test_custody_followed_by_any_negative_terminal_is_not_success(self):
+        for status in ("rejected", "cancelled", "expired", "failed: transfer"):
+            with self.subTest(status=status):
+                evidence = self.evidence()
+                terminal = copy.deepcopy(evidence["events"][0])
+                terminal["payload"]["status"] = status
+                evidence["events"].append(terminal)
+                with self.assertRaises(AssertionError):
+                    self.check(evidence)
     def test_direct_resource_requires_actual_native_delivered_receipt(self):
         evidence = self.evidence(16384, True)
         evidence["events"][0]["payload"].update(status="delivered", method="direct")
