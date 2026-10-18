@@ -2240,6 +2240,38 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 Weave mechanical preparation and behavior board
+
+- Meshtastic checkpoint `b1e34761` qualifies twelve of twenty software family
+  rows. The next Weave board in TRANSPORT.md retains configured/native owners,
+  default sixteen-byte IFAC, 1,024-byte MTU, five-second reconnect and software
+  PTY-only scope. Both PRE roles approve mechanical preparation before behavior.
+- Weave's existing code moves into private same-namespace includes: root 426
+  lines, status 466, stream 239, frame processing 342 and tests/core 1,127.
+  Public paths, exact test names and bodies stay unchanged; the IFAC include
+  path adjusts to its new source directory. The obsolete root allowance is
+  removed. The existing serial PTY script/owner/reaping helper moves to one
+  shared private test module with narrow parent visibility.
+- Before/after native Weave tests pass 22/22 (0.12/0.11 seconds); four
+  Serial/KISS tests pass both times (6.07 seconds each). Output remains in
+  `/tmp/lxmf-item4-weave-{native,pty}-{baseline,structure}.log`. Expanded-source
+  Rustfmt normalization confirms all Weave and PTY helper bodies are unchanged;
+  affected all-target/all-feature Clippy, architecture, boundaries, size,
+  explicit formatting and diff checks pass in `...-structure-*.log`.
+- Behavior PRE adds two ownership controls to the planned policy/five pressure
+  cases: registration can yield after native creation/before private indexing,
+  and GC can yield after deindexing/before native retirement. The existing
+  manager's parent-child relationships must govern final cleanup of this
+  uniquely owned parent, preserving unrelated children. No behavior changes
+  or family promotion are part of this structural checkpoint. Two configured
+  PTY cases and the eight native behavior scenarios remain future work.
+
+Structural commands: `cargo test -p reticulum-rs-transport --lib weave`,
+`cargo test -p reticulumd --bin reticulumd policy_tests::serial_family`,
+`cargo clippy -p reticulumd -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings`,
+`cargo run -p xtask -- architecture-checks`, the boundary/module-size scripts,
+and the explicit eight-file `rustfmt --edition 2021 --config skip_children=true --check`.
+
 ## Item 4 Meshtastic software lifecycle and native queue shutdown qualification
 
 - Auto checkpoint `162db200` qualifies eleven of twenty declared software

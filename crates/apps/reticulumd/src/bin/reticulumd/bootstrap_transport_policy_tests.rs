@@ -24,6 +24,10 @@ mod udp_family;
 mod pipe_family;
 
 #[cfg(target_os = "linux")]
+#[path = "tests/pty_peer.rs"]
+mod pty_peer;
+
+#[cfg(target_os = "linux")]
 #[path = "tests/bootstrap_serial_family.rs"]
 mod serial_family;
 

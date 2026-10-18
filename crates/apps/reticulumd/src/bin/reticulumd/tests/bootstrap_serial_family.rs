@@ -1,3 +1,4 @@
+use super::pty_peer::PtyPeer;
 use super::restore_tests::{native_address, verify_unrelated_tcp};
 use super::*;
 use crate::interface_hot_apply::{InterfaceHotApplyBridge, InterfaceMutationOwner};
@@ -7,12 +8,9 @@ use rns_transport::iface::{
 };
 use rns_transport::packet::{Packet, PacketDataBuffer};
 use serde_json::{json, Value};
-use std::os::unix::fs::symlink;
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
+use std::path::Path;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpSocket, TcpStream};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::time::{sleep, timeout, Duration};
 
 const INITIAL: &str = "serial-family-initial-credential";
@@ -30,84 +28,6 @@ const KISS_INITIAL: [u8; 20] = [
     0xc0, 0x03, 1, 0xc0, // slot 10 ms
     0xc0, 0x0f, 1, 0xc0,
 ];
-
-const PTY_RELAY: &str = r#"
-import errno, os, pty, select, time, tty
-master, slave = pty.openpty()
-tty.setraw(master)
-tty.setraw(slave)
-def write_all(fd, data):
-    while data:
-        written = os.write(fd, data)
-        if written == 0:
-            raise RuntimeError("relay made no progress")
-        data = data[written:]
-write_all(1, (os.ttyname(slave) + "\n").encode())
-os.close(slave)
-while True:
-    for source in select.select([0, master], [], [])[0]:
-        try:
-            data = os.read(source, 4096)
-        except OSError as error:
-            if source == master and error.errno == errno.EIO:
-                time.sleep(0.01)
-                continue
-            raise
-        if not data:
-            raise SystemExit(0)
-        write_all(master if source == 0 else 1, data)
-"#;
-
-struct PtyPeer {
-    child: Child,
-    input: ChildStdin,
-    output: BufReader<ChildStdout>,
-    slave: PathBuf,
-}
-
-impl PtyPeer {
-    async fn start() -> Self {
-        let mut child = Command::new("python3")
-            .args(["-u", "-c", PTY_RELAY])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .expect("owned raw PTY observer");
-        let input = child.stdin.take().expect("PTY observer input");
-        let mut output = BufReader::new(child.stdout.take().expect("PTY observer output"));
-        let mut greeting = Vec::new();
-        timeout(Duration::from_secs(3), output.read_until(b'\n', &mut greeting))
-            .await
-            .expect("PTY path greeting deadline")
-            .expect("complete PTY path greeting");
-        assert!(greeting.len() <= 128 && greeting.last() == Some(&b'\n'));
-        let slave =
-            PathBuf::from(std::str::from_utf8(&greeting).expect("PTY path UTF-8").trim_end());
-        assert!(slave.starts_with("/dev/pts/"), "only the owned Linux PTY may be used");
-        Self { child, input, output, slave }
-    }
-
-    fn publish_alias(&self, alias: &Path) {
-        let staging = alias.with_extension("ready");
-        symlink(&self.slave, &staging).expect("owned ready PTY alias");
-        std::fs::rename(staging, alias).expect("publish owned PTY alias atomically");
-    }
-
-    async fn stop(mut self) {
-        self.input.shutdown().await.expect("close owned observer input");
-        drop(self.input);
-        timeout(Duration::from_secs(2), self.output.read_to_end(&mut Vec::new()))
-            .await
-            .expect("owned observer output EOF deadline")
-            .expect("owned observer output EOF");
-        let exit = timeout(Duration::from_secs(3), self.child.wait())
-            .await
-            .expect("owned PTY child wait deadline")
-            .expect("owned PTY child reaped");
-        assert!(exit.success(), "PTY observer must exit successfully: {exit}");
-    }
-}
 
 fn assert_redacted(value: &impl serde::Serialize) {
     let text = serde_json::to_string(value).expect("diagnostic JSON");

@@ -737,6 +737,77 @@ explicit loopback simulation, distinct from independent native bearer IFAC
 evidence. Eight families and whole-item integration/one PR/hosted CI/merge
 remain open; no external radio or RF qualification is inferred.
 
+### Weave software family composition board
+
+Checkpoint `b1e34761` qualifies simulated Meshtastic; eight families remained
+open there. Read-only exploration maps Weave to its existing configured
+dispatcher/prepared root, serial worker, native endpoint registry and
+status/control projection. Both immutable reference files are byte-identical
+for this surface: native IFAC is sixteen bytes, MTU 1,024 and baud 3,000,000.
+Python assigns a new endpoint its parent's outgoing policy. Rust currently
+overrides inherited outgoing with `true` in `ensure_weave_endpoint`.
+
+| Task | Main-agent owner/files | Declared evidence |
+| --- | --- | --- |
+| Size-bounded mechanical preparation | Existing `iface/weave.rs`; private `weave_parts/{status,stream,frame_processing}.rs` and `weave_parts/tests/core.rs`; existing module-size allowlist. Existing serial PTY helper moves to shared private `tests/pty_peer.rs` with registrations/imports only | Run existing native Weave and four daemon Serial/KISS cases before/after. Preserve function bodies, API/privacy, exact test names and native assertions. Keep every new regular file below 500 lines/test file below 1,200; remove the obsolete root Weave allowance once its root meets the limit. Shared PTY script/ownership/explicit reaping stay unchanged |
+| Parent-policy correction | Existing endpoint registration owner in the extracted frame-processing part; one focused native endpoint regression | With parent IFAC, mode/outgoing/gravity/pacing set, existing/new endpoints retain the authoritative manager policy. New-child outgoing=false fails before removing the redundant override; no new policy implementation or default |
+| Cooperative native stream retirement | Existing generic stream owner and cleanup epilogue; new focused nested native tests | Five declared pressure cases: full native RX, discovery write/flush, established packet write/flush. Use valid default-sized IFAC and actual endpoint/handshake barriers, real duplex partial-write pressure or a notified pending-flush adapter. Keep queues/peers blocked through existing-token shutdown and joined completion/EOF; pending output does not increment success. Active children must be removed before parent retirement |
+| Interrupted endpoint ownership handoffs | Existing manager parent-child truth and stream cleanup epilogue; two native held-lock controls | Cancel native registration after manager creation/before state indexing, and GC after state removal/before manager retirement. Final cleanup must remove every child of this parent while retaining an unrelated parent's child; no second registry or lock held across await |
+| Configured failure and native PTY lifecycle | Existing daemon startup/mutation/control owners; new Linux `tests/bootstrap_weave_family.rs` | Strict owned missing-alias preflight fails safely with no root/control. A permissive missing-alias root reports reconnecting/offline while unrelated TCP passes; publishing an owned raw PTY allows signed DISCOVER/CONNECT verification, default-tag wrong-key/plaintext rejection and exact endpoint ingress/addressed egress. Live parent key/non-IFAC policy covers old/new endpoints and isolated replies. Alias removal before peer closure proves old-child cleanup, same-root reconnect and retained rotated policy. Full changed-key/new-identity restart proves fresh wire traffic, counters/control projection and joined cleanup. Observe an actual remote-display command on the owned PTY rather than treating a queued acknowledgement as transmission |
+
+Preparation is mechanical and reviewed/checkpointed before behavior edits.
+Keep the existing five-second native reconnect wait; accepted-but-unused backoff
+configuration is not used as a fixture shortcut or advertised as newly working.
+Opening a serial port sets native online before handshake, so readiness requires
+actual frames and `wdcl_connected`/link state. Historical switch/display metadata
+alone does not establish readiness. Endpoint creation before IFAC decode matches
+the reference; do not invent a no-new-child authentication rule.
+
+For cancellation, keep one existing stream owner and its cleanup epilogue.
+Select the existing stop tokens around the inner I/O operation future, including
+initial discovery and all later receive/write/flush/lock waits, then always
+await endpoint cleanup before returning. Do not cancel away that epilogue or
+resume a partially written frame on the retired stream. Preserve EOF/error
+diagnostics, public helpers, framing, handshake validation, IFAC ordering,
+counters and all protocol timing. An ordinary scoped async block is sufficient;
+no extra worker, registry, queue, dependency, dispatcher or public API is needed.
+The prior Tokio cancellation research applies to this existing owning future:
+pending channel sends commit no message, while a cancelled write may have left
+a partial frame and therefore retires its stream generation.
+
+Declare one initial run per native/configured scenario and preserve every result.
+Native pressure/cancellation and packet/negative/peer-isolation/EOF bounds are
+two seconds; ordinary status/setup three seconds. Missing-device recovery gets
+eight seconds to include the unchanged five-second wait. Owned root shutdown
+remains ten seconds. Configured restart uses default MTU then an explicit 512
+override, retaining sixteen-byte default IFAC. No real device, RF or public
+network is used. Main-agent work follows PRE, structural POST and source POST,
+then affected gates before qualification. Seven other families and whole-item
+integration/one PR/hosted CI/merge would still remain afterward.
+
+Both structural PRE roles approve. Behavior PRE identifies the two ownership
+cut-points above: the stream's private index is incomplete while registration
+or GC awaits another lock. Cleanup will reconcile the authoritative manager's
+children for this uniquely owned Weave parent, then clear stream/status state;
+it cannot rely only on the private index. Use held-manager/state barriers and
+manual polling of the actual helper futures, cancel/drop at the demonstrated
+pending boundary, then run the real final cleanup while the parent remains.
+This is eight native behavior scenarios including parent policy, five pressure
+cases and two ownership controls, plus the two configured cases. RX processing
+counters are barriers only; exact queue contents establish admission or its
+absence. The unchanged baselines pass 22 native Weave cases (0.12 seconds)
+and four daemon Serial/KISS cases (6.07 seconds), recorded in
+`/tmp/lxmf-item4-weave-{native,pty}-baseline.log`.
+
+Mechanical preparation preserves all expanded Weave and shared PTY bodies under
+Rustfmt normalization. Post-extraction native tests pass 22/22 in 0.11 seconds;
+four Serial/KISS controls pass in 6.07 seconds. The root is now 426 lines,
+status 466, stream 239, frame processing 342 and tests/core 1,127; remove the
+obsolete root allowance without adding exceptions. Affected Clippy,
+architecture, boundaries, module size, explicit formatting and diff checks pass.
+This checkpoint changes no behavior or family qualification; the policy,
+cancellation/ownership and configured PTY traces remain the next work.
+
 ### Raw IFAC type preparation for UDP composition
 
 Checkpoint `c5ee78f50a3e8f13c5a1f0e3537f6d4702558694` records the reviewed

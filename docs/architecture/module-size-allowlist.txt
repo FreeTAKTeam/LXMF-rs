@@ -41,7 +41,6 @@ crates/libs/rns-transport/src/iface/serial_parts/run_serial_stream.rs
 crates/libs/rns-transport/src/iface/tcp_client.rs
 crates/libs/rns-transport/src/iface/udp.rs
 crates/libs/rns-transport/src/iface/vrn76_kiss_ble_parts/module_prelude.rs
-crates/libs/rns-transport/src/iface/weave.rs
 crates/libs/rns-transport/src/iface_tests.rs
 crates/libs/rns-transport/src/transport/announce_limits.rs
 # Baseline transport test helper exception present before issue #369 cleanup; split shared packet helpers.
