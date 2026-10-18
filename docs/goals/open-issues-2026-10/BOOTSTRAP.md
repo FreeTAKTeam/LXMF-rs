@@ -3,7 +3,7 @@
 This refines the remaining family gate in [TRANSPORT.md](TRANSPORT.md) after
 `a0772c1d`; it does not add another PR or change the numbered plan. The three
 discovery process cases and finite deeper relay matrix are already qualified.
-The first four TCP/Backbone/UDP rows now have the declared software lifecycle
+The first five TCP/Backbone/UDP/Pipe rows now have the declared software lifecycle
 evidence below. Other family rows and whole-item integration remain open.
 
 ## Concrete gap and owner
@@ -75,7 +75,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
-| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first four TCP/Backbone/UDP rows have the declared software trace qualification below. Remaining Pipe, PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
+| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first five TCP/Backbone/UDP/Pipe rows have the declared software trace qualification below. Remaining PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
 Implementation stays in the main agent. PRE, correctness and maintainability POST
@@ -303,6 +303,37 @@ No production behavior changes are needed. Input announces respect the existing
 ingress guard through an explicit one-Hz schedule; packet/path deadlines and
 production defaults remain unchanged. Both source POST reviews approve; 2/2
 native traces, 31 library/662 binary daemon tests and focused gates pass, with
-retained fixture failures in PROGRESS.md. Sixteen other family rows, whole-item
+retained fixture failures in PROGRESS.md. Other family rows, whole-item
 integration/hosted CI and merge remain open. Native multicast group ingress and
 physical/RF/public-network acceptance are not claimed.
+
+## Pipe software lifecycle evidence
+
+Two Linux-only native-process cases in `tests/bootstrap_pipe_family.rs` pass:
+
+- `configured_pipe_spawn_failure_repair_preserves_ifac_and_process_ownership`
+- `pipe_named_ifac_rotation_respawn_failed_reload_rollback_detach_and_reattach`
+
+Configured startup first fails to spawn a missing owned executable. Its sanitized
+native status reports respawning while the root retains IFAC and MTU. Publishing
+the complete executable permits automatic recovery on the same root. Its actual
+stdin/stdout carry independent peer HDLC/IFAC traffic with Pipe's eight-byte tag
+default; both wrong-key and plaintext frames are counted/rejected in every phase.
+The helper relays bytes without crypto and reports its PID only over a separate
+loopback connection. /proc parent/argv verify direct ownership before socket EOF
+and later PID disappearance establish reaping.
+
+Public Apply rotates the key on the same root/process; native exit/respawn keeps
+that committed policy. Malformed shlex command preparation preserves old PID,
+root and exact traffic. Missing-executable named reload fails and restores the
+committed command/key/512-byte MTU. Successful changed-key reload and detach/attach
+use a 1024-byte MTU and reap every observed prior generation. Unrelated TCP roots
+retain their address/traffic; final shutdown joins all native/reconnect workers
+and reaps the last child. The explicit fixture respawn delay is 0.25 seconds;
+production defaults and declared deadlines remain unchanged.
+
+Both source POST roles approve, with no production behavior changes. Initial
+native validation passes 2/2 in 4.03 seconds; full daemon validation passes 31
+library/664 binary tests and focused gates. Fifteen other family rows and
+whole-item integration/hosted CI/merge remain open. This is Linux software process
+evidence, with no Windows or physical-carrier qualification.

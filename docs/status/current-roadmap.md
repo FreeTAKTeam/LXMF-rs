@@ -160,8 +160,14 @@ peer-isolated direct replies and same-destination route rebinding across changed
 replacement/restart. Cached paths remain subject to existing maintenance; retired
 hashes lose dispatch authority. No production behavior changes are needed.
 Both independent source reviews approve; 31 library/662 binary daemon tests and
-focused gates pass. Four of twenty declared software family rows are locally
-qualified. Remaining carrier lifecycle composition and whole-item integration/hosted work remain open in the
+focused gates pass. Two Linux Pipe process traces then cover configured missing
+executable failure/repair, independent default-tag authentication, same-process
+key rotation, exit/respawn, named failed-reload rollback, detach/attach and native
+MTU. Direct-child identity, socket EOF and /proc disappearance prove reaping;
+unrelated traffic and owned shutdown persist. Both source reviews and focused
+gates pass with 31 library/664 binary daemon tests, without production changes.
+Five of twenty declared software family rows are locally qualified. Remaining
+carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

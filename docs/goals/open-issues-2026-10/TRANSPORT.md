@@ -70,7 +70,7 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-The first four rows have the declared software lifecycle qualification below;
+The first five rows have the declared software lifecycle qualification below;
 other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
@@ -79,7 +79,7 @@ other rows remain open. Record exact test names/results when qualified.
 | TCP / Backbone client | Declared configured refusal, same-socket activation, live key change, reconnect, changed-key restart and exact unrelated traffic; preceding named constructor/hook traces | Locally qualified for these software lifecycle traces; whole-item integration/hosted CI remain pending |
 | UDP unicast | Declared configured/named native trace qualifies committed live key rotation, actual failed bind/owned cleanup, authenticated rollback/reload/detach/attach and unrelated traffic; preceding raw IFAC/SDK guards remain inputs | Locally qualified for this software lifecycle trace; whole-item integration/hosted CI remain pending |
 | UDP multicast | Declared native loopback group egress, signed unicast peer ingress, existing/new peer key rotation, peer-isolated replies and same-destination route rebinding after changed-key replacement/restart | Locally qualified for this software lifecycle trace; native group ingress is not claimed. Whole-item integration/hosted CI remain pending |
-| Pipe | Authenticated cat roundtrip, wrong-key rejection, ordinary child cleanup | Configured startup failure, IFAC rotation/respawn/detach |
+| Pipe | Two declared Linux native-process traces qualify missing-executable failure/repair, default IFAC authentication, live rotation/respawn, named rollback/reload/detach/attach, effective MTU, unrelated traffic and child reaping | Locally qualified for these Linux software lifecycle traces; whole-item integration/hosted CI remain pending |
 | Serial | Authenticated production stream, open/write failure primitives | Configured PTY open/error/reopen and changed-key restart |
 | KISS / AX.25 serial | Authenticated worker and pinned Python PTY exchange | Configured error/reopen/restart, preserving AX.25 framing |
 | KISS TCP | Shared authenticated KISS stream | Actual initial failure/reconnect with IFAC retained |
@@ -289,8 +289,65 @@ validation passes 31 library and 662 binary tests; all-target/all-feature daemon
 Clippy, default check, architecture, diagnostics scanner, formatting, boundaries
 and module size pass. PROGRESS.md retains all fixture failures and exact logs.
 The two UDP inventory rows are locally qualified for these declared traces.
-The remaining sixteen family rows, whole-item integration, one PR, exact-head
+Other family rows, whole-item integration, one PR, exact-head
 hosted CI and merge remain open.
+
+### Finite Pipe family cases
+
+Checkpoint `1a839601` qualifies the two declared UDP rows. Main agent's next
+sequential task composes Pipe through configured startup, public mutation and its
+existing process supervisor. Inputs are PipeInterface, daemon pipe builders,
+native process cleanup and the current bootstrap/named-management fixtures.
+Allowed files are one focused daemon test module/registration, existing Pipe or
+mutation owners only for a reproduced defect, and task/status documents. Other
+carriers, new public APIs, new process supervisors/dependencies, process-wide
+signals and unrelated processes are forbidden. Both read-only PRE/POST reviews
+gate this checkpoint; whole item 4 still produces one PR.
+
+| Declared case | Required trace |
+| --- | --- |
+| `configured_pipe_spawn_failure_repair_preserves_ifac_and_process_ownership` | Configured missing executable reaches real native spawn failure/respawn status while IFAC remains installed; create the test-owned executable and observe automatic recovery on the same root. Exact authenticated first ingress/egress rejects wrong-key/plaintext input. Closing only that child's test control connection causes real exit, reap and respawn; the fresh child retains policy and constructor tuning. Unrelated TCP address/traffic and joined shutdown persist |
+| `pipe_named_ifac_rotation_respawn_failed_reload_rollback_detach_and_reattach` | Configured real child first traffic, public Apply key rotation on the same root/process, actual exit/respawn under the committed key; malformed command rejection before retirement; a missing-executable named reload fails and rolls back to the committed command/key. Successful changed-key reload and detach/attach retire old roots/children; final owned shutdown reaps the final child. Preserve unrelated native traffic and explicit MTU/respawn tuning |
+
+Use a Linux-only test-owned executable that relays bytes between its actual
+stdin/stdout and a loopback TCP observation socket. A four-byte PID greeting is
+sent only over the observation socket before raw HDLC/IFAC traffic. The helper
+contains no crypto/policy and spawns no descendant: closing its observation socket
+exits that exact child. Linux /proc absence plus old socket EOF after owned
+retirement/respawn proves child reaping; no external signal or process kill probe.
+This is Linux software process evidence, with no Windows/physical claim.
+Python select supports pipes on Unix; this existing native-process fixture shape
+is chosen over an echo-only child because both exact wire directions and process
+generations must be independently observed. Reuse existing bootstrap/unrelated
+TCP helpers; do not introduce a shared fixture framework.
+
+Keep two-second packet/EOF/PID barriers, three-second native status/child-start
+observation, twenty-second management reply and ten-second owned cleanup bounds.
+The fixture explicitly configures a 0.25-second respawn delay rather than changing
+production defaults. Peer IFAC uses the carrier's existing eight-byte default;
+credentials stay out of process arguments/status/errors. Every authenticated
+phase first counts and rejects wrong-key/plaintext frames. Production changes
+require a retained failing regression and the smallest correction in the current
+owner. Primary process semantics were checked in the pinned local Tokio 1.53.2
+Child kill/wait implementation and
+[Python select documentation](https://docs.python.org/3/library/select.html).
+
+Both PRE reviewers approve. The missing owned path is argv[0]; repair writes and
+sets executable permissions on a staging file before an atomic rename. Read the
+PID greeting with read_exact and verify /proc PPid equals the test process and
+cmdline contains the owned executable before observing later disappearance.
+Use valid TOML with unbalanced shlex quoting for command-preparation rejection,
+and require the old PID/root/socket plus exact traffic to survive. Native manager
+MTU assertions cover initial/rollback 512 and replacement/reattach 1024. All raw
+relay writes complete and stdout contains no fixture diagnostics.
+
+Both declared cases pass on their first native run (2/2, 4.03 seconds), without
+production changes. Source correctness and maintainability POST reviews approve.
+The full daemon suite passes 31 library/664 binary tests, and all-target/all-feature
+Clippy, default check, architecture, diagnostics, formatting, boundaries and module
+size pass. PROGRESS.md records exact logs. Five of twenty family rows are now
+locally qualified for their declared traces; fifteen others and whole-item
+integration, one PR, exact-head hosted CI and merge remain open.
 
 ### Raw IFAC type preparation for UDP composition
 

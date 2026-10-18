@@ -2201,3 +2201,41 @@ validation only; terminal results and final-head review/CI/merge remain required
   hosted CI and merge remain open. Group evidence is native egress only, with
   signed unicast peer ingress; no native group-ingress, hardware, RF, public-network
   or whole-issue completion is inferred.
+
+## Item 4 Pipe software family traces
+
+- Checkpoint `1a83960198fa03f338feecbbf18bde06814fd5d5` records the reviewed
+  UDP composition. Both source PRE roles approve two finite Linux process cases
+  in TRANSPORT.md. Main-agent implementation adds one 461-line test module and
+  Linux-only registration, reusing production bootstrap/native mutation and
+  existing unrelated TCP helpers. No production code/default/owner changes.
+- Configured startup uses an absent owned executable as argv[0], reaching actual
+  native spawn failure/respawning status while retaining IFAC/MTU. A fully written,
+  executable staging file is atomically renamed into place; automatic retry
+  recovers on the same root. The child transparently relays actual stdin/stdout
+  and a loopback observation socket. Four PID bytes are consumed only from that
+  socket; /proc PPid and argv verify direct owned-child identity. No helper
+  crypto, descendant process or signal probe is introduced.
+- Every phase counts wrong-key/plaintext rejection, then proves exact native
+  HDLC/IFAC ingress/egress with the carrier's eight-byte default. Public Apply
+  rotates the key on the same root/PID; closing only that child's control input
+  produces real exit, native reap and a fresh PID with retained policy. Malformed
+  shlex command preparation preserves PID/root/traffic. A missing-executable
+  named reload fails and rolls back to the committed command/key and native MTU
+  512; successful changed-key reload and detach/attach use MTU 1024. Old socket
+  EOF and bounded /proc disappearance establish every observed generation's
+  reaping. Unrelated TCP address/traffic persists and final owned shutdown joins
+  native/reconnect workers and reaps the final child. Fixture delay 0.25 seconds
+  and all declared packet/status/reply/join bounds remain unchanged.
+- Both declared native traces pass on their first run in
+  `/tmp/lxmf-item4-pipe-family-initial.log` (2/2, 4.03 seconds); no production
+  defect or pre-fix red is claimed. Independent source correctness and
+  maintainability POST reviews approve. Full daemon validation passes 31 library
+  and 664 binary tests in `...-daemon.log` (31.69 seconds for binary tests).
+  All-target/all-feature daemon Clippy, default check, architecture, diagnostics
+  scanner, Cargo formatting, boundaries and module size pass with corresponding
+  `/tmp/lxmf-item4-pipe-family-` suffixes. Existing baseline warnings remain.
+- Five of twenty software family rows now have their declared evidence. Fifteen
+  others, whole-item integration/release checks, one PR, exact-head hosted CI and
+  merge remain open. This is Linux software process evidence; no Windows,
+  hardware, RF, public-network or whole-issue completion is inferred.
