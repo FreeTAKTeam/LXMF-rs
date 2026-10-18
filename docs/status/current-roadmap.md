@@ -49,7 +49,10 @@ contract; they are controlled Python evidence, not Rust implementation acceptanc
 Transport acquisition now shares one published outbound Link across concurrent
 callers and preserves reset/restart races. Propagation cache misses preserve live
 Links and Resources, with native state governing cache lifetime; daemon activation
-and transfer ownership remain pending. See the
+and transfer ownership remain pending. Native Resource sends can now register a
+retained logical completion result before dispatch; recipient proofs and failure
+outcomes survive legacy event-broadcast overflow. Daemon ownership and durable
+custody still require the planned cutover. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655

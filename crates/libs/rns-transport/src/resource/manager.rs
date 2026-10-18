@@ -6,6 +6,7 @@ pub struct ResourceManager {
     incoming: HashMap<Hash, ResourceReceiver>,
     incoming_segments: HashMap<Hash, InboundSegmentAssembly>,
     events: Vec<ResourceEvent>,
+    outbound_completions: HashMap<Hash, tokio::sync::watch::Sender<Option<ResourceOutcome>>>,
     retry_interval: Duration,
     retry_limit: u8,
     link_stats: HashMap<AddressHash, LinkStats>,
@@ -53,7 +54,9 @@ impl ResourceManager {
     }
 
     pub fn drain_events(&mut self) -> Vec<ResourceEvent> {
-        std::mem::take(&mut self.events)
+        let events = std::mem::take(&mut self.events);
+        self.publish_outbound_completions(&events);
+        events
     }
 
     #[cfg(test)]

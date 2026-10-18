@@ -3,7 +3,7 @@ use rns_transport::destination::DestinationName;
 use rns_transport::identity::PrivateIdentity;
 use rns_transport::iface::{IfaceRole, IfaceSource, InterfaceChannel, RxMessage};
 use rns_transport::packet::PacketType;
-use rns_transport::resource::ResourceEventKind;
+use rns_transport::resource::{ResourceEventKind, ResourceOutcome};
 use rns_transport::transport::TransportConfig;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
@@ -57,10 +57,19 @@ async fn propagation_cache_miss_preserves_live_resources() {
         .expect("Link activation");
         let link_id = *link.lock().await.id();
         let mut outbound = sender.resource_events();
+        let mut lagging = sender.resource_events();
         let mut inbound = receiver.resource_events();
         let first_bytes = vec![0x31; 8192];
+        let mut first_completion = None;
         let first = sender
-            .send_resource(&link_id, first_bytes.clone(), None)
+            .send_resource_observed_with_completion(
+                &link_id,
+                first_bytes.clone(),
+                None,
+                |_, result| {
+                    first_completion = Some(result);
+                },
+            )
             .await
             .expect("first Resource");
         if mismatch {
@@ -115,6 +124,22 @@ async fn propagation_cache_miss_preserves_live_resources() {
             }
         }).await.expect("both Resources complete with recipient bytes and sender proofs");
         assert_eq!(link.lock().await.status(), LinkStatus::Active);
+        // Overflow an unread legacy subscription with real dispatch failures.
+        // The first Resource's result must still describe its recipient proof.
+        drop(sending);
+        for _ in 0..2048 {
+            assert!(sender.send_resource(&link_id, vec![0x43], None).await.is_err());
+        }
+        assert!(matches!(
+            lagging.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_))
+        ));
+        let mut completion = first_completion.expect("registered first Resource result");
+        assert_eq!(completion.current(), Some(ResourceOutcome::Complete));
+        assert_eq!(
+            completion.wait().await.expect("retained recipient proof"),
+            ResourceOutcome::Complete
+        );
     }
 }
 

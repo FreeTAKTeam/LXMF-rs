@@ -7,7 +7,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | --- | --- | --- | --- |
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
-| 3. LXMF 1.2.0 | In progress | Branch `corvo/open-issues-03-lxmf-120` | PRE review complete; test-first implementation begins from the verified item 2 merge. |
+| 3. LXMF 1.2.0 | In progress | Branch `corvo/open-issues-03-lxmf-120` | Retained opportunistic owner and native Link/Resource prerequisites validated locally; full retained Link owner and mixed-reference acceptance remain pending. |
 | 4. Transport and RNS 1.5.5 | Pending | — | — |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
@@ -764,3 +764,40 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   found no production blocker and its cache-policy evidence correction is fixed
   and proven. The next retained-driver PRE boundary is recorded in LINK-OWNER.md.
   This is local validation toward item 3, with no PR/hosted CI/completion claim.
+
+
+### Item 3 retained native Resource outcome
+
+- Found a prerequisite for reliable transfer ownership: the legacy Resource
+  consumer publishes propagated custody through a best-effort nonterminal receipt.
+  A full receipt queue can drop that update after correlation removal. An owner
+  that simply waits for the resulting stored status could retain admission forever.
+- Added opt-in `send_resource_observed_with_completion`. The existing Resource
+  manager registers observation atomically with tracking before packet dispatch,
+  and publishes one native terminal outcome before forwarding unchanged legacy
+  events. Results are retained independently of broadcast lag. Existing send APIs
+  allocate no observer; a dropped observer does not cancel the transfer.
+- Completion uses the logical/original hash across segments. Intermediate proofs
+  do not report success; Complete, Failed, Rejected and Cancelled remain distinct.
+  Terminal publication removes the producer entry even when its receiver was
+  dropped. Producer destruction without an outcome is observation-unavailable.
+- Extracted the existing send-method group into one transport section to preserve
+  the module-size limit. No new retry policy or receipt persistence authority was
+  introduced. Documented the existing send-future cancellation boundary: after
+  registration, drive dispatch to completion or explicitly cancel the Resource.
+- Five new tests cover registration before dispatch failure, actual failure-event
+  overflow, original-hash reset/reject/cancel in pending/first/later segments,
+  recipient-byte reconstruction and final proof of a two-segment transfer,
+  receiver drop, repeated result reads and producer disappearance. The existing
+  two-Transport cache test now retains a successful result through an unread
+  broadcast overflowing with actual dispatch failures.
+- A counterfactual disabling completion publication fails four intended
+  regressions. The production call was restored before validation. All-feature
+  transport tests pass 949 tests (9 existing ignores); all 101 daemon bridge tests
+  pass. Issue-369 diagnostics scanning, all-feature daemon/transport library and
+  binary Clippy, formatting, boundaries, architecture and module-size checks pass.
+  Logs: `/tmp/lxmf-item3-resource-completion-{focused,native,red,transport,owner,quality,clippy,architecture,boundaries,size}.log`.
+- Independent correctness and POST/maintainability reviews accepted this native
+  prerequisite. Native observation is implemented; the daemon retained Link owner,
+  reliable custody persistence, method-aware retries and target/baseline mixed-peer
+  acceptance remain pending. No item-3 PR, hosted CI or completion is claimed.

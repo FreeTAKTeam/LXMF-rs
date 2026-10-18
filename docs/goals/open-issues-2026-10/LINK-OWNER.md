@@ -169,6 +169,43 @@ must retain admission outside execution permits; neither may fall through the
 existing immediate-release branch. Preserve registration before dispatch and the
 observed Resource ownership boundary while replacing detached transfer monitors.
 
+### Native Resource completion prerequisite
+
+The existing inbound Resource consumer removes its correlation before publishing
+`sent: propagated resource` through a best-effort nonterminal receipt. A full
+receipt queue can drop that notification. Retaining admission while merely waiting
+for that persisted status would strand the owner. The cutover must instead consume
+the authoritative native result and reliably commit method-specific completion.
+
+`Transport::send_resource_observed_with_completion` now registers a narrow
+`ResourceCompletion` under the same handler lock as `track_prepared`, before packet
+dispatch. `ResourceManager::drain_events` publishes Complete/Failed/Rejected/Cancelled
+to the optional observer before returning unchanged legacy events. The map uses
+the logical/original hash, and removes its entry on the first terminal event.
+Intermediate segment proofs do not terminate observation. Sends through existing
+APIs allocate no observer; dropping observation does not cancel the transfer.
+
+The receiver retains its final outcome after the producer is removed. A producer
+that disappears without a terminal outcome returns observation-unavailable, not
+an invented transport result. This uses the existing Tokio dependency's
+[`watch::Sender::send_replace`](https://docs.rs/tokio/latest/tokio/sync/watch/struct.Sender.html#method.send_replace)
+and [`Receiver::changed`](https://docs.rs/tokio/latest/tokio/sync/watch/struct.Receiver.html#method.changed)
+instead of a second receipt writer, an unbounded result history, or a broadcast
+replay mechanism. Native completion is not application persistence or custody.
+
+The send future retains its existing cancellation limitation after registration:
+the owner must drive it to completion or explicitly cancel the registered Resource
+before abandoning it. Merely dropping a pending dispatch leaves native state
+without the dispatch confirmation that activates its retry lifecycle. The driver
+must preserve this boundary during cancellation and shutdown.
+
+Five new native regressions cover registration followed by dispatch failure,
+event lag, original-hash reset/reject/cancel at three transfer stages, final proof
+of two real segments, dropped receivers, and producer loss. The existing two-Rust-
+Transport cache test now also preserves an unread successful result through actual
+failure-event overflow. These checks prove native observation, not the forthcoming
+daemon owner, durable custody, mixed-language interoperability or hardware behavior.
+
 ## Required acceptance
 
 - Consume every covered reference row against the production owner decisions;

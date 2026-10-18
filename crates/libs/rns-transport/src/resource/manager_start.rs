@@ -14,6 +14,7 @@ impl ResourceManager {
             incoming: HashMap::new(),
             incoming_segments: HashMap::new(),
             events: Vec::new(),
+            outbound_completions: HashMap::new(),
             retry_interval,
             retry_limit,
             link_stats: HashMap::new(),

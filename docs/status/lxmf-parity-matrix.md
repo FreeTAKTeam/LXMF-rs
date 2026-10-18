@@ -117,6 +117,12 @@ no longer resets Transport Links on a miss. Real Rust Resource transfers survive
 empty/mismatched hints, and a 26-second regression covers the former cache expiry.
 The retained Link owner remains pending; this does not consume the 42 reference
 scenarios or promote a parity row.
+Native Resource completion now offers an opt-in retained result registered before
+dispatch, with logical/original-hash outcomes across segmented transfers. Tests
+cover final recipient proof, dispatch failure, reset, rejection and cancellation;
+actual event-broadcast overflow cannot erase a completed observed result. Legacy
+event behavior remains intact. This prerequisite does not yet make daemon custody
+or terminal persistence reliable under overload.
 Full Link/Resource post-send and Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.
