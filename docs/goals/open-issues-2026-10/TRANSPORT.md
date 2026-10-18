@@ -424,6 +424,59 @@ Linux software traces. Eight of twenty rows are now qualified; twelve other
 families, whole-item integration, one PR, exact-head hosted CI and merge remain
 open. Physical behavior and AX.25 address validation remain unqualified.
 
+### I2P software family composition board
+
+Checkpoint `c94a90fe` records the reviewed Serial/KISS traces. The two I2P
+inventory rows remain open. Inputs are configured bootstrap/restoration, the
+existing fake-SAM codec tests, and the pinned I2PInterface's sixteen-byte IFAC
+default. SAM is simulated only on owned loopback sockets; no router or public
+network is used. Main-agent implementation follows independent read-only PRE.
+
+| Task | Owner and allowed files | Declared target-perspective evidence |
+| --- | --- | --- |
+| Configured outgoing lifecycle | Existing bootstrap, native I2P peer/manager policy owners; new daemon tests and registration | One configured trace: reserved unlistened SAM endpoint gives real error/status, same-socket activation, exact default IFAC ingress/egress and wrong-key/plaintext rejection, live parent/child rotation, EOF/reconnect retaining the child, full changed-key restart, native MTU and unrelated TCP traffic |
+| Configured incoming lifecycle | Same owners, existing accept loop and accepted-stream owner | One configured trace: missing SAM/destination preparation error then a malformed DEST REPLY containing an owned private destination, value-free diagnostics and recovery, persisted destination and sanitized daemon status, two accepted children spanning live parent rotation, counted rejection/exact authenticated traffic on old/new children, session error/recreation without losing active children, full changed-key restart and joined cleanup |
+| Root shutdown under stalled SAM | Same configured startup and native I2P lifetime owner | Four separate traces: incoming destination generation, incoming SESSION CREATE, incoming STREAM ACCEPT waiting for a destination, and outgoing HELLO with a saturated direct-send queue. A read command barrier identifies each stall; daemon shutdown must join within the existing ten-second bound, remove the tree and close every observed SAM socket within two seconds, preserving unrelated traffic until final shutdown |
+| Minimal ownership correction if red | `rns-transport/src/iface/i2p.rs` and private `i2p_parts` modules; focused native tests | First retain every declared result. If ownership structure obstructs the fix, extract root/accept orchestration without behavior changes, verify existing focused tests, then give the root and accept loop owned task sets, cancellation-aware SAM setup/direct enqueue, and explicit completion joins. Preserve public wrappers, session/peer behavior, defaults and diagnostics |
+
+Each case runs once before any fix and once after necessary corrections; retain
+fixture/compiler failures separately from runtime defects. Packet/negative/EOF
+checks remain two seconds, setup/status/peer checks three seconds and configured
+owned shutdown ten seconds. Fixture reconnect wait is explicitly 50 ms; production
+timing/authentication and native queues remain unchanged. No new dependency,
+public management kind, policy registry, unsafe code or broad refactor.
+
+Research: the [SAM v3 specification](https://i2p.net/en/docs/api/samv3/) defines
+separate session/control and virtual-stream sockets and ACCEPT's destination line.
+[Tokio graceful shutdown](https://tokio.rs/tokio/topics/shutdown) separates
+cancellation from waiting for completion; the pinned
+[JoinSet API](https://docs.rs/tokio/1.53.2/tokio/task/struct.JoinSet.html) provides
+owned tasks and explicit joins. Prefer local task sets over a new shared worker
+registry. If the existing structure already meets the traces, change only tests.
+No nested task may be detached as a substitute for the daemon's joined teardown.
+The four stall fixtures begin with an unlistened reserved endpoint and await
+configured startup before serving the native handshake. This distinguishes the
+native destination-generation stall from bootstrap's separate two-second probe.
+Any error-redaction correction must preserve expired-session classification and
+recreation while omitting returned private values from status and logs.
+
+After source POST, run affected I2P library/daemon checks, all-feature daemon and
+transport Clippy, default check, diagnostics, formatting, boundaries, module size
+and architecture. Update this inventory, roadmap and matrix only for proven rows;
+whole-item integration/release/hosted CI and the other families remain open.
+
+Both PRE roles approve this board. Existing I2P tests pass 21/21 before changes.
+The first fixture build retains a borrowed-policy replacement type error; the
+replacement uses an owned clone as the existing manager contract requires.
+An initial overqualified test filter selects zero cases and is not evidence.
+The corrected six-case run in `/tmp/lxmf-item4-i2p-family-native-red.log` has two
+passes and four failures: outgoing lifecycle/queue-pressure shutdown pass; three
+incoming native SAM stages retain sockets after joined root shutdown, and a
+malformed DEST REPLY exposes its owned private value in published diagnostics.
+The mechanical root/accept extraction preserves behavior and public wrappers;
+21 existing I2P tests still pass in `...-refactor.log`. No I2P row is qualified
+by this structural step; the behavior correction and full trace remain pending.
+
 ### Raw IFAC type preparation for UDP composition
 
 Checkpoint `c5ee78f50a3e8f13c5a1f0e3537f6d4702558694` records the reviewed

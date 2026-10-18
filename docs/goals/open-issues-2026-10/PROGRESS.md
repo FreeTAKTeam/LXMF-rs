@@ -2240,6 +2240,22 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 I2P orchestration preparation
+
+- Both PRE roles approve the finite I2P board in TRANSPORT.md. Existing native
+  I2P tests pass 21/21. New configured regressions retain two passes/four failures
+  in `/tmp/lxmf-item4-i2p-family-native-red.log`: outgoing lifecycle and pressured
+  shutdown pass; native incoming destination/session/accept sockets outlive joined
+  root teardown, and malformed DEST REPLY leaks an owned private value to status.
+  Fixture compilation and empty-filter mistakes are retained separately and are
+  not runtime evidence.
+- Main mechanically extracts root/accept orchestration into private 121/255-line
+  modules. Public spawn and test compatibility wrappers remain unchanged. Both
+  independent structural POST roles approve exact behavioral preservation.
+  Existing I2P tests remain 21/21 green, default transport check, formatting,
+  module size and diff checks pass. Behavior correction and both I2P inventory
+  rows remain pending; no new family qualification or PR is claimed.
+
 ## Item 4 Serial and KISS software family traces
 
 - Checkpoint `61cf99e0c79793a28abdbaec2edfc7d51fc888ca` records Pipe composition.
