@@ -270,6 +270,14 @@ impl Harness {
         }
         if let Some(proof) = event["proof"].as_u64() {
             self.wire.prove(proof as usize).await;
+            let receipt = self.packet_tokens()[proof as usize].clone();
+            for _ in 0..10000 {
+                if receipt.is_proved() {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+            assert!(receipt.is_proved(), "native proof input must finish before its snapshot");
         }
         if let Some(outcome) = event["resource"].as_str() {
             if event["cancel"] == true {

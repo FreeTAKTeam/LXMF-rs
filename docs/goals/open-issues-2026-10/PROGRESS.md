@@ -1147,3 +1147,25 @@ validation only; terminal results and final-head review/CI/merge remain required
   correction; it now rejects every negative terminal in the captured history.
   Log: `/tmp/lxmf-item3-negative-terminal-before.log`. No owner/state behavior
   changes are involved; this tightens the successful-live-lane evidence gate.
+- The full workspace run in isolation passes **3,770 tests** across **139**
+  binaries, with **288** existing opt-in ignores, including the process-level
+  replay/restart regression. Log: `/tmp/lxmf-item3-workspace-tests-isolated.log`.
+- Fresh release-check passes formatting, Clippy, workspace checking, **3,206**
+  nextest tests (103 existing skips), its Cargo test/schema stages (**3,782**
+  passing tests, 288 existing ignores), then reaches the same published-package
+  UUID conflict recorded for item 2. The daemon dry run cannot combine published
+  ZeroMQ's exact UUID 1.23.3 with the local 1.26.1 lock. No release-check PASS is
+  claimed; later stages are unreached. Log: `/tmp/lxmf-item3-release-check.log`.
+- Hosted nextest at `012a1d46` exposed an adapter input-ordering race in
+  `propagated_signal_sent_pending_creator`: frame queue acceptance plus 32 yields
+  could grant a decision/receipt commit before native signal decoding. The
+  test-only adapter now waits for the exact decrypted native Data event, which
+  follows synchronous signal observation, and awaits actual packet proof tokens
+  before proof snapshots. Closed-generation frames retain their explicit no-op
+  projection. PRE review approved this boundary; protocol and production owners
+  are unchanged. Original CI failure:
+  `/tmp/lxmf-item3-ci-012a-nextest.log`. All **eight predeclared stress iterations**
+  pass (47 cases / 263 snapshots each; 57.675 seconds total). All-target/all-feature
+  daemon Clippy with `-D warnings`, module-size, formatting and diff checks pass.
+  Log: `/tmp/lxmf-item3-trace-input-barrier-stress.log`. Independent correctness
+  POST approved the input boundary without changing production ownership/policy.

@@ -44,6 +44,14 @@ Resource outcomes, oversized Opportunistic escalation and sequential multi-messa
 reuse of one Link. Propagated shared-Link messages have different final recipients.
 Cancellation inputs set message state; they do not invoke `cancel_outbound`.
 
+The Rust adapter completes native inputs before the next controlled decision:
+proof rows await the real retained packet token, and live signal rows await the
+exact Link/context/plaintext Data event emitted after native signal decoding.
+Enqueueing a frame or yielding a fixed number of times is not input readiness.
+The old Closed generation remains an explicit no-op projection after its observer
+and keys have been retired. These barriers do not select expected validity or
+inject delivery outcomes.
+
 Preserve these observed distinctions in the implementation and its tests:
 
 - Attempts count no-Link creation/discovery decisions. Pending/active Links do not

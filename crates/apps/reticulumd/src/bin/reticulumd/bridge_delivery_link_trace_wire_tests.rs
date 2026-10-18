@@ -291,7 +291,9 @@ impl Wire {
     }
     pub async fn signal(&mut self, index: usize, data: &[u8]) {
         let native = &self.links[index];
-        let packet = if native.link.lock().await.status() == LinkStatus::Closed {
+        let id = native.id;
+        let closed = native.link.lock().await.status() == LinkStatus::Closed;
+        let packet = if closed {
             assert_eq!(data, [0x91, 0xcc, 245]);
             native.old_signal.clone().expect("old authenticated signal captured before close")
         } else {
@@ -300,7 +302,36 @@ impl Wire {
                 remote.lock().await.data_packet(data).expect("authenticated native signal");
             packet
         };
+        let mut events = self.sender.out_link_events();
         self.to_sender(packet).await;
+        if !closed {
+            // The oracle invokes its authenticated data callback before the next
+            // processing turn. Queueing an RX frame is not that boundary: native
+            // signal observation precedes this exact decrypted Data event.
+            for _ in 0..10000 {
+                loop {
+                    let event = match events.try_recv() {
+                        Ok(event) => event,
+                        Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
+                        Err(error) => panic!("native signal input observation failed: {error}"),
+                    };
+                    if let rns_transport::destination::link::LinkEvent::Data(payload) = event.event
+                    {
+                        if event.id == id
+                            && payload.context() == PacketContext::None
+                            && payload.as_slice() == data
+                        {
+                            self.pump().await;
+                            return;
+                        }
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+            panic!("authenticated signal input did not reach its native Link callback");
+        }
+        // A Closed generation has already dropped its signal producer and
+        // cannot affect a replacement owner, even if the old frame arrives later.
         self.pump().await;
     }
     pub async fn initial_links(
