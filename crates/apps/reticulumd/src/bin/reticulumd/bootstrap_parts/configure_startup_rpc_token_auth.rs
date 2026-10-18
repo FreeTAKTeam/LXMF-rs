@@ -56,7 +56,7 @@ pub(super) fn interface_record_from_config(iface: &InterfaceConfig) -> Interface
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct TcpServerSelection {
     pub(super) bind_addr: Option<String>,
     pub(super) selected_index: Option<usize>,

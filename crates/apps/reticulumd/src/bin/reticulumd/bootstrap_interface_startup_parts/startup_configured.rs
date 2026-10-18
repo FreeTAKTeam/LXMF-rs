@@ -1,12 +1,12 @@
-struct ConfiguredStartupContext<'a> {
-    strict_interface_startup: bool,
-    selected_tcp_server: &'a TcpServerSelection,
-    transport: &'a Transport,
-    iface_manager: &'a Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    server_iface: Option<&'a AddressHash>,
-    reticulum_storage_path: &'a std::path::Path,
-    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
-    transport_identity_hash: Option<[u8; 16]>,
+pub(super) struct ConfiguredStartupContext<'a> {
+    pub(super) strict_interface_startup: bool,
+    pub(super) selected_tcp_server: &'a TcpServerSelection,
+    pub(super) transport: &'a Transport,
+    pub(super) iface_manager: &'a Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    pub(super) server_iface: Option<&'a AddressHash>,
+    pub(super) reticulum_storage_path: &'a std::path::Path,
+    pub(super) shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
+    pub(super) transport_identity_hash: Option<[u8; 16]>,
 }
 
 #[allow(clippy::too_many_arguments)]

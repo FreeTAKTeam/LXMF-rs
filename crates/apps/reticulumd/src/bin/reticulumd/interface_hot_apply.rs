@@ -18,6 +18,7 @@ use tokio::sync::mpsc::{channel, error::TrySendError, Receiver, Sender};
 
 use crate::bootstrap::{
     mark_interface_runtime_fields, mark_interface_runtime_managed, mark_interface_startup_status,
+    ConfiguredStartupRuntime,
 };
 use interface_hot_apply_parts::ifac_validation::validate_hot_apply_ifac_configuration;
 #[cfg(test)]
@@ -162,7 +163,7 @@ impl InterfaceHotApplyBridge {
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
     ) -> Self {
-        Self::spawn_inner(iface_manager, seeded, None, None, None, None).0
+        Self::spawn_inner(iface_manager, seeded, None, None, None, None, None).0
     }
 
     #[cfg(test)]
@@ -171,7 +172,7 @@ impl InterfaceHotApplyBridge {
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
         daemon: Weak<RpcDaemon>,
     ) -> Self {
-        Self::spawn_inner(iface_manager, seeded, None, Some(daemon), None, None).0
+        Self::spawn_inner(iface_manager, seeded, None, Some(daemon), None, None, None).0
     }
 
     #[cfg(test)]
@@ -197,6 +198,7 @@ impl InterfaceHotApplyBridge {
             Some(daemon),
             discovery,
             None,
+            None,
         )
         .0
     }
@@ -210,6 +212,7 @@ impl InterfaceHotApplyBridge {
         startup: Vec<ConfiguredInterfaceStartup>,
         daemon: Weak<RpcDaemon>,
         discovery: Option<NativeDiscoveryConfig>,
+        configured_startup: Option<ConfiguredStartupRuntime>,
     ) -> InterfaceMutationOwner {
         let (bridge, completion) = Self::spawn_inner(
             transport.iface_manager(),
@@ -218,6 +221,7 @@ impl InterfaceHotApplyBridge {
             Some(daemon),
             discovery,
             Some(startup),
+            configured_startup,
         );
         InterfaceMutationOwner { bridge, completion: Some(completion) }
     }
@@ -229,6 +233,7 @@ impl InterfaceHotApplyBridge {
         daemon: Option<Weak<RpcDaemon>>,
         discovery: Option<NativeDiscoveryConfig>,
         startup: Option<Vec<ConfiguredInterfaceStartup>>,
+        configured_startup: Option<ConfiguredStartupRuntime>,
     ) -> (Self, tokio::task::JoinHandle<io::Result<()>>) {
         let (tx, rx) = channel(INTERFACE_HOT_APPLY_QUEUE_CAPACITY);
         let record_publisher = daemon.clone();
@@ -241,10 +246,13 @@ impl InterfaceHotApplyBridge {
             iface_manager,
             rx,
             managed,
-            transport.clone(),
-            refreshes.clone(),
-            daemon,
-            discovery,
+            mutation_worker::MutationRuntime {
+                transport,
+                refreshes: refreshes.clone(),
+                daemon,
+                discovery,
+                configured_startup,
+            },
         ));
         let bridge = Self {
             tx,

@@ -141,6 +141,7 @@ async fn initial_native_controls_are_installed_before_the_worker_can_run() {
         vec![radio, weave],
         Arc::downgrade(&daemon),
         None,
+        None,
     );
     // Current-thread execution has not yielded to the newly spawned mutation worker.
     assert!(command(&daemon, "initial-radio").error.is_none());

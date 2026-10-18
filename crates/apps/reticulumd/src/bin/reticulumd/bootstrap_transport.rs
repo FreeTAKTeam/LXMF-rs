@@ -6,6 +6,8 @@ use super::{
 #[path = "bootstrap_interface_startup.rs"]
 mod interface_startup;
 pub(crate) use interface_startup::build_tcp_client_adapter;
+#[path = "bootstrap_transport_restore.rs"]
+mod configured_restore;
 #[path = "bootstrap_transport_path_restore.rs"]
 mod path_restore;
 #[cfg(test)]
@@ -13,6 +15,7 @@ mod path_restore;
 mod policy_tests;
 #[path = "bootstrap_transport_reconnect_synthesizer.rs"]
 mod reconnect_synthesizer;
+pub(crate) use configured_restore::ConfiguredStartupRuntime;
 #[path = "bootstrap_transport_tcp_server_adapter.rs"]
 mod tcp_server_adapter;
 #[path = "bootstrap_transport_tcp_startup.rs"]
@@ -107,6 +110,7 @@ pub(super) async fn start_transport_and_interfaces(
         || has_enabled_configured_interface;
 
     let mut transport: Option<Arc<Transport>> = None;
+    let mut configured_startup = None;
     let peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
     let mut propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
@@ -322,7 +326,22 @@ pub(super) async fn start_transport_and_interfaces(
         delivery_source_hash = destinations.delivery_source_hash;
 
         let transport_arc = Arc::new(transport_instance);
-        spawn_stream_reconnect_tunnel_synthesizer(transport_arc.clone(), stream_reconnect_rx);
+        let reconnect_completion =
+            spawn_stream_reconnect_tunnel_synthesizer(transport_arc.clone(), stream_reconnect_rx);
+        configured_startup = Some(ConfiguredStartupRuntime {
+            selection: selected_tcp_server.clone(),
+            strict_interface_startup: args.strict_interface_startup,
+            strict_selected_listener: args.strict_interface_startup
+                || daemon_config.is_some_and(|config| config.panic_on_interface_error),
+            storage_path: reticulum_storage_path.to_owned(),
+            identity_hash: identity
+                .address_hash()
+                .as_slice()
+                .try_into()
+                .expect("transport identity address is sixteen bytes"),
+            reconnect_events: stream_reconnect_tx,
+            reconnect_completion,
+        });
         transport = Some(transport_arc);
     } else if let Some(config) = daemon_config {
         log::warn!(
@@ -356,6 +375,7 @@ pub(super) async fn start_transport_and_interfaces(
     TransportStartupArtifacts {
         selected_tcp_server,
         transport,
+        configured_startup,
         peer_crypto,
         announce_destination,
         propagation_destination,

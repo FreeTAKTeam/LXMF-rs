@@ -14,7 +14,7 @@ configured bootstrap roots missed both disable and restore. Unsupported seed key
 were skipped before the restore diagnostic. Copying the four-kind spawn match
 would have preserved the gap and duplicated carrier defaults, status and shutdown
 rules. The board below distinguishes completed ownership/disable work from the
-remaining general restoration work.
+remaining family composition work.
 
 The existing interface mutation worker remains the sole lifetime/mutation owner.
 Reuse the configured dispatcher and its typed startup batch. Retain each real
@@ -71,9 +71,9 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | --- | --- | --- |
 | Dispatcher preparation (locally verified) | Same initial behavior through one per-recipe dispatcher and existing typed batch | Existing configured-startup tests plus mixed ordered/disabled/failure characterization; preserve original indices, selected listener, Auto injection and all batch effects. Review/checkpoint before behavior changes |
 | Trusted root/effect retention (locally verified) | Every actual configured root enters the existing owner with original recipe identity and native effects | Native identical unnamed KISS roots reproduce the missing disable; collision, inactive/failed repair and original-slot controls pass. No caller metadata origin |
-| Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration remains next |
+| Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
-| Trusted restoration | Initial and restoration dispatch share constructor/defaults/context, including selected listeners | Disable → native release → restore exact authenticated traffic/status; retain failed readiness and no transient plaintext fallback |
+| Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
 | Family composition | Qualify the finite twenty-row inventory using its applicable native/software backends | Managed streams/UDP/Pipe, PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells; failed/degraded outcomes remain explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
@@ -140,8 +140,8 @@ passed non-ignored test. All native assertions and immediate exclusive-bind prob
 remain; the same controlled cohort changes from four failures to seven passes.
 There is no production delay, bind retry or authentication relaxation. Temporary
 process diagnostics are removed; logs and syscall traces remain under `/tmp` as
-recorded in PROGRESS.md. General trusted restoration and the twenty-family matrix
-remain open.
+recorded in PROGRESS.md. General trusted restoration is qualified below; the
+twenty-family matrix remains open.
 
 The subsequent constructor preparation removes the CLI argument borrow from the
 per-recipe context and lower helpers. They receive only the existing strict
@@ -154,4 +154,77 @@ still retains the real root/status for cleanup; a missing selected recipe never
 falls back to unconfigured spawning. Three native contract cases pass before and
 after extraction; a fourth directly checks missing-recipe rejection and unrelated
 root preservation. Full all-feature daemon validation passes 31 library and 634
-binary tests. This is structural preparation for the next trusted restore task.
+binary tests. This provided structural preparation for the trusted restore task
+qualified below.
+
+## Trusted restoration implementation contract
+
+The completed restoration task retains only the original selection snapshot, the two existing
+strictness inputs, storage path, transport identity hash and reconnect events.
+The same worker also owns the unique reconnect synthesizer completion, including
+when discovery is disabled. A small input value may group existing worker inputs;
+it does not create another actor or registry. Context with a unique join handle is
+not cloned; the selection snapshot is ordinary immutable configuration.
+
+Restoration invokes the same per-recipe dispatcher and selected-listener starter
+with the original recipe index. Its server address is the newly created root,
+never the retired one. Batch-to-outcome association accepts the original index
+explicitly. Installing that outcome preserves the managed entry's existing origin
+and current publication slot, which can differ after Apply/reorder. The old
+four-kind restore match is removed without a production compatibility fallback.
+Consume tunnel synthesis requests before converting the batch into owned roots;
+preserve status, Auto, simulation and control effects together.
+
+A documented startup failure rejects the attempt: settle any root created before
+readiness failed and publish a failed/no-native outcome so a later eligible tick
+can try again. A merely offline or connecting non-strict TCP worker is not such a
+failure. Preserve explicit failed/degraded/validation-only outcomes without
+inventing native presence. Retire every native root and its control projection
+before dropping the retained reconnect sender, then bounded-join the synthesizer;
+timeout aborts and awaits, and failure remains observable through the existing
+unique shutdown completion.
+
+The first regression uses real configured KISS TCP at recipe index 2. Public Apply
+moves its occurrence to slot 1. A real discovered replacement disables it; closing
+that peer/listener must restore a new native KISS root in slot 1. Before and after,
+wrong-key and plaintext frames are rejected and exact authenticated native ingress
+and egress pass. An unrelated TCP root keeps its address and exact bidirectional
+traffic before, during and after retirement. The fixture uses production transport
+startup and the actual mutation worker, starting discovery at its already-validated
+observation boundary. Native packet deadlines are two seconds and monitor-driven
+disable/restore connection bounds are eight seconds each; no retry-until-green or
+timing changes qualify it. This is one software family composition case. Additional
+selected-listener failure, context/storage, Auto/effect, reconnect shutdown and
+remaining family evidence stay explicit.
+
+## Trusted restoration evidence
+
+The owned startup context now enters the existing mutation worker even with
+discovery disabled. Restoration calls the shared dispatcher and selected-listener
+starter, consumes tunnel effects and converts the batch by its original index.
+The old limited restore match is deleted. Existing origin/current-slot bindings
+survive; an entry replaced through public Apply is bound from its old owned
+record before the original recipe replaces it. Control projections publish before
+each live record, including when a subsequent SAM preparation waits.
+
+The actual KISS omission failed at restore accept in
+`/tmp/lxmf-item4-bootstrap-restore-kiss-reordered-red.log`; native authentication,
+reordering, disable and unrelated traffic had already passed. The initial shared
+factory passes the full connection/authentication case in `...-kiss-green.log`.
+Independent review then identified missing common metadata, duplicate publication
+after endpoint replacement and delayed control visibility. Strengthened controls
+produce five failures in `...-review-complete-red.log` and pass all eighteen
+focused cases in `...-review-green.log` (10.05 seconds). An earlier endpoint test
+used an unnamed disabled sentinel and correctly retained it during Apply; that
+fixture failure is recorded separately in `...-review-red.log`.
+
+Known strict listener failure leaves no stale root and retries after the test-owned
+endpoint is freed. Actual discovery-disabled TCP retirement joins the synthesizer;
+injected panic and timeout/cancel cases verify cleanup ordering and retained
+completion. I2P retains the original default storage path/identity. Validation-only
+LoRa acquires no runtime and pending native Reticulum BLE remains degraded. The
+Weave control barrier retains a real adapter against an absent temporary device
+while a following test-owned SAM greeting waits; it proves first control lookup,
+not serial/radio delivery or I2P interoperability. No physical/RF/public network
+is used. Broad gates and final checkpoint results are recorded in PROGRESS.md;
+the twenty-family matrix and whole-item integration remain open.

@@ -3,6 +3,13 @@ impl InterfaceStartupBatch {
         self,
         records: &[InterfaceRecord],
     ) -> Vec<crate::configured_interface_runtime::ConfiguredInterfaceStartup> {
+        self.into_owned_indexed_roots(records.iter().cloned().enumerate())
+    }
+
+    pub(super) fn into_owned_indexed_roots(
+        self,
+        records: impl IntoIterator<Item = (usize, InterfaceRecord)>,
+    ) -> Vec<crate::configured_interface_runtime::ConfiguredInterfaceStartup> {
         use crate::configured_interface_runtime::{
             ConfiguredInterfaceStartup, NativeInterfaceRuntime, NativeRuntimeStatus as Status,
         };
@@ -67,9 +74,7 @@ impl InterfaceStartupBatch {
             root.weave.push((binding.name, binding.handle));
         }
         let entries = records
-            .iter()
-            .cloned()
-            .enumerate()
+            .into_iter()
             .map(|(index, record)| {
                 let position = native.iter().position(|(recipe, _)| *recipe == index);
                 ConfiguredInterfaceStartup {

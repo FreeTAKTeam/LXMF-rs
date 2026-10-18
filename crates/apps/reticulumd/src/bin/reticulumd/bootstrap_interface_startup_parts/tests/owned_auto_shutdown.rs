@@ -29,6 +29,7 @@ async fn configured_auto_and_meshtastic_effects_move_to_the_joined_mutation_owne
             roots,
             Arc::downgrade(&daemon),
             None,
+            None,
         );
     daemon.set_interface_mutation_bridge(Arc::new(owner.bridge.clone()));
     tokio::time::timeout(Duration::from_secs(3), owner.shutdown())

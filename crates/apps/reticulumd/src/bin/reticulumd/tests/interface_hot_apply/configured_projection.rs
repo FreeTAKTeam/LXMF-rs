@@ -40,6 +40,7 @@ async fn owner_publication_is_immediate_then_two_seconds_with_delay_and_preserve
         }],
         Arc::downgrade(&daemon),
         None,
+        None,
     );
     let value = || {
         daemon.interface_records()[0].settings.as_ref().expect("settings")["_runtime"]["udp"]

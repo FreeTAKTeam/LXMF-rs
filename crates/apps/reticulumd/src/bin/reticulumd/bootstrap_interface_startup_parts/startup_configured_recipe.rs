@@ -1,4 +1,4 @@
-async fn startup_configured_interface_with_auto_plan_builder<F>(
+pub(super) async fn startup_configured_interface_with_auto_plan_builder<F>(
     context: &ConfiguredStartupContext<'_>,
     index: usize,
     iface: &InterfaceConfig,

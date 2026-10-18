@@ -5,7 +5,7 @@ use std::sync::Arc;
 pub(super) fn spawn_stream_reconnect_tunnel_synthesizer(
     transport: Arc<Transport>,
     mut reconnect_rx: tokio::sync::mpsc::Receiver<AddressHash>,
-) {
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(iface) = reconnect_rx.recv().await {
             if transport.synthesize_tunnel_on_interface(iface).await {
@@ -14,5 +14,5 @@ pub(super) fn spawn_stream_reconnect_tunnel_synthesizer(
                 log::warn!("[daemon] stream reconnect could not synthesize tunnel iface={}", iface);
             }
         }
-    });
+    })
 }

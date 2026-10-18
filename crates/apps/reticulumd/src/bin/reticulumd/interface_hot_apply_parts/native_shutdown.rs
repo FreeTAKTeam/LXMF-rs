@@ -14,37 +14,35 @@ pub(crate) async fn stop_owned_native(
     // Native receiver ownership must disappear before completed retirement is reported.
     let auxiliary = std::mem::take(&mut native.auxiliary);
     drop(native);
-    for mut task in auxiliary {
-        match tokio::time::timeout(Duration::from_secs(10), &mut task).await {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                failure.get_or_insert_with(|| {
-                    io::Error::other(format!(
-                        "interface auxiliary failed address={address}: {error}"
-                    ))
-                });
-            }
-            Err(error) => {
-                task.abort();
-                if let Err(error) = task.await {
-                    if !error.is_cancelled() {
-                        log::warn!(
-                            "[daemon] auxiliary interface task failed address={address}: {error}"
-                        );
-                    }
-                }
-                failure.get_or_insert_with(|| {
-                    io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        format!("interface auxiliary stop timed out address={address}: {error}"),
-                    )
-                });
-            }
+    for task in auxiliary {
+        if let Err(error) =
+            join_auxiliary(task, &format!("interface auxiliary address={address}")).await
+        {
+            failure.get_or_insert(error);
         }
     }
     match failure {
         Some(error) => Err(error),
         None => Ok(()),
+    }
+}
+
+pub(super) async fn join_auxiliary(
+    mut task: tokio::task::JoinHandle<()>,
+    label: &str,
+) -> io::Result<()> {
+    match tokio::time::timeout(Duration::from_secs(10), &mut task).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => Err(io::Error::other(format!("{label} failed: {error}"))),
+        Err(error) => {
+            task.abort();
+            if let Err(error) = task.await {
+                if !error.is_cancelled() {
+                    log::warn!("[daemon] aborted {label} failed: {error}");
+                }
+            }
+            Err(io::Error::new(io::ErrorKind::TimedOut, format!("{label} stop timed out: {error}")))
+        }
     }
 }
 

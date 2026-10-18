@@ -1,6 +1,15 @@
 use super::*;
 use clap::Parser;
 
+#[path = "bootstrap_transport_restore_tests.rs"]
+mod restore_tests;
+
+#[path = "bootstrap_transport_restore_controls.rs"]
+mod restore_controls;
+
+#[path = "bootstrap_transport_restore_replacement.rs"]
+mod restore_replacement;
+
 async fn start_fixture(
     args: &Args,
     config: &DaemonConfig,
@@ -37,13 +46,15 @@ async fn start_fixture(
 async fn retire_fixture(startup: TransportStartupArtifacts) {
     let transport = startup.transport.expect("native transport");
     let manager = transport.iface_manager();
-    for root in startup.interfaces.into_owned_roots(&startup.configured_interfaces) {
-        if let Some(native) = root.native {
-            crate::interface_hot_apply::stop_owned_native(&manager, Some(&transport), native)
-                .await
-                .expect("join native fixture root");
-        }
-    }
+    let mut owner =
+        crate::interface_hot_apply::InterfaceHotApplyBridge::spawn_with_configured_roots(
+            transport,
+            startup.interfaces.into_owned_roots(&startup.configured_interfaces),
+            std::sync::Weak::new(),
+            None,
+            startup.configured_startup,
+        );
+    owner.shutdown().await.expect("join native fixture roots and reconnect worker");
     assert!(manager.lock().await.interface_hashes().is_empty());
 }
 

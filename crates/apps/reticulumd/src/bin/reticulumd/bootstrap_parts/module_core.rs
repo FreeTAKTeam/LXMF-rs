@@ -185,6 +185,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     .await;
 
     let transport = startup.transport;
+    let configured_startup = startup.configured_startup;
     let peer_crypto = startup.peer_crypto;
     let announce_destination = startup.announce_destination;
     let propagation_destination = startup.propagation_destination;
@@ -338,6 +339,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         let discovery_enabled = discovery.is_some();
         let mutation = InterfaceHotApplyBridge::spawn_with_configured_roots(
             transport.clone(), owned_configured_interfaces, Arc::downgrade(&daemon), discovery,
+            configured_startup,
         ).with_management_config(args.config.clone(), reticulum_runtime_policy.interface_management_enabled);
         if discovery_enabled { discovery_observations = Some(mutation.discovery_observations()); }
         daemon.set_interface_mutation_bridge(Arc::new(mutation.bridge.clone()));

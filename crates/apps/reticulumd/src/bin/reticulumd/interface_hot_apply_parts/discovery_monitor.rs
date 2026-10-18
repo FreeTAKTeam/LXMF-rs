@@ -6,8 +6,9 @@ impl NativeDiscovery {
         manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
         managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
         transport: &Arc<Transport>,
-        refreshes: &HotApplyRuntimeRefreshes,
+        _refreshes: &HotApplyRuntimeRefreshes,
         daemon: &Arc<RpcDaemon>,
+        configured_startup: Option<&ConfiguredStartupRuntime>,
     ) {
         if transport.connected_to_shared_instance().await {
             return;
@@ -51,7 +52,9 @@ impl NativeDiscovery {
             log::debug!("[daemon] discovered interface disconnected name={name}");
         }
         if plan.enable_bootstrap {
-            self.restore_bootstrap(manager, managed, transport, refreshes, daemon).await;
+            if let Some(startup) = configured_startup {
+                self.restore_bootstrap(manager, managed, transport, daemon, startup).await;
+            }
         }
         // The target selects one candidate before processing this tick's detach list.
         if self.lifecycle.initial_autoconnect_ran() && plan.free_slots > plan.reserved_slots {
@@ -93,13 +96,13 @@ impl NativeDiscovery {
                 );
                 #[cfg(test)]
                 if let Some(name) = key.configured_name() {
-                    refreshes
+                    _refreshes
                         .tcp_listeners
                         .lock()
                         .expect("tcp listener refresh mutex poisoned")
                         .remove(name);
-                    refreshes.udp.lock().expect("udp refresh mutex poisoned").remove(name);
-                    refreshes.pipe.lock().expect("pipe refresh mutex poisoned").remove(name);
+                    _refreshes.udp.lock().expect("udp refresh mutex poisoned").remove(name);
+                    _refreshes.pipe.lock().expect("pipe refresh mutex poisoned").remove(name);
                 }
             }
         }
@@ -149,8 +152,8 @@ impl NativeDiscovery {
         manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
         managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
         transport: &Arc<Transport>,
-        refreshes: &HotApplyRuntimeRefreshes,
         daemon: &Arc<RpcDaemon>,
+        startup: &ConfiguredStartupRuntime,
     ) {
         for (index, iface) in &self.config.bootstrap {
             let record = crate::bootstrap::interface_record_from_config(iface);
@@ -166,61 +169,77 @@ impl NativeDiscovery {
                 })
                 .or_else(|| hot_apply_interface_seed_key(&record).map(|name| configured_key(&name)))
                 .unwrap_or(ManagedInterfaceKey::Startup(*index));
-            if managed.get(&key).is_some_and(|entry| entry.native.is_some()) {
+            if managed.get(&key).is_some_and(|entry| {
+                entry.native.is_some()
+                    || entry
+                        .configured
+                        .as_ref()
+                        .is_some_and(|binding| binding.recipe_index != *index)
+            }) {
                 continue;
             }
-            let spawned = match iface.kind.as_str() {
-                "tcp_client" | "backbone_client" => {
-                    spawn_interface::spawn_trusted_stream(manager, iface).await
+            let (mut restored, failure) = startup.restore(*index, iface, transport).await;
+            if let Some(error) = failure {
+                if let Some(native) = restored.native.take() {
+                    if let Err(error) = stop_owned_native(manager, Some(transport), native).await {
+                        log::warn!("[daemon] failed bootstrap attempt did not exit cleanly name={name}: {error}");
+                    }
                 }
-                "tcp_server" | "udp" | "pipe" => {
-                    spawn_hot_apply_interface(manager, Some(transport), &record).await
-                }
-                _ => {
-                    // This family still needs its trusted recipe in the item-4 composition gate.
-                    log::warn!(
-                        "[daemon] bootstrap restore requires family recipe name={name} kind={}",
-                        iface.kind
-                    );
-                    continue;
-                }
-            };
-            if let Some((address, runtime_status)) = spawned {
-                apply_records::register_runtime_refresh(
-                    &name,
-                    &record,
-                    address,
-                    runtime_status.as_ref(),
-                    refreshes,
-                    Some(&Arc::downgrade(daemon)),
-                );
-                if let Some(entry) = managed.get_mut(&key) {
-                    let mut restored = record.clone();
-                    mark_interface_startup_status(
-                        &mut restored,
-                        "spawned",
-                        None,
-                        Some(&address.to_string()),
-                    );
-                    mark_interface_runtime_fields(&mut restored, "running", 0);
-                    mark_interface_runtime_managed(&mut restored, "daemon_transport");
-                    entry.record = restored;
-                    entry.native = Some(NativeInterfaceRuntime::new(address, runtime_status));
+                let runtime_status = if restored
+                    .record
+                    .settings
+                    .as_ref()
+                    .and_then(|settings| settings["_runtime"]["runtime_status"].as_str())
+                    == Some("degraded")
+                {
+                    "degraded"
                 } else {
-                    let origin = ManagedInterfaceOrigin::configured(&record);
-                    managed.insert(
-                        key,
-                        ManagedHotApplyInterface::active(
-                            record.clone(),
-                            address,
-                            runtime_status,
-                            origin,
-                        ),
-                    );
-                }
-
-                publish_live_runtime_records(managed, daemon);
+                    "failed"
+                };
+                record_publication::clear_inactive_runtime(
+                    &mut restored.record,
+                    "failed",
+                    runtime_status,
+                    Some(&error),
+                );
+                log::warn!("[daemon] bootstrap restore failed name={name}: {error}");
             }
+            let records = daemon.interface_records();
+            let position_for = |record: &InterfaceRecord| {
+                records
+                    .iter()
+                    .position(|current| same_record(current, record))
+                    .unwrap_or(records.len())
+            };
+            if let Some(entry) = managed.get_mut(&key) {
+                let position = position_for(&entry.record);
+                entry
+                    .configured
+                    .get_or_insert(ConfiguredRecordBinding { recipe_index: *index, position });
+                entry.record = restored.record;
+                entry.native = restored.native;
+            } else {
+                let position = position_for(&restored.record);
+                let origin = if matches!(key, ManagedInterfaceKey::Configured(_)) {
+                    ManagedInterfaceOrigin::Configured
+                } else {
+                    ManagedInterfaceOrigin::StartupOnly
+                };
+                managed.insert(
+                    key,
+                    ManagedHotApplyInterface {
+                        record: restored.record,
+                        native: restored.native,
+                        configured: Some(ConfiguredRecordBinding {
+                            recipe_index: *index,
+                            position,
+                        }),
+                        origin,
+                    },
+                );
+            }
+            record_publication::publish_control_bindings(managed, daemon);
+            publish_live_runtime_records(managed, daemon);
         }
     }
 }

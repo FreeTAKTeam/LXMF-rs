@@ -383,23 +383,23 @@ async fn native_monitor_never_detaches_early_at_fractional_or_skipped_tick_bound
     runtime.lifecycle.monitor_interface(configured_key("fractional").monitor_id());
     let refreshes = HotApplyRuntimeRefreshes::new();
     tokio::time::advance(Duration::from_millis(900)).await;
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None).await;
     tokio::time::advance(Duration::from_millis(11_200)).await;
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None).await;
     assert!(
         has_named(&managed, "fractional"),
         "integer rounding cannot authorize an early native detach"
     );
     channel.set_online(true);
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None).await;
     assert!(matches!(
         named_active(&managed, "fractional").origin,
         ManagedInterfaceOrigin::Discovered { down_since: None, .. }
     ));
     channel.set_online(false);
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None).await;
     tokio::time::advance(Duration::from_secs(30)).await;
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None).await;
     assert!(managed.is_empty());
     assert!(manager.lock().await.interface_hashes().is_empty());
     assert!(daemon.interface_records().is_empty());

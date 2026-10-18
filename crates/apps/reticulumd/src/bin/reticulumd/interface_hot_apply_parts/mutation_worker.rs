@@ -60,15 +60,21 @@ pub(super) fn initial_interfaces(
     managed
 }
 
+pub(super) struct MutationRuntime {
+    pub(super) transport: Option<Arc<Transport>>,
+    pub(super) refreshes: HotApplyRuntimeRefreshes,
+    pub(super) daemon: Option<Weak<RpcDaemon>>,
+    pub(super) discovery: Option<NativeDiscoveryConfig>,
+    pub(super) configured_startup: Option<ConfiguredStartupRuntime>,
+}
+
 pub(super) async fn run_interface_mutation_worker(
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     mut rx: Receiver<InterfaceHotApplyCommand>,
     mut managed: HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
-    transport: Option<Arc<Transport>>,
-    refreshes: HotApplyRuntimeRefreshes,
-    daemon: Option<Weak<RpcDaemon>>,
-    discovery: Option<NativeDiscoveryConfig>,
+    runtime: MutationRuntime,
 ) -> io::Result<()> {
+    let MutationRuntime { transport, refreshes, daemon, discovery, configured_startup } = runtime;
     let mut publication = tokio::time::interval(std::time::Duration::from_secs(2));
     publication.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut discovery = discovery.map(NativeDiscovery::new);
@@ -96,7 +102,7 @@ pub(super) async fn run_interface_mutation_worker(
                 if let (Some(discovery), Some(transport), Some(daemon)) = (
                     discovery.as_mut(), transport.as_ref(), daemon.as_ref().and_then(Weak::upgrade),
                 ) {
-                    discovery.monitor(&iface_manager, &mut managed, transport, &refreshes, &daemon).await;
+                    discovery.monitor(&iface_manager, &mut managed, transport, &refreshes, &daemon, configured_startup.as_ref()).await;
                 }
                 continue;
             }
@@ -207,6 +213,17 @@ pub(super) async fn run_interface_mutation_worker(
     }
     if let Some(daemon) = daemon.as_ref().and_then(Weak::upgrade) {
         record_publication::publish_control_bindings(&managed, &daemon);
+    }
+    if let Some(startup) = configured_startup {
+        if let Err(error) = native_shutdown::join_auxiliary(
+            startup.into_reconnect_completion(),
+            "stream reconnect tunnel synthesizer",
+        )
+        .await
+        {
+            log::warn!("[daemon] reconnect synthesizer shutdown did not confirm exit: {error}");
+            failure.get_or_insert(error);
+        }
     }
     match failure {
         Some(error) => Err(error),

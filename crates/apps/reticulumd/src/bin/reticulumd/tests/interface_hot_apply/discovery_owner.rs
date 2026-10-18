@@ -21,6 +21,13 @@ async fn restored_tcp_bootstrap_publishes_its_live_retained_status() {
     let transport = transport(false, false);
     let manager = transport.iface_manager();
     let daemon = Arc::new(RpcDaemon::test_instance());
+    let startup = ConfiguredStartupRuntime::for_test(
+        &transport,
+        root.path(),
+        std::slice::from_ref(&recipe),
+        false,
+    )
+    .await;
     let mut runtime = NativeDiscovery::new(
         NativeDiscoveryConfig::new(
             root.path().to_owned(),
@@ -37,7 +44,7 @@ async fn restored_tcp_bootstrap_publishes_its_live_retained_status() {
     );
     let refreshes = HotApplyRuntimeRefreshes::new();
     let mut managed = HashMap::new();
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, Some(&startup)).await;
     let (_peer, _) = timeout(Duration::from_secs(2), listener.accept())
         .await
         .expect("restored connection deadline")
@@ -54,7 +61,11 @@ async fn restored_tcp_bootstrap_publishes_its_live_retained_status() {
     })
     .await
     .expect("native client connected status");
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, Some(&startup)).await;
+    let records = daemon.interface_records();
+    let runtime_metadata = &records[0].settings.as_ref().expect("settings")["_runtime"];
+    assert_eq!(runtime_metadata["managed_by"], "daemon_transport");
+    assert_eq!(runtime_metadata["runtime_status"], "running");
     assert_eq!(
         daemon.interface_records()[0].settings.as_ref().expect("status")["_runtime"]["tcp"]
             ["stream_status"]["stream_state"],
@@ -70,6 +81,10 @@ async fn restored_tcp_bootstrap_publishes_its_live_retained_status() {
         .await
         .expect("stop");
     }
+    timeout(Duration::from_secs(2), startup.into_reconnect_completion())
+        .await
+        .expect("reconnect stop deadline")
+        .expect("reconnect stop");
 }
 
 #[tokio::test]
@@ -313,7 +328,7 @@ async fn discovery_stop_joins_every_worker_even_when_the_first_worker_times_out(
 }
 
 #[tokio::test]
-async fn restored_bootstrap_binding_failure_uses_the_existing_status_refresh_owner() {
+async fn restored_bootstrap_binding_failure_publishes_retained_native_status() {
     let root = tempfile::tempdir().expect("root");
     let occupied = UdpSocket::bind("127.0.0.1:0").await.expect("occupied endpoint");
     let port = occupied.local_addr().expect("port").port();
@@ -329,6 +344,13 @@ async fn restored_bootstrap_binding_failure_uses_the_existing_status_refresh_own
     let transport = transport(false, false);
     let manager = transport.iface_manager();
     let daemon = Arc::new(RpcDaemon::test_instance());
+    let startup = ConfiguredStartupRuntime::for_test(
+        &transport,
+        root.path(),
+        std::slice::from_ref(&recipe),
+        false,
+    )
+    .await;
     let mut runtime = NativeDiscovery::new(
         NativeDiscoveryConfig::new(
             root.path().to_owned(),
@@ -345,7 +367,7 @@ async fn restored_bootstrap_binding_failure_uses_the_existing_status_refresh_own
     );
     let mut managed = HashMap::new();
     let refreshes = HotApplyRuntimeRefreshes::new();
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, Some(&startup)).await;
     let Some(HotApplyRuntimeStatus::Udp(status)) = &named_active(&managed, "bootstrap-status")
         .native
         .as_ref()
@@ -361,11 +383,7 @@ async fn restored_bootstrap_binding_failure_uses_the_existing_status_refresh_own
     })
     .await
     .expect("native bind failure");
-    assert_eq!(
-        refresh_hot_apply_udp_runtime_status_once(&daemon, &refreshes.udp),
-        1,
-        "restored worker is registered with its existing refresher"
-    );
+    publish_live_runtime_records(&managed, &daemon);
     assert_eq!(
         daemon.interface_records()[0].settings.as_ref().expect("status")["_runtime"]["udp"]
             ["status"]["link_state"],
@@ -380,6 +398,10 @@ async fn restored_bootstrap_binding_failure_uses_the_existing_status_refresh_own
         .await
         .expect("joined failed worker");
     }
+    timeout(Duration::from_secs(2), startup.into_reconnect_completion())
+        .await
+        .expect("reconnect stop deadline")
+        .expect("reconnect stop");
 }
 
 #[test]
@@ -445,14 +467,15 @@ async fn discovery_down_time_is_anchored_after_a_contended_native_snapshot() {
     let refreshes = HotApplyRuntimeRefreshes::new();
     {
         let guard = manager.lock().await;
-        let snapshot = runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon);
+        let snapshot =
+            runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None);
         tokio::pin!(snapshot);
         assert!(timeout(Duration::from_secs(20), &mut snapshot).await.is_err());
         drop(guard);
         snapshot.await;
     }
     tokio::time::advance(Duration::from_secs(5)).await;
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None).await;
     assert!(
         has_named(&managed, "contended"),
         "only five seconds since the first actual native observation"
@@ -518,6 +541,13 @@ async fn discovery_bootstrap_lifecycle_uses_unnamed_and_padded_managed_keys() {
                 ),
             ),
         ]);
+        let startup = ConfiguredStartupRuntime::for_test(
+            &transport,
+            root.path(),
+            std::slice::from_ref(&recipe),
+            false,
+        )
+        .await;
         let mut runtime = NativeDiscovery::new(
             NativeDiscoveryConfig::new(
                 root.path().to_owned(),
@@ -534,14 +564,18 @@ async fn discovery_bootstrap_lifecycle_uses_unnamed_and_padded_managed_keys() {
         );
         runtime.lifecycle.monitor_interface(configured_key("auto").monitor_id());
         let refreshes = HotApplyRuntimeRefreshes::new();
-        runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+        runtime
+            .monitor(&manager, &mut managed, &transport, &refreshes, &daemon, Some(&startup))
+            .await;
         assert!(
             managed.get(&configured_key(&key)).is_some_and(|entry| entry.native.is_none()),
             "bootstrap disable retains its recipe with explicit inactive native state"
         );
         assert!(!manager.lock().await.interface_hashes().contains(&address));
         channel.set_online(false);
-        runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+        runtime
+            .monitor(&manager, &mut managed, &transport, &refreshes, &daemon, Some(&startup))
+            .await;
         assert!(
             managed.contains_key(&configured_key(&key)),
             "trusted unnamed/padded recipe must restore with the same owner key"
@@ -555,6 +589,10 @@ async fn discovery_bootstrap_lifecycle_uses_unnamed_and_padded_managed_keys() {
             .await
             .expect("stop");
         }
+        timeout(Duration::from_secs(2), startup.into_reconnect_completion())
+            .await
+            .expect("reconnect stop deadline")
+            .expect("reconnect stop");
     }
 }
 
@@ -784,6 +822,13 @@ async fn native_monitor_restores_the_trusted_udp_bootstrap_recipe_after_auto_pee
             ),
         ),
     ]);
+    let startup = ConfiguredStartupRuntime::for_test(
+        &transport,
+        root.path(),
+        std::slice::from_ref(&recipe),
+        false,
+    )
+    .await;
     let mut runtime = NativeDiscovery::new(
         NativeDiscoveryConfig::new(
             root.path().to_owned(),
@@ -800,13 +845,13 @@ async fn native_monitor_restores_the_trusted_udp_bootstrap_recipe_after_auto_pee
     );
     runtime.lifecycle.monitor_interface(configured_key("auto").monitor_id());
     let refreshes = HotApplyRuntimeRefreshes::new();
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, Some(&startup)).await;
     assert!(!has_named(&managed, "bootstrap"));
     let reservation =
         UdpSocket::bind(addr).await.expect("bootstrap stop joined and released exact port");
     drop(reservation);
     channel.set_online(false);
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, Some(&startup)).await;
     let restored = &named_active(&managed, "bootstrap");
     assert_ne!(restored.native.as_ref().expect("active native root").address, address);
     assert!(restored.origin.configuration_owned());
@@ -836,6 +881,10 @@ async fn native_monitor_restores_the_trusted_udp_bootstrap_recipe_after_auto_pee
         .await
         .expect("stop");
     }
+    timeout(Duration::from_secs(2), startup.into_reconnect_completion())
+        .await
+        .expect("reconnect stop deadline")
+        .expect("reconnect stop");
 }
 
 #[tokio::test]
@@ -869,7 +918,7 @@ async fn periodic_refill_uses_one_available_transport_candidate_and_reserves_a_q
     nontransport.discovery_hash = vec![9; 32];
     store.observe(nontransport).expect("nontransport");
     let refreshes = HotApplyRuntimeRefreshes::new();
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None).await;
     assert_eq!(managed.len(), 1, "one random candidate per periodic check");
     assert!(managed.values().all(|active| active
         .record
@@ -911,7 +960,7 @@ async fn periodic_refill_uses_one_available_transport_candidate_and_reserves_a_q
         );
     }
     daemon.replace_interfaces(records);
-    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon).await;
+    runtime.monitor(&manager, &mut managed, &transport, &refreshes, &daemon, None).await;
     assert_eq!(managed.len(), 3, "one free slot equals maximum / 4 reservation");
     assert!(managed.values().any(|active| active
         .native

@@ -134,6 +134,7 @@ async fn cancelled_shutdown_keeps_the_unique_worker_join_until_completion() {
         }],
         Arc::downgrade(&daemon),
         None,
+        None,
     );
     daemon.set_interface_mutation_bridge(Arc::new(owner.bridge.clone()));
     tokio::task::yield_now().await;

@@ -1929,3 +1929,68 @@ validation only; terminal results and final-head review/CI/merge remain required
   `size`, `architecture` and `diagnostics` suffixes.
   General trusted restoration, immutable context retention, reconnect worker
   joining and finite family composition remain subsequent work.
+
+## Item 4 trusted configured restoration
+
+- Checkpoint `6b4cb31a878fc77e2eecc16835d1c292365ed8ac` completed constructor
+  preparation. This bounded behavior change keeps the existing mutation worker
+  and one eventual item-4 PR; implementation remains with the main agent.
+- Narrow owned context retains original selected-listener configuration, separate
+  carrier/listener strictness, storage root, transport identity, reconnect sender
+  and unique synthesizer completion. It is retained with discovery disabled too;
+  no Args, RPC credential bundle, additional actor or registry is retained.
+- Restoration reuses the per-recipe dispatcher and shared selected-listener
+  starter at the original index. Each attempt uses its fresh server address.
+  Indexed outcome conversion consumes tunnel requests before moving native
+  status, Auto shutdown, auxiliary and control effects. The old four-family
+  restore match is removed. Known startup failure settles any registered root
+  and publishes no native presence, allowing a later eligible tick to retry.
+- Actual configured KISS at recipe index 2 moves to public slot 1, closes when
+  the discovered native peer becomes online, and restores after peer loss. Wrong
+  keys/plaintext remain rejected; exact authenticated ingress/egress and an
+  unrelated TCP root's exact traffic pass before/during/after. The pre-change
+  test fails only at restored TCP accept after earlier checks pass:
+  `/tmp/lxmf-item4-bootstrap-restore-kiss-reordered-red.log` (13.03 seconds).
+  Initial factory green is `...-kiss-green.log` (10.03 seconds).
+- Independent correctness review found missing common successful runtime fields,
+  duplicate publication after public endpoint replacement, and delayed control
+  projection while a following constructor waits. Additional controls also keep
+  explicit degraded failure outcomes. All five strengthened assertions fail in
+  `...-review-complete-red.log` (13 pass/5 fail, 10.04 seconds); all eighteen
+  focused cases pass in `...-review-green.log` (10.05 seconds) after fixes.
+  Successful native outcomes regain common fields without replacing explicit
+  degraded state. An entry lacking a binding derives its current slot from its
+  pre-overwrite owned record. Controls publish before each exposed live record.
+- The endpoint replacement trace uses public Apply to reorder/change the TCP
+  endpoint, discovery disable, original trusted recipe restore and one public
+  occurrence with exact unrelated/native traffic. Its first fixture omitted the
+  disabled sentinel's name, so Apply correctly retained that protected row;
+  `...-review-red.log` retains that fixture failure and genuine metadata reds.
+  The corrected named sentinel reaches the duplicate-row production red above.
+- A real selected listener failure at original index 2 leaves no stale root and
+  retries after the test-owned port is freed. An I2P factory case preserves its
+  original default storage/key path and transport identity without SAM use.
+  LoRa validation-only and pending Reticulum BLE outcomes stay truthful. A real
+  Weave adapter against an absent temporary device exposes its control queue
+  while a following test-owned SAM greeting holds preparation; this proves
+  publication/control availability, not serial/radio or SAM interoperability.
+- Real discovery-disabled TCP shutdown joins native workers and synthesizer,
+  preserving an unrelated channel. Injected synthesizer panic/timeout and
+  cancelled shutdown verify native-first ordering, sender retirement, abort-and-
+  await, propagated errors and the original retained completion. The caught
+  injected task panic in focused output is expected and asserted.
+- Full all-feature daemon validation passes 31 library and 642 binary tests
+  in `...-daemon-final.log` (30.30 seconds for binary tests). All-target,
+  all-feature daemon Clippy passes in `...-clippy-approved.log`. Earlier Clippy
+  logs retain four fixture clone suggestions and the non-test unused refresh
+  parameter; fixed with borrowed slices and the conventional cfg-only parameter
+  prefix, without allowances or behavior changes. Default check, architecture
+  and diagnostics scanner pass in `...-default-check.log`, `...-architecture.log`
+  and `...-diagnostics.log`. Existing optional RNode BLE dead-code/manifest
+  warnings and the environment's missing profile helper remain baseline output.
+- Both independent source POST reviews approve. Cargo/include formatting,
+  boundaries, module size and task-link/diff evidence use the same
+  `/tmp/lxmf-item4-bootstrap-restore-` prefix. BOOTSTRAP.md, roadmap and parity
+  matrix record bounded restoration separately from the remaining twenty-family
+  matrix, whole-item release/integration, one PR, hosted CI and merge. No physical,
+  RF, public-network or whole-issue completion claim is made.

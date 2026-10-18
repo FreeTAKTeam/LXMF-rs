@@ -1,6 +1,7 @@
 pub(super) struct TransportStartupArtifacts {
     pub(super) selected_tcp_server: TcpServerSelection,
     pub(super) transport: Option<Arc<Transport>>,
+    pub(super) configured_startup: Option<ConfiguredStartupRuntime>,
     pub(super) peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     pub(super) announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     pub(super) propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,

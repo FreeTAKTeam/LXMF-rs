@@ -456,3 +456,7 @@ mod tests;
 #[cfg(test)]
 #[path = "../tests/interface_hot_apply/configured_root_owner.rs"]
 mod configured_root_owner_tests;
+
+#[cfg(test)]
+#[path = "../tests/interface_hot_apply/discovery_restore_failures.rs"]
+mod restore_failure_tests;
