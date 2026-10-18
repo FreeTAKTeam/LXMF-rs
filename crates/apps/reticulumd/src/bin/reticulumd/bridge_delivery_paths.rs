@@ -16,6 +16,25 @@ pub(super) struct DeliveryPathRequests {
 }
 
 impl DeliveryPathRequests {
+    /// Forced rediscovery uses pending lifetime, not ordinary request debounce.
+    /// Claim atomically before expiring the route; do not prune other history.
+    pub(super) fn claim_rediscovery(
+        &self,
+        destination: AddressHash,
+        timing: DeliveryTiming,
+    ) -> std::io::Result<bool> {
+        let mut times = self.times.lock().map_err(|e| std::io::Error::other(e.to_string()))?;
+        let now = Instant::now();
+        if times
+            .get(&destination)
+            .is_some_and(|sent| timing.path_request_pending(now.duration_since(*sent)))
+        {
+            return Ok(false);
+        }
+        times.insert(destination, now);
+        Ok(true)
+    }
+
     fn claim(&self, destination: AddressHash, timing: DeliveryTiming) -> std::io::Result<bool> {
         let mut times =
             self.times.lock().map_err(|error| std::io::Error::other(error.to_string()))?;
@@ -60,7 +79,10 @@ impl DeliveryTask {
                 let pending = self.path_requests.pending(destination, timing)?;
                 log::debug!("delivery path request suppressed message_id={} destination={destination} pending={pending}", self.message_id);
             }
-            Ok::<_, std::io::Error>(timing)
+            // Scheduling follows handoff in the reference router; measurements
+            // may have changed while the transport waited for its locks.
+            measured_delivery_timing(self.transport.path_timing(&destination).await)
+                .map_err(std::io::Error::other)
         }.await;
         result.map_err(|error| {
             log::error!(

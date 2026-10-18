@@ -36,9 +36,14 @@ observe shutdown/cancellation. Accepted terminal receipts retain admission until
 the receipt worker commits them or shutdown begins. Prepared opportunistic sends
 now register destination-bound proof context before handoff; a real Rust recipient
 decrypts the original LXMF bytes and returns a proof that persists as delivered.
-Full post-send retry ownership, Link activation
-waits and target mixed-peer acceptance remain open; these checkpoints do not
-establish LXMF 1.2.0 completion. See the
+Fitting opportunistic packets now retain that owner through retries and terminal
+persistence. The policy consumes 66 production-reference snapshots; local network
+tests cover late proof from an earlier attempt, no-route exhaustion, rediscovery
+and cancellation, unavailable status reads, and fresh discovery windows after
+blocked handoff. The final guarded transport handoff observes terminal state after
+acquiring send locks. Full Link/Resource post-send ownership, Link activation waits
+and target mixed-peer acceptance remain open; these checkpoints do not establish
+LXMF 1.2.0 completion. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655

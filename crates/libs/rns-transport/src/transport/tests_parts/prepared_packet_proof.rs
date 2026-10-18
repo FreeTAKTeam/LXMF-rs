@@ -137,3 +137,57 @@ async fn prepared_single_proofs_remain_bound_to_tracked_packet_and_recipient() {
         }
     }
 }
+#[tokio::test]
+async fn prepared_single_guard_rechecks_after_cache_and_interface_locks() {
+    for block_cache in [true, false] {
+        let local = PrivateIdentity::new_from_rand(OsRng);
+        let transport = Transport::new(TransportConfig::new("guarded-prepared", &local, true));
+        let interfaces = transport.iface_manager();
+        let mut channel = interfaces.lock().await.new_channel(8);
+        let cache = transport.get_handler().lock().await.packet_cache.clone();
+        let remote = PrivateIdentity::new_from_rand(OsRng);
+        let name = DestinationName::new("lxmf", "delivery");
+        let destination =
+            SingleOutputDestination::new(*remote.as_identity(), name).desc.address_hash;
+        let packet = Packet {
+            destination,
+            data: PacketDataBuffer::new_from_slice(b"prepared"),
+            ..Packet::default()
+        };
+        let hash = packet.hash();
+        let allowed = AtomicUsize::new(1);
+        let correlation_count = AtomicUsize::new(0);
+        let cache_guard = if block_cache { Some(cache.lock().await) } else { None };
+        let interface_guard = if block_cache { None } else { Some(interfaces.lock().await) };
+        let send = transport.send_prepared_single_packet_guarded_with_trace(
+            packet,
+            *remote.as_identity(),
+            name,
+            |_| {
+                if allowed.load(Ordering::SeqCst) == 0 {
+                    return false;
+                }
+                correlation_count.fetch_add(1, Ordering::SeqCst);
+                true
+            },
+        );
+        tokio::pin!(send);
+        tokio::select! {
+            biased;
+            _ = &mut send => panic!("handoff cannot finish while its lock is held"),
+            _ = tokio::task::yield_now() => {},
+        }
+        assert_eq!(correlation_count.load(Ordering::SeqCst), 0);
+        allowed.store(0, Ordering::SeqCst);
+        drop(cache_guard);
+        drop(interface_guard);
+        assert!(send.await.expect("valid binding").is_none());
+        assert_eq!(correlation_count.load(Ordering::SeqCst), 0);
+        assert!(cache
+            .lock()
+            .await
+            .proof_context_for_destination(&AddressHash::new_from_hash(&hash))
+            .is_none());
+        assert!(channel.tx_channel.try_recv().is_err());
+    }
+}

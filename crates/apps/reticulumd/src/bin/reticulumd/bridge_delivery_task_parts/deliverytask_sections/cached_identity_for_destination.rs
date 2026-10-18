@@ -59,7 +59,7 @@ impl DeliveryTask {
         &self,
         prepared: &mut PreparedDeliveryPayload,
     ) -> DeliveryAttemptOutcome {
-        if self.abort_if_cancelled("payload") {
+        if self.requested_method != RequestedDeliveryMethod::Opportunistic && self.abort_if_cancelled("payload") {
             return DeliveryAttemptOutcome::Stopped;
         }
         match self.requested_method {
@@ -79,10 +79,8 @@ impl DeliveryTask {
         );
     }
 
-    async fn run_opportunistic(&self, payload: &[u8]) -> DeliveryAttemptOutcome {
-        if self.abort_if_cancelled("opportunistic") {
-            return DeliveryAttemptOutcome::Stopped;
-        }
+    pub(super) async fn run_opportunistic(&self, payload: &[u8]) -> DeliveryAttemptOutcome {
+        if let Err(outcome) = self.check_opportunistic_status() { return outcome; }
         let identity = match self.resolve_destination_identity().await {
             Ok(identity) => identity,
             Err(outcome) => return outcome,
@@ -185,11 +183,20 @@ impl DeliveryTask {
         } else {
             log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", "sending");
         }
-        let trace = match self.transport.send_prepared_single_packet_observed_with_trace(
+        if let Err(outcome) = self.check_opportunistic_status() { return outcome; }
+        let mut stopped = DeliveryAttemptOutcome::Stopped;
+        let trace = match self.transport.send_prepared_single_packet_guarded_with_trace(
             packet, identity, DestinationName::new("lxmf", "delivery"),
-            |hash| track_receipt_mapping(&self.receipt_map, &hex::encode(hash.to_bytes()), &self.message_id),
+            |hash| match self.check_opportunistic_status() {
+                Ok(()) => {
+                    track_receipt_mapping(&self.receipt_map, &hex::encode(hash.to_bytes()), &self.message_id);
+                    true
+                },
+                Err(outcome) => { stopped = outcome; false },
+            },
         ).await {
-            Ok(trace) => trace,
+            Ok(Some(trace)) => trace,
+            Ok(None) => return stopped,
             Err(error) => {
                 self.fail_payload_build(std::io::Error::other(format!(
                     "opportunistic recipient binding failed for {}: {error}", self.destination_hex
@@ -219,17 +226,31 @@ impl DeliveryTask {
             &self.receipt_tx,
             ReceiptEvent::new(
                 self.message_id.clone(),
-                send_outcome_status("opportunistic", outcome),
+                if send_outcome_is_sent(outcome) {
+                    send_outcome_status("opportunistic", outcome)
+                } else {
+                    "pending: opportunistic no route".to_string()
+                },
             )
             .with_packet_hash(packet_hash)
             .with_method("opportunistic")
             .with_delivery_kind("opportunistic-packet")
             .with_bytes(opportunistic_payload.len()),
         );
-        if send_outcome_is_sent(outcome) {
-            DeliveryAttemptOutcome::AwaitPacket
-        } else {
-            DeliveryAttemptOutcome::Terminal
+        DeliveryAttemptOutcome::OpportunisticPacket
+    }
+
+    fn check_opportunistic_status(&self) -> Result<(), DeliveryAttemptOutcome> {
+        if self.stopping.as_ref().is_some_and(|stop| *stop.borrow()) {
+            return Err(DeliveryAttemptOutcome::Stopped);
+        }
+        match self.observe_delivery_terminal() {
+            Ok(false) => Ok(()),
+            Ok(true) => Err(DeliveryAttemptOutcome::Stopped),
+            Err(error) => {
+                log::warn!("opportunistic receipt observation unavailable message_id={}: {error}", self.message_id);
+                Err(DeliveryAttemptOutcome::AwaitStatus)
+            }
         }
     }
 
@@ -239,8 +260,8 @@ impl DeliveryTask {
         identity: Identity,
         reason: &str,
     ) -> DeliveryAttemptOutcome {
-        if self.abort_if_cancelled("opportunistic-link") {
-            return DeliveryAttemptOutcome::Stopped;
+        if let Err(outcome) = self.check_opportunistic_status() {
+            return outcome;
         }
         log_delivery_trace(
             &self.message_id,

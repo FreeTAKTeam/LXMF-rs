@@ -581,3 +581,64 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   owned 500ms delay, and terminal observation before another send. Link fallback
   must not enter the opportunistic resend loop. The current one-attempt handoff
   remains unchanged by this test-artifact checkpoint.
+
+### Item 3 retained opportunistic retry owner
+
+- Integrated the production-reference policy into the existing admitted owner for
+  fitting opportunistic packets. One owner retains prepared signed LXMF bytes,
+  membership and count/byte reservations through sends, no-route dispatch,
+  discovery, rediscovery and terminal persistence. Each attempt encrypts afresh;
+  execution permits cover actual sends, and oversized Link/Resource fallback
+  stays outside this packet retry loop. Ten reference scenarios and 66 snapshots
+  check decisions, counters, deadlines, request windows and attempt limits.
+- The atomic forced-rediscovery claim uses pending lifetime without refreshing
+  suppressed timestamps or pruning another destination's history. Its 500ms
+  request belongs to the same loop, runs even while send capacity is blocked, and
+  is cancelled on terminal observation/shutdown. This intentionally differs from
+  the reference's detached request surviving delivery/cancellation. Early announce
+  resumes the owner without duplicate sends or resetting consumed attempts.
+- Real Rust sender/recipient ingress now proves retained ownership until delivered,
+  including delivery by the first packet's proof after a second attempt. Both
+  correlations survive until terminal cleanup; a real receipt-write fault retains
+  admission until recovery commits exactly one terminal result. No-route dispatch
+  remains pending until bounded reference exhaustion. Status-read faults pause
+  retry without a competing terminal and resume after storage recovery.
+- Correctness review found two races: a forced request could wait behind blocked
+  execution capacity, and terminal acceptance could arrive while transport locks
+  were awaited. Fixed both. The validated SINGLE prepared-send API has an optional
+  final guard after handler/cache/interface locks; rejected handoff produces no
+  message correlation, proof-cache entry or frame. It reuses InterfaceManager
+  dispatch and leaves the generic prepared API unchanged. The guarantee applies to
+  SINGLE broadcast handoff, not unrelated direct-send paths or remote delivery.
+- POST review found oversized AwaitStatus released its durable scheduled owner,
+  and path-request deadlines could use measurements/time from before an awaited
+  handoff. Oversized ownership now polls nonmutating status and retains admission;
+  the Link fallback entry also uses that check. Initial and ordinary discovery
+  remeasure/re-anchor after handoff, and forced rediscovery does so after expiry
+  while preserving the preceding attempt limit. These changes do not claim shared
+  Link-stage status handling is fully converted.
+- Regression evidence uses real SQLite column-read faults and staged FIFO
+  transport mutex waits with a frozen clock. Initial and post-send discovery both
+  retain the full fresh 86-second window after a delayed request, remain idle at
+  equality, and resume after it. Counterfactual removal of each oversized-owner,
+  initial-timing and ordinary-timing fix fails at its intended assertion. The
+  ordinary-request regression checks the final allowed request too: debounce can
+  hide an early request frame while its consumed attempt causes early exhaustion. Test-only
+  transport maintenance is allowed to finish at the frozen handoff time before
+  advancing the clock; no production scheduling hook or timer tolerance was added.
+- Full Link/Resource post-send ownership, Link activation waits, overload recovery,
+  successful SDK/ZeroMQ delivery after callback failure, and target/baseline mixed
+  Python/Rust traces remain pending. This is a local checkpoint toward the single
+  item-3 PR, not issue completion, hosted CI or a release claim.
+- Validation: 99 daemon bridge tests, four guarded prepared-SINGLE transport
+  regressions, three timing tests, the issue-369 scanner, all-feature daemon and
+  transport library/binary Clippy, formatting, boundaries and architecture checks
+  pass. Extracted delayed-handoff tests into their own module to satisfy the
+  actual 500-line gate applied to these binary test files. Final bridge/size/diff
+  checks pass after that extraction. Logs:
+  `/tmp/lxmf-item3-retry-final-{bridge,clippy,quality,architecture,size}.log`,
+  `/tmp/lxmf-item3-retry-guard.log`, `/tmp/lxmf-item3-retry-timing.log`, and
+  `/tmp/lxmf-item3-retry-{oversized,handoff,repeat-handoff}-red.log`.
+- Independent correctness and POST/maintainability reviews accept this scoped
+  checkpoint and the explicit uncompleted acceptance boundaries. No remaining
+  checkpoint blocker was found; neither review claims full item-3 acceptance.

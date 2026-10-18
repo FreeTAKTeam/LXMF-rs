@@ -86,9 +86,23 @@ owner, and preserve ciphertext. The real Rust sender/recipient ingress regressio
 proves exact decrypted LXMF bytes, recipient-generated proof, persisted delivered
 status and correlation cleanup without fabricating a path. Implicit and explicit
 proof tests reject wrong known signers and untracked hashes. This fixes an existing
-prepared-send gap, not a new LXMF 1.2.0 wire rule; it does not yet prove retained
-post-send scheduling or Python interoperability.
-Full post-send/Link activation retry ownership, broadcast-overload terminal recovery,
+prepared-send gap, not a new LXMF 1.2.0 wire rule.
+
+Fitting opportunistic packets now retain the existing admission through post-send
+retry and terminal persistence. Ten production-reference scenarios (66 snapshots)
+cover counters, strict due decisions, request windows and preserved attempt limits.
+Actual Rust ingress tests accept the first packet's proof after a later attempt,
+retain both packet correlations until durable completion, and preserve the signed
+LXMF bytes while encrypting each attempt separately. No-route handoff remains
+nonterminal until reference exhaustion. Rediscovery's 500ms request is owned by
+the same cancellable loop and can run while delivery execution capacity is blocked;
+this intentionally strengthens Python's detached delayed-request cancellation.
+Status-read failure retains fitting and oversized opportunistic admissions without
+manufacturing a competing terminal. Final SINGLE broadcast handoff checks terminal
+state after the transport locks; rejection creates neither correlation nor cache
+entry. Blocked path-request handoff gets a full refreshed discovery window.
+These are local reference-policy and Rust network proofs, not Python interoperability.
+Full Link/Resource post-send and Link activation retry ownership, broadcast-overload terminal recovery,
 real callback-following delivery and full mixed-peer target traces remain pending;
 no row or reference baseline is promoted by these checkpoints.
 See the [execution record](../goals/open-issues-2026-10/PROGRESS.md).

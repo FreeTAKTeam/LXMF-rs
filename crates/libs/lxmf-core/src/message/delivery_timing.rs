@@ -137,6 +137,12 @@ impl DeliverySchedule {
         self.max_attempts = timing.path_attempt_limit;
     }
 
+    /// Forced opportunistic rediscovery retains the preceding delivery limit.
+    pub fn schedule_rediscovery(&mut self, now: Duration, timing: DeliveryTiming) {
+        self.next_attempt = Some(now.saturating_add(timing.path_request_wait()));
+        self.awaiting_path = true;
+    }
+
     /// Like the reference router, scheduling does not begin an attempt or clear
     /// path waiting. The owner calls `begin_attempt` after claiming a due attempt.
     pub fn schedule_delivery(&mut self, now: Duration, timing: DeliveryTiming) {

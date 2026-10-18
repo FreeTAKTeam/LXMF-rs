@@ -87,8 +87,49 @@ async fn run_attempts(
         // A committed fallback envelope fixes the effective method after restart.
         task.requested_method = RequestedDeliveryMethod::Propagated;
     }
+    if task.requested_method == RequestedDeliveryMethod::Opportunistic
+        && crate::bridge_helpers::opportunistic_payload(&prepared.lxmf_payload, &task.destination)
+            .len()
+            <= lxmf::constants::ENCRYPTED_PACKET_MDU
+    {
+        super::opportunistic::run(
+            task,
+            &prepared.lxmf_payload,
+            global_limit,
+            peer_limit,
+            &metrics,
+            peer,
+            stopping,
+        )
+        .await;
+        metrics.record_finished_before_delivery_for_peer(peer);
+        return;
+    }
     loop {
-        if *stopping.borrow() || task.abort_if_cancelled("owner") {
+        if *stopping.borrow() {
+            metrics.record_finished_before_delivery_for_peer(peer);
+            return;
+        }
+        if task.requested_method == RequestedDeliveryMethod::Opportunistic {
+            match task.observe_delivery_terminal() {
+                Ok(false) => {}
+                Ok(true) => {
+                    metrics.record_finished_before_delivery_for_peer(peer);
+                    return;
+                }
+                Err(error) => {
+                    log::warn!(
+                        "opportunistic fallback observation failed message_id={}: {error}",
+                        task.message_id
+                    );
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_millis(250)) => {},
+                        _ = stopping.changed() => {},
+                    }
+                    continue;
+                }
+            }
+        } else if task.abort_if_cancelled("owner") {
             metrics.record_finished_before_delivery_for_peer(peer);
             return;
         }
@@ -121,6 +162,7 @@ async fn run_attempts(
                     outcome,
                     DeliveryAttemptOutcome::AwaitPath { .. }
                         | DeliveryAttemptOutcome::FallbackPropagation
+                        | DeliveryAttemptOutcome::AwaitStatus
                 ) {
                     metrics.record_waiting_for_peer(peer);
                 } else {
@@ -134,6 +176,12 @@ async fn run_attempts(
             }
         };
         match outcome {
+            DeliveryAttemptOutcome::AwaitStatus => {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(250)) => {},
+                    _ = stopping.changed() => {},
+                }
+            }
             DeliveryAttemptOutcome::AwaitPath { destination } => {
                 if super::discovery::wait_for_identity(task, destination, stopping).await.is_err() {
                     metrics.record_finished_before_delivery_for_peer(peer);

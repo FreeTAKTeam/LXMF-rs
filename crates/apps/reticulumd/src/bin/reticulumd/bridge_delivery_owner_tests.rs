@@ -47,7 +47,7 @@ async fn unresolved_owner_retains_wire_and_capacity_while_another_peer_sends() {
     let global = Arc::new(Semaphore::new(1));
     let peer_limit = Arc::new(Semaphore::new(1));
     let stamp = Arc::new(Semaphore::new(1));
-    let (_stop, stopping) = tokio::sync::watch::channel(false);
+    let (stop, stopping) = tokio::sync::watch::channel(false);
     let first = tokio::spawn(completion::complete_delivery(
         admitted(&scheduler, task),
         global.clone(),
@@ -92,7 +92,8 @@ async fn unresolved_owner_retains_wire_and_capacity_while_another_peer_sends() {
     other.destination = other.destination_hash.as_slice().try_into().expect("other hash");
     other.destination_hex = hex::encode(other.destination);
     let other_peer = other.destination_hex.clone();
-    completion::complete_delivery(
+    let other_destination = other.destination_hash;
+    let second = tokio::spawn(completion::complete_delivery(
         admitted(&scheduler, other),
         global.clone(),
         Arc::new(Semaphore::new(1)),
@@ -100,9 +101,13 @@ async fn unresolved_owner_retains_wire_and_capacity_while_another_peer_sends() {
         scheduler.metrics.clone(),
         other_peer,
         stopping,
-    )
-    .await;
-    let sent = channel.tx_channel.recv().await.expect("other peer packet");
+    ));
+    let sent = loop {
+        let sent = channel.tx_channel.recv().await.expect("other peer packet");
+        if sent.packet.destination == other_destination {
+            break sent;
+        }
+    };
     assert_eq!(sent.packet.header.packet_type, PacketType::Data);
     assert!(!first.is_finished());
     assert!(scheduler.owns_delivery(&id));
@@ -126,12 +131,8 @@ async fn unresolved_owner_retains_wire_and_capacity_while_another_peer_sends() {
     scheduler.notify_path_available(&peer);
     for _ in 0..32 {
         tokio::task::yield_now().await;
-        if first.is_finished() {
-            break;
-        }
     }
-    assert!(first.is_finished(), "announce resumes the same owner without another timer interval");
-    first.await.expect("first owner");
+    assert!(!first.is_finished(), "post-send owner awaits receipt");
     let mut delivered_packets = 0;
     while let Ok(frame) = channel.tx_channel.try_recv() {
         if frame.packet.header.packet_type == PacketType::Data
@@ -142,6 +143,9 @@ async fn unresolved_owner_retains_wire_and_capacity_while_another_peer_sends() {
     }
     assert_eq!(delivered_packets, 1, "announce/timer race must not duplicate send");
     assert_eq!(daemon.durable_prepared_payload(&id).expect("lookup").flatten(), Some(wire));
+    stop.send_replace(true);
+    first.await.expect("first owner");
+    second.await.expect("second owner");
     assert_eq!(scheduler.metrics.snapshot().completed_total, 2);
     assert_eq!(scheduler.metrics.snapshot().queued_current, 0);
     assert_eq!(scheduler.metrics.snapshot().in_flight_current, 0);
@@ -409,3 +413,5 @@ async fn queued_terminal_retains_owner_until_commit_or_shutdown() {
 
 #[path = "bridge_delivery_proof_tests.rs"]
 mod proof_tests;
+#[path = "bridge_delivery_retry_owner_tests.rs"]
+mod retry_tests;

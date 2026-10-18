@@ -18,6 +18,8 @@ use admission::{DeliveryOwnership, DeliveryReservation};
 mod completion;
 #[path = "bridge_delivery_discovery.rs"]
 pub(in crate::bridge) mod discovery;
+#[path = "bridge_delivery_opportunistic.rs"]
+mod opportunistic;
 #[cfg(test)]
 use preparation::encode_prepared;
 pub(super) use preparation::{decode_prepared, encode_prepared_parts};

@@ -10,6 +10,9 @@ pub(super) enum DeliveryAttemptOutcome {
     },
     FallbackPropagation,
     AwaitPacket,
+    OpportunisticPacket,
+    /// A status read failed; retry observation without publishing a competing terminal.
+    AwaitStatus,
     ResourceOwned,
     CompletedLocal,
     /// The attempt owns terminal publication; its caller must not publish a second receipt.

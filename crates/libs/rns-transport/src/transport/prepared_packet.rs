@@ -15,6 +15,26 @@ impl Transport {
         name: DestinationName,
         observe_packet_hash: impl FnOnce(Hash),
     ) -> Result<SendPacketTrace, RnsError> {
+        self.send_prepared_single_packet_guarded_with_trace(packet, identity, name, |hash| {
+            observe_packet_hash(hash);
+            true
+        })
+        .await
+        .map(|trace| trace.expect("unconditional prepared handoff always accepts"))
+    }
+
+    /// Validate a prepared SINGLE packet, then decide its handoff under the
+    /// transport/cache/interface locks. Returning false yields `None` without
+    /// proof tracking or dispatch. The synchronous callback may register app
+    /// correlation when accepting; it must not re-enter transport or invoke
+    /// user callbacks. Acceptance is the handoff linearization point.
+    pub async fn send_prepared_single_packet_guarded_with_trace(
+        &self,
+        packet: Packet,
+        identity: Identity,
+        name: DestinationName,
+        accept_packet_hash: impl FnOnce(Hash) -> bool,
+    ) -> Result<Option<SendPacketTrace>, RnsError> {
         // Identity fields are public, so a cached address is not itself proof of
         // the key binding. Validate it before deriving the destination address.
         if Identity::new(identity.public_key, identity.verifying_key).address_hash
@@ -40,7 +60,7 @@ impl Transport {
                 .single_out_destinations
                 .insert(packet.destination, Arc::new(Mutex::new(destination)));
         }
-        Ok(handler.send_prepared_broadcast(packet, observe_packet_hash).await)
+        Ok(handler.send_prepared_broadcast(packet, accept_packet_hash).await)
     }
 }
 
@@ -48,19 +68,30 @@ impl TransportHandler {
     async fn send_prepared_broadcast(
         &self,
         packet: Packet,
-        observe_packet_hash: impl FnOnce(Hash),
-    ) -> SendPacketTrace {
+        accept_packet_hash: impl FnOnce(Hash) -> bool,
+    ) -> Option<SendPacketTrace> {
         let packet_hash = packet.hash();
-        observe_packet_hash(packet_hash);
-        // The ordinary send helper installs proof context before interface I/O.
-        // Calling prepare_outbound_packet here would encrypt the payload twice.
-        let dispatch =
-            self.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
+        // Lock order is handler -> packet cache -> interface manager. Broadcast
+        // dispatch uses try_send (including overload) and cannot suspend after
+        // acceptance. Do not extend this guarantee to blocking Direct dispatch.
+        let mut cache = self.packet_cache.lock().await;
+        let mut interfaces = self.iface_manager.lock().await;
+        if !accept_packet_hash(packet_hash) {
+            return None;
+        }
+        cache.update(&packet);
+        drop(cache);
+        let dispatch = interfaces
+            .send_with_announce_policy(
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                None,
+            )
+            .await;
         let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
             SendPacketOutcome::SentBroadcast
         } else {
             SendPacketOutcome::DroppedNoRoute
         };
-        SendPacketTrace::with_packet_hash(outcome, packet_hash, None, true, dispatch)
+        Some(SendPacketTrace::with_packet_hash(outcome, packet_hash, None, true, dispatch))
     }
 }

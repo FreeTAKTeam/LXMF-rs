@@ -1,6 +1,20 @@
 use super::*;
 
 impl DeliveryTask {
+    /// Observe the receipt owner without replacing an unavailable read with failure.
+    pub(super) fn observe_delivery_terminal(&self) -> std::io::Result<bool> {
+        if self.receipt_tx.terminal_pending(&self.message_id)? {
+            return Ok(true);
+        }
+        let status = self.daemon.message_receipt_status(&self.message_id)?;
+        self.daemon.owns_durable_message(&self.message_id)?;
+        let terminal = status.as_deref().is_some_and(Self::is_terminal_status);
+        if terminal {
+            self.receipt_tx.release_unsent(&self.message_id);
+        }
+        Ok(terminal)
+    }
+
     /// Keep the semaphore waiter registered while polling persisted cancellation.
     pub(super) async fn acquire_stamp_permit(
         &self,
