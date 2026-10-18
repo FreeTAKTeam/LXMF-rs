@@ -182,8 +182,19 @@ then pass joined shutdown and peer EOF while pressure remains held. Cancellation
 retires partial frames without output-success events. Both source POST reviews
 approve; default and all-feature transport/daemon suites, Clippy and focused
 source gates pass. Recovered persistence metadata remains a bootstrap snapshot;
-the trace verifies the actual file. Ten of twenty declared software family rows
-are locally qualified. Remaining
+the trace verifies the actual file. Two configured Linux Auto traces then prove
+native bind-failure/partial cleanup, default IFAC, existing/new virtual-child key
+and non-IFAC policy inheritance, configured-port peer isolation, unrelated TCP
+and changed-identity restart. Two native pressure regressions fail before the
+existing receive owner observes shutdown during forwarding/event sends, then
+pass joined completion and exclusive socket rebind with queues still held.
+Both source POST roles and ordinary affected-package gates pass. Manual bindings
+do not establish OS adoption or multicast ingress. A separately retained combined
+package all-feature run exposes unchanged independent cipher-feature wiring:
+transport AES-128 with core AES-256 fails sixteen daemon cases; the standalone
+daemon all-feature command passes those cases. See the execution record for exact
+command scopes. Eleven of twenty declared software family rows are locally
+qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

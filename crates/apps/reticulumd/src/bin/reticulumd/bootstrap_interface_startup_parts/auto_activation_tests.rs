@@ -9,6 +9,11 @@ use rns_transport::iface::InterfaceManager;
 
 include!("tests/configured_dispatch_order.rs");
 
+#[cfg(target_os = "linux")]
+mod family_composition {
+    include!("tests/configured_auto_family.rs");
+}
+
 // Other harness threads may fork Pipe children before exec closes their copied UDP
 // descriptors. Isolate lifetime assertions so only this case can own its sockets.
 fn auto_lifecycle_runs_in_child() -> bool {

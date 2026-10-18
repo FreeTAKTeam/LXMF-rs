@@ -3,7 +3,7 @@
 This refines the remaining family gate in [TRANSPORT.md](TRANSPORT.md) after
 `a0772c1d`; it does not add another PR or change the numbered plan. The three
 discovery process cases and finite deeper relay matrix are already qualified.
-The first ten TCP/Backbone/UDP/Pipe/Serial/KISS/I2P rows now have the declared
+The first eleven TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto rows now have the declared
 software lifecycle evidence below. Other family rows and whole-item integration
 remain open.
 
@@ -76,7 +76,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
-| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first ten TCP/Backbone/UDP/Pipe/Serial/KISS/I2P rows have the declared software trace qualification below. Remaining Auto, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
+| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first eleven TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto rows have the declared software trace qualification below. Remaining simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
 Implementation stays in the main agent. PRE, correctness and maintainability POST
@@ -416,5 +416,38 @@ IFAC order, pacing and watchdog behavior remain.
 
 Both final source reviews approve the bounded correction. These are loopback and
 in-memory software traces; public routers, other families, hardware and whole-item
-integration/hosted acceptance remain open. Ten of twenty family rows have local
-qualification; this does not complete item 4.
+integration/hosted acceptance remain open. At the I2P checkpoint, ten of twenty
+family rows have local qualification; this does not complete item 4.
+
+## Configured Auto and blocked receive teardown
+
+The existing Auto plan-builder hook supplies manual Linux loopback listener
+bindings with empty candidate/adopted lists and a `lo` allow filter. This avoids
+physical host adoption while retaining the native 1,920 ms peering gate and
+configured dispatcher, transport bridge, unique shutdown and mutation owner.
+Exact-case subprocesses prevent unrelated pre-exec Pipe children from retaining
+copies of the test's UDP descriptors. The declared cases are:
+
+- `configured_auto_bind_failure_repairs_with_authenticated_restart`
+- `configured_auto_virtual_children_rotate_policy_and_restart_on_owned_ports`
+- `native_auto_receiver_shutdown_joins_full_transport_queue`
+- `native_auto_receiver_shutdown_joins_full_event_queue`
+
+The configured cases pass actual data-bind failure/partial discovery cleanup,
+default sixteen-byte IFAC negative/authenticated traffic, live key and
+mode/outgoing/gravity/pacing inheritance by old/new children, direct peer
+isolation and unrelated TCP continuity. Distinct peer IPs use the configured
+data port for egress despite an ephemeral source port. Full changed-key restart
+retires the prior tree, closes TCP, releases owned ports, uses a new Transport
+identity and admits fresh authenticated traffic. The status counter seeds one
+manual listener; empty plan arrays and that counter are checked separately,
+without claiming OS adoption or multicast ingress.
+
+Both pressure tests fail joined completion before the receive owner observes
+shutdown during forwarding/event handoffs. They pass after the minimal existing
+watch selections, while queues remain full through join and exclusive rebind
+before manager retirement. Cancelled forwarding does not become delivery.
+Both final source reviews and ordinary affected-package gates pass; the retained
+combined-package cipher-feature failure and exact command scopes are recorded
+in PROGRESS.md. Eleven of twenty software rows are locally qualified; nine
+families and whole-item integration/hosted acceptance remain open.

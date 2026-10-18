@@ -70,7 +70,7 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-The first ten rows have the declared software lifecycle qualification below;
+The first eleven rows have the declared software lifecycle qualification below;
 other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
@@ -85,7 +85,7 @@ other rows remain open. Record exact test names/results when qualified.
 | KISS TCP | Declared configured refusal/same-socket activation, initial command bytes, native live key rotation/reconnect, changed-key restart and exact authenticated/unrelated traffic | Locally qualified for this software trace; whole-item integration/hosted CI remain pending |
 | I2P outgoing | Declared configured refusal, exact sixteen-byte-default IFAC, live child rotation, reconnect/restart, native MTU and unrelated traffic; actual native queue pressure and joined SAM setup shutdown | Locally qualified for these fake-SAM software traces; public router interoperability and whole-item integration/hosted CI remain pending |
 | I2P incoming | Declared preparation failure/redaction/recovery, persisted key file, old/new accepted-child rotation and peer isolation, session recreation retaining both children, changed-key restart and native setup/stream shutdown | Locally qualified for these fake-SAM software traces; recovered startup metadata remains a snapshot. Public router interoperability and whole-item integration/hosted CI remain pending |
-| AutoInterface | Authenticated peer transport bridge, owned-port restart | Configured activation failure/restart and live virtual-child policy |
+| AutoInterface | Two configured Linux manual-binding traces qualify native activation failure/partial cleanup, sixteen-byte IFAC, old/new virtual-child key and non-IFAC policy inheritance, peer-isolated configured-port routing and changed-identity restart; two queue-pressure regressions qualify joined receive-owner shutdown | Locally qualified for these software traces; manual bindings do not prove OS adoption or multicast ingress. Whole-item integration/hosted CI remain pending |
 | Meshtastic | Authenticated tunnel, live rotation and stop retaining policy | Configured failure/status and reactivation |
 | Weave | Authenticated signed-handshake stream | Startup/reconnect errors, virtual endpoint rotation and restart |
 | LoRa / RNode serial, TCP and existing bearer paths | Authenticated stream/fake bearer and startup-monitor failures | Configured validation failure, reconnect/restart/status |
@@ -545,9 +545,101 @@ wire/queue/timing requirements are relaxed. Final logs use
 `/tmp/lxmf-item4-i2p-family-*-final.log` and `*-all-features.log`.
 
 The two I2P inventory rows are locally qualified for the declared fake-SAM
-software traces. Ten other families, whole-item integration/release checks,
-one item-4 PR, exact-head hosted CI and merge remain open. No prepared router,
+software traces. At that checkpoint, ten other families remained open; the
+current inventory includes the subsequent Auto qualification. Whole-item
+integration/release checks, one item-4 PR, exact-head hosted CI and merge remain open. No prepared router,
 public network, hardware or full-issue qualification is inferred.
+
+### AutoInterface software family composition board
+
+Checkpoint `60f756a7` records the reviewed I2P/shared-stream correction; ten
+software family rows remained open there. Main-agent implementation follows read-only
+PRE, using the existing configured dispatcher, Auto plan-builder test hook,
+native activation/transport bridge, unique Auto shutdown and mutation owner.
+The native OS candidate input is replaced by owned Linux loopback bindings;
+this is not host-interface discovery qualification. Filter reconciliation to
+`lo` so it cannot adopt physical host interfaces. Reuse the existing exact-case
+subprocess isolation for socket lifetime assertions.
+Keep the existing fixture's candidate/adopted-device lists empty and supply
+only manual loopback listener bindings. Native enumeration excludes loopback;
+a synthetic adopted `lo` entry would be removed by immediate reconciliation.
+Do not add a production retention exception or claim OS adoption evidence.
+The two peers use distinct loopback IPs, because peer identity uses source IP
+and configured data port rather than the ephemeral source port.
+
+| Task | Main-agent files and owner | Declared target-perspective evidence |
+| --- | --- | --- |
+| Configured activation failure and repair | New `bootstrap_interface_startup_parts/tests/configured_auto_family.rs` and registration in existing Auto activation tests; existing configured dispatcher/native runtime | `configured_auto_bind_failure_repairs_with_authenticated_restart`: hold the owned data port, require actual native activation failure, safe failed record with no address/root and partial discovery-socket release, preserve unrelated TCP traffic and joined cleanup; release the conflict and configured restart on the same ports must admit exact authenticated traffic with the sixteen-byte default |
+| Active virtual-child policy and restart | Same owners, existing InterfaceManager setters/Auto transport bridge | `configured_auto_virtual_children_rotate_policy_and_restart_on_owned_ports`: valid group peering then wrong-key/plaintext rejection and exact IFAC ingress/egress, parent key rotation on an existing child and inheritance by a second child, native mode/outgoing/gravity/pacing inheritance, peer-isolated replies to the configured data port despite an ephemeral source port, sanitized status and unrelated TCP continuity; full changed-key restart retires old children, releases sockets, reuses ports and admits fresh traffic |
+| Blocked native receive-owner shutdown | Existing `auto_runtime_parts/autoruntimeplan_sections/spawn_peer_data_receive_loop.rs` and focused library tests/registration | `native_auto_receiver_shutdown_joins_full_transport_queue` and `native_auto_receiver_shutdown_joins_full_event_queue`: actual UDP receive/forwarding under a held full native RX or event queue, then existing shutdown watch must join the receive worker and release its data socket before manager retirement while the queue remains full |
+
+Correctness PRE identifies the blocked receive-owner gap: forwarding and event
+send await outside the shutdown watch, while the supervisor waits for producer
+event channels to close before retirement. For the two focused regressions,
+use the real native receive worker, a standalone InterfaceManager and owned UDP
+socket; initialize its discovery state with one valid group token without
+pre-registering a transport route. A valid first data frame creates a new child
+then reaches the full native RX send. Under current-thread scheduling that
+new-child barrier proves the uncontended forwarding path reached its blocked
+handoff. For the full event queue, keep RX available and use the native delivered
+status counter as the event-send barrier. Keep the relevant receiver/queue full
+through watch shutdown, join and socket rebind; retire the manager tree only
+after those observations. Transfer the sole transport bridge into the worker
+so a test-held route/socket clone cannot disguise release.
+
+Retain both pre-fix results; if red, select shutdown around the existing forward
+and event-send futures in the receive owner. Do not add a worker/registry, change
+the bridge API or return a fake delivery. The configured family cases establish
+the healthy mutation-owner lifecycle; these focused native tests establish the
+hidden blocked-handoff boundary. They do not substitute for one another.
+Both revised PRE roles approve. The two focused Linux native cases retain
+0/2 passing in `/tmp/lxmf-item4-auto-family-receive-red.log` (3.94 seconds).
+Forwarding and both event sends now select the existing shutdown watch; true
+or watch closure retires the producer, without treating false updates as stop.
+The queue remains held through join and exclusive rebind before manager
+retirement. Both cases pass in `...-green.log` (1.93 seconds), with the native
+1,920 ms gate retained. Exact-case subprocess isolation also protects these
+library lifetime assertions from unrelated Pipe fork-before-exec fd copies.
+This correction alone does not qualify the Auto inventory row.
+
+Keep the native 1,920 ms initial peering gate, default tag size, dedupe/peer
+timeouts and scheduling unchanged. Wait for that declared protocol gate before
+one peering input per peer; do not retry until green. Setup/status/child bounds
+are three seconds, authenticated/negative/peer-isolation/EOF observations two
+seconds, and owned shutdown ten seconds. Preserve every result. If a real
+existing-owner defect appears, add the smallest focused regression/fix and
+review it; no new Auto management API, dispatcher, registry, dependency or
+physical-network activity. Failed/degraded outcomes remain truthful.
+
+Use configured full restart for this family rather than adding unsupported
+named management. Single-generation key/policy transitions keep the unrelated
+TCP address and exact traffic; full restart deliberately retires every root.
+Focused POST, daemon/default/all-feature Clippy, architecture, diagnostics,
+formatting, boundaries and module size precede qualification. Update current
+inventory/roadmap/matrix only for the proven Linux software row; nine other
+families and whole-item integration/PR/hosted CI/merge would still remain.
+
+The Auto software row is now locally qualified. Both configured cases pass
+2/2 in 8.00 seconds; native queue regressions retain their two pre-fix failures
+and two passing corrections. Both source POST roles approve. The first compile
+attempt accessed a private field; the fixture now uses the public announcement
+accessor. The first configured execution reaches authenticated traffic/live
+policy, then fails an incorrect expected status count. Native status seeds
+`adopted_device_count` from manual data listeners, so it reports one `lo`
+listener while candidate/adopted plan arrays remain empty. The corrected
+assertions preserve that distinction without changing production status.
+
+Default affected suites pass 1,025 transport tests (twelve existing ignores)
+and 31 library/675 binary daemon tests. The transport all-feature selection
+passes 1,054 tests (twelve existing ignores); the separate daemon all-feature
+command passes 31 library/676 binary tests. A combined package all-feature
+command instead enables transport AES-128 without core AES-128 and fails
+sixteen daemon propagation-decryption cases. This exposes unchanged independent
+cipher-feature wiring; no execution of that combined command on the prior
+checkpoint was performed. The failed run remains recorded, not reclassified
+as passing. Its sixteen cases pass in the standalone daemon command. The
+ordinary package gates, Clippy and focused source checks qualify Auto only;
+nine family rows and whole-item integration/hosted CI remain open.
 
 ### Raw IFAC type preparation for UDP composition
 

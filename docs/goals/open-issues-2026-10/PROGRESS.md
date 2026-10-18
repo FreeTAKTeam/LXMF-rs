@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; ten of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS and I2P family traces qualify locally. Ten other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; eleven of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P and Auto family traces qualify locally. Nine other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -2239,6 +2239,68 @@ validation only; terminal results and final-head review/CI/merge remain required
   others, whole-item integration/release checks, one PR, exact-head hosted CI and
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
+
+## Item 4 Auto software lifecycle and receive-owner qualification
+
+- `60f756a7` commits reviewed I2P and shared HDLC behavior; ten of twenty family
+  rows are locally qualified. The Auto board in TRANSPORT.md declares two Linux
+  configured traces using the existing manual-loopback plan hook, with empty
+  candidates/adopted devices, `lo` filtering and exact-case subprocess isolation.
+  Host OS discovery and physical multicast ingress remain outside this evidence.
+- Correctness PRE adds two native receive-owner blocked-handoff regressions.
+  Both revised PRE roles approve. A real UDP worker, valid nonempty packet and
+  native queue/status barriers retain full RX/event queues through shutdown,
+  join and exclusive socket rebind before manager retirement. The sole bridge
+  is worker-owned. The native 1,920 ms gate remains unchanged.
+- `/tmp/lxmf-item4-auto-family-receive-red.log` has two joined-shutdown failures
+  in 3.94 seconds. Selecting existing watch shutdown around forwarding and both
+  event sends makes both pass in `...-green.log` (1.93 seconds). Both source
+  POST roles approve the focused correction; all sixty native Auto runtime
+  tests pass with all features in `...-runtime.log`.
+- Both configured traces are implemented. The initial compile preserves the
+  private-field error; the fixture now uses the public initial-announcement
+  accessor. The first native run reaches traffic and live policy but fails an
+  incorrect fixture expectation of zero adopted devices. Native status seeds
+  that counter from manually supplied data listeners, so it reports one `lo`
+  listener while the plan's candidate/adopted lists remain empty. No production
+  status behavior changes. The corrected run passes 2/2 in 8.00 seconds in
+  `/tmp/lxmf-item4-auto-family-configured-corrected.log`; prior results remain
+  in `...-initial.log` and `...-native.log`.
+- Both full-source POST reviews approve. Default affected suites pass 1,025
+  transport tests (twelve pre-existing ignores) and 31 library/675 binary daemon
+  tests. The combined package all-feature run passes 1,054 transport tests with
+  twelve existing ignores, but retains sixteen daemon propagation-decryption
+  failures. It enables transport AES-128 independently of core AES-128; both
+  manifests/cipher implementations are unchanged from `60f756a7`. No prior-head
+  execution of that combined command is claimed. Independent review agrees
+  with this source-grounded classification. The standalone daemon all-feature
+  command then passes 31 library/676 binary tests, including all sixteen cases.
+  See `/tmp/lxmf-item4-auto-family-{default,all-features,daemon-all-features}.log`.
+- All-feature affected-package Clippy, default check, architecture, diagnostics,
+  formatting, boundaries and module-size gates pass. Output logs remain in
+  `/tmp/lxmf-item4-auto-family-{clippy,default-check,architecture,diagnostics,fmt,boundaries,size}.log`.
+  The Auto row is locally qualified: eleven of twenty declared software rows,
+  with nine remaining and whole-item integration, one PR, hosted CI and merge
+  still open. No OS enumeration, native multicast ingress, physical-carrier or
+  public-network qualification is inferred.
+
+The exact Cargo command scopes for this checkpoint are:
+
+| Command | Output log suffix / result |
+| --- | --- |
+| `cargo test -p reticulumd -p reticulum-rs-transport --lib --bins` | `default.log`, pass |
+| `cargo test -p reticulumd -p reticulum-rs-transport --all-features --lib --bins` | `all-features.log`, transport pass; daemon sixteen failures |
+| `cargo test -p reticulumd --all-features --lib --bins` | `daemon-all-features.log`, pass |
+| `cargo test -p reticulum-rs-transport --all-features --lib iface::auto_runtime::` | `runtime.log`, sixty pass |
+| `cargo clippy -p reticulumd -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings` | `clippy.log`, pass |
+| `cargo check -p reticulumd` | `default-check.log`, pass |
+| `cargo run -p xtask -- architecture-checks` | `architecture.log`, pass |
+| `cargo test -p reticulumd --test code_quality_issue_369` | `diagnostics.log`, pass |
+
+All suffixes use `/tmp/lxmf-item4-auto-family-`. The explicit five-file
+`rustfmt --edition 2021 --config skip_children=true --check` invocation,
+`tools/scripts/check-boundaries.sh`, `tools/scripts/check-module-size.sh`,
+49 task-document link checks and `git diff --check` also pass.
 
 ## Item 4 I2P lifecycle and shared stream shutdown qualification
 
