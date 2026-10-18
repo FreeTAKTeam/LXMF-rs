@@ -1,0 +1,1602 @@
+{
+  "lxmf_commit": "c3ff2d6dc2f256daab896dadc044dd5a913ecbb7",
+  "rns_commit": "99de23c040d507e3fefca19e87b182302902725d",
+  "note": "Production handle_outbound/process_outbound/LXMessage.send with controlled clock, transport measurements, Packet.send effect and thread execution. No network proof. The reference delayed rediscovery request survives delivery/cancellation; Rust owner cancellation is intentionally stronger.",
+  "cases": [
+    {
+      "name": "pathless_exhaustion",
+      "initial_path_known": false,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "initial_first_hop": 6,
+      "send_effect": "none",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 0,
+          "max_attempts": 5,
+          "deadline": 1008.0,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 1,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652077677585367040,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 8
+          },
+          "time": 1008.0,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 0,
+          "max_attempts": 5,
+          "deadline": 1008.0,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 1,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652077677585367040,
+          "deadline_bits": 4652077677585367040,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 8.001
+          },
+          "time": 1008.001,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1018.001,
+          "awaiting_path": false,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652077686381460062,
+          "deadline_bits": 4652165647311682142,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 18.001
+          },
+          "time": 1018.001,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1018.001,
+          "awaiting_path": false,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652165647311682142,
+          "deadline_bits": 4652165647311682142,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 18.002
+          },
+          "time": 1018.002,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 2,
+          "max_attempts": 5,
+          "deadline": 1026.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1018.002,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652165656107775164,
+          "deadline_bits": 4652227219962837598,
+          "request_time_bits": 4652165656107775164
+        },
+        {
+          "event": {
+            "at": 26.003
+          },
+          "time": 1026.003,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1034.003,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1026.003,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652227224360884109,
+          "deadline_bits": 4652262408732972941,
+          "request_time_bits": 4652227224360884109
+        },
+        {
+          "event": {
+            "at": 34.004
+          },
+          "time": 1034.004,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 4,
+          "max_attempts": 5,
+          "deadline": 1042.004,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1034.004,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652262413131019452,
+          "deadline_bits": 4652297597503108284,
+          "request_time_bits": 4652262413131019452
+        },
+        {
+          "event": {
+            "at": 42.005
+          },
+          "time": 1042.005,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 5,
+          "max_attempts": 5,
+          "deadline": 1050.005,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1042.005,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652297601901154796,
+          "deadline_bits": 4652332786273243628,
+          "request_time_bits": 4652297601901154796
+        },
+        {
+          "event": {
+            "at": 50.006
+          },
+          "time": 1050.006,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 6,
+          "max_attempts": 5,
+          "deadline": 1058.006,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1050.006,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652332790671290139,
+          "deadline_bits": 4652367975043378971,
+          "request_time_bits": 4652332790671290139
+        },
+        {
+          "event": {
+            "at": 58.006
+          },
+          "time": 1058.006,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 6,
+          "max_attempts": 5,
+          "deadline": 1058.006,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1050.006,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652367975043378971,
+          "deadline_bits": 4652367975043378971,
+          "request_time_bits": 4652332790671290139
+        },
+        {
+          "event": {
+            "at": 58.007
+          },
+          "time": 1058.007,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 6,
+          "max_attempts": 5,
+          "deadline": 1058.006,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 255,
+          "pending": false,
+          "request_time": 1050.006,
+          "actions": [
+            "failed_callback"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652367979441425482,
+          "deadline_bits": 4652367975043378971,
+          "request_time_bits": 4652332790671290139
+        }
+      ]
+    },
+    {
+      "name": "known_rediscovery_and_announce",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "initial_first_hop": 6,
+      "send_effect": "receipt",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 10
+          },
+          "time": 1010.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652095269771411456,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 10.001
+          },
+          "time": 1010.001,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 2,
+          "max_attempts": 5,
+          "deadline": 1020.001,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652095278567504478,
+          "deadline_bits": 4652183239497726558,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 20.002
+          },
+          "time": 1020.002,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1020.002,
+          "actions": [
+            "drop_path"
+          ],
+          "delayed_jobs": 1,
+          "time_bits": 4652183248293819580,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.501
+          },
+          "time": 1020.501,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1020.002,
+          "actions": [],
+          "delayed_jobs": 1,
+          "time_bits": 4652187637544237662,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.502
+          },
+          "time": 1020.502,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1020.002,
+          "actions": [
+            "sleep:0.5",
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652187646340330684,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.6,
+            "path": true
+          },
+          "time": 1020.6,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 4,
+          "max_attempts": 5,
+          "deadline": 1030.6,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": 1020.002,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652188508357446861,
+          "deadline_bits": 4652247442180695654,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.6
+          },
+          "time": 1020.6,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 4,
+          "max_attempts": 5,
+          "deadline": 1030.6,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": 1020.002,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652188508357446861,
+          "deadline_bits": 4652247442180695654,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.7,
+            "delivered": true
+          },
+          "time": 1020.7,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 4,
+          "max_attempts": 5,
+          "deadline": 1030.6,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 8,
+          "pending": false,
+          "request_time": 1020.002,
+          "actions": [
+            "retain_destination"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652189387966749082,
+          "deadline_bits": 4652247442180695654,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 40
+          },
+          "time": 1040.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 4,
+          "max_attempts": 5,
+          "deadline": 1030.6,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 8,
+          "pending": false,
+          "request_time": 1020.002,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652288783817900032,
+          "deadline_bits": 4652247442180695654,
+          "request_time_bits": 4652183248293819580
+        }
+      ]
+    },
+    {
+      "name": "rediscovery_already_pending",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "initial_first_hop": 6,
+      "send_effect": "none",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 10.001
+          },
+          "time": 1010.001,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 2,
+          "max_attempts": 5,
+          "deadline": 1020.001,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652095278567504478,
+          "deadline_bits": 4652183239497726558,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 20.002,
+            "request_age": 1
+          },
+          "time": 1020.002,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1019.002,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652183248293819580,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652174452200797372
+        },
+        {
+          "event": {
+            "at": 20.003
+          },
+          "time": 1020.003,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 4,
+          "max_attempts": 5,
+          "deadline": 1030.0030000000002,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": 1019.002,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652183257089912603,
+          "deadline_bits": 4652244816546928526,
+          "request_time_bits": 4652174452200797372
+        }
+      ]
+    },
+    {
+      "name": "slow_pending_outlives_debounce",
+      "initial_path_known": false,
+      "medium_timeout": 86,
+      "lowest_bitrate": 100,
+      "initial_first_hop": 46,
+      "send_effect": "none",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": false,
+          "first_hop": 46,
+          "attempts": 0,
+          "max_attempts": 3,
+          "deadline": 1086.0,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 1,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652491093957410816,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 60
+          },
+          "time": 1060.0,
+          "path_known": false,
+          "first_hop": 46,
+          "attempts": 0,
+          "max_attempts": 3,
+          "deadline": 1086.0,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 1,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652376744748122112,
+          "deadline_bits": 4652491093957410816,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 86
+          },
+          "time": 1086.0,
+          "path_known": false,
+          "first_hop": 46,
+          "attempts": 0,
+          "max_attempts": 3,
+          "deadline": 1086.0,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 1,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652491093957410816,
+          "deadline_bits": 4652491093957410816,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 86.001
+          },
+          "time": 1086.001,
+          "path_known": false,
+          "first_hop": 46,
+          "attempts": 1,
+          "max_attempts": 3,
+          "deadline": 1172.001,
+          "awaiting_path": false,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652491098355457327,
+          "deadline_bits": 4652869330355412271,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 172.002
+          },
+          "time": 1172.002,
+          "path_known": false,
+          "first_hop": 46,
+          "attempts": 2,
+          "max_attempts": 3,
+          "deadline": 1258.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1172.002,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652869334753458782,
+          "deadline_bits": 4653247566753413726,
+          "request_time_bits": 4652869334753458782
+        },
+        {
+          "event": {
+            "at": 258.003
+          },
+          "time": 1258.003,
+          "path_known": false,
+          "first_hop": 46,
+          "attempts": 3,
+          "max_attempts": 3,
+          "deadline": 1344.003,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1258.003,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4653247571151460237,
+          "deadline_bits": 4653625803151415181,
+          "request_time_bits": 4653247571151460237
+        },
+        {
+          "event": {
+            "at": 344.004
+          },
+          "time": 1344.004,
+          "path_known": false,
+          "first_hop": 46,
+          "attempts": 4,
+          "max_attempts": 3,
+          "deadline": 1430.004,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1344.004,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4653625807549461692,
+          "deadline_bits": 4654004039549416636,
+          "request_time_bits": 4653625807549461692
+        },
+        {
+          "event": {
+            "at": 430.005
+          },
+          "time": 1430.005,
+          "path_known": false,
+          "first_hop": 46,
+          "attempts": 4,
+          "max_attempts": 3,
+          "deadline": 1430.004,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 255,
+          "pending": false,
+          "request_time": 1344.004,
+          "actions": [
+            "failed_callback"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4654004043947463148,
+          "deadline_bits": 4654004039549416636,
+          "request_time_bits": 4653625807549461692
+        }
+      ]
+    },
+    {
+      "name": "slow_debounce_outlives_pending",
+      "initial_path_known": false,
+      "medium_timeout": 8,
+      "lowest_bitrate": 1999,
+      "initial_first_hop": 6,
+      "send_effect": "none",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 0,
+          "max_attempts": 5,
+          "deadline": 1008.0,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 1,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652077677585367040,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 8.001
+          },
+          "time": 1008.001,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1018.001,
+          "awaiting_path": false,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652077686381460062,
+          "deadline_bits": 4652165647311682142,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 18.002
+          },
+          "time": 1018.002,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 2,
+          "max_attempts": 5,
+          "deadline": 1026.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652165656107775164,
+          "deadline_bits": 4652227219962837598,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 26.003
+          },
+          "time": 1026.003,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1034.003,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652227224360884109,
+          "deadline_bits": 4652262408732972941,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 34.004
+          },
+          "time": 1034.004,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 4,
+          "max_attempts": 5,
+          "deadline": 1042.004,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652262413131019452,
+          "deadline_bits": 4652297597503108284,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 42.005
+          },
+          "time": 1042.005,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 5,
+          "max_attempts": 5,
+          "deadline": 1050.005,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652297601901154796,
+          "deadline_bits": 4652332786273243628,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 50.006
+          },
+          "time": 1050.006,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 6,
+          "max_attempts": 5,
+          "deadline": 1058.006,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652332790671290139,
+          "deadline_bits": 4652367975043378971,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 58.007
+          },
+          "time": 1058.007,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 6,
+          "max_attempts": 5,
+          "deadline": 1058.006,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 255,
+          "pending": false,
+          "request_time": 1000.0,
+          "actions": [
+            "failed_callback"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652367979441425482,
+          "deadline_bits": 4652367975043378971,
+          "request_time_bits": 4652007308841189376
+        }
+      ]
+    },
+    {
+      "name": "path_appears_after_pathless_send",
+      "initial_path_known": false,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "initial_first_hop": 6,
+      "send_effect": "none",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 0,
+          "max_attempts": 5,
+          "deadline": 1008.0,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 1,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652077677585367040,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 8.001
+          },
+          "time": 1008.001,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1018.001,
+          "awaiting_path": false,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1000.0,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652077686381460062,
+          "deadline_bits": 4652165647311682142,
+          "request_time_bits": 4652007308841189376
+        },
+        {
+          "event": {
+            "at": 18.002
+          },
+          "time": 1018.002,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 2,
+          "max_attempts": 5,
+          "deadline": 1026.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1018.002,
+          "actions": [
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652165656107775164,
+          "deadline_bits": 4652227219962837598,
+          "request_time_bits": 4652165656107775164
+        },
+        {
+          "event": {
+            "at": 19,
+            "path": true
+          },
+          "time": 1019.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1029.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": 1018.002,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652174434608611328,
+          "deadline_bits": 4652240405306277888,
+          "request_time_bits": 4652165656107775164
+        },
+        {
+          "event": {
+            "at": 29.001
+          },
+          "time": 1029.001,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 4,
+          "max_attempts": 5,
+          "deadline": 1039.001,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": 1018.002,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652240409704324399,
+          "deadline_bits": 4652284390169435439,
+          "request_time_bits": 4652165656107775164
+        }
+      ]
+    },
+    {
+      "name": "rediscovery_preserves_prior_limit",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "initial_first_hop": 9,
+      "send_effect": "none",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "first_hop": 9,
+          "attempts": 1,
+          "max_attempts": 4,
+          "deadline": 1012.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652112861957455872,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 12.001
+          },
+          "time": 1012.001,
+          "path_known": true,
+          "first_hop": 9,
+          "attempts": 2,
+          "max_attempts": 4,
+          "deadline": 1024.001,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652112870753548894,
+          "deadline_bits": 4652218419471768879,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 24.002
+          },
+          "time": 1024.002,
+          "path_known": false,
+          "first_hop": 9,
+          "attempts": 3,
+          "max_attempts": 4,
+          "deadline": 1032.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1024.002,
+          "actions": [
+            "drop_path"
+          ],
+          "delayed_jobs": 1,
+          "time_bits": 4652218423869815390,
+          "deadline_bits": 4652253608241904222,
+          "request_time_bits": 4652218423869815390
+        },
+        {
+          "event": {
+            "at": 24.502
+          },
+          "time": 1024.502,
+          "path_known": false,
+          "first_hop": 9,
+          "attempts": 3,
+          "max_attempts": 4,
+          "deadline": 1032.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1024.002,
+          "actions": [
+            "sleep:0.5",
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652220622893070942,
+          "deadline_bits": 4652253608241904222,
+          "request_time_bits": 4652218423869815390
+        },
+        {
+          "event": {
+            "at": 25,
+            "path": true,
+            "first_hop": 46
+          },
+          "time": 1025.0,
+          "path_known": true,
+          "first_hop": 46,
+          "attempts": 4,
+          "max_attempts": 3,
+          "deadline": 1111.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": 1024.002,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652222813120233472,
+          "deadline_bits": 4652601045120188416,
+          "request_time_bits": 4652218423869815390
+        },
+        {
+          "event": {
+            "at": 111.001
+          },
+          "time": 1111.001,
+          "path_known": true,
+          "first_hop": 46,
+          "attempts": 4,
+          "max_attempts": 3,
+          "deadline": 1111.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 255,
+          "pending": false,
+          "request_time": 1024.002,
+          "actions": [
+            "failed_callback"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652601049518234927,
+          "deadline_bits": 4652601045120188416,
+          "request_time_bits": 4652218423869815390
+        }
+      ]
+    },
+    {
+      "name": "send_raises",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "initial_first_hop": 6,
+      "send_effect": "raise",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 255,
+          "pending": false,
+          "request_time": null,
+          "actions": [
+            "send",
+            "failed_callback"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 20
+          },
+          "time": 1020.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 255,
+          "pending": false,
+          "request_time": null,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652183230701633536,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        }
+      ]
+    },
+    {
+      "name": "late_delivery_during_rediscovery",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "initial_first_hop": 6,
+      "send_effect": "receipt",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 10.001
+          },
+          "time": 1010.001,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 2,
+          "max_attempts": 5,
+          "deadline": 1020.001,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652095278567504478,
+          "deadline_bits": 4652183239497726558,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 20.002
+          },
+          "time": 1020.002,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1020.002,
+          "actions": [
+            "drop_path"
+          ],
+          "delayed_jobs": 1,
+          "time_bits": 4652183248293819580,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.1,
+            "delivered": true
+          },
+          "time": 1020.1,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 8,
+          "pending": false,
+          "request_time": 1020.002,
+          "actions": [
+            "retain_destination"
+          ],
+          "delayed_jobs": 1,
+          "time_bits": 4652184110310935757,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.502
+          },
+          "time": 1020.502,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 8,
+          "pending": false,
+          "request_time": 1020.002,
+          "actions": [
+            "sleep:0.5",
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652187646340330684,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 40
+          },
+          "time": 1040.0,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 8,
+          "pending": false,
+          "request_time": 1020.002,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652288783817900032,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        }
+      ]
+    },
+    {
+      "name": "cancel_during_rediscovery",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "initial_first_hop": 6,
+      "send_effect": "none",
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 10.001
+          },
+          "time": 1010.001,
+          "path_known": true,
+          "first_hop": 6,
+          "attempts": 2,
+          "max_attempts": 5,
+          "deadline": 1020.001,
+          "awaiting_path": false,
+          "sent_on_path": true,
+          "state": 4,
+          "pending": true,
+          "request_time": null,
+          "actions": [
+            "send"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652095278567504478,
+          "deadline_bits": 4652183239497726558,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 20.002
+          },
+          "time": 1020.002,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 4,
+          "pending": true,
+          "request_time": 1020.002,
+          "actions": [
+            "drop_path"
+          ],
+          "delayed_jobs": 1,
+          "time_bits": 4652183248293819580,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.1,
+            "cancel": true
+          },
+          "time": 1020.1,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 254,
+          "pending": false,
+          "request_time": 1020.002,
+          "actions": [
+            "failed_callback"
+          ],
+          "delayed_jobs": 1,
+          "time_bits": 4652184110310935757,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 20.502
+          },
+          "time": 1020.502,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 254,
+          "pending": false,
+          "request_time": 1020.002,
+          "actions": [
+            "sleep:0.5",
+            "request_path"
+          ],
+          "delayed_jobs": 0,
+          "time_bits": 4652187646340330684,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        },
+        {
+          "event": {
+            "at": 40
+          },
+          "time": 1040.0,
+          "path_known": false,
+          "first_hop": 6,
+          "attempts": 3,
+          "max_attempts": 5,
+          "deadline": 1028.002,
+          "awaiting_path": true,
+          "sent_on_path": false,
+          "state": 254,
+          "pending": false,
+          "request_time": 1020.002,
+          "actions": [],
+          "delayed_jobs": 0,
+          "time_bits": 4652288783817900032,
+          "deadline_bits": 4652236016055859806,
+          "request_time_bits": 4652183248293819580
+        }
+      ]
+    }
+  ]
+}

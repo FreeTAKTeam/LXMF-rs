@@ -237,3 +237,11 @@ Path(__file__).with_name("lxmf_1_2_0_timing_measurements.json").write_text(json.
     "note": "Pinned RNS measurements and LXMF scheduling with raw bitrates/path presence injected; no network delivery proof.",
     "cases": raw_cases,
 }, indent=2) + "\n")
+
+from generate_lxmf_1_2_0_retry_traces import generate_retry_traces
+
+Path(__file__).with_name("lxmf_1_2_0_retry_traces.json").write_text(json.dumps({
+    "lxmf_commit": PINS["LXMF_PY_REPO"], "rns_commit": PINS["RETICULUM_PY_REPO"],
+    "note": "Production handle_outbound/process_outbound/LXMessage.send with controlled clock, transport measurements, Packet.send effect and thread execution. No network proof. The reference delayed rediscovery request survives delivery/cancellation; Rust owner cancellation is intentionally stronger.",
+    "cases": generate_retry_traces(RNS, LXMF, source, recipient),
+}, indent=2) + "\n")

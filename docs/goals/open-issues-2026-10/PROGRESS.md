@@ -547,3 +547,37 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
 - The test completes the current one-attempt scheduler before returning the
   proof. Full retained post-send retry ownership and mixed Python/Rust traces
   remain pending; no item completion or hosted CI is claimed.
+
+### Item 3 production-reference retry trace checkpoint
+
+- Extended the existing exact-clean-pin generator with ten scenarios and 66
+  snapshots from real `handle_outbound`, `process_outbound`, `LXMessage.send` and
+  packet construction. Clock, transport measurements, packet-send effects and
+  thread execution are controlled; this is reference policy evidence, not network
+  delivery or a passing Rust retry implementation.
+- Covers strict deadline equality, initial/pathless discovery and exhaustion,
+  two sends followed by forced rediscovery, pending-request suppression,
+  pending/debounce windows in both orders, a path appearing after a pathless
+  send, preservation/change of attempt limits, no-receipt versus raising sends,
+  late delivery and cancellation during delayed rediscovery. Actual reference
+  delayed closures run at their controlled deadline rather than replacing their
+  behavior with a hand-written request decision.
+- The reference still dispatches its detached delayed request after delivery or
+  cancellation. Preserve this fact in the artifact; Rust's owned cancellation
+  must be an explicit stronger lifecycle guarantee rather than a claimed exact
+  match. Snapshot times/deadlines/request timestamps include IEEE bits to avoid
+  JSON parser rounding being mistaken for policy behavior. Rust timer conversion
+  and strict-boundary comparisons still need explicit treatment in integration.
+- Review caught that assertions inside the send seam would be swallowed by the
+  real router's broad send-error handler. Byte invariants now run after the
+  production call. An injected byte mismatch fails generation at the intended
+  assertion (`/tmp/lxmf-item3-retry-generator-red.log`); restored generation passes
+  and reproduces SHA-256
+  `4c2ed93512cd771aa64268d60f7c343a0d7868af189f212f678871813ab29e10`.
+  Review accepted the corrected fixture; existing generated fixtures are unchanged.
+- Next: consume these traces in the existing admitted owner, with a distinct
+  opportunistic packet outcome, retryable no-route dispatch, preserved counters
+  and prepared bytes, forced rediscovery's separate atomic pending claim and
+  owned 500ms delay, and terminal observation before another send. Link fallback
+  must not enter the opportunistic resend loop. The current one-attempt handoff
+  remains unchanged by this test-artifact checkpoint.
