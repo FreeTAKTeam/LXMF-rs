@@ -206,6 +206,41 @@ Transport cache test now also preserves an unread successful result through actu
 failure-event overflow. These checks prove native observation, not the forthcoming
 daemon owner, durable custody, mixed-language interoperability or hardware behavior.
 
+## Retained-context Resource dispatch
+
+Resource preparation and initial dispatch now share an Arc-taking implementation.
+Existing ID APIs resolve once and delegate; the delivery helper's oversized-payload
+fallback keeps its selected Arc rather than looking it up again by ID. The new
+`send_resource_on_link_observed_with_completion` exposes the same registration,
+failure and cancellation contract to the retained driver. Legacy sends still do
+not allocate a completion observer. No new send or persistence owner is added.
+
+A regression replaces the transport map entry after selection, then verifies the
+original Link's Resource advertisement, bound interface, decryptable ciphertext
+and observation-before-handoff. It failed with `InvalidArgument` before the fix.
+This proves initial dispatch context, not lifecycle support for arbitrary removed
+Links or two different Links sharing one ID. Native Resource routing remains keyed
+by Link ID. Explicit closure/restart is not prevented by retaining an Arc.
+
+PRE review also identified these remaining driver requirements:
+
+- Exact-Arc cancellation must validate Resource/Link association before removing
+  native state. A cancellation-frame send error can coexist with an already
+  observed native Cancelled outcome. Drive registered sends to completion first.
+- Exact-Arc teardown must preserve a replacement map entry, publish native Resource
+  outcomes and send its teardown packet without holding the Link lock. It must not
+  use destination-wide `reset_out_link` against a possibly newer owner.
+- Link packet receipt timeout is `max(rtt * 6, 0.005 seconds)` in the pinned RNS
+  `Packet.py:430`; expiry is strict `sent_at + timeout < now`. Expose native timing
+  narrowly and test the proof race; retry deadlines and Link watchdogs differ.
+- Owned propagation signal handling must replace the detached Link-ID-only
+  monitor. Python binds one `link.for_lxmessage`; the current monitor can reject
+  multiple messages sharing a PN Link. Preserve that signal ownership boundary.
+- Retry decisions schedule delivery before testing the newly measured attempt
+  limit, but closure checks `attempts + 1 < old_limit` before rescheduling. Native
+  Pending ignores retry deadlines. Known-path/missing-identity readiness needs a
+  guard so unrelated wakes do not burn attempts; this is a Rust adaptation.
+
 ## Storage custody prerequisite
 
 Ordinary `sent: propagated resource` receipt text leaves a durable operation

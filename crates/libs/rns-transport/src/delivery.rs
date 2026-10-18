@@ -78,8 +78,6 @@ pub async fn send_on_link_observed(
     mut observe_packet: impl FnMut(&Packet),
     mut observe_resource: impl FnMut(crate::hash::Hash),
 ) -> io::Result<LinkSendResult> {
-    let link_id = *link.lock().await.id();
-
     let packet = {
         let guard = link.lock().await;
         guard.data_packet(payload)
@@ -99,7 +97,7 @@ pub async fn send_on_link_observed(
         }
         Err(RnsError::OutOfMemory | RnsError::InvalidArgument) => {
             let resource_hash = transport
-                .send_resource_observed(&link_id, payload.to_vec(), None, |resource_hash| {
+                .send_resource_on_link_observed(link, payload.to_vec(), None, |resource_hash| {
                     observe_resource(resource_hash);
                 })
                 .await

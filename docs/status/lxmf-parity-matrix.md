@@ -123,6 +123,12 @@ cover final recipient proof, dispatch failure, reset, rejection and cancellation
 actual event-broadcast overflow cannot erase a completed observed result. Legacy
 event behavior remains intact. This prerequisite does not yet make daemon custody
 or terminal persistence reliable under overload.
+Resource preparation and initial dispatch now preserve the selected Link Arc,
+including the existing delivery helper's oversized-payload fallback. ID callers
+delegate to the same implementation. Map-replacement and failed-dispatch tests
+prove initial ciphertext/interface binding and observation ordering; retained Arc
+completion also runs through the existing two-Transport recipient-proof test.
+This is not lifecycle support for removed Links or a daemon-owner cutover.
 The storage boundary now distinguishes trusted propagation custody from ordinary
 sent-status text. Custody commits status, journal and dispatch completion atomically,
 spends retained preparation capacity, and preserves recipient-terminal capacity.

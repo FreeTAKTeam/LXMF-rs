@@ -62,11 +62,12 @@ async fn propagation_cache_miss_preserves_live_resources() {
         let first_bytes = vec![0x31; 8192];
         let mut first_completion = None;
         let first = sender
-            .send_resource_observed_with_completion(
-                &link_id,
+            .send_resource_on_link_observed_with_completion(
+                &link,
                 first_bytes.clone(),
                 None,
                 |_, result| {
+                    assert_eq!(result.current(), None, "register before native handoff");
                     first_completion = Some(result);
                 },
             )

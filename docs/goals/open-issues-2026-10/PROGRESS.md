@@ -898,3 +898,31 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   Remote Resource-to-custody publication, the continuous retained Link owner and
   mixed-reference acceptance remain pending. No item-3 PR, hosted CI or completion
   is claimed.
+
+### Item 3 retained-context Resource dispatch
+
+- Changed the shared Resource send implementation to accept the caller's exact
+  Link Arc. Existing public ID APIs resolve once and delegate; the delivery
+  helper's oversized-payload fallback no longer reselects by ID. The narrow
+  public completion variant preserves registration-before-handoff and native
+  failure observation. Legacy sends allocate no completion observer; their
+  Arc adapter stays crate-private.
+- Added a regression that replaces the map entry after selection and verifies
+  the original Link's advertisement, decryptable ciphertext, interface handoff
+  and observer ordering. It failed before the fix with InvalidArgument, then
+  passed. A second regression verifies registration and retained failure when
+  no mapping/interface is available. The existing real two-Transport Resource
+  transfer now exercises the Arc completion API through recipient proof and
+  subsequent legacy broadcast overflow.
+- PRE review and correctness/POST review accepted this bounded prerequisite.
+  Review correctly limited removed-map evidence to initial dispatch; this does
+  not establish full native routing for removed Links, same-ID Link isolation,
+  a lifetime lease against closure/restart, or remote daemon ownership. The
+  remaining exact-context cancellation/teardown, packet timeout, propagation
+  signal binding and retry ordering are recorded in LINK-OWNER.
+- All-feature transport tests pass 951 tests with 9 existing ignores; all 104
+  daemon bridge tests pass. All-target/all-feature transport and daemon Clippy,
+  issue-369 scanning, formatting, boundaries, architecture and module-size checks
+  pass. Logs: `/tmp/lxmf-item3-bound-resource-{before,after,transport,bridge,clippy,quality,format,architecture,boundaries,size}.log`.
+- Item 3 remains active. No item-3 PR, hosted CI, full mixed-peer acceptance or
+  completion is claimed.

@@ -50,12 +50,32 @@ impl Transport {
         observe_resource: impl FnOnce(Hash),
         auto_compress: bool,
     ) -> Result<Hash, RnsError> {
+        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
         self.send_resource_observed_inner(
-            link_id,
+            &link,
             data,
             metadata,
             |_, hash| observe_resource(hash),
             auto_compress,
+        )
+        .await
+    }
+
+    /// Send using the caller's retained Link without selecting it again by ID.
+    /// The observer runs before dispatch under the transport handler lock.
+    pub(crate) async fn send_resource_on_link_observed(
+        &self,
+        link: &Arc<Mutex<Link>>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        observe_resource: impl FnOnce(Hash),
+    ) -> Result<Hash, RnsError> {
+        self.send_resource_observed_inner(
+            link,
+            data,
+            metadata,
+            |_, hash| observe_resource(hash),
+            true,
         )
         .await
     }
@@ -74,8 +94,24 @@ impl Transport {
         metadata: Option<Vec<u8>>,
         observe_resource: impl FnOnce(Hash, crate::resource::ResourceCompletion),
     ) -> Result<Hash, RnsError> {
+        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        self.send_resource_on_link_observed_with_completion(&link, data, metadata, observe_resource)
+            .await
+    }
+
+    /// Like [`Self::send_resource_observed_with_completion`], but retains the
+    /// supplied Link for preparation and initial dispatch without an ID lookup.
+    /// This is not a lifetime lease: the caller must still handle native closure.
+    /// Registration, error and cancellation guarantees are the same as that API.
+    pub async fn send_resource_on_link_observed_with_completion(
+        &self,
+        link: &Arc<Mutex<Link>>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        observe_resource: impl FnOnce(Hash, crate::resource::ResourceCompletion),
+    ) -> Result<Hash, RnsError> {
         self.send_resource_observed_inner(
-            link_id,
+            link,
             data,
             metadata,
             |manager, hash| observe_resource(hash, manager.observe_outbound(hash)),
@@ -86,13 +122,12 @@ impl Transport {
 
     async fn send_resource_observed_inner(
         &self,
-        link_id: &AddressHash,
+        link: &Arc<Mutex<Link>>,
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
         observe_resource: impl FnOnce(&mut ResourceManager, Hash),
         auto_compress: bool,
     ) -> Result<Hash, RnsError> {
-        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
         let iface = {
             let link_guard = link.lock().await;
             link_guard.ingress_iface()
@@ -121,7 +156,7 @@ impl Transport {
         let (resource_hash, packet) = handler.resource_manager.track_prepared(prepared);
         observe_resource(&mut handler.resource_manager, resource_hash);
         drop(handler);
-        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        let outcome = self.send_link_packet_on_bound_iface(link, packet).await;
         let mut handler = self.handler.lock().await;
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
