@@ -30,3 +30,16 @@ pub(super) fn measured_delivery_timing(
 #[cfg(test)]
 #[path = "bridge_delivery_timing_tests.rs"]
 mod tests;
+
+impl super::delivery_task::DeliveryTask {
+    pub(super) fn delivery_timing(
+        &self,
+        measurements: PathTimingSnapshot,
+    ) -> Result<DeliveryTiming, InvalidDeliveryTiming> {
+        #[cfg(test)]
+        if let Some(control) = self.wakeup.trace() {
+            return Ok(control.timing(measurements.path_known));
+        }
+        measured_delivery_timing(measurements)
+    }
+}

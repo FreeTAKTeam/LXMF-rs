@@ -3,12 +3,10 @@ use rand_core::OsRng;
 use reticulum_daemon::lxmf_stamps::generate_propagation_stamp_with_value_until_cancelled;
 use rns_core::identity::Identity as CoreIdentity;
 use rns_transport::destination::{link::Link, link::LinkStatus, DestinationDesc};
-use rns_transport::hash::AddressHash;
 use rns_transport::identity::Identity;
-use rns_transport::packet::PacketContext;
 use rns_transport::transport::Transport;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
 /// `LXMRouter.PROPAGATION_COST`: the cost to mine when the relay's announced
@@ -65,6 +63,20 @@ pub(super) async fn cached_propagation_link(
     state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     node_hex: &str,
 ) -> Option<Arc<tokio::sync::Mutex<Link>>> {
+    let link = propagation_link_context(state, node_hex).await?;
+    if link.lock().await.status() == LinkStatus::Closed {
+        None
+    } else {
+        Some(link)
+    }
+}
+
+/// Consume a Closed hint once so the retained message can apply the closure
+/// schedule before replacement. Active/Pending hints remain available to peers.
+pub(super) async fn propagation_link_context(
+    state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
+    node_hex: &str,
+) -> Option<Arc<tokio::sync::Mutex<Link>>> {
     let mut guard = state.lock().await;
     let cached = guard.clone()?;
 
@@ -79,7 +91,19 @@ pub(super) async fn cached_propagation_link(
     }
 
     *guard = None;
-    None
+    Some(cached.link)
+}
+
+/// Retire only the hint for the exact context whose closure was processed.
+/// A concurrently published replacement remains available to its other owners.
+pub(super) async fn forget_propagation_link_context(
+    state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
+    link: &Arc<tokio::sync::Mutex<Link>>,
+) {
+    let mut state = state.lock().await;
+    if state.as_ref().is_some_and(|cached| Arc::ptr_eq(&cached.link, link)) {
+        *state = None;
+    }
 }
 
 pub(super) async fn propagation_link_for_node(
@@ -87,52 +111,17 @@ pub(super) async fn propagation_link_for_node(
     state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     node_hex: &str,
     destination: DestinationDesc,
+    observe: impl FnOnce(&mut Link),
 ) -> Arc<tokio::sync::Mutex<Link>> {
     if let Some(link) = cached_propagation_link(state, node_hex).await {
         return link;
     }
 
     // A cache miss must not tear down Transport-owned Links or their Resources.
-    let link = transport.link(destination).await;
+    let link = transport.link_observed(destination, observe).await;
     let mut guard = state.lock().await;
     *guard = Some(CachedPropagationLink { node_hex: node_hex.to_string(), link: link.clone() });
     link
-}
-
-pub(crate) async fn wait_for_propagation_signal(
-    rx: &mut tokio::sync::broadcast::Receiver<rns_transport::transport::ReceivedData>,
-    link_id: AddressHash,
-    timeout: Duration,
-) -> Result<u8, &'static str> {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        if remaining.is_zero() {
-            return Err("timeout");
-        }
-        let Ok(result) = tokio::time::timeout(remaining, rx.recv()).await else {
-            return Err("timeout");
-        };
-        let Ok(event) = result else {
-            continue;
-        };
-        if event.destination != link_id {
-            continue;
-        }
-        if !matches!(event.context, Some(PacketContext::None | PacketContext::LinkClose)) {
-            continue;
-        }
-        let Ok(value) = rmp_serde::from_slice::<rmpv::Value>(event.data.as_slice()) else {
-            continue;
-        };
-        let rmpv::Value::Array(items) = value else {
-            continue;
-        };
-        let Some(signal) = items.first().and_then(|entry| entry.as_u64()) else {
-            continue;
-        };
-        return u8::try_from(signal).map_err(|_| "signal value out of range");
-    }
 }
 
 fn now_secs_f64() -> f64 {

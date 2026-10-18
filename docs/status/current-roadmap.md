@@ -25,50 +25,28 @@ utility/rngit software completion. Its [dated acceptance map](../goals/open-issu
 distinguishes existing implementation, missing behavior and missing evidence.
 Recording this plan does not promote a parity row or complete an issue.
 
-Item 3 has local target-reference checkpoints for payload sizing, metadata,
-notification recovery, peer stamp selection, reference retry timing, measured
-identity discovery, atomic admission and Resource dispatch-failure ownership
-(including startup subscription). An admitted owner now retains prepared bytes
-and reservations across identity waits, releases execution permits while waiting,
-and resumes on targeted announces. Shared path requests coalesce; propagation
-fallback is one-way and reuses its committed envelope. Stamp work and discovery
-observe shutdown/cancellation. Accepted terminal receipts retain admission until
-the receipt worker commits them or shutdown begins. Prepared opportunistic sends
-now register destination-bound proof context before handoff; a real Rust recipient
-decrypts the original LXMF bytes and returns a proof that persists as delivered.
-Fitting opportunistic packets now retain that owner through retries and terminal
-persistence. The policy consumes 66 production-reference snapshots; local network
-tests cover late proof from an earlier attempt, no-route exhaustion, rediscovery
-and cancellation, unavailable status reads, and fresh discovery windows after
-blocked handoff. The final guarded transport handoff observes terminal state after
-acquiring send locks. Full Link/Resource post-send ownership, Link activation waits
-and target mixed-peer acceptance remain open; these checkpoints do not establish
-LXMF 1.2.0 completion. A further 42 production-reference Link/Resource scenarios
-(226 snapshots) now define the remaining mode-specific retry and completion
-contract; they are controlled Python evidence, not Rust implementation acceptance.
-Transport acquisition now shares one published outbound Link across concurrent
-callers and preserves reset/restart races. Propagation cache misses preserve live
-Links and Resources, with native state governing cache lifetime; daemon activation
-and transfer ownership remain pending. Native Resource sends can now register a
-retained logical completion result before dispatch; recipient proofs and failure
-outcomes survive legacy event-broadcast overflow. Resource preparation and initial
-dispatch can now keep the exact selected Link; the shared delivery fallback no
-longer re-resolves its ID. Native cancellation validates Resource/Link association;
-retained teardown preserves replacement Links and publishes Resource failure before
-frame handoff. Contention and concurrent-restart tests cover lock scope and captured
-interface routing. These do not grant a lease against native closure or complete
-the retained daemon driver. Storage now atomically records
-trusted propagation custody and retires dispatch intent without consuming later
-recipient-terminal capacity; restart cannot re-upload that committed operation.
-Older preparation reservations repair only their missing custody capacity through
-the shared writer when space is available. A trusted daemon custody entry now
-shares receipt locking and publication while rejecting caller-supplied custody
-fields and missing messages. The sole receipt worker now acknowledges typed
-custody after commit. Local propagation retains admission through that wait while
-releasing execution permits, and shutdown preserves accepted custody for drain.
-Unused transient reservations retire without spending later terminal storage
-capacity. Remote Link/Resource ownership and custody publication still require
-the planned cutover. See the
+Item 3 remains incomplete. Local implementation covers serialized payload limits,
+truthful implementation/version metadata, isolated notification failures and peer
+stamp-floor arithmetic. Shared timing policy and retained Opportunistic retries
+consume exact target fixtures, including 66 snapshots. Preparation, coalesced path
+requests and targeted announce wakeups retain admission across waits.
+
+The production scheduler now also uses one retained Link/Resource owner. Native
+activation governs Pending Links; exact packet/Resource context survives retries;
+the sole receipt worker commits terminal delivery or typed propagation custody.
+The displaced 20-second sender, detached monitors, separate discovery loop and
+outbound broadcast receipt publisher are removed. Five real peer cases prove
+exact Direct/oversized Opportunistic/propagated packet/Resource bytes and native
+proof while admission survives blocked SQLite commitment. Coordinated shutdown
+also interrupts another blocked native handler and preserves unresolved correlation
+until transport shutdown.
+
+Local all-feature transport and daemon binary suites pass. The 47 controlled
+Python Link/Resource scenarios (263 snapshots) now pass the production-owner row adapter;
+full target/baseline mixed-peer traces and successful SDK v2/ZeroMQ recovery also
+remain pending. These local results do not establish final-head CI or LXMF 1.2.0
+completion. The [accumulated delta ledger](lxmf-1.2.0-delta.md) preserves file-export,
+source-blackhole and autonomous-peer gaps. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655

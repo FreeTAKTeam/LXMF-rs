@@ -5,6 +5,8 @@
   "cases": [
     {
       "name": "direct_normal_pathless_exhaustion",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -202,6 +204,8 @@
     },
     {
       "name": "direct_slow_pathless_exhaustion",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -395,6 +399,8 @@
     },
     {
       "name": "direct_slow_known_closure_exhaustion",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -432,7 +438,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -468,7 +475,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -503,7 +511,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -539,7 +548,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -573,12 +583,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -615,12 +627,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -654,12 +668,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -677,6 +693,8 @@
     },
     {
       "name": "direct_changed_medium_after_closure",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -714,7 +732,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -755,7 +774,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -792,7 +812,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -826,7 +847,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -860,12 +882,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -902,12 +926,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -945,12 +971,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -969,6 +997,8 @@
     },
     {
       "name": "direct_external_close_while_sending",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -1006,7 +1036,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -1043,7 +1074,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -1079,12 +1111,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -1121,12 +1155,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -1162,12 +1198,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1183,6 +1221,8 @@
     },
     {
       "name": "direct_shared_link_two_messages",
+      "initial_links": null,
+      "initial_messages": 2,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -1222,7 +1262,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -1272,7 +1313,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1321,7 +1363,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -1374,7 +1417,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -1426,7 +1470,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -1459,6 +1504,8 @@
     },
     {
       "name": "direct_pending_then_late_activation",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -1496,7 +1543,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -1532,7 +1580,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1566,7 +1615,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1600,7 +1650,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1635,7 +1686,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -1672,7 +1724,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1707,7 +1760,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -1744,7 +1798,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1760,6 +1815,8 @@
     },
     {
       "name": "direct_never_activated_closure_exhaustion",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -1797,7 +1854,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -1834,7 +1892,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -1870,7 +1929,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1904,12 +1964,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -1946,12 +2008,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -1985,17 +2049,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -2032,17 +2099,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -2076,22 +2146,26 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-4",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -2128,22 +2202,26 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-4",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -2177,22 +2255,26 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-4",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -2226,22 +2308,26 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "outbound-4",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -2259,6 +2345,8 @@
     },
     {
       "name": "direct_packet_timeout_retry",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -2296,7 +2384,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -2333,7 +2422,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2371,7 +2461,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2408,7 +2499,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -2442,12 +2534,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -2484,12 +2578,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2527,12 +2623,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2569,17 +2667,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -2616,17 +2717,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2664,17 +2768,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-3",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2693,6 +2800,8 @@
     },
     {
       "name": "direct_packet_no_receipt",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -2730,7 +2839,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2767,7 +2877,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2803,12 +2914,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -2845,12 +2958,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2886,12 +3001,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -2907,6 +3024,8 @@
     },
     {
       "name": "direct_send_raises",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -2944,7 +3063,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -2981,7 +3101,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -2997,6 +3118,8 @@
     },
     {
       "name": "direct_cancel_pending",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -3034,7 +3157,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -3071,7 +3195,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -3108,7 +3233,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3126,6 +3252,8 @@
     },
     {
       "name": "direct_path_appears_before_deadline",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -3194,7 +3322,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -3231,7 +3360,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3268,7 +3398,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -3303,7 +3434,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3322,6 +3454,8 @@
     },
     {
       "name": "direct_late_proof_after_timeout",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -3359,7 +3493,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -3396,7 +3531,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3434,7 +3570,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3471,12 +3608,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -3513,12 +3652,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3556,12 +3697,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3599,12 +3742,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3622,6 +3767,8 @@
     },
     {
       "name": "direct_proof_after_cancel",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -3659,7 +3806,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3696,7 +3844,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3733,7 +3882,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3751,6 +3901,8 @@
     },
     {
       "name": "direct_resource_complete",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "resource",
@@ -3788,7 +3940,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3825,7 +3978,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3862,7 +4016,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -3878,6 +4033,8 @@
     },
     {
       "name": "direct_resource_rejected",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "resource",
@@ -3915,7 +4072,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3952,7 +4110,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -3988,7 +4147,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -4004,6 +4164,8 @@
     },
     {
       "name": "direct_resource_failed",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "resource",
@@ -4041,7 +4203,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -4078,7 +4241,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -4115,7 +4279,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -4149,12 +4314,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -4191,12 +4358,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -4234,12 +4403,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -4258,6 +4429,8 @@
     },
     {
       "name": "direct_resource_failure_after_cancel",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "resource",
@@ -4295,7 +4468,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -4333,7 +4507,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -4369,7 +4544,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -4385,6 +4561,8 @@
     },
     {
       "name": "propagated_normal_pathless_exhaustion",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -4582,6 +4760,8 @@
     },
     {
       "name": "propagated_slow_pathless_exhaustion",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -4775,6 +4955,8 @@
     },
     {
       "name": "propagated_slow_known_closure_exhaustion",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -4812,7 +4994,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -4848,7 +5031,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -4883,7 +5067,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -4917,7 +5102,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -4951,12 +5137,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -4993,12 +5181,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -5032,12 +5222,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5055,6 +5247,8 @@
     },
     {
       "name": "propagated_changed_medium_after_closure",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -5092,7 +5286,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5133,7 +5328,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -5168,7 +5364,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -5202,7 +5399,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -5236,12 +5434,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5278,12 +5478,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5321,12 +5523,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5344,6 +5548,8 @@
     },
     {
       "name": "propagated_external_close_while_sending",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -5381,7 +5587,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -5418,7 +5625,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -5452,12 +5660,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5494,12 +5704,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5535,12 +5747,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -5556,6 +5770,8 @@
     },
     {
       "name": "propagated_shared_link_two_messages",
+      "initial_links": null,
+      "initial_messages": 2,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -5595,7 +5811,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5645,7 +5862,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -5694,7 +5912,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5747,7 +5966,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5798,7 +6018,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5830,6 +6051,8 @@
     },
     {
       "name": "propagated_pending_then_late_activation",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -5867,7 +6090,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -5903,7 +6127,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -5937,7 +6162,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -5971,7 +6197,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6006,7 +6233,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6043,7 +6271,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6078,7 +6307,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6114,7 +6344,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6130,6 +6361,8 @@
     },
     {
       "name": "propagated_never_activated_closure_exhaustion",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -6167,7 +6400,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6204,7 +6438,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6238,7 +6473,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6272,12 +6508,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6314,12 +6552,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6353,17 +6593,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6400,17 +6643,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6444,22 +6690,26 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-4",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6496,22 +6746,26 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-4",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6545,22 +6799,26 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-4",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6594,22 +6852,26 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             },
             {
               "label": "outbound-4",
               "status": "closed",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6627,6 +6889,8 @@
     },
     {
       "name": "propagated_packet_timeout_retry",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -6664,7 +6928,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6701,7 +6966,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6739,7 +7005,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6775,7 +7042,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -6809,12 +7077,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6851,12 +7121,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6894,12 +7166,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6935,17 +7209,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -6982,17 +7259,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7030,17 +7310,20 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-3",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7058,6 +7341,8 @@
     },
     {
       "name": "propagated_packet_no_receipt",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -7095,7 +7380,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -7132,7 +7418,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -7166,12 +7453,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7208,12 +7497,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7249,12 +7540,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -7270,6 +7563,8 @@
     },
     {
       "name": "propagated_send_raises",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -7307,7 +7602,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -7344,7 +7640,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -7360,6 +7657,8 @@
     },
     {
       "name": "propagated_cancel_pending",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -7397,7 +7696,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7434,7 +7734,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7471,7 +7772,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7489,6 +7791,8 @@
     },
     {
       "name": "propagated_path_appears_before_deadline",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -7557,7 +7861,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7594,7 +7899,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7631,7 +7937,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [],
@@ -7666,7 +7973,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7684,6 +7992,8 @@
     },
     {
       "name": "propagated_late_proof_after_timeout",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -7721,7 +8031,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7758,7 +8069,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7796,7 +8108,8 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7832,12 +8145,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7874,12 +8189,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7917,12 +8234,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7959,12 +8278,14 @@
             {
               "label": "outbound-1",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": 0
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -7982,6 +8303,8 @@
     },
     {
       "name": "propagated_proof_after_cancel",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "packet",
@@ -8019,7 +8342,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8056,7 +8380,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8093,7 +8418,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8111,6 +8437,8 @@
     },
     {
       "name": "propagated_resource_complete",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "resource",
@@ -8148,7 +8476,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8185,7 +8514,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8221,7 +8551,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -8237,6 +8568,8 @@
     },
     {
       "name": "propagated_resource_rejected",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "resource",
@@ -8274,7 +8607,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8311,7 +8645,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8347,7 +8682,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -8381,12 +8717,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -8423,12 +8761,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -8466,12 +8806,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -8489,6 +8831,8 @@
     },
     {
       "name": "propagated_resource_failed",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "resource",
@@ -8526,7 +8870,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8563,7 +8908,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8599,7 +8945,8 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -8633,12 +8980,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": 0
             }
           ],
           "actions": [
@@ -8675,12 +9024,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -8718,12 +9069,14 @@
             {
               "label": "existing-outbound",
               "status": "closed",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "outbound-2",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": 0
             }
           ],
           "actions": [
@@ -8741,6 +9094,8 @@
     },
     {
       "name": "propagated_resource_failure_after_cancel",
+      "initial_links": "active",
+      "initial_messages": 1,
       "requested_method": "propagated",
       "effective_method": "propagated",
       "representation": "resource",
@@ -8778,7 +9133,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8816,7 +9172,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8852,7 +9209,8 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -8868,6 +9226,8 @@
     },
     {
       "name": "direct_outbound_before_backchannel",
+      "initial_links": "both_active",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -8905,12 +9265,14 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -8946,12 +9308,14 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -8986,12 +9350,14 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -9010,6 +9376,8 @@
     },
     {
       "name": "direct_pending_before_active_backchannel",
+      "initial_links": "pending_and_backchannel",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -9047,12 +9415,14 @@
             {
               "label": "existing-outbound",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -9086,12 +9456,14 @@
             {
               "label": "existing-outbound",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             },
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [],
@@ -9126,12 +9498,14 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -9168,12 +9542,14 @@
             {
               "label": "existing-outbound",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             },
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -9192,6 +9568,8 @@
     },
     {
       "name": "direct_backchannel_only",
+      "initial_links": "backchannel",
+      "initial_messages": 1,
       "requested_method": "direct",
       "effective_method": "direct",
       "representation": "packet",
@@ -9229,7 +9607,8 @@
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -9266,7 +9645,8 @@
             {
               "label": "existing-backchannel",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -9285,6 +9665,8 @@
     },
     {
       "name": "oversized_opportunistic_uses_direct_resource",
+      "initial_links": null,
+      "initial_messages": 1,
       "requested_method": "opportunistic",
       "effective_method": "direct",
       "representation": "resource",
@@ -9322,7 +9704,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [
@@ -9358,7 +9741,8 @@
             {
               "label": "outbound-1",
               "status": "pending",
-              "activated": false
+              "activated": false,
+              "creator": null
             }
           ],
           "actions": [],
@@ -9393,7 +9777,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -9431,7 +9816,8 @@
             {
               "label": "outbound-1",
               "status": "active",
-              "activated": true
+              "activated": true,
+              "creator": null
             }
           ],
           "actions": [
@@ -9443,6 +9829,2083 @@
           "resource_count": 1,
           "request_time": null,
           "time_bits": 4652209618980700160,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        }
+      ]
+    },
+    {
+      "name": "propagated_signal_active_creator",
+      "initial_links": null,
+      "initial_messages": 2,
+      "requested_method": "propagated",
+      "effective_method": "propagated",
+      "representation": "packet",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop": 6,
+      "send_effect": "receipt",
+      "signed_wire_hex": [
+        "61ddb79ada973523799227bbaf41e204afbda7b3f9d61d7033ffb6a7450575ec51117d4a3eeceb3010e33ae7f02db168db1ee59c7100c71fe868e88b525a77b01373184f30b84a1c33f9ec5cfc4783d7e17bcb37ec654a95e5b13263fbe6be0594cb41da6f44e6100000c400c40c78787878787878787878787880",
+        "5ec0ea2ecbc35ac16053c86cc29663ecafbda7b3f9d61d7033ffb6a7450575ec1048c10c9257d5ed974195793e82b055e7ea51c179cd5e7357773a0cbc98ca401d79ca5f45155af8008e052a806c23325c1d6281b636017799c1bf7e38d84f0194cb41da6f44e6500000c400c4157365636f6e6420736861726564206d65737361676580"
+      ],
+      "prepared_transfer_bytes": [
+        221,
+        237
+      ],
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "outbound",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": null,
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "pending",
+              "activated": false,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "create:outbound-1"
+          ],
+          "receipt_count": 0,
+          "transmission_count": 0,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "outbound",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "outbound",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 1,
+            "activate": true
+          },
+          "time": 1001.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "activation_callback",
+            "packet:outbound-1",
+            "packet:outbound-1"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652016104934211584,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2,
+            "signal": "91ccf5"
+          },
+          "time": 1002.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "rejected",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "failed_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "rejected",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652024901027233792,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 3,
+            "proof": 1
+          },
+          "time": 1003.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "rejected",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "second_delivery_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "rejected",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652033697120256000,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        }
+      ]
+    },
+    {
+      "name": "propagated_signal_retired_creator",
+      "initial_links": null,
+      "initial_messages": 2,
+      "requested_method": "propagated",
+      "effective_method": "propagated",
+      "representation": "packet",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop": 6,
+      "send_effect": "receipt",
+      "signed_wire_hex": [
+        "61ddb79ada973523799227bbaf41e204afbda7b3f9d61d7033ffb6a7450575ec51117d4a3eeceb3010e33ae7f02db168db1ee59c7100c71fe868e88b525a77b01373184f30b84a1c33f9ec5cfc4783d7e17bcb37ec654a95e5b13263fbe6be0594cb41da6f44e6100000c400c40c78787878787878787878787880",
+        "5ec0ea2ecbc35ac16053c86cc29663ecafbda7b3f9d61d7033ffb6a7450575ec1048c10c9257d5ed974195793e82b055e7ea51c179cd5e7357773a0cbc98ca401d79ca5f45155af8008e052a806c23325c1d6281b636017799c1bf7e38d84f0194cb41da6f44e6500000c400c4157365636f6e6420736861726564206d65737361676580"
+      ],
+      "prepared_transfer_bytes": [
+        221,
+        237
+      ],
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "outbound",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": null,
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "pending",
+              "activated": false,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "create:outbound-1"
+          ],
+          "receipt_count": 0,
+          "transmission_count": 0,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "outbound",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "outbound",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 1,
+            "activate": true
+          },
+          "time": 1001.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "activation_callback",
+            "packet:outbound-1",
+            "packet:outbound-1"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652016104934211584,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2,
+            "proof": 0
+          },
+          "time": 1002.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "delivery_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652024901027233792,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 3,
+            "signal": "91ccf5"
+          },
+          "time": 1003.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652033697120256000,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 4,
+            "proof": 1
+          },
+          "time": 1004.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "second_delivery_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652042493213278208,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        }
+      ]
+    },
+    {
+      "name": "propagated_signal_sent_pending_creator",
+      "initial_links": null,
+      "initial_messages": 2,
+      "requested_method": "propagated",
+      "effective_method": "propagated",
+      "representation": "packet",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop": 6,
+      "send_effect": "receipt",
+      "signed_wire_hex": [
+        "61ddb79ada973523799227bbaf41e204afbda7b3f9d61d7033ffb6a7450575ec51117d4a3eeceb3010e33ae7f02db168db1ee59c7100c71fe868e88b525a77b01373184f30b84a1c33f9ec5cfc4783d7e17bcb37ec654a95e5b13263fbe6be0594cb41da6f44e6100000c400c40c78787878787878787878787880",
+        "5ec0ea2ecbc35ac16053c86cc29663ecafbda7b3f9d61d7033ffb6a7450575ec1048c10c9257d5ed974195793e82b055e7ea51c179cd5e7357773a0cbc98ca401d79ca5f45155af8008e052a806c23325c1d6281b636017799c1bf7e38d84f0194cb41da6f44e6500000c400c4157365636f6e6420736861726564206d65737361676580"
+      ],
+      "prepared_transfer_bytes": [
+        221,
+        237
+      ],
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "outbound",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": null,
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "pending",
+              "activated": false,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "create:outbound-1"
+          ],
+          "receipt_count": 0,
+          "transmission_count": 0,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "outbound",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "outbound",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 1,
+            "activate": true
+          },
+          "time": 1001.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "activation_callback",
+            "packet:outbound-1",
+            "packet:outbound-1"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652016104934211584,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2,
+            "proof": 0,
+            "process": false
+          },
+          "time": 1002.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "delivery_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652024901027233792,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2,
+            "signal": "91ccf5"
+          },
+          "time": 1002.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "rejected",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "failed_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "rejected",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652024901027233792,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 3,
+            "proof": 1
+          },
+          "time": 1003.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "rejected",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "second_delivery_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "rejected",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652033697120256000,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        }
+      ]
+    },
+    {
+      "name": "propagated_signal_replacement_creator",
+      "initial_links": null,
+      "initial_messages": 2,
+      "requested_method": "propagated",
+      "effective_method": "propagated",
+      "representation": "packet",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop": 6,
+      "send_effect": "receipt",
+      "signed_wire_hex": [
+        "61ddb79ada973523799227bbaf41e204afbda7b3f9d61d7033ffb6a7450575ec51117d4a3eeceb3010e33ae7f02db168db1ee59c7100c71fe868e88b525a77b01373184f30b84a1c33f9ec5cfc4783d7e17bcb37ec654a95e5b13263fbe6be0594cb41da6f44e6100000c400c40c78787878787878787878787880",
+        "5ec0ea2ecbc35ac16053c86cc29663ecafbda7b3f9d61d7033ffb6a7450575ec1048c10c9257d5ed974195793e82b055e7ea51c179cd5e7357773a0cbc98ca401d79ca5f45155af8008e052a806c23325c1d6281b636017799c1bf7e38d84f0194cb41da6f44e6500000c400c4157365636f6e6420736861726564206d65737361676580",
+        "8f77e37e8a1c8904553a29095a6dcaddafbda7b3f9d61d7033ffb6a7450575ece269bdf6a0943a6feaa148db2bcd1069c1a921f512f3b01a46a321a1dc6ed0aee5ef1688cc4628c2e0466933fdb746fc0b94dc95f3a3c2fdb21d3ac4ab57840394cb41da6f44e6900000c400c414746869726420736861726564206d65737361676580"
+      ],
+      "prepared_transfer_bytes": [
+        221,
+        237,
+        237
+      ],
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "outbound",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": null,
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "pending",
+              "activated": false,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "create:outbound-1"
+          ],
+          "receipt_count": 0,
+          "transmission_count": 0,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "outbound",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "outbound",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 1,
+            "activate": true
+          },
+          "time": 1001.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "activation_callback",
+            "packet:outbound-1",
+            "packet:outbound-1"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652016104934211584,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2,
+            "proof": 0
+          },
+          "time": 1002.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "delivery_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652024901027233792,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 3,
+            "proof": 1
+          },
+          "time": 1003.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "second_delivery_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652033697120256000,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 4,
+            "close": true
+          },
+          "time": 1004.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "closed",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652042493213278208,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 5,
+            "admit_new": true
+          },
+          "time": 1005.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": null,
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "closed",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            },
+            {
+              "state": "outbound",
+              "attempts": 0,
+              "pending": true,
+              "destination": "8f77e37e8a1c8904553a29095a6dcadd"
+            }
+          ],
+          "time_bits": 4652051289306300416,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 15.001
+          },
+          "time": 1015.001,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-2",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "closed",
+              "activated": true,
+              "creator": 0
+            },
+            {
+              "label": "outbound-2",
+              "status": "pending",
+              "activated": false,
+              "creator": 2
+            }
+          ],
+          "actions": [
+            "create:outbound-2"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            },
+            {
+              "state": "outbound",
+              "attempts": 1,
+              "pending": true,
+              "destination": "8f77e37e8a1c8904553a29095a6dcadd"
+            }
+          ],
+          "time_bits": 4652139259032615518,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 16,
+            "activate": true
+          },
+          "time": 1016.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-2",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "closed",
+              "activated": true,
+              "creator": 0
+            },
+            {
+              "label": "outbound-2",
+              "status": "active",
+              "activated": true,
+              "creator": 2
+            }
+          ],
+          "actions": [
+            "activation_callback",
+            "packet:outbound-2"
+          ],
+          "receipt_count": 3,
+          "transmission_count": 3,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            },
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "8f77e37e8a1c8904553a29095a6dcadd"
+            }
+          ],
+          "time_bits": 4652148046329544704,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 17,
+            "signal": "91ccf5",
+            "signal_link": 0
+          },
+          "time": 1017.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-2",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "closed",
+              "activated": true,
+              "creator": 0
+            },
+            {
+              "label": "outbound-2",
+              "status": "active",
+              "activated": true,
+              "creator": 2
+            }
+          ],
+          "actions": [],
+          "receipt_count": 3,
+          "transmission_count": 3,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            },
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "8f77e37e8a1c8904553a29095a6dcadd"
+            }
+          ],
+          "time_bits": 4652156842422566912,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 18,
+            "signal": "91ccf5",
+            "signal_link": 1
+          },
+          "time": 1018.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sent",
+          "pending": false,
+          "selected_link": "outbound-2",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "closed",
+              "activated": true,
+              "creator": 0
+            },
+            {
+              "label": "outbound-2",
+              "status": "active",
+              "activated": true,
+              "creator": 2
+            }
+          ],
+          "actions": [
+            "third_failed_callback"
+          ],
+          "receipt_count": 3,
+          "transmission_count": 3,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sent",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            },
+            {
+              "state": "rejected",
+              "attempts": 1,
+              "pending": false,
+              "destination": "8f77e37e8a1c8904553a29095a6dcadd"
+            }
+          ],
+          "time_bits": 4652165638515589120,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        }
+      ]
+    },
+    {
+      "name": "propagated_signal_malformed_then_valid",
+      "initial_links": null,
+      "initial_messages": 2,
+      "requested_method": "propagated",
+      "effective_method": "propagated",
+      "representation": "packet",
+      "initial_path_known": true,
+      "medium_timeout": 8,
+      "lowest_bitrate": 2000,
+      "first_hop": 6,
+      "send_effect": "receipt",
+      "signed_wire_hex": [
+        "61ddb79ada973523799227bbaf41e204afbda7b3f9d61d7033ffb6a7450575ec51117d4a3eeceb3010e33ae7f02db168db1ee59c7100c71fe868e88b525a77b01373184f30b84a1c33f9ec5cfc4783d7e17bcb37ec654a95e5b13263fbe6be0594cb41da6f44e6100000c400c40c78787878787878787878787880",
+        "5ec0ea2ecbc35ac16053c86cc29663ecafbda7b3f9d61d7033ffb6a7450575ec1048c10c9257d5ed974195793e82b055e7ea51c179cd5e7357773a0cbc98ca401d79ca5f45155af8008e052a806c23325c1d6281b636017799c1bf7e38d84f0194cb41da6f44e6500000c400c4157365636f6e6420736861726564206d65737361676580"
+      ],
+      "prepared_transfer_bytes": [
+        221,
+        237
+      ],
+      "rows": [
+        {
+          "event": {
+            "admit": true
+          },
+          "time": 1000.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "outbound",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": null,
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "pending",
+              "activated": false,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "create:outbound-1"
+          ],
+          "receipt_count": 0,
+          "transmission_count": 0,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "outbound",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "outbound",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652007308841189376,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 1,
+            "activate": true
+          },
+          "time": 1001.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "activation_callback",
+            "packet:outbound-1",
+            "packet:outbound-1"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652016104934211584,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.0,
+            "signal": "92ccf5"
+          },
+          "time": 1002.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652024901027233792,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.1,
+            "signal": "92ccf5c1"
+          },
+          "time": 1002.1,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652025780636536013,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.2,
+            "signal": "92ccf5a1ff"
+          },
+          "time": 1002.2,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652026660245838234,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.3,
+            "signal": "ccf5"
+          },
+          "time": 1002.3,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652027539855140454,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.4,
+            "signal": "90"
+          },
+          "time": 1002.4,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652028419464442675,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.5,
+            "signal": "91ccf4"
+          },
+          "time": 1002.5,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652029299073744896,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.6,
+            "signal": "92ccf58201000100"
+          },
+          "time": 1002.6,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652030178683047117,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.7,
+            "signal": "92ccf5818000"
+          },
+          "time": 1002.7,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652031058292349338,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 2.8,
+            "signal": "92ccf5d4ff00"
+          },
+          "time": 1002.8,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "sending",
+          "pending": true,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "sending",
+              "attempts": 1,
+              "pending": true,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652031937901651558,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 3,
+            "signal": "91cd00f5"
+          },
+          "time": 1003.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "rejected",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "failed_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "rejected",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sending",
+              "attempts": 0,
+              "pending": true,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652033697120256000,
+          "deadline_bits": 4652095269771411456,
+          "request_time_bits": null
+        },
+        {
+          "event": {
+            "at": 4,
+            "proof": 1
+          },
+          "time": 1004.0,
+          "path_known": true,
+          "medium_timeout": 8,
+          "lowest_bitrate": 2000,
+          "first_hop": 6,
+          "attempts": 1,
+          "max_attempts": 5,
+          "deadline": 1010.0,
+          "awaiting_path": false,
+          "path_request_retried": false,
+          "state": "rejected",
+          "pending": false,
+          "selected_link": "outbound-1",
+          "delivery_link": "outbound-1",
+          "links": [
+            {
+              "label": "outbound-1",
+              "status": "active",
+              "activated": true,
+              "creator": 0
+            }
+          ],
+          "actions": [
+            "second_delivery_callback"
+          ],
+          "receipt_count": 2,
+          "transmission_count": 2,
+          "resource_count": 0,
+          "request_time": null,
+          "messages": [
+            {
+              "state": "rejected",
+              "attempts": 1,
+              "pending": false,
+              "destination": "61ddb79ada973523799227bbaf41e204"
+            },
+            {
+              "state": "sent",
+              "attempts": 0,
+              "pending": false,
+              "destination": "5ec0ea2ecbc35ac16053c86cc29663ec"
+            }
+          ],
+          "time_bits": 4652042493213278208,
           "deadline_bits": 4652095269771411456,
           "request_time_bits": null
         }

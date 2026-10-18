@@ -52,7 +52,6 @@ impl Fixture {
             self.daemon.clone(),
             self.receiver.take().expect("one worker"),
             Arc::new(Mutex::new(HashMap::new())),
-            Arc::new(Mutex::new(HashMap::new())),
             self.publisher.clone(),
         )
     }

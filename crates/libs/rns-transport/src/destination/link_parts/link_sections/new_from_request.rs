@@ -69,6 +69,7 @@ impl Link {
             channel_fast_rate_rounds: 0,
             channel_medium_rate_rounds: 0,
             event_tx,
+            data_signal: None,
         };
 
         link.handshake(peer_identity);

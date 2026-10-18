@@ -599,7 +599,6 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             daemon.clone(),
             receipt_rx,
             receipt_map.clone(),
-            outbound_resource_map.clone(),
             receipt_tx.clone(),
         ))
     } else {None};
@@ -634,8 +633,6 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 identified_peer_links: Arc::new(Mutex::new(HashMap::new())),
             },
             bridge.as_ref().map(|bridge| bridge.direct_backchannel_links()),
-            receipt_tx.clone(),
-            outbound_resource_map,
             resource_events,
         );
         let discovery_identity =

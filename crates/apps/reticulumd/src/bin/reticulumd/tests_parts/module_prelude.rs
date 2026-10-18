@@ -5,7 +5,7 @@ use crate::bootstrap::{
 };
 
 use crate::bridge::{
-    validate_delivery_request, wait_for_propagation_signal, PeerCrypto, RequestedDeliveryMethod,
+    validate_delivery_request, PeerCrypto, RequestedDeliveryMethod,
     TransportBridge,
 };
 
@@ -45,9 +45,8 @@ use rns_transport::iface::tcp_client::TcpClient;
 
 use rns_transport::iface::vrn76_kiss_ble::Vrn76FrameMode;
 
-use rns_transport::packet::{PacketContext, PacketDataBuffer};
 
-use rns_transport::transport::{ReceivedData, ReceivedPayloadMode, Transport, TransportConfig};
+use rns_transport::transport::{Transport, TransportConfig};
 
 use serde_json::json;
 
@@ -208,44 +207,6 @@ fn propagated_delivery_requires_selected_node() {
 
     validate_delivery_request(RequestedDeliveryMethod::Propagated, Some("deadbeef"))
         .expect("selected node should satisfy propagated delivery");
-}
-
-#[tokio::test]
-async fn propagation_signal_waiter_detects_invalid_stamp_rejection() {
-    let (tx, mut rx) = tokio::sync::broadcast::channel(4);
-    let link_id = AddressHash::new_from_slice(&[0x11; 16]);
-    let other_link_id = AddressHash::new_from_slice(&[0x22; 16]);
-    let signal_payload = rmp_serde::to_vec(&vec![0xf5u8]).expect("signal msgpack");
-
-    assert!(tx
-        .send(ReceivedData {
-            destination: other_link_id,
-            data: PacketDataBuffer::new_from_slice(&signal_payload),
-            payload_mode: ReceivedPayloadMode::FullWire,
-            ratchet_used: false,
-            context: Some(PacketContext::None),
-            request_id: None,
-            hops: None,
-            interface: None,
-        })
-        .is_ok());
-    assert!(tx
-        .send(ReceivedData {
-            destination: link_id,
-            data: PacketDataBuffer::new_from_slice(&signal_payload),
-            payload_mode: ReceivedPayloadMode::FullWire,
-            ratchet_used: false,
-            context: Some(PacketContext::None),
-            request_id: None,
-            hops: None,
-            interface: None,
-        })
-        .is_ok());
-
-    assert_eq!(
-        wait_for_propagation_signal(&mut rx, link_id, Duration::from_millis(200)).await,
-        Ok(0xf5)
-    );
 }
 
 async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge>) {

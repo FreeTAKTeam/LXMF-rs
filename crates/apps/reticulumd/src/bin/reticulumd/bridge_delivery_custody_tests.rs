@@ -20,19 +20,20 @@ async fn shutdown_after_local_ingestion_still_hands_reserved_custody_to_worker()
     )
     .await
     .expect("prepare local envelope");
-    let crate::bridge::delivery_attempt::DeliveryAttemptOutcome::PropagationCustody(event) =
-        task.run_prepared_attempt(&mut prepared).await
-    else {
-        panic!("local custody expected");
-    };
+    let propagation = prepared.propagation.as_ref().expect("prepared envelope");
+    task.store_local_propagation_payload(&propagation.propagation_node_hex, &propagation.payload)
+        .expect("native local ingestion");
+    let event = ReceiptEvent::propagation_custody(
+        &task.message_id,
+        rns_rpc::broker::PropagationCustody::Resource,
+    );
     publisher.stop_admission();
     let (_stop, mut stopping) = tokio::sync::watch::channel(true);
-    completion::await_custody_commit(&task, *event, &mut stopping).await;
+    completion::await_custody_commit(&task, event, &mut stopping).await;
     let owner = crate::receipt_worker::spawn_receipt_worker(
         task.daemon.clone(),
         receiver,
         task.receipt_map.clone(),
-        task.outbound_resource_map.clone(),
         publisher,
     );
     tokio::time::timeout(Duration::from_secs(3), owner.drain())
@@ -58,7 +59,6 @@ async fn fatal_custody_failure_retains_delivery_admission_until_coordinated_shut
         task.daemon.clone(),
         receiver,
         task.receipt_map.clone(),
-        task.outbound_resource_map.clone(),
         publisher,
     );
     let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {
@@ -118,7 +118,6 @@ async fn local_custody_retains_admission_but_releases_execution_until_commit_or_
             daemon.clone(),
             receiver,
             task.receipt_map.clone(),
-            task.outbound_resource_map.clone(),
             publisher.clone(),
         );
         let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {

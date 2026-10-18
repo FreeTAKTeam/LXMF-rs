@@ -82,6 +82,19 @@ def generate_link_traces(RNS, LXMF, source, recipient):
         dict(name="oversized_opportunistic_uses_direct_resource", mode="opportunistic", large=True,
              events=[{"at": 21}, {"at": 22, "activate": True}, {"at": 23, "resource": "complete"}]),
     ]
+    malformed = ["92ccf5", "92ccf5c1", "92ccf5a1ff", "ccf5", "90", "91ccf4",
+                 "92ccf58201000100", "92ccf5818000", "92ccf5d4ff00"]
+    for name, events in [
+        ("active_creator", [{"at": 1, "activate": True}, {"at": 2, "signal": "91ccf5"}, {"at": 3, "proof": 1}]),
+        ("retired_creator", [{"at": 1, "activate": True}, {"at": 2, "proof": 0}, {"at": 3, "signal": "91ccf5"}, {"at": 4, "proof": 1}]),
+        ("sent_pending_creator", [{"at": 1, "activate": True}, {"at": 2, "proof": 0, "process": False}, {"at": 2, "signal": "91ccf5"}, {"at": 3, "proof": 1}]),
+        ("replacement_creator", [{"at": 1, "activate": True}, {"at": 2, "proof": 0}, {"at": 3, "proof": 1}, {"at": 4, "close": True},
+             {"at": 5, "admit_new": True}, {"at": 15.001}, {"at": 16, "activate": True},
+             {"at": 17, "signal": "91ccf5", "signal_link": 0}, {"at": 18, "signal": "91ccf5", "signal_link": 1}]),
+        ("malformed_then_valid", [{"at": 1, "activate": True}] + [{"at": 2 + i/10, "signal": value} for i, value in enumerate(malformed)]
+             + [{"at": 3, "signal": "91cd00f5"}, {"at": 4, "proof": 1}]),
+    ]:
+        specs.append(dict(name=f"propagated_signal_{name}", mode="propagated", shared=True, events=events))
     traces = [_trace(RNS, LXMF, source, recipient, spec) for spec in specs]
     _validate_traces(traces)
     return traces
@@ -203,7 +216,8 @@ def _trace(RNS, LXMF, source, recipient, spec):
                    selected_link=selected.label if selected else None,
                    delivery_link=getattr(message._LXMessage__delivery_destination, "label", None),
                    links=[dict(label=link.label, status=link_names[link.status],
-                               activated=link.activated_at is not None) for link in links],
+                               activated=link.activated_at is not None,
+                               creator=next((i for i, item in enumerate(messages) if getattr(link, "for_lxmessage", None) is item), None)) for link in links],
                    actions=actions.copy(), receipt_count=len(receipts),
                    transmission_count=len(transmissions), resource_count=len(resources),
                    request_time=router.path_request_times.get(relay.hash if spec["mode"] == "propagated" else recipient.hash))
@@ -256,6 +270,20 @@ def _trace(RNS, LXMF, source, recipient, spec):
             if "medium" in event: medium = event["medium"]
             if "bitrate" in event: bitrate = event["bitrate"]
             if "first" in event: first = event["first"]
+            if event.get("admit_new"):
+                third_recipient = RNS.Destination(RNS.Identity.from_bytes(bytes([0x44]) * 64),
+                    RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery")
+                third = LXMF.LXMessage(third_recipient, source, content=b"third shared message", desired_method=method)
+                third.timestamp = message.timestamp + 2
+                third.defer_stamp = third.defer_propagation_stamp = False
+                third.register_delivery_callback(lambda _: actions.append("third_delivery_callback"))
+                third.register_failed_callback(lambda _: actions.append("third_failed_callback"))
+                messages.append(third)
+                router.handle_outbound(third)
+                prepared.append((bytes(third.packed), third.propagation_packed))
+            if "signal" in event:
+                link = links[event.get("signal_link", 0)]
+                link.packet_callback(bytes.fromhex(event["signal"]), SimpleNamespace(link=link))
             if event.get("cancel"): message.state = LXMF.LXMessage.CANCELLED
             if event.get("activate"):
                 link = selected_link() or links[-1]
@@ -275,7 +303,8 @@ def _trace(RNS, LXMF, source, recipient, spec):
                 resource = resources[-1]
                 resource.status = getattr(ControlledResource, event["resource"].upper())
                 resource.callback(resource)
-            router.process_outbound()
+            if event.get("process", True):
+                router.process_outbound()
             snapshot(event)
             # Outside router exception handlers: a swallowed callback/send
             # AssertionError must never make a corrupted trace look successful.
@@ -286,12 +315,12 @@ def _trace(RNS, LXMF, source, recipient, spec):
     for _, _, data in transmissions:
         assert data in expected, f"{spec['name']}: transmission changed prepared bytes"
     if spec.get("shared"):
-        assert len(transmissions) == 2 and sorted(data for _, _, data in transmissions) == sorted(expected), spec["name"]
+        assert len(transmissions) == len(expected) and sorted(data for _, _, data in transmissions) == sorted(expected), spec["name"]
     if spec.get("large"):
         assert message.representation == LXMF.LXMessage.RESOURCE, spec["name"]
     else:
         assert message.representation == LXMF.LXMessage.PACKET, spec["name"]
-    return dict(name=spec["name"], requested_method=spec["mode"],
+    return dict(name=spec["name"], initial_links=spec.get("initial"), initial_messages=2 if spec.get("shared") else 1, requested_method=spec["mode"],
                 effective_method="propagated" if message.method == LXMF.LXMessage.PROPAGATED else "direct",
                 representation="resource" if message.representation == LXMF.LXMessage.RESOURCE else "packet",
                 initial_path_known=spec.get("path", True), medium_timeout=spec.get("medium", 8),
@@ -307,7 +336,7 @@ def _validate_traces(traces):
     unexercised seam or swallowed exception from silently producing a new oracle.
     """
     by_name = {case["name"]: case for case in traces}
-    assert len(by_name) == 42
+    assert len(by_name) == 47
     for mode in ["direct", "propagated"]:
         complete = "delivered" if mode == "direct" else "sent"
         for speed, limit, requests in [("normal", 5, 4), ("slow", 3, 2)]:
@@ -370,3 +399,22 @@ def _validate_traces(traces):
     escalated = by_name["oversized_opportunistic_uses_direct_resource"]
     assert escalated["effective_method"] == "direct" and escalated["representation"] == "resource"
     assert escalated["rows"][-1]["state"] == "delivered"
+
+    for name in ["active_creator", "sent_pending_creator", "malformed_then_valid"]:
+        rows = by_name[f"propagated_signal_{name}"]["rows"]
+        assert rows[-1]["messages"][0]["state"] == "rejected"
+        assert rows[-1]["messages"][1]["state"] == "sent"
+        assert rows[-1]["links"][0]["creator"] == 0
+        assert sum(row["actions"].count("failed_callback") for row in rows) == 1
+        assert sum(row["actions"].count("second_failed_callback") for row in rows) == 0
+    rows = by_name["propagated_signal_retired_creator"]["rows"]
+    assert all(item["state"] == "sent" and not item["pending"] for item in rows[-1]["messages"])
+    assert all("failed_callback" not in row["actions"] for row in rows)
+    pending = by_name["propagated_signal_sent_pending_creator"]["rows"][2]["messages"][0]
+    assert pending["state"] == "sent" and pending["pending"]
+    rows = by_name["propagated_signal_replacement_creator"]["rows"]
+    assert [link["creator"] for link in rows[-1]["links"]] == [0, 2]
+    assert rows[-2]["messages"][2]["state"] == "sending"
+    assert rows[-1]["messages"][2]["state"] == "rejected"
+    rows = by_name["propagated_signal_malformed_then_valid"]["rows"]
+    assert all(row["messages"][0]["state"] == "sending" for row in rows[2:-2])

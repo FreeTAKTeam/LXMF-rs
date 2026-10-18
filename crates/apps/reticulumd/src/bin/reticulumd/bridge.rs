@@ -12,11 +12,10 @@ mod delivery_method;
 mod delivery_scheduler;
 #[path = "bridge_delivery_task.rs"]
 mod delivery_task;
-#[path = "bridge_delivery_timing.rs"]
-mod delivery_timing;
-pub(crate) use delivery_task::emit_receipt_event;
 #[path = "bridge_delivery_task_cancel.rs"]
 mod delivery_task_cancel;
+#[path = "bridge_delivery_task_identity.rs"]
+mod delivery_task_identity;
 #[path = "bridge_delivery_task_payload.rs"]
 mod delivery_task_payload;
 #[path = "bridge_delivery_task_propagation.rs"]
@@ -24,6 +23,8 @@ mod delivery_task_propagation;
 #[cfg(test)]
 #[path = "bridge_delivery_task_tests.rs"]
 mod delivery_task_tests;
+#[path = "bridge_delivery_timing.rs"]
+mod delivery_timing;
 #[path = "bridge_identity.rs"]
 mod identity_resolver;
 #[path = "bridge_link_send.rs"]
@@ -48,19 +49,14 @@ mod remote_fetch;
 mod remote_request;
 #[path = "bridge_service_identity.rs"]
 mod service_identity;
-use super::outbound_resources::{
-    track_outbound_resource, OutboundResourceMap, OutboundResourceTracking,
-    OUTBOUND_RESOURCE_SENT_STATUS,
-};
+use super::outbound_resources::OutboundResourceMap;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use rns_core::identity::PrivateIdentity;
 use rns_rpc::RpcDaemon;
 #[cfg(test)]
 use rns_rpc::RpcRequest;
 use rns_transport::delivery::await_link_activation;
-use rns_transport::delivery::{
-    send_on_link_observed, send_outcome_is_sent, send_outcome_status, LinkSendResult,
-};
+use rns_transport::delivery::{send_outcome_is_sent, send_outcome_status};
 use rns_transport::destination::{
     link::{Link, LinkStatus},
     DestinationDesc, DestinationName, SingleInputDestination, SingleOutputDestination,
@@ -81,10 +77,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) use delivery_method::{validate_delivery_request, RequestedDeliveryMethod};
 use delivery_scheduler::{DeliveryScheduler, DeliverySchedulerConfig};
-use delivery_task::{DeliveryTask, LinkModeStatuses};
+use delivery_task::DeliveryTask;
 use identity_resolver::resolve_destination_identity_blocking;
-#[cfg(test)]
-pub(crate) use propagation::wait_for_propagation_signal;
 use propagation::CachedPropagationLink;
 #[cfg(test)]
 pub(crate) use propagation::DEFAULT_PROPAGATION_STAMP_COST;
@@ -198,6 +192,7 @@ impl TransportBridge {
             &self.outbound_propagation_link,
             node_hex,
             destination,
+            |_| {},
         )
         .await
     }

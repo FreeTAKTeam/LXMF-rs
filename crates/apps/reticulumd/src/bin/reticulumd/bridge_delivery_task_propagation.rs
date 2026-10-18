@@ -9,9 +9,7 @@ impl DeliveryTask {
         &self,
     ) -> Result<PropagationPreparationContext, DeliveryAttemptOutcome> {
         let destination_identity = self.resolve_destination_identity().await?;
-        if self.abort_if_cancelled("propagation") {
-            return Err(DeliveryAttemptOutcome::Stopped);
-        }
+        self.check_delivery_ready()?;
         log_delivery_trace(
             &self.message_id,
             &self.destination_hex,
@@ -79,9 +77,7 @@ impl DeliveryTask {
         propagation_node_hex: &str,
         propagation_hash: AddressHash,
     ) -> Result<(Option<u32>, &'static str), DeliveryAttemptOutcome> {
-        if self.abort_if_cancelled("propagation_target_cost") {
-            return Err(DeliveryAttemptOutcome::Stopped);
-        }
+        self.check_delivery_ready()?;
         let (_peer, cost, source) =
             self.daemon.outbound_propagation_cost_lookup(Some(propagation_node_hex));
         if cost.is_some() {
@@ -97,9 +93,7 @@ impl DeliveryTask {
         );
         let deadline = tokio::time::Instant::now() + timing.path_request_wait();
         while tokio::time::Instant::now() < deadline {
-            if self.abort_if_cancelled("propagation_target_cost") {
-                return Err(DeliveryAttemptOutcome::Stopped);
-            }
+            self.check_delivery_ready()?;
             let (_peer, cost, _source) =
                 self.daemon.outbound_propagation_cost_lookup(Some(propagation_node_hex));
             if cost.is_some() {

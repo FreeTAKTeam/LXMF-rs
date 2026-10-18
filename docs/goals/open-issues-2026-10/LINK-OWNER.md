@@ -1,4 +1,4 @@
-# Remaining Link and Resource owner cutover
+# Retained Link and Resource owner cutover
 
 This is the implementation map for the remaining Link portion of item 3 in
 [PLAN.md](PLAN.md), not a new goal or a smaller acceptance scope. It follows the
@@ -7,10 +7,10 @@ PR; no additional PR is authorized by this document.
 
 **Intent:** Complete direct/propagated delivery through the existing admitted
 message owner, using the pinned Python contract and explicit Rust extensions.
-**Current behavior:** The daemon waits up to 20 seconds for Link activation while
-holding execution permits, releases admission on packet/Resource handoff, and
-terminalizes several outcomes that the target retries. Propagation always uses a
-Resource and packet proofs currently mean delivered without a method distinction.
+**Current behavior:** The scheduler retains the admitted message, immutable bytes,
+exact Link and native packet/Resource observations through retry, transfer and
+persistence. Pending work releases execution capacity. The old activation sender,
+detached monitors and duplicate outbound Resource publisher have been removed.
 **Expected outcome:** One prepared payload, continuous attempt budget, exact Link
 context and authoritative transfer outcome remain owned through activation,
 transfer, recovery and durable completion. Other peers can use execution capacity
@@ -30,8 +30,8 @@ artifact checkpoint has passed its own bounded PRE/POST review.
 
 ## Reference evidence and limits
 
-`crates/libs/test-support/fixtures/lxmf_1_2_0_link_traces.json` records 42 scenarios
-and 226 snapshots from the pinned production `handle_outbound`, `process_outbound`,
+`crates/libs/test-support/fixtures/lxmf_1_2_0_link_traces.json` records 47 scenarios
+and 263 snapshots from the pinned production `handle_outbound`, `process_outbound`,
 `LXMessage.send` and registered callback methods. The parent generator verifies
 clean exact reference commits and import roots. Link/Resource I/O, measurements,
 clock and thread scheduling are controlled; these traces are not native watchdog,
@@ -112,12 +112,13 @@ Preserve these observed distinctions in the implementation and its tests:
    Do not close item 3 until target/baseline mixed Python-Rust traces and successful
    SDK/ZeroMQ delivery after callback failure also pass.
 
-Primary files are `bridge_delivery_completion.rs`, `bridge_link_send.rs`,
-`bridge_link_dispatch.rs`, `bridge_propagation.rs`, the Direct/Propagated task
-sections, `outbound_resources.rs`, `receipt_bridge.rs`, the existing inbound
-Resource consumer and the narrow transport Link acquisition/state APIs. Extract
-helpers where the active module-size gate requires it. Keep unrelated CLI,
-hardware, release and sibling repositories out of this cutover.
+Current files are `bridge_delivery_completion.rs`, `bridge_delivery_link_owner.rs`,
+its context/acquisition/dispatch helpers, `bridge_propagation.rs`,
+`outbound_resources.rs` and `receipt_bridge.rs`. The old `bridge_link_dispatch.rs`,
+Direct/Propagated task send sections and generic discovery loop are deleted.
+Shared inbound Resource and transport APIs remain with their existing consumers.
+The implementation sequence above is the approved cutover map; the prerequisite
+checkpoints below are historical evidence, not the current outstanding task list.
 
 ## Acquisition checkpoint
 
@@ -249,12 +250,12 @@ Transport lifecycle primitives now preserve this context as well:
 These APIs govern the Arc's current generation when their critical section starts.
 Public restart/request can change the same Arc's ID. They do not clean arbitrary
 earlier generations or grant a lifetime lease; the retained driver must avoid
-restarting an in-flight transfer. The daemon driver chooses to drive registered
-sends to completion before cancellation. The lower-level explicit cleanup alternative
-above remains available, with its documented frame limitation. The daemon driver
-cutover remains pending.
+restarting an in-flight transfer. The integrated daemon drops an interrupted send future before explicitly cancelling
+its observed registration. Native completion governs cleanup; an optional blocked
+frame may be abandoned after local completion, with the documented limitation.
+Unresolved cleanup retains correlation through coordinated transport shutdown.
 
-PRE review also identified these remaining driver requirements:
+The PRE review identified these driver requirements:
 
 - Link packet receipt timeout is `max(rtt * 6, 0.005 seconds)` in the pinned RNS
   `Packet.py:430`; expiry is strict `sent_at + timeout < now`. Expose native timing
@@ -334,6 +335,49 @@ later recipient proof, terminal events on both sides of retirement, failed termi
 persistence, shutdown drain and retained SQLite terminal capacity. A real SQLite
 fault test keeps local custody pending while another peer sends over a learned
 path; execution permits are available and admission remains retained until commit.
+
+## Integrated driver status (local acceptance pending)
+
+The scheduler now uses the retained Link/Resource owner. The displaced sender,
+detached monitors, generic discovery loop and outbound broadcast receipt publisher
+are removed. Native packet meaning and Resource results stay with the owner;
+remote custody uses paired reservations and the sole writer. Coordinated shutdown
+can interrupt another blocked handler while preserving unresolved correlation for
+transport shutdown.
+
+The last full transport suite passed 968 tests (9 existing ignores). The current
+focused owner suite passes 44 tests, including the 47-case/263-row production-owner
+adapter, real packet/Resource proofs with blocked SQLite commits, creator rejection
+while commit is pending, and rejection after acknowledged custody. The refreshed full daemon suite passes 573 tests. Clippy passes for daemon and
+transport across all targets/features; daemon library tests (31), native bridge
+integration (2), the issue-369 scanner, boundaries, module size and architecture
+checks pass.
+
+The adapter uses declared case/event inputs, controlled measurements and decision
+turns, per-token receipt expiry inputs, and explicit Error/NoReceipt producer
+faults. The production retry policy, native handshakes/proofs/Resource outcomes,
+admission and receipt transactions remain authoritative. It checks every shared
+message, exact Link/creator selection, attempts/deadlines, request/teardown counts,
+actual native handoffs, recipient bytes and immutable persisted preparation.
+Propagated inputs use the oracle's unstamped envelope; native receipt at the
+propagation peer does not prove stamp acceptance or final-recipient delivery.
+Committed cancellation is monotonic: after cancellation, a synthetic reference
+Resource callback is projected onto actual native Cancelled cleanup and its
+immutable result. No second native result is fabricated. Propagated's last
+attempt binding is preserved independently of the currently selected context.
+
+The adapter reproduced a new-message Closed-cache retry before the reference
+wait; selection now consumes that Closed hint once and closure retires only the
+pointer-equal hint. Review also reproduced a stale Direct SENDING disposition
+stalling explicit fallback; the method transition now retires the current transfer
+and resets sending while prior packet proof tokens retain their original meaning.
+A creator signal wins when both it and the commit acknowledgement are ready before
+the owner observes them; observing the commit retires that callback. Packet and
+Resource blocked-write regressions and late-signal controls cover this boundary.
+
+Target/baseline mixed-peer tests and SDK recovery remain pending. Historical
+prerequisite notes above describe their checkpoints;
+[PROGRESS.md](PROGRESS.md) records the current integration.
 
 ## Required acceptance
 

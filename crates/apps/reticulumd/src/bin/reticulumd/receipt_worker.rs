@@ -1,4 +1,3 @@
-use super::outbound_resources::OutboundResourceMap;
 use super::receipt_events::persist_receipt_update;
 use reticulum_daemon::receipt_bridge::{is_terminal, ReceiptEvent, ReceiptPublisher};
 use rns_rpc::RpcDaemon;
@@ -37,7 +36,6 @@ pub(super) fn spawn_receipt_worker(
     daemon: Arc<RpcDaemon>,
     mut receipt_rx: Receiver<ReceiptEvent>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: OutboundResourceMap,
     publisher: ReceiptPublisher,
 ) -> ReceiptOwner {
     let (shutdown, mut ending) = watch::channel(false);
@@ -60,10 +58,9 @@ pub(super) fn spawn_receipt_worker(
                 let attempt = event.clone();
                 let daemon = daemon.clone();
                 let receipts = receipt_map.clone();
-                let resources = outbound_resource_map.clone();
                 // Retain this exact blocking completion before taking another receipt.
                 let outcome = tokio::task::spawn_blocking(move || {
-                    persist_receipt_update(&daemon, attempt, &receipts, &resources)
+                    persist_receipt_update(&daemon, attempt, &receipts)
                 })
                 .await
                 .map_err(|error| error.to_string())?;
@@ -186,14 +183,8 @@ mod tests {
         publisher.reserve_terminal("terminal-owner").unwrap();
         let receipts =
             Arc::new(Mutex::new(HashMap::from([("packet".into(), "terminal-owner".into())])));
-        let resources = Arc::new(Mutex::new(HashMap::new()));
-        let owner = spawn_receipt_worker(
-            daemon.clone(),
-            receiver,
-            receipts.clone(),
-            resources,
-            publisher.clone(),
-        );
+        let owner =
+            spawn_receipt_worker(daemon.clone(), receiver, receipts.clone(), publisher.clone());
         publisher.try_send(ReceiptEvent::new("terminal-owner", "delivered")).unwrap();
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert!(receipts.lock().unwrap().contains_key("packet"));
@@ -240,7 +231,6 @@ mod tests {
         let mut owner = spawn_receipt_worker(
             daemon,
             receiver,
-            Arc::new(Mutex::new(HashMap::new())),
             Arc::new(Mutex::new(HashMap::new())),
             publisher.clone(),
         );

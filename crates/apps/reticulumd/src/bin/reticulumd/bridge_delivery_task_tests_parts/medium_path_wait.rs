@@ -18,22 +18,17 @@ async fn concurrent_identity_lookups_dispatch_one_path_request() {
     second.requested_method = RequestedDeliveryMethod::Direct;
     second.transport = task.transport.clone();
     second.path_requests = task.path_requests.clone();
-    let (_stop, stopping) = tokio::sync::watch::channel(false);
-    let mut stopping2 = stopping.clone();
-    let mut stopping1 = stopping;
-    let first = tokio::spawn(async move {
-        crate::bridge::delivery_scheduler::discovery::wait_for_identity(&task, task.destination_hash, &mut stopping1).await
-    });
-    let second = tokio::spawn(async move {
-        crate::bridge::delivery_scheduler::discovery::wait_for_identity(&second, second.destination_hash, &mut stopping2).await
-    });
+    let (stop1, first) = start_discovery(task);
+    let (stop2, second) = start_discovery(second);
     channel.tx_channel.recv().await.expect("first request");
     for _ in 0..8 {
         tokio::task::yield_now().await;
     }
     assert!(channel.tx_channel.try_recv().is_err(), "duplicate path request");
-    first.abort();
-    second.abort();
+    stop1.send_replace(true);
+    stop2.send_replace(true);
+    first.await.expect("first shutdown");
+    second.await.expect("second shutdown");
 }
 
 async fn assert_identity_path_wait(bitrate: u64, window_seconds: u64) {
@@ -49,10 +44,7 @@ async fn assert_identity_path_wait(bitrate: u64, window_seconds: u64) {
         bitrate,
         100
     ));
-    let (_stop, mut stopping) = tokio::sync::watch::channel(false);
-    let owner = tokio::spawn(async move {
-        crate::bridge::delivery_scheduler::discovery::wait_for_identity(&task, task.destination_hash, &mut stopping).await
-    });
+    let (stop, owner) = start_discovery(task);
     channel.tx_channel.recv().await.expect("path request dispatched");
     tokio::time::advance(Duration::from_secs(window_seconds - 1)).await;
     tokio::task::yield_now().await;
@@ -66,7 +58,8 @@ async fn assert_identity_path_wait(bitrate: u64, window_seconds: u64) {
     tokio::time::advance(Duration::from_millis(1)).await;
     for _ in 0..4 { tokio::task::yield_now().await; }
     channel.tx_channel.try_recv().expect("next measured discovery request");
-    owner.abort();
+    stop.send_replace(true);
+    owner.await.expect("discovery shutdown");
 }
 
 #[tokio::test(start_paused = true)]
@@ -129,10 +122,9 @@ async fn direct_and_propagated_discovery_fail_at_exact_reference_budget() {
             task.requested_method = method;
             let mut channel = task.transport.iface_manager().lock().await.new_channel(16);
             assert!(task.transport.iface_manager().lock().await.set_announce_pacing(*channel.address(), bitrate, 100));
-            let (_stop, mut stopping) = tokio::sync::watch::channel(false);
-            let owner = tokio::spawn(async move {
-                crate::bridge::delivery_scheduler::discovery::wait_for_identity(&task, task.destination_hash, &mut stopping).await
-            });
+            let (tx, mut receipts) = tokio::sync::mpsc::channel(16);
+            task.receipt_tx = tx.into();
+            let (_stop, owner) = start_discovery(task);
             channel.tx_channel.recv().await.expect("initial request");
             for request in 1..=requests {
                 tokio::time::advance(Duration::from_secs(seconds)).await;
@@ -149,7 +141,16 @@ async fn direct_and_propagated_discovery_fail_at_exact_reference_budget() {
                     assert!(channel.tx_channel.try_recv().is_err(), "exhaustion must not send one extra request");
                 }
             }
-            assert_eq!(owner.await.expect("owner"), Err(crate::bridge::delivery_attempt::DeliveryAttemptOutcome::Terminal));
+            owner.await.expect("owner");
+            let terminal = receipts.recv().await.expect("terminal publication");
+            assert!(terminal.status.starts_with("failed: Link delivery attempts exhausted"));
         }
     }
+}
+
+fn start_discovery(mut task: DeliveryTask) -> (tokio::sync::watch::Sender<bool>, tokio::task::JoinHandle<()>) {
+    if task.requested_method == RequestedDeliveryMethod::Propagated {
+        task.propagation_node_hex = Some(task.destination_hex.clone());
+    }
+    start_prepared(task, PreparedDeliveryPayload { lxmf_payload: vec![0; 128], propagation: None })
 }

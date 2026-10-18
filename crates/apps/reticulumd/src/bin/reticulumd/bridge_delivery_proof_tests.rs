@@ -68,7 +68,6 @@ async fn prove_owned_opportunistic(retry_before_proof: bool, read_fault: bool) {
         daemon.clone(),
         receipt_rx,
         receipts.clone(),
-        task.outbound_resource_map.clone(),
         publisher.clone(),
     );
     let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {

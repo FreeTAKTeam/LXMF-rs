@@ -1,7 +1,4 @@
 use super::bridge_helpers::log_delivery_trace;
-use super::outbound_resources::{
-    prune_outbound_resource_mappings_for_message, OutboundResourceMap,
-};
 use reticulum_daemon::receipt_bridge::{commit_receipt_event, CustodyCommit, ReceiptEvent};
 use rns_rpc::RpcDaemon;
 use rns_transport::receipt::prune_receipt_mappings_for_message;
@@ -35,7 +32,6 @@ pub(crate) fn persist_receipt_update(
     daemon: &RpcDaemon,
     event: ReceiptEvent,
     receipt_map: &Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: &OutboundResourceMap,
 ) -> Result<Option<CustodyCommit>, std::io::Error> {
     let message_id = event.message_id.clone();
     let status = event.status.clone();
@@ -46,7 +42,7 @@ pub(crate) fn persist_receipt_update(
 
     if custody.is_none() && delivery_state.should_prune_correlations() {
         prune_receipt_mappings_for_message(receipt_map, &message_id);
-        prune_outbound_resource_mappings_for_message(outbound_resource_map, &message_id);
+        // Native Resource correlation remains with its retained owner until cleanup.
     }
     log_delivery_trace(&message_id, "-", "receipt-persist", "ok");
     Ok(custody)

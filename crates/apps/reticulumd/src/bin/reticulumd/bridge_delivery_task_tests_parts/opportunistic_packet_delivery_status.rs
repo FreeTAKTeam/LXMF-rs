@@ -74,10 +74,14 @@ async fn opportunistic_packet_delivery_reports_status_hash_and_bytes() {
     let mut lxmf_payload = destination.to_vec();
     lxmf_payload.extend_from_slice(payload_body);
 
-    let task_handle = tokio::spawn(task.run_prepared(
-        PreparedDeliveryPayload { lxmf_payload, propagation: None },
-        Arc::new(tokio::sync::Semaphore::new(1)),
-    ));
+    let mut remote_destination = rns_transport::destination::SingleInputDestination::new(
+        remote_signer, DestinationName::new("lxmf", "delivery"));
+    channel.rx_channel.send(rns_transport::iface::RxMessage {
+        address: *channel.address(), packet: remote_destination.announce(OsRng, None).expect("signed announce"),
+        source: rns_transport::iface::IfaceSource::None,
+    }).await.expect("announce ingress");
+    while !task.transport.has_path(&destination_hash).await { tokio::task::yield_now().await; }
+    let (stop, task_handle) = start_prepared(task, PreparedDeliveryPayload { lxmf_payload, propagation: None });
     let sent = tokio::time::timeout(Duration::from_millis(200), channel.tx_channel.recv())
         .await
         .expect("opportunistic packet")
@@ -100,5 +104,7 @@ async fn opportunistic_packet_delivery_reports_status_hash_and_bytes() {
         receipt_map.lock().expect("receipt map").get(&packet_hash),
         Some(&message_id.to_string())
     );
+    assert!(!task_handle.is_finished(), "handoff retains the production owner");
+    stop.send_replace(true);
     task_handle.await.expect("delivery task join");
 }

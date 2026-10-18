@@ -21,8 +21,6 @@
 
     use rns_transport::destination::{DestinationName, SingleInputDestination};
 
-    use rns_transport::hash::Hash;
-
     use rns_transport::identity::PrivateIdentity;
 
     use rns_transport::identity_bridge::{
@@ -74,123 +72,6 @@
             .result
             .expect("propagation status result");
         assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(1));
-    }
-
-    #[test]
-    fn outbound_resource_completion_event_records_receipt_and_peer_bytes() {
-        let daemon = RpcDaemon::test_instance();
-        daemon
-            .handle_rpc(RpcRequest {
-                id: 1,
-                method: "propagation_enable".to_string(),
-                params: Some(json!({
-                    "enabled": true,
-                    "static_peers": ["peer-resource-complete"],
-                })),
-            })
-            .expect("enable static peer");
-        let resource_hash = Hash::new_from_slice(&[0x52; 32]);
-        let resource_hash_hex = hex::encode(resource_hash.as_slice());
-        let map = Arc::new(Mutex::new(HashMap::new()));
-        super::super::outbound_resources::track_outbound_resource(
-            &map,
-            resource_hash_hex.clone(),
-            super::super::outbound_resources::OutboundResourceTracking {
-                message_id: "resource-complete-message".to_string(),
-                peer: "peer-resource-complete".to_string(),
-                bytes: 512,
-                sent_status: "sent: link resource".to_string(),
-            },
-        );
-        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
-    let tx = reticulum_daemon::receipt_bridge::ReceiptPublisher::from(tx);
-
-        super::handle_outbound_resource_completion(&daemon, &map, &tx, &resource_hash);
-        super::handle_outbound_resource_completion(&daemon, &map, &tx, &resource_hash);
-
-        assert!(super::super::outbound_resources::take_outbound_resource_tracking(
-            &map,
-            resource_hash_hex.as_str()
-        )
-        .is_err());
-        let event = rx.try_recv().expect("completed receipt event");
-        assert_eq!(event.message_id, "resource-complete-message");
-        assert_eq!(event.status, "sent: link resource");
-        assert_eq!(event.resource_hash.as_deref(), Some(resource_hash_hex.as_str()));
-        assert_eq!(event.peer.as_deref(), Some("peer-resource-complete"));
-        assert_eq!(event.delivery_kind.as_deref(), Some("resource-complete"));
-        assert_eq!(event.bytes, Some(512));
-        assert!(matches!(
-            rx.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-        ));
-
-        let peers = daemon
-            .handle_rpc(RpcRequest { id: 2, method: "list_peers".to_string(), params: None })
-            .expect("list peers")
-            .result
-            .expect("list peers result");
-        let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
-        assert_eq!(row["tx_bytes"].as_u64(), Some(512));
-    }
-
-    #[test]
-    fn outbound_resource_failure_event_marks_tracking_failed_without_inventing_timeout() {
-        let daemon = RpcDaemon::test_instance();
-        daemon
-            .handle_rpc(RpcRequest {
-                id: 1,
-                method: "propagation_enable".to_string(),
-                params: Some(json!({
-                    "enabled": true,
-                    "static_peers": ["peer-resource-failure"],
-                })),
-            })
-            .expect("enable static peer");
-        let resource_hash = Hash::new_from_slice(&[0x51; 32]);
-        let resource_hash_hex = hex::encode(resource_hash.as_slice());
-        let map = Arc::new(Mutex::new(HashMap::new()));
-        super::super::outbound_resources::track_outbound_resource(
-            &map,
-            resource_hash_hex.clone(),
-            super::super::outbound_resources::OutboundResourceTracking {
-                message_id: "resource-failure-message".to_string(),
-                peer: "peer-resource-failure".to_string(),
-                bytes: 512,
-                sent_status: "sent: link resource".to_string(),
-            },
-        );
-        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
-    let tx = reticulum_daemon::receipt_bridge::ReceiptPublisher::from(tx);
-
-        super::handle_outbound_resource_failure(&daemon, &map, &tx, &resource_hash);
-        super::handle_outbound_resource_failure(&daemon, &map, &tx, &resource_hash);
-
-        assert!(super::super::outbound_resources::take_outbound_resource_tracking(
-            &map,
-            resource_hash_hex.as_str()
-        )
-        .is_err());
-        let event = rx.try_recv().expect("failed receipt event");
-        assert_eq!(event.message_id, "resource-failure-message");
-        assert_eq!(event.status, "failed: resource transfer failed");
-        assert_eq!(event.resource_hash.as_deref(), Some(resource_hash_hex.as_str()));
-        assert_eq!(event.peer.as_deref(), Some("peer-resource-failure"));
-        assert_eq!(event.delivery_kind.as_deref(), Some("resource-failed"));
-        assert_eq!(event.bytes, Some(512));
-        assert!(matches!(
-            rx.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-        ));
-        let peers = daemon
-            .handle_rpc(RpcRequest { id: 2, method: "list_peers".to_string(), params: None })
-            .expect("list peers")
-            .result
-            .expect("list peers result");
-        let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
-        assert_eq!(row["tx_bytes"].as_u64(), Some(512));
-        assert_eq!(row["alive"].as_bool(), Some(false));
-        assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     }
 
     #[tokio::test]

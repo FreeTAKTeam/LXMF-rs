@@ -67,14 +67,10 @@ pub(super) async fn fallback_task() -> (
 }
 
 #[tokio::test]
-async fn borrowed_fallback_commits_before_reuse_and_restores_exact_envelope() {
+async fn propagation_envelope_commits_before_reuse_and_restores_exact_bytes() {
     let (_directory, connection, mut task, mut prepared, mut receipts) = fallback_task().await;
     let stamp = Arc::new(Semaphore::new(1));
     let initial = encode_prepared(&prepared);
-    assert_eq!(
-        task.run_prepared_attempt(&mut prepared).await,
-        DeliveryAttemptOutcome::FallbackPropagation
-    );
     task.requested_method = RequestedDeliveryMethod::Propagated;
     let metrics = Arc::new(DeliverySchedulerMetrics::default());
     assert_eq!(
@@ -98,40 +94,22 @@ async fn borrowed_fallback_commits_before_reuse_and_restores_exact_envelope() {
     assert_ne!(status["propagation"]["last_ingest_count"].as_u64(), Some(1));
 
     connection.execute_batch("DROP TRIGGER fail_prepared;").expect("recover storage");
-    assert!(matches!(
-        {
-            prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
-                .await
-                .expect("envelope");
-            task.run_prepared_attempt(&mut prepared).await
-        },
-        DeliveryAttemptOutcome::PropagationCustody(_)
-    ));
+    prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
+        .await
+        .expect("envelope committed");
     let committed = encode_prepared(&prepared);
     assert_ne!(committed, initial);
     assert_eq!(committed_wire(&task), committed);
     // A closed stamp lane makes an accidental rebuild fail immediately.
     stamp.close();
-    assert!(matches!(
-        {
-            prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
-                .await
-                .expect("envelope");
-            task.run_prepared_attempt(&mut prepared).await
-        },
-        DeliveryAttemptOutcome::PropagationCustody(_)
-    ));
+    prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
+        .await
+        .expect("reuse committed envelope without a stamp worker");
     assert_eq!(encode_prepared(&prepared), committed);
     prepared.propagation = None;
-    assert!(matches!(
-        {
-            prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
-                .await
-                .expect("envelope");
-            task.run_prepared_attempt(&mut prepared).await
-        },
-        DeliveryAttemptOutcome::PropagationCustody(_)
-    ));
+    prepare_propagation(&task, &mut prepared, &stamp, &metrics, &task.destination_hex)
+        .await
+        .expect("restore committed envelope without a stamp worker");
     assert_eq!(
         encode_prepared(&prepared),
         committed,
@@ -140,8 +118,9 @@ async fn borrowed_fallback_commits_before_reuse_and_restores_exact_envelope() {
 }
 
 #[tokio::test]
-async fn scheduler_fallback_commit_failure_releases_before_requeue() {
-    let (_directory, connection, task, prepared, _receipts) = fallback_task().await;
+async fn scheduler_propagation_commit_failure_releases_before_requeue() {
+    let (_directory, connection, mut task, prepared, _receipts) = fallback_task().await;
+    task.requested_method = RequestedDeliveryMethod::Propagated;
     let initial = encode_prepared(&prepared);
     let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {
         queue_capacity: 1,

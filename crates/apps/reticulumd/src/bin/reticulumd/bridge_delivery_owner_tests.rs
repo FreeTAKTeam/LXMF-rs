@@ -340,7 +340,6 @@ async fn queued_terminal_retains_owner_until_commit_or_shutdown() {
             daemon.clone(),
             receiver,
             task.receipt_map.clone(),
-            task.outbound_resource_map.clone(),
             publisher.clone(),
         );
         let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {
@@ -417,3 +416,70 @@ mod custody_tests;
 mod proof_tests;
 #[path = "bridge_delivery_retry_owner_tests.rs"]
 mod retry_tests;
+
+#[tokio::test(start_paused = true)]
+async fn pending_direct_link_keeps_admission_and_releases_execution_capacity() {
+    let recipient = SingleInputDestination::new(
+        rns_transport::identity::PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let destination = recipient.desc.address_hash.as_slice().try_into().expect("destination");
+    let (_directory, connection, mut task) = durable_task_for_destination(destination);
+    connection.execute_batch("DROP TRIGGER fail_prepared;").expect("healthy storage");
+    task.peer_identity = Some(recipient.desc.identity);
+    let link = task.transport.link(recipient.desc).await;
+    link.lock().await.set_establishment_timeout(Duration::from_secs(90));
+    let daemon = task.daemon.clone();
+    let id = task.message_id.clone();
+    let peer = task.destination_hex.clone();
+    let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig::default());
+    let global = Arc::new(Semaphore::new(1));
+    let peer_limit = Arc::new(Semaphore::new(1));
+    let stamp = Arc::new(Semaphore::new(1));
+    let _prepared = prepare_payload(&task, &stamp, &scheduler.metrics, &peer)
+        .await
+        .expect("prepare before activation");
+    let (stop, stopping) = tokio::sync::watch::channel(false);
+    let owner = tokio::spawn(completion::complete_delivery(
+        admitted(&scheduler, task),
+        global.clone(),
+        peer_limit.clone(),
+        stamp.clone(),
+        scheduler.metrics.clone(),
+        peer,
+        stopping,
+    ));
+    for _ in 0..100 {
+        if daemon.durable_prepared_payload(&id).expect("prepared lookup").flatten().is_some() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert!(daemon.durable_prepared_payload(&id).expect("prepared lookup").flatten().is_some());
+    assert_eq!(link.lock().await.status(), rns_transport::destination::link::LinkStatus::Pending);
+    assert!(scheduler.owns_delivery(&id));
+    assert_eq!(global.available_permits(), 1, "native activation must not occupy a send lane");
+    assert_eq!(peer_limit.available_permits(), 1);
+    assert_eq!(stamp.available_permits(), 1);
+    tokio::time::advance(Duration::from_secs(21)).await;
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!owner.is_finished(), "native Pending remains authoritative beyond 20 seconds");
+    assert!(scheduler.owns_delivery(&id));
+    stop.send_replace(true);
+    owner.await.expect("owner shutdown");
+    assert!(!scheduler.owns_delivery(&id));
+    scheduler.shutdown();
+}
+
+#[path = "bridge_delivery_link_transfer_tests.rs"]
+mod link_transfer_tests;
+#[path = "bridge_delivery_link_owner_tests.rs"]
+mod retained_link_tests;
+
+#[path = "bridge_delivery_link_trace_tests.rs"]
+mod link_trace_tests;

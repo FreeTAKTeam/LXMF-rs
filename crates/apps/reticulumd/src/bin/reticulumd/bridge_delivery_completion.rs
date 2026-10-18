@@ -1,5 +1,4 @@
-use super::{prepare_payload, prepare_propagation, DeliverySchedulerMetrics, ScheduledDelivery};
-use crate::bridge::delivery_attempt::DeliveryAttemptOutcome;
+use super::{prepare_payload, DeliverySchedulerMetrics, ScheduledDelivery};
 use crate::bridge::delivery_task::DeliveryTask;
 use crate::bridge::RequestedDeliveryMethod;
 use rns_rpc::RpcDaemon;
@@ -83,6 +82,25 @@ async fn run_attempts(
         metrics.record_finished_before_delivery_for_peer(peer);
         return;
     };
+    run_prepared(
+        task,
+        &mut prepared,
+        super::DeliveryLimits { global: global_limit, peer: peer_limit, stamp: stamp_limit },
+        metrics,
+        peer,
+        stopping,
+    )
+    .await;
+}
+
+pub(in crate::bridge) async fn run_prepared(
+    task: &mut DeliveryTask,
+    prepared: &mut crate::bridge::delivery_task::PreparedDeliveryPayload,
+    limits: super::DeliveryLimits,
+    metrics: Arc<DeliverySchedulerMetrics>,
+    peer: &str,
+    stopping: &mut watch::Receiver<bool>,
+) {
     if prepared.propagation.is_some() {
         // A committed fallback envelope fixes the effective method after restart.
         task.requested_method = RequestedDeliveryMethod::Propagated;
@@ -92,123 +110,23 @@ async fn run_attempts(
             .len()
             <= lxmf::constants::ENCRYPTED_PACKET_MDU
     {
-        super::opportunistic::run(
+        let needs_link = super::opportunistic::run(
             task,
             &prepared.lxmf_payload,
-            global_limit,
-            peer_limit,
+            limits.global.clone(),
+            limits.peer.clone(),
             &metrics,
             peer,
             stopping,
         )
         .await;
-        metrics.record_finished_before_delivery_for_peer(peer);
-        return;
-    }
-    loop {
-        if *stopping.borrow() {
+        if !needs_link {
             metrics.record_finished_before_delivery_for_peer(peer);
             return;
         }
-        if task.requested_method == RequestedDeliveryMethod::Opportunistic {
-            match task.observe_delivery_terminal() {
-                Ok(false) => {}
-                Ok(true) => {
-                    metrics.record_finished_before_delivery_for_peer(peer);
-                    return;
-                }
-                Err(error) => {
-                    log::warn!(
-                        "opportunistic fallback observation failed message_id={}: {error}",
-                        task.message_id
-                    );
-                    tokio::select! {
-                        _ = tokio::time::sleep(Duration::from_millis(250)) => {},
-                        _ = stopping.changed() => {},
-                    }
-                    continue;
-                }
-            }
-        } else if task.abort_if_cancelled("owner") {
-            metrics.record_finished_before_delivery_for_peer(peer);
-            return;
-        }
-        let preparation = if task.requested_method == RequestedDeliveryMethod::Propagated {
-            prepare_propagation(task, &mut prepared, &stamp_limit, &metrics, peer).await
-        } else {
-            Ok(())
-        };
-        let outcome = match preparation {
-            Err(outcome) => outcome,
-            Ok(()) => {
-                let permits = async {
-                    let peer = peer_limit.clone().acquire_owned().await?;
-                    let global = global_limit.clone().acquire_owned().await?;
-                    Ok::<_, tokio::sync::AcquireError>((peer, global))
-                };
-                let permits = tokio::select! {
-                    result = permits => result.ok(),
-                    _ = stopping.changed() => None,
-                };
-                let Some(permits) = permits else {
-                    metrics.record_finished_before_delivery_for_peer(peer);
-                    return;
-                };
-                metrics.record_dequeued_for_peer(peer);
-                metrics.record_started_for_peer(peer);
-                let outcome = task.run_prepared_attempt(&mut prepared).await;
-                drop(permits);
-                if let DeliveryAttemptOutcome::PropagationCustody(event) = outcome {
-                    metrics.record_waiting_for_peer(peer);
-                    await_custody_commit(task, *event, stopping).await;
-                    metrics.record_finished_before_delivery_for_peer(peer);
-                    return;
-                }
-                if matches!(
-                    outcome,
-                    DeliveryAttemptOutcome::AwaitPath { .. }
-                        | DeliveryAttemptOutcome::FallbackPropagation
-                        | DeliveryAttemptOutcome::AwaitStatus
-                ) {
-                    metrics.record_waiting_for_peer(peer);
-                } else {
-                    if outcome == DeliveryAttemptOutcome::DeferredStorage {
-                        task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
-                    }
-                    metrics.record_completed_for_peer(peer);
-                    return;
-                }
-                outcome
-            }
-        };
-        match outcome {
-            DeliveryAttemptOutcome::AwaitStatus => {
-                tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_millis(250)) => {},
-                    _ = stopping.changed() => {},
-                }
-            }
-            DeliveryAttemptOutcome::AwaitPath { destination } => {
-                if super::discovery::wait_for_identity(task, destination, stopping).await.is_err() {
-                    metrics.record_finished_before_delivery_for_peer(peer);
-                    return;
-                }
-            }
-            DeliveryAttemptOutcome::FallbackPropagation => {
-                // This transition is one-way for the lifetime of this owner.
-                task.requested_method = RequestedDeliveryMethod::Propagated;
-            }
-            DeliveryAttemptOutcome::DeferredStorage => {
-                task.deferred_dispatch.store(true, std::sync::atomic::Ordering::Release);
-                metrics.record_finished_before_delivery_for_peer(peer);
-                return;
-            }
-            _ => {
-                metrics.record_finished_before_delivery_for_peer(peer);
-                return;
-            }
-        }
     }
+    super::link_owner::run(task, prepared, limits, &metrics, peer, stopping).await;
+    metrics.record_finished_before_delivery_for_peer(peer);
 }
 
 pub(super) async fn await_custody_commit(
@@ -253,10 +171,36 @@ pub(super) async fn await_custody_commit(
     }
 }
 
-async fn wait_for_shutdown(stopping: &mut watch::Receiver<bool>) {
+pub(super) async fn wait_for_shutdown(stopping: &mut watch::Receiver<bool>) {
     while !*stopping.borrow() {
         if stopping.changed().await.is_err() {
             break;
+        }
+    }
+}
+
+pub(super) async fn publish_terminal(
+    task: &DeliveryTask,
+    event: reticulum_daemon::receipt_bridge::ReceiptEvent,
+    stopping: &mut watch::Receiver<bool>,
+) {
+    loop {
+        match task.receipt_tx.try_send(event.clone()) {
+            Ok(()) => return,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if *stopping.borrow() || stopping.has_changed().is_err() {
+                    return;
+                }
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(50)) => {},
+                    _ = stopping.changed() => {},
+                }
+            }
+            Err(error) => {
+                log::error!("native terminal publication unavailable message_id={}; retaining owner until shutdown: {error}", task.message_id);
+                wait_for_shutdown(stopping).await;
+                return;
+            }
         }
     }
 }

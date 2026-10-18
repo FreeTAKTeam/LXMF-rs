@@ -61,7 +61,7 @@ pub(super) async fn run(
     metrics: &DeliverySchedulerMetrics,
     peer: &str,
     stopping: &mut watch::Receiver<bool>,
-) {
+) -> bool {
     let origin = Instant::now();
     let mut retry = Retry::default();
     let mut initialized = false;
@@ -70,7 +70,7 @@ pub(super) async fn run(
     task.wakeup.wait_for(task.destination_hash);
     loop {
         match ready(task, stopping) {
-            Ok(false) => return,
+            Ok(false) => return false,
             Err(error) => {
                 log::warn!(
                     "opportunistic owner observation failed message_id={}: {error}",
@@ -85,20 +85,30 @@ pub(super) async fn run(
             forced_request_due = None;
             // This request was claimed before path expiry. Ordinary debounce
             // here would suppress the request against its own timestamp.
-            task.transport.request_path(&task.destination_hash, None, None).await;
+            if task
+                .drive_delivery_io(task.transport.request_path(&task.destination_hash, None, None))
+                .await
+                .is_none()
+            {
+                return false;
+            }
             continue;
         }
-        let measurements = task.transport.path_timing(&task.destination_hash).await;
+        let Some(measurements) =
+            task.drive_delivery_io(task.transport.path_timing(&task.destination_hash)).await
+        else {
+            return false;
+        };
         let timing = match measured_delivery_timing(measurements) {
             Ok(timing) => timing,
             Err(error) => {
                 task.fail_payload_build(std::io::Error::other(error));
-                return;
+                return false;
             }
         };
         match ready(task, stopping) {
             Ok(true) => {}
-            Ok(false) => return,
+            Ok(false) => return false,
             Err(error) => {
                 log::warn!(
                     "opportunistic observation after timing failed message_id={}: {error}",
@@ -112,7 +122,7 @@ pub(super) async fn run(
             initialized = true;
             if !measurements.path_known {
                 let Ok(timing) = task.request_delivery_path(task.destination_hash).await else {
-                    return;
+                    return false;
                 };
                 retry.schedule.schedule_path(origin.elapsed(), timing);
                 continue;
@@ -134,24 +144,29 @@ pub(super) async fn run(
             {
                 Acquisition::Ready(permits) => Some(permits),
                 Acquisition::RediscoveryDue => continue,
-                Acquisition::Stopped => return,
+                Acquisition::AwaitStatus => continue,
+                Acquisition::Stopped => return false,
             };
             // Permit waiting can outlive a receipt or path change. Re-evaluate
             // before consuming an attempt or choosing its sent_on_path value.
             match ready(task, stopping) {
                 Ok(true) => {}
-                Ok(false) => return,
+                Ok(false) => return false,
                 Err(_) => {
                     drop(permits);
                     continue;
                 }
             }
-            let measurements = task.transport.path_timing(&task.destination_hash).await;
+            let Some(measurements) =
+                task.drive_delivery_io(task.transport.path_timing(&task.destination_hash)).await
+            else {
+                return false;
+            };
             let timing = match measured_delivery_timing(measurements) {
                 Ok(timing) => timing,
                 Err(error) => {
                     task.fail_payload_build(std::io::Error::other(error));
-                    return;
+                    return false;
                 }
             };
             proposed = retry;
@@ -167,11 +182,11 @@ pub(super) async fn run(
                     std::io::ErrorKind::TimedOut,
                     format!("opportunistic delivery exhausted for {}", task.destination_hex),
                 ));
-                return;
+                return false;
             }
             Action::Request => {
                 let Ok(timing) = task.request_delivery_path(task.destination_hash).await else {
-                    return;
+                    return false;
                 };
                 proposed.schedule.schedule_path(origin.elapsed(), timing);
                 retry = proposed;
@@ -180,13 +195,19 @@ pub(super) async fn run(
             Action::Rediscover => {
                 match task.path_requests.claim_rediscovery(task.destination_hash, timing) {
                     Ok(true) => {
-                        task.transport.expire_path(&task.destination_hash).await;
+                        if task
+                            .drive_delivery_io(task.transport.expire_path(&task.destination_hash))
+                            .await
+                            .is_none()
+                        {
+                            return false;
+                        }
                         forced_request_due = Some(Instant::now() + Duration::from_millis(500));
                     }
                     Ok(false) => {}
                     Err(error) => {
                         task.fail_payload_build(error);
-                        return;
+                        return false;
                     }
                 }
                 let timing = match measured_delivery_timing(
@@ -195,7 +216,7 @@ pub(super) async fn run(
                     Ok(timing) => timing,
                     Err(error) => {
                         task.fail_payload_build(std::io::Error::other(error));
-                        return;
+                        return false;
                     }
                 };
                 proposed.schedule.schedule_rediscovery(origin.elapsed(), timing);
@@ -205,16 +226,19 @@ pub(super) async fn run(
             Action::Send => {
                 metrics.record_dequeued_for_peer(peer);
                 metrics.record_started_for_peer(peer);
-                let outcome = task.run_opportunistic(payload).await;
+                let outcome = task.drive_delivery_io(task.run_opportunistic(payload)).await;
                 drop(permits);
                 metrics.record_waiting_for_peer(peer);
+                let Some(outcome) = outcome else {
+                    return false;
+                };
                 match outcome {
                     DeliveryAttemptOutcome::OpportunisticPacket => retry = proposed,
                     DeliveryAttemptOutcome::AwaitPath { destination } => {
                         // Missing identity is a Rust admission extension. Keep
                         // consumed attempts instead of starting a new discovery budget.
                         let Ok(timing) = task.request_delivery_path(destination).await else {
-                            return;
+                            return false;
                         };
                         proposed.schedule.schedule_path(origin.elapsed(), timing);
                         retry = proposed;
@@ -223,7 +247,8 @@ pub(super) async fn run(
                         wait(task, stopping, &mut completion, Duration::from_millis(250)).await;
                         continue;
                     }
-                    _ => return, // Link/Resource fallback never enters this resend loop.
+                    DeliveryAttemptOutcome::LinkRequired => return true,
+                    _ => return false,
                 }
             }
         }
@@ -258,13 +283,14 @@ async fn wait(
     }
 }
 
-enum Acquisition {
+pub(super) enum Acquisition {
     Ready((OwnedSemaphorePermit, OwnedSemaphorePermit)),
     RediscoveryDue,
+    AwaitStatus,
     Stopped,
 }
 
-async fn acquire(
+pub(super) async fn acquire(
     task: &DeliveryTask,
     stopping: &mut watch::Receiver<bool>,
     completion: &mut watch::Receiver<()>,
@@ -283,11 +309,10 @@ async fn acquire(
             Ok(false) => return Acquisition::Stopped,
             Err(error) => {
                 log::warn!(
-                    "opportunistic permit observation failed message_id={}: {error}",
+                    "delivery permit observation failed message_id={}: {error}",
                     task.message_id
                 );
-                wait(task, stopping, completion, Duration::from_millis(250)).await;
-                continue;
+                return Acquisition::AwaitStatus;
             }
             Ok(true) => {}
         }

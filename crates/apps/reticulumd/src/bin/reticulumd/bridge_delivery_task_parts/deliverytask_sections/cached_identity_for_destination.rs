@@ -1,5 +1,5 @@
 impl DeliveryTask {
-    fn cached_identity_for_destination(&self, destination_hash: AddressHash) -> Option<Identity> {
+    pub(super) fn cached_identity_for_destination(&self, destination_hash: AddressHash) -> Option<Identity> {
         identity_resolver::cached_identity_for_destination(
             destination_hash,
             self.peer_identity,
@@ -11,65 +11,6 @@ impl DeliveryTask {
 
     pub(super) fn start_delivery_trace(&self) {
         log_delivery_trace(&self.message_id, &self.destination_hex, "start", "delivery requested");
-    }
-
-    #[cfg(test)]
-    pub(super) async fn run(self) {
-        self.start_delivery_trace();
-        if self.abort_if_cancelled("start") {
-            return;
-        }
-        let payload = match self.build_payload().await {
-            Ok(payload) => payload,
-            Err(err) => {
-                if self.abort_if_cancelled("payload") {
-                    return;
-                }
-                self.fail_payload_build(err);
-                return;
-            }
-        };
-        self.run_prepared(
-            PreparedDeliveryPayload { lxmf_payload: payload, propagation: None },
-            Arc::new(tokio::sync::Semaphore::new(1)),
-        )
-        .await;
-    }
-
-    #[cfg(test)]
-    pub(super) async fn run_prepared(
-        mut self,
-        mut prepared: PreparedDeliveryPayload,
-        stamp_limit: Arc<tokio::sync::Semaphore>,
-    ) -> DeliveryAttemptOutcome {
-        loop {
-            if self.requested_method == RequestedDeliveryMethod::Propagated {
-                if let Err(outcome) = super::delivery_scheduler::prepare_propagation(
-                    &self, &mut prepared, &stamp_limit,
-                    &Arc::new(super::delivery_scheduler::DeliverySchedulerMetrics::default()), &self.destination_hex,
-                ).await { return outcome; }
-            }
-            let outcome = self.run_prepared_attempt(&mut prepared).await;
-            if outcome != DeliveryAttemptOutcome::FallbackPropagation { return outcome; }
-            self.requested_method = RequestedDeliveryMethod::Propagated;
-        }
-    }
-
-    pub(super) async fn run_prepared_attempt(
-        &self,
-        prepared: &mut PreparedDeliveryPayload,
-    ) -> DeliveryAttemptOutcome {
-        if self.requested_method != RequestedDeliveryMethod::Opportunistic && self.abort_if_cancelled("payload") {
-            return DeliveryAttemptOutcome::Stopped;
-        }
-        match self.requested_method {
-            RequestedDeliveryMethod::Direct => self.run_direct(prepared).await,
-            RequestedDeliveryMethod::Opportunistic => {
-                self.run_opportunistic(&prepared.lxmf_payload).await
-            }
-            RequestedDeliveryMethod::Propagated => self.run_propagated(prepared).await,
-            RequestedDeliveryMethod::Paper => DeliveryAttemptOutcome::Stopped,
-        }
     }
 
     pub(super) fn fail_payload_build(&self, err: std::io::Error) {
@@ -96,13 +37,7 @@ impl DeliveryTask {
                 "opportunistic",
                 "payload too large for single packet",
             );
-            return self
-                .run_opportunistic_link_fallback(
-                    payload,
-                    identity,
-                    "payload too large for single packet",
-                )
-                .await;
+            return DeliveryAttemptOutcome::LinkRequired;
         }
         let mut data = PacketDataBuffer::new();
         if data.write(opportunistic_payload).is_err() {
@@ -112,9 +47,7 @@ impl DeliveryTask {
                 "opportunistic",
                 "payload too large",
             );
-            return self
-                .run_opportunistic_link_fallback(payload, identity, "payload too large")
-                .await;
+            return DeliveryAttemptOutcome::LinkRequired;
         }
 
         let mut packet = Packet {
@@ -166,9 +99,7 @@ impl DeliveryTask {
                 "opportunistic",
                 "ciphertext too large",
             );
-            return self
-                .run_opportunistic_link_fallback(payload, identity, "ciphertext too large")
-                .await;
+            return DeliveryAttemptOutcome::LinkRequired;
         }
         packet.data = encrypted_data;
         let packet_hash = hex::encode(packet.hash().to_bytes());
@@ -250,58 +181,6 @@ impl DeliveryTask {
             Err(error) => {
                 log::warn!("opportunistic receipt observation unavailable message_id={}: {error}", self.message_id);
                 Err(DeliveryAttemptOutcome::AwaitStatus)
-            }
-        }
-    }
-
-    async fn run_opportunistic_link_fallback(
-        &self,
-        payload: &[u8],
-        identity: Identity,
-        reason: &str,
-    ) -> DeliveryAttemptOutcome {
-        if let Err(outcome) = self.check_opportunistic_status() {
-            return outcome;
-        }
-        log_delivery_trace(
-            &self.message_id,
-            &self.destination_hex,
-            "opportunistic",
-            &format!("{reason}; falling back to link delivery"),
-        );
-        let destination_desc = DestinationDesc {
-            identity,
-            address_hash: self.destination_hash,
-            name: DestinationName::new("lxmf", "delivery"),
-        };
-        match self
-            .send_via_link_mode(
-                "opportunistic-link",
-                self.destination_hex.as_str(),
-                destination_desc,
-                payload,
-                LinkModeStatuses {
-                    packet: "sent: opportunistic link",
-                    resource: "sending: link resource",
-                    resource_sent: OUTBOUND_RESOURCE_SENT_STATUS,
-                },
-            )
-            .await
-        {
-            Ok(outcome) => outcome.into(),
-            Err(err) => {
-                log_delivery_trace(
-                    &self.message_id,
-                    &self.destination_hex,
-                    "opportunistic-link",
-                    &format!("fallback failed err={err}"),
-                );
-                emit_receipt_event(
-                    &self.receipt_tx,
-                    ReceiptEvent::new(self.message_id.clone(), format!("failed: {err}"))
-                        .with_method("opportunistic-link"),
-                );
-                DeliveryAttemptOutcome::Terminal
             }
         }
     }

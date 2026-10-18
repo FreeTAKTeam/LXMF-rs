@@ -15,14 +15,25 @@ pub(in crate::bridge) use propagation_preparation::prepare_propagation;
 mod admission;
 use admission::{DeliveryOwnership, DeliveryReservation};
 #[path = "bridge_delivery_completion.rs"]
-mod completion;
-#[path = "bridge_delivery_discovery.rs"]
-pub(in crate::bridge) mod discovery;
+pub(in crate::bridge) mod completion;
+#[path = "bridge_delivery_link_owner.rs"]
+mod link_owner;
 #[path = "bridge_delivery_opportunistic.rs"]
 mod opportunistic;
 #[cfg(test)]
 use preparation::encode_prepared;
+#[cfg(test)]
+#[path = "bridge_delivery_test_driver.rs"]
+mod test_driver;
 pub(super) use preparation::{decode_prepared, encode_prepared_parts};
+#[cfg(test)]
+pub(in crate::bridge) use test_driver::start_prepared;
+
+pub(in crate::bridge) struct DeliveryLimits {
+    global: Arc<Semaphore>,
+    peer: Arc<Semaphore>,
+    stamp: Arc<Semaphore>,
+}
 
 const DEFAULT_DELIVERY_QUEUE_CAPACITY: usize = 64;
 const DELIVERY_RETAINED_BYTES: u32 = 128 * 1024 * 1024;
@@ -143,14 +154,6 @@ impl DeliverySchedulerMetrics {
         self.update_peer(peer, |counters| {
             counters.in_flight = counters.in_flight.saturating_sub(1);
             counters.queued = counters.queued.saturating_add(1);
-        });
-    }
-
-    fn record_completed_for_peer(&self, peer: &str) {
-        self.in_flight_current.fetch_sub(1, Ordering::Relaxed);
-        self.completed_total.fetch_add(1, Ordering::Relaxed);
-        self.update_peer(peer, |counters| {
-            counters.in_flight = counters.in_flight.saturating_sub(1);
         });
     }
 

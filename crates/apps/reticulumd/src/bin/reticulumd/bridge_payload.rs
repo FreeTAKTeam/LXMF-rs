@@ -4,6 +4,19 @@ use rns_rpc::RpcDaemon;
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
 
+#[derive(Debug)]
+struct PayloadStatusUnavailable(String);
+impl std::fmt::Display for PayloadStatusUnavailable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+impl std::error::Error for PayloadStatusUnavailable {}
+
+pub(super) fn status_interrupted(error: &std::io::Error) -> bool {
+    error.get_ref().is_some_and(|source| source.is::<PayloadStatusUnavailable>())
+}
+
 pub(super) struct OutboundPayloadBuild {
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) message_id: String,
@@ -60,10 +73,10 @@ pub(super) async fn build_outbound_payload(
         if let Some(error) =
             status_lookup_error.into_inner().expect("outbound status lookup error mutex poisoned")
         {
-            return Err(std::io::Error::other(format!(
+            return Err(std::io::Error::other(PayloadStatusUnavailable(format!(
                 "receipt status lookup failed for message {}: {error}",
                 input.message_id
-            )));
+            ))));
         }
         result.map_err(std::io::Error::other)
     })

@@ -45,6 +45,7 @@ impl Link {
             channel_fast_rate_rounds: 0,
             channel_medium_rate_rounds: 0,
             event_tx,
+            data_signal: None,
         }
     }
 
@@ -61,6 +62,7 @@ impl Link {
             // Starting over from a state this link had already left, rather
             // than repeating a request still in flight, so the establishment
             // clock starts over with it.
+            self.data_signal = None;
             self.refresh_local_identity();
             self.start_establishment();
         }
@@ -248,6 +250,9 @@ impl Link {
                 // fixed buffer made those decrypts fail silently.
                 let mut buffer = vec![0u8; packet.data.as_slice().len().max(PACKET_MDU)];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
+                    if packet.context == PacketContext::None && matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+                        self.observe_data_signal(plain_text);
+                    }
                     self.note_inbound(packet.context);
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
                     let (request_id, response_accepted) = if packet.context == PacketContext::Request {

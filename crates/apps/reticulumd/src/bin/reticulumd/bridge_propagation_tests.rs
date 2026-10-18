@@ -6,6 +6,7 @@ use rns_transport::packet::PacketType;
 use rns_transport::resource::{ResourceEventKind, ResourceOutcome};
 use rns_transport::transport::TransportConfig;
 use std::collections::HashMap;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 
@@ -37,7 +38,7 @@ async fn propagation_cache_miss_preserves_live_resources() {
             sender.iface_manager().lock().await.new_channel_with_role(64, IfaceRole::Unicast);
         let mut receiving =
             receiver.iface_manager().lock().await.new_channel_with_role(64, IfaceRole::Unicast);
-        let link = propagation_link_for_node(&sender, &cache, &node, destination).await;
+        let link = propagation_link_for_node(&sender, &cache, &node, destination, |_| {}).await;
         let request = timeout(Duration::from_secs(2), sending.tx_channel.recv())
             .await
             .expect("request timeout")
@@ -79,7 +80,7 @@ async fn propagation_cache_miss_preserves_live_resources() {
         } else {
             *cache.lock().await = None;
         }
-        let reused = propagation_link_for_node(&sender, &cache, &node, destination).await;
+        let reused = propagation_link_for_node(&sender, &cache, &node, destination, |_| {}).await;
         assert!(
             Arc::ptr_eq(&link, &reused),
             "a cache miss must not replace an active transport Link"
@@ -156,7 +157,7 @@ async fn propagation_cache_waits_for_native_closure_beyond_former_grace() {
     let node = hex::encode(destination.address_hash.as_slice());
     let cache = Arc::new(Mutex::new(None));
     let _channel = transport.iface_manager().lock().await.new_channel(64);
-    let original = propagation_link_for_node(&transport, &cache, &node, destination).await;
+    let original = propagation_link_for_node(&transport, &cache, &node, destination, |_| {}).await;
     original.lock().await.set_establishment_timeout(Duration::from_secs(90));
     // The displaced cache used std::time::Instant; virtual Tokio time would
     // not exercise its 25-second expiration. Native establishment remains live.
@@ -166,10 +167,11 @@ async fn propagation_cache_waits_for_native_closure_beyond_former_grace() {
         .await
         .expect("native Pending Link remains cached beyond 25 seconds");
     assert!(Arc::ptr_eq(&original, &cached));
-    let reused = propagation_link_for_node(&transport, &cache, &node, destination).await;
+    let reused = propagation_link_for_node(&transport, &cache, &node, destination, |_| {}).await;
     assert!(Arc::ptr_eq(&original, &reused), "cache age must not override native establishment");
     original.lock().await.close();
-    let replacement = propagation_link_for_node(&transport, &cache, &node, destination).await;
+    let replacement =
+        propagation_link_for_node(&transport, &cache, &node, destination, |_| {}).await;
     assert!(!Arc::ptr_eq(&original, &replacement));
     assert_ne!(replacement.lock().await.status(), LinkStatus::Closed);
 }

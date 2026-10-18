@@ -7,7 +7,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | --- | --- | --- | --- |
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
-| 3. LXMF 1.2.0 | Draft PR; in progress | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); published checkpoint `a6886c29bbc25bdcac55a9f02a1105d72ba90616` | Retained opportunistic/local-custody owner and native Link/Resource prerequisites validated locally; full remote Link owner and mixed-reference acceptance remain pending. Hosted checks running; no merge. |
+| 3. LXMF 1.2.0 | Draft PR; in progress | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); published checkpoint `a6886c29bbc25bdcac55a9f02a1105d72ba90616` | Integrated remote Link/Resource owner, 47-case/263-row adapter and 44 focused owner tests pass locally; mixed-reference and SDK acceptance remain pending. First published checkpoint has 20 passing checks and 1 deliberate skip; integrated driver remains local. No merge. |
 | 4. Transport and RNS 1.5.5 | Pending | — | — |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
@@ -981,3 +981,94 @@ The first hosted runs on that checkpoint are:
 
 Selection has passed and the applicable jobs are running. This records draft
 validation only; terminal results and final-head review/CI/merge remain required.
+
+
+### Item 3 integrated retained Link driver (local acceptance pending)
+
+- Production completion now uses one continuous Link/Resource owner with native
+  Pending activation, continuous method budgets, immutable prepared bytes and
+  method-specific outcomes. Explicit Direct-to-propagation fallback stays one way.
+- Removed the old 20-second sender, detached cancellation/signal monitors,
+  separate generic discovery owner and outbound broadcast receipt publisher.
+  Resource correlation now retires only after the retained native owner cleans it.
+  SINGLE overflow returns to the same production prepared-message driver.
+- Remote propagation uses paired receipt reservations and typed packet/Resource
+  custody through the existing sole writer. Five real peer cases pass: Direct
+  packet/Resource, oversized Opportunistic Resource and propagated packet/Resource.
+  They reconstruct exact committed bytes, return native proofs, hold admission
+  across blocked SQLite commitment with free execution/stamp permits, avoid
+  retransmission and commit one journal receipt plus terminal/custody state.
+- Native shutdown cleanup and receipt cancellation after peer closure pass.
+  Another test blocks an independent RX Resource operation's handler with a full
+  interface queue; coordinated shutdown still joins and retains unresolved native
+  correlation. Restoring the bare timing await fails at the intended shutdown
+  deadline. This is not cleanup while that independent handler stays blocked;
+  transport shutdown owns the remaining native lifetime.
+- Three receipt-column read faults interrupt/join real cost-255 stamp workers,
+  release permits and resume build attempt one without charging retries or
+  fabricating terminal failure. Unavailable status while waiting for execution
+  also releases partially acquired permits.
+- Review caught native errors before the packet observer being replaced by
+  absence. A real handler barrier/Link closure reproduces it; propagation is fixed.
+  A neighboring real SQLite fault waits without failure/fallback and resumes one
+  handoff after recovery. Duplicate native token decline, producer loss and final
+  weak-context release also have regressions.
+- Creator-bound signals now use authenticated ordinary Link data and prioritize
+  rejection over pending proof retirement. The generator validates 47 scenarios
+  and 263 snapshots, including five creator-ordering/replacement cases. The native
+  parser has an explicit 32-container budget. The Rust row adapter is pending.
+- All-feature transport tests pass 968 tests with 9 existing ignores; the daemon
+  binary suite passes 572 tests. Module-size checks pass. Logs are
+  `/tmp/lxmf-item3-link-cutover-{transport,daemon,size}.log`,
+  `/tmp/lxmf-item3-link-transfer.log`,
+  `/tmp/lxmf-item3-link-handler-shutdown{,-before}.log` and
+  `/tmp/lxmf-item3-link-preobserver-error-{before,after}.log`.
+- The accumulated disposition ledger is `docs/status/lxmf-1.2.0-delta.md`.
+  File-export, source-blackhole and autonomous-peer gaps remain explicit; local
+  management sync must not become their claimed network proof.
+- Published checkpoint `a6886c29` has 20 successful hosted checks and one deliberate
+  publication skip. This integrated code is still uncommitted/local. Adapter,
+  mixed-reference/announce/SDK recovery, quality gates, independent review,
+  final-head hosted CI and merge remain required. Items 4-6 remain pending.
+
+## Item 3 reference-owner acceptance checkpoint (local)
+
+- The production `complete_delivery` adapter consumes all 47 pinned Python
+  scenarios and 263 snapshots. Its case/event-only inputs control measurements,
+  decision turns, receipt timeout and the labelled Error/NoReceipt producer faults.
+  Links, packet proofs, Resources, recipient bytes, SQLite and admission are real.
+- Assertions cover every shared message, exact Link/creator, native status and
+  activation history, continuous budgets/deadlines, request/teardown decisions,
+  transfer counts, native handoffs, remote peer bytes, final-recipient binding and unchanged committed
+  preparation. Durable terminal/custody results are bounded to one of each kind.
+- Committed cancellation preserves native Cancelled cleanup and ignores synthetic
+  later callbacks; this explicit projection is not a claim of callback resurrection
+  parity. The native packet observer intentionally accepts owned late proofs.
+- The adapter exposed premature replacement of a Closed propagation hint for a
+  new message; `/tmp/lxmf-item3-owner-trace-closed-cache-before.log` retains the
+  failing attempt count. The current adapter passes after consuming that hint
+  once and retiring only the pointer-equal context on closure.
+- Two real blocked-SQLite creator-signal regressions failed before the fix and
+  pass for Packet and Resource custody. Their accepted custody work stays with
+  the same worker; a reserved terminal rejection fences owner retirement. The
+  signal wins a both-ready tie until the owner observes the commit acknowledgement.
+  Post-acknowledgement late-signal controls preserve completed custody.
+- Independent review found stale Direct SENDING/transfer state surviving explicit
+  propagation fallback. The focused state regression failed before the reset;
+  prior packet proof tokens stay outside that transition and keep their meaning.
+- Current focused all-feature owner suite: **44 passed** in 7.89 seconds, including
+  all adapter snapshots and native storage/signal cases. Log:
+  `/tmp/lxmf-item3-owner-integrated-focused.log`. Module-size and dependency-boundary
+  checks pass. Full daemon/quality refresh is ongoing; no current-head hosted or
+  mixed-peer claim is added by this checkpoint.
+- Removed the unread identified-Link cache/consumer and obsolete Resource-map
+  receipt-worker plumbing. Native verified Link state owns selection; outbound
+  local-source routing and authenticated propagation-control state remain intact.
+
+- Final local refresh for this checkpoint: daemon **573 passed** in 32.91 seconds;
+  daemon library **31 passed**; native packet bridge integration **2 passed**;
+  issue-369 scanner passed; formatting, both-package Clippy with all targets/features
+  and `-D warnings`, dependency boundaries, module-size and architecture checks
+  passed. Logs use `/tmp/lxmf-item3-link-cutover-{daemon,library,packet-bridge,369,clippy,boundaries,size,architecture}.log`.
+  The default-feature architecture build emitted the pre-existing unused BLE
+  runtime-status helper warning; the all-feature Clippy gate remains clean.

@@ -48,6 +48,16 @@ impl Transport {
     /// occurred even when handoff fails. This does not lease a Link against a
     /// public restart before or after the atomic close/removal section.
     pub async fn teardown_link(&self, link: &Arc<Mutex<Link>>) -> Result<bool, RnsError> {
+        self.teardown_link_observed(link, || {}).await
+    }
+
+    /// Observe local closure and native Resource cleanup before optional frame
+    /// dispatch. After observation, dropping the future can omit that frame but
+    /// cannot undo local cleanup. The observer must not re-enter Transport.
+    pub async fn teardown_link_observed(
+        &self, link: &Arc<Mutex<Link>>, locally_closed: impl FnOnce(),
+    ) -> Result<bool, RnsError> {
+        let mut locally_closed = Some(locally_closed);
         let (iface, packet) = loop {
             let mut handler = self.handler.lock().await;
             let mut link_guard = match link.try_lock() {
@@ -66,6 +76,7 @@ impl Transport {
             handler.resource_manager.remove_link_state(link_id);
             let events = handler.resource_manager.drain_events();
             super::resource_wire::publish_resource_events(&handler, events);
+            locally_closed.take().expect("local close observed once")();
             break (iface, packet?);
         };
         self.dispatch_link_lifecycle_packet(iface, packet).await

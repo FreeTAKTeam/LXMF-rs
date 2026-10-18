@@ -25,7 +25,6 @@ async fn no_route_remains_owned_until_reference_retry_exhaustion() {
         daemon.clone(),
         receiver,
         receipts.clone(),
-        task.outbound_resource_map.clone(),
         publisher,
     );
     let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {
@@ -240,7 +239,6 @@ async fn terminal_received_while_execution_capacity_is_blocked_prevents_transmis
         task.daemon.clone(),
         receiver,
         task.receipt_map.clone(),
-        task.outbound_resource_map.clone(),
         publisher.clone(),
     );
     let scheduler = DeliveryScheduler::spawn(DeliverySchedulerConfig {
@@ -276,10 +274,19 @@ async fn terminal_received_while_execution_capacity_is_blocked_prevents_transmis
 
 #[tokio::test(start_paused = true)]
 async fn oversized_opportunistic_status_failure_retains_owner_until_recovery() {
-    let (_directory, connection, mut task) = durable_task();
+    let signer = rns_transport::identity::PrivateIdentity::new_from_rand(OsRng);
+    let recipient =
+        SingleInputDestination::new(signer.clone(), DestinationName::new("lxmf", "delivery"));
+    let content = "large payload ".repeat(100);
+    let (_directory, connection, mut task) = durable_task_for_content(
+        recipient.desc.address_hash.as_slice().try_into().expect("destination"),
+        &content,
+    );
     connection.execute_batch("DROP TRIGGER fail_prepared").expect("healthy storage");
     task.requested_method = RequestedDeliveryMethod::Opportunistic;
-    task.content = "large payload ".repeat(100);
+    task.peer_identity = Some(*signer.as_identity());
+    let (_link, mut channel, _peer_link) =
+        super::retained_link_tests::active_owner_link(&task, &signer, recipient.desc).await;
     let daemon = task.daemon.clone();
     let id = task.message_id.clone();
     let peer = task.destination_hex.clone();
@@ -302,7 +309,7 @@ async fn oversized_opportunistic_status_failure_retains_owner_until_recovery() {
     ));
     tokio::time::timeout(Duration::from_secs(2), async {
         while peer_limit.available_permits() != 0 {
-            tokio::task::yield_now().await;
+            tokio::time::sleep(Duration::from_millis(1)).await;
         }
     })
     .await
@@ -332,11 +339,12 @@ async fn oversized_opportunistic_status_failure_retains_owner_until_recovery() {
         )
         .expect("recover reads");
     tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(scheduler.owns_delivery(&id), "recovery proceeds to identity discovery");
+    assert!(scheduler.owns_delivery(&id), "recovery retains the active native transfer");
     assert_eq!(daemon.durable_prepared_payload(&id).expect("prepared").flatten(), Some(prepared));
     stop.send_replace(true);
     tokio::time::timeout(Duration::from_secs(1), owner).await.expect("shutdown").expect("owner");
     assert!(!scheduler.owns_delivery(&id));
+    while channel.tx_channel.try_recv().is_ok() {}
     scheduler.shutdown();
 }
 

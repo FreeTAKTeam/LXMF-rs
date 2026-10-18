@@ -27,6 +27,9 @@ impl DeliveryTask {
         if let Some(work) = stamp_work {
             match &result {
                 Ok(_) => self.record_stamp_work_metadata("ready", work),
+                Err(err) if super::payload_builder::status_interrupted(err) => {
+                    self.record_stamp_work_metadata("interrupted", work);
+                }
                 Err(err) => {
                     let cancelled = match self.daemon.message_receipt_status(&self.message_id) {
                         Ok(status) => Self::is_cancelled_status(status.as_deref()),

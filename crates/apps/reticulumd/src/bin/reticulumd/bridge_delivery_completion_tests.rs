@@ -9,6 +9,13 @@ fn durable_task() -> (tempfile::TempDir, rusqlite::Connection, DeliveryTask) {
 fn durable_task_for_destination(
     destination: [u8; 16],
 ) -> (tempfile::TempDir, rusqlite::Connection, DeliveryTask) {
+    durable_task_for_content(destination, "payload")
+}
+
+fn durable_task_for_content(
+    destination: [u8; 16],
+    content: &str,
+) -> (tempfile::TempDir, rusqlite::Connection, DeliveryTask) {
     let directory = tempfile::tempdir().expect("directory");
     let path = directory.path().join("delivery.db");
     let store = MessagesStore::open(&path).expect("store");
@@ -22,7 +29,7 @@ fn durable_task_for_destination(
                 operation_id: "deferred-owner".into(),
                 destination: hex::encode(destination),
                 title: "".into(),
-                content: "payload".into(),
+                content: content.into(),
                 fields: None,
                 options: rns_rpc::OutboundDeliveryOptions::default(),
             },
@@ -46,6 +53,7 @@ fn durable_task_for_destination(
     task.destination_hex = hex::encode(destination);
     task.requested_method = RequestedDeliveryMethod::Direct;
     task.stamp_cost = Some(0);
+    task.content = content.into();
     let connection = rusqlite::Connection::open(path).expect("connection");
     // Exercise a real preparation write failure before any network dispatch.
     connection.execute_batch("CREATE TRIGGER fail_prepared BEFORE UPDATE OF prepared ON broker_operations BEGIN SELECT RAISE(ABORT,'injected prepared write failure'); END;").expect("fault");

@@ -5,6 +5,18 @@ impl Transport {
     /// Concurrent callers share the published Link; explicit reset can still
     /// invalidate a returned handle, whose native lifecycle remains authoritative.
     pub async fn link(&self, destination: DestinationDesc) -> Arc<Mutex<Link>> {
+        self.link_observed(destination, |_| {}).await
+    }
+
+    /// Observe only a newly published Link, before its first request is handed
+    /// off. Reuse and losing concurrent candidates never invoke the observer.
+    /// The observer must not re-enter Transport.
+    pub async fn link_observed(
+        &self,
+        destination: DestinationDesc,
+        observe: impl FnOnce(&mut Link),
+    ) -> Arc<Mutex<Link>> {
+        let mut observe = Some(observe);
         loop {
             let observed =
                 self.handler.lock().await.out_links.get(&destination.address_hash).cloned();
@@ -77,6 +89,7 @@ impl Transport {
                 destination.address_hash,
                 candidate.id()
             );
+            observe.take().expect("publication invokes observer once")(&mut candidate);
             let link = Arc::new(Mutex::new(candidate));
             handler.out_links.insert(destination.address_hash, link.clone());
             drop(previous_guard);

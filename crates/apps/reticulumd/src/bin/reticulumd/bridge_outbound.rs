@@ -174,14 +174,7 @@ impl OutboundBridge for TransportBridge {
         let can_propagate = requested_method == RequestedDeliveryMethod::Propagated
             || (requested_method == RequestedDeliveryMethod::Direct
                 && options.try_propagation_on_fail);
-        // Remote Resource publication remains legacy until the retained Link owner
-        // lands; only the local typed producer can retire a custody slot today.
-        let custody = can_propagate
-            && propagation_node_hex.as_deref().is_some_and(|node| {
-                daemon
-                    .local_propagation_hash()
-                    .is_some_and(|local| local.eq_ignore_ascii_case(node))
-            });
+        let custody = can_propagate;
         if daemon.owns_durable_message(&record.id)?
             && self.receipt_tx.reserve_completion(&record.id, custody).is_err()
         {

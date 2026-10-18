@@ -172,6 +172,17 @@ impl ReceiptBridge {
 impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
         self.probe_receipts.notify(receipt.message_id);
+        match self.tx.publish_link_packet(receipt.message_id) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(error) => {
+                log::warn!(
+                    "[daemon] owned packet receipt unavailable hash={}: {error}",
+                    hex::encode(receipt.message_id)
+                );
+                return;
+            }
+        }
         let message_id = match lookup_receipt_message_id(&self.map, receipt) {
             Ok(id) => id,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,

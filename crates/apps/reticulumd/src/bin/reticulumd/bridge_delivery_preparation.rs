@@ -48,7 +48,7 @@ pub(super) async fn prepare_payload(
         }
     };
     task.start_delivery_trace();
-    if task.abort_if_cancelled("start") {
+    if !task.wait_delivery_ready().await {
         task.record_deferred_stamp_cancelled_metadata();
         if task.requires_normal_deferred_stamp_work() {
             metrics.record_stamp_started_for_peer(peer);
@@ -80,7 +80,8 @@ async fn prepare_lxmf_payload(
 ) -> Option<Vec<u8>> {
     let normal_stamp_work = task.requires_normal_deferred_stamp_work();
     let attempts = if normal_stamp_work { 2 } else { 1 };
-    for attempt in 1..=attempts {
+    let mut attempt = 1;
+    loop {
         let _stamp_permit = if normal_stamp_work {
             let permit = match task.acquire_stamp_permit(stamp_limit).await {
                 Ok(Some(permit)) => permit,
@@ -111,14 +112,21 @@ async fn prepare_lxmf_payload(
         match result {
             Ok(payload) => return Some(payload),
             Err(err) => {
-                if task.abort_if_cancelled("payload") {
+                if !task.wait_delivery_ready().await {
                     task.record_deferred_stamp_cancelled_metadata();
                     return None;
+                }
+                if crate::bridge::payload_builder::status_interrupted(&err) {
+                    if normal_stamp_work {
+                        metrics.record_stamp_queued_for_peer(peer);
+                    }
+                    continue;
                 }
                 if attempt < attempts {
                     task.record_deferred_stamp_retry_metadata(attempt, err.to_string());
                     metrics.record_stamp_retry_for_peer(peer);
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    attempt += 1;
                     continue;
                 }
                 task.record_deferred_stamp_failed_metadata(attempt, err.to_string());
@@ -127,7 +135,6 @@ async fn prepare_lxmf_payload(
             }
         }
     }
-    None
 }
 
 pub(super) async fn build_propagation_payload(
@@ -176,19 +183,30 @@ pub(super) async fn build_propagation_payload(
         };
         metrics.record_stamp_started_for_peer(peer);
         task.record_propagation_stamp_attempt_metadata(context.target_cost, attempt);
-        if task.abort_if_cancelled("propagation") {
-            task.record_propagation_stamp_work_metadata("cancelled", context.target_cost, None);
+        if let Err(outcome) = task.check_delivery_ready() {
+            task.record_propagation_stamp_work_metadata("interrupted", context.target_cost, None);
             metrics.record_stamp_completed_for_peer(peer);
-            return Err(DeliveryAttemptOutcome::Stopped);
+            return Err(outcome);
         }
+        let mut interruption = None;
         let result = propagation::build_propagation_payload_until_cancelled(
             lxmf_payload,
             &context.destination_identity,
             context.target_cost,
-            || task.abort_if_cancelled("propagation-stamp"),
+            || match task.check_delivery_ready() {
+                Ok(()) => false,
+                Err(outcome) => {
+                    interruption = Some(outcome);
+                    true
+                }
+            },
         );
         drop(_stamp_permit);
         metrics.record_stamp_completed_for_peer(peer);
+        if let Some(outcome) = interruption {
+            task.record_propagation_stamp_work_metadata("interrupted", context.target_cost, None);
+            return Err(outcome);
+        }
         match result {
             Ok(payload) => {
                 task.record_propagation_stamp_work_metadata(
@@ -205,14 +223,7 @@ pub(super) async fn build_propagation_payload(
                 });
             }
             Err(err) => {
-                if task.abort_if_cancelled("propagation") {
-                    task.record_propagation_stamp_work_metadata(
-                        "cancelled",
-                        context.target_cost,
-                        None,
-                    );
-                    return Err(DeliveryAttemptOutcome::Stopped);
-                }
+                task.check_delivery_ready()?;
                 if attempt < 2 {
                     task.record_propagation_stamp_retry_metadata(
                         context.target_cost,

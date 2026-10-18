@@ -53,6 +53,20 @@
         }
     }
 
+    #[test]
+    fn packet_receipt_timeout_uses_measured_rtt_with_the_reference_minimum() {
+        let mut link = test_link();
+        for (rtt, timeout) in [
+            (Duration::ZERO, Duration::from_millis(5)),
+            (Duration::from_nanos(833_333), Duration::from_millis(5)),
+            (Duration::from_nanos(833_334), Duration::from_nanos(5_000_004)),
+            (Duration::from_millis(100), Duration::from_millis(600)),
+        ] {
+            link.rtt = rtt;
+            assert_eq!(link.packet_receipt_timeout(), timeout);
+        }
+    }
+
     #[tokio::test]
     async fn close_events_expose_python_teardown_reason_codes() {
         let signer = PrivateIdentity::new_from_rand(OsRng);

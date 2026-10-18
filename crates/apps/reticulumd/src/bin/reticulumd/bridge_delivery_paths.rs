@@ -1,6 +1,5 @@
 use super::delivery_attempt::DeliveryAttemptOutcome;
 use super::delivery_task::DeliveryTask;
-use super::delivery_timing::measured_delivery_timing;
 use lxmf::message::DeliveryTiming;
 use rns_transport::hash::AddressHash;
 use std::collections::HashMap;
@@ -68,12 +67,17 @@ impl DeliveryTask {
         &self,
         destination: AddressHash,
     ) -> Result<DeliveryTiming, DeliveryAttemptOutcome> {
-        let result = async {
-            let timing = measured_delivery_timing(self.transport.path_timing(&destination).await)
+        let request = async {
+            let timing = self
+                .delivery_timing(self.transport.path_timing(&destination).await)
                 .map_err(std::io::Error::other)?;
             if self.path_requests.claim(destination, timing)? {
                 // Keep the timestamp even on cancellation or failed dispatch, as
                 // the reference router records before handing the request to RNS.
+                #[cfg(test)]
+                if let Some(control) = self.wakeup.trace() {
+                    control.requests.lock().expect("trace requests").push(Instant::now());
+                }
                 self.transport.request_path(&destination, None, None).await;
             } else {
                 let pending = self.path_requests.pending(destination, timing)?;
@@ -81,9 +85,11 @@ impl DeliveryTask {
             }
             // Scheduling follows handoff in the reference router; measurements
             // may have changed while the transport waited for its locks.
-            measured_delivery_timing(self.transport.path_timing(&destination).await)
+            self.delivery_timing(self.transport.path_timing(&destination).await)
                 .map_err(std::io::Error::other)
-        }.await;
+        };
+        let result =
+            self.drive_delivery_io(request).await.ok_or(DeliveryAttemptOutcome::Stopped)?;
         result.map_err(|error| {
             log::error!(
                 "delivery path request failed message_id={} destination={destination}: {error}",

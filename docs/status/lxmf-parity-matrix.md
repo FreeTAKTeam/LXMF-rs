@@ -46,116 +46,56 @@ evidence tracked independently.
 
 ## LXMF 1.2.0 target work (issue 648, incomplete)
 
-The existing module rows below describe the pinned baseline. The additional
-`c3ff2d6dc2f256daab896dadc044dd5a913ecbb7` target has local checkpoints for
-serialized opportunistic limits, implementation/version metadata, notification
-callback recovery and peer stamp-floor selection. Clock-independent retry policy
-now matches 15 target-router timing scenarios, including strict deadlines,
-recovered-path wakeup and floating-point rounding boundaries. Atomic per-message
-admission now prevents duplicate preparation and capacity failures; durable requeue
-occurs after task/reservation release. Registered Resource dispatch failures now
-stay with their terminal event consumer without triggering a competing fallback;
-startup subscribes before enabling recovered delivery. Proven dropped Link packets
-remove their exact receipt correlation. These tests do not prove reliable Resource
-completion under broadcast-channel overload. Raw transport timing feeds production
-identity discovery, with separate slowest/next-hop measurements, zero-bitrate
-fallback and exact-reference arithmetic. The admitted owner commits base LXMF
-bytes once, retains count/byte reservations during identity waits and releases
-execution permits so another peer can send. Targeted announce notifications bypass
-legacy selected-node/durable filters; bridge-owned legacy records are not
-redispatched. Direct/Propagated missing-identity tests prove four normal-medium
-requests and two slow-medium requests with strict exhaustion deadlines.
+The module rows below retain the existing baseline. Additional target
+`c3ff2d6dc2f256daab896dadc044dd5a913ecbb7` work covers the serialized Opportunistic
+limit, truthful implementation/version metadata, notification callback isolation
+and peer stamp minimum. Eighteen size fixtures include title/fields/stamps;
+metadata fixtures cover old/new/unknown/malformed values. The
+[accumulated delta ledger](lxmf-1.2.0-delta.md) records covered behavior, confirmed
+gaps and changes inapplicable to SINGLE/Direct metadata.
 
-Propagation fallback changes the effective method once; injected commit failures
-suppress propagation until storage recovers and restored envelopes reuse exact
-bytes. Shared discovery coalesces requests and preserves pending/debounce history;
-propagation-cost waits use measured cancellable deadlines outside execution permits.
-Fifty exact-pin request-boundary cells and concurrent production lookups pass.
-Running normal stamp work and queued stamp waiters observe shutdown and release
-reservations. Local signed announce-ingress tests prove one send despite a
-simultaneous timer and duplicate notifications, without rebuilding durable bytes.
-Accepted terminal publication now keeps scheduler membership and count/byte
-reservations until the existing receipt worker confirms persistence or shutdown
-releases them for recovery. A real SQLite write fault proves queued acceptance
-cannot release the owner; recovery commits one receipt, and shutdown preserves
-the pending event for drain. Both reserved and accepted legacy terminals use the
-same fence; an unused reservation or rejected enqueue does not wait.
-Prepared opportunistic sends now validate cached identity/key and named-destination
-bindings before observation, register proof context through the transport send
-owner, and preserve ciphertext. The real Rust sender/recipient ingress regression
-proves exact decrypted LXMF bytes, recipient-generated proof, persisted delivered
-status and correlation cleanup without fabricating a path. Implicit and explicit
-proof tests reject wrong known signers and untracked hashes. This fixes an existing
-prepared-send gap, not a new LXMF 1.2.0 wire rule.
+Shared timing policy covers normal/slow measurements, strict due decisions,
+debounce and attempt limits. Ten Opportunistic scenarios (66 snapshots) are
+consumed by production policy tests. Native tests cover discovery/exhaustion,
+targeted signed-announce wakeups, coalescing, fresh waits after blocked handoff,
+rediscovery, earlier-attempt proofs, unavailable status reads and cancellation.
+Signed bytes and committed propagation envelopes remain unchanged across retry.
 
-Fitting opportunistic packets now retain the existing admission through post-send
-retry and terminal persistence. Ten production-reference scenarios (66 snapshots)
-cover counters, strict due decisions, request windows and preserved attempt limits.
-Actual Rust ingress tests accept the first packet's proof after a later attempt,
-retain both packet correlations until durable completion, and preserve the signed
-LXMF bytes while encrypting each attempt separately. No-route handoff remains
-nonterminal until reference exhaustion. Rediscovery's 500ms request is owned by
-the same cancellable loop and can run while delivery execution capacity is blocked;
-this intentionally strengthens Python's detached delayed-request cancellation.
-Status-read failure retains fitting and oversized opportunistic admissions without
-manufacturing a competing terminal. Final SINGLE broadcast handoff checks terminal
-state after the transport locks; rejection creates neither correlation nor cache
-entry. Blocked path-request handoff gets a full refreshed discovery window.
-These are local reference-policy and Rust network proofs, not Python interoperability.
-An additional 42 exact-pin Link/Resource scenarios (226 snapshots) now record
-production Direct/Propagated scheduling and callbacks, including slow closure,
-shared-Link reuse, mode-specific completion/rejection and late-callback behavior.
-Controlled I/O does not prove native watchdog timing or actual delivery, and these
-new rows are not yet consumed by a Rust Link owner. The reference also retains
-SENDING after missing-receipt or external-close paths without a timeout callback;
-that observation is not a passing recovery result. The remaining cutover and
-acceptance are mapped in [LINK-OWNER.md](../goals/open-issues-2026-10/LINK-OWNER.md).
-Transport Link acquisition now atomically publishes one shared Link for concurrent
-callers and preserves restart/reset interleavings, with five deterministic Rust
-regressions. The daemon propagation cache now follows native non-Closed state and
-no longer resets Transport Links on a miss. Real Rust Resource transfers survive
-empty/mismatched hints, and a 26-second regression covers the former cache expiry.
-The retained Link owner remains pending; this does not consume the 42 reference
-scenarios or promote a parity row.
-Native Resource completion now offers an opt-in retained result registered before
-dispatch, with logical/original-hash outcomes across segmented transfers. Tests
-cover final recipient proof, dispatch failure, reset, rejection and cancellation;
-actual event-broadcast overflow cannot erase a completed observed result. Legacy
-event behavior remains intact. This prerequisite does not yet make daemon custody
-or terminal persistence reliable under overload.
-Resource preparation and initial dispatch now preserve the selected Link Arc,
-including the existing delivery helper's oversized-payload fallback. ID callers
-delegate to the same implementation. Map-replacement and failed-dispatch tests
-prove initial ciphertext/interface binding and observation ordering; retained Arc
-completion also runs through the existing two-Transport recipient-proof test.
-This is not lifecycle support for removed Links or a daemon-owner cutover.
-Native lifecycle primitives now validate Link association before cancelling a
-Resource and close/remove only the selected Link Arc during teardown. Logical
-completion survives cancel/close frame handoff failure, and a replacement Resource
-stays live. Focused tests cover pending/active/second-segment cancellation, native
-inbound/outbound teardown, contention and restart during blocked frame dispatch.
-The APIs govern the current Arc generation and do not lease it against restart.
-Remote daemon ownership and method-specific completion remain pending.
-The storage boundary now distinguishes trusted propagation custody from ordinary
-sent-status text. Custody commits status, journal and dispatch completion atomically,
-spends retained preparation capacity, and preserves recipient-terminal capacity.
-Seven storage regressions cover restart without redispatch, exact/full-budget
-accounting, duplicate and terminal ordering, fallback capacity, rollback and older
-preparation recovery after capacity returns. The trusted daemon entry now shares
-receipt locking, metadata and post-commit publication; five new tests plus an
-extended authenticated-RPC test cover authority, missing records, rollback,
-terminal ordering, ticket handling and restart. The receipt publisher and sole
-worker now use typed custody with paired reservations and retained commit
-observation. Local propagation waits outside execution permits while retaining
-admission; SQLite fault tests cover recovery, terminal supersession and shutdown,
-including an actual second-peer handoff during the wait. Transient permits retire
-after commit without consuming later recipient-terminal storage capacity. Paired
-admission currently covers only local propagation; the remote Resource producer
-and full retained Link owner still require cutover.
-Full Link/Resource post-send and Link activation retry ownership, broadcast-overload terminal recovery,
-real callback-following delivery and full mixed-peer target traces remain pending;
-no row or reference baseline is promoted by these checkpoints.
-See the [execution record](../goals/open-issues-2026-10/PROGRESS.md).
+The production scheduler now runs one retained Link/Resource owner. Pending
+activation retains count/bytes/membership beyond the displaced 20-second cutoff
+without execution/stamp permits. Atomic native acquisition and cache selection
+preserve live Links and Resources. Native packet observations bind the original
+hash/Link/key; logical Resource results survive broadcast lag. Exact-Arc cleanup
+preserves replacement Links and observes local cleanup before optional frame I/O.
+Public restart is not leased.
+
+Only that owner retires native Resource correlation. The old sender, detached
+monitors, generic discovery loop and outbound broadcast receipt publisher are
+removed. SINGLE overflow returns to the same owner. Typed local/remote packet or
+Resource custody commits status/journal/dispatch atomically through the sole
+receipt worker, preserving later recipient-terminal capacity. Admission remains
+owned until commitment or coordinated shutdown; waits release execution permits.
+
+Five real Rust peer cases cover Direct packet/Resource, oversized Opportunistic
+Resource and propagated packet/Resource. Each verifies exact committed bytes,
+native proof, blocked SQLite receipt writes and one durable completion. Other
+regressions cover another blocked handler during shutdown, retained unresolved
+correlation and three interrupted stamp workers without spending build retries.
+The all-feature transport suite passes 968 tests with 9 existing ignores; the
+all-feature daemon binary suite passes 573 tests; 31 daemon library and two
+native packet-bridge integration tests also pass.
+
+The 47 controlled Python Link/Resource scenarios (263 snapshots) include shared
+Links, method-specific outcomes, closure budgets and creator-bound signals. The
+Rust row adapter passes all snapshots through the production admitted owner with
+controlled measurement/turn inputs, native proofs and durable completion. Reference missing-receipt/external-close SENDING
+stalls are characterized behavior, not successful recovery. Late-proof retention,
+monotonic committed terminals and the signal decoder depth budget are explicit
+Rust differences. Target/baseline mixed-peer traces, propagation announce exchange,
+callback-following SDK/ZeroMQ delivery and final-head review/CI remain required.
+No parity row or reference baseline is promoted. See
+[LINK-OWNER.md](../goals/open-issues-2026-10/LINK-OWNER.md) and
+[PROGRESS.md](../goals/open-issues-2026-10/PROGRESS.md).
 
 ## MeshChat proof-of-concept evidence (outside module counts)
 

@@ -311,12 +311,15 @@ async fn self_selected_propagation_node_stores_locally_without_link_activation()
     };
 
     let prepared = PreparedDeliveryPayload { lxmf_payload: task.build_payload().await.expect("payload"), propagation: None };
-    let outcome = tokio::time::timeout(Duration::from_secs(1), task.run_prepared(prepared, Arc::new(tokio::sync::Semaphore::new(1))))
-        .await.expect("local custody action");
-    let crate::bridge::delivery_attempt::DeliveryAttemptOutcome::PropagationCustody(receipt) = outcome else { panic!("local custody disposition expected"); };
+    task.receipt_tx.reserve_completion(message_id, true).expect("paired custody capacity");
+    let (stop, owner) = start_prepared(task, prepared);
+    let receipt = tokio::time::timeout(Duration::from_secs(1), receipt_rx.recv())
+        .await.expect("local custody publication").expect("custody receipt");
     assert_eq!(receipt.status, "sent: propagated resource");
     assert_eq!(receipt.custody(), Some(rns_rpc::broker::PropagationCustody::Resource));
-    assert!(receipt_rx.try_recv().is_err(), "scheduler owns custody publication after releasing execution permits");
+    assert!(!owner.is_finished(), "production owner waits for custody commitment");
+    stop.send_replace(true);
+    owner.await.expect("owner shutdown");
     while let Ok(Some(packet)) =
         tokio::time::timeout(Duration::from_millis(150), channel.tx_channel.recv()).await
     {

@@ -30,10 +30,13 @@ async fn daemon_opportunistic_boundary_matches_serialized_python_messages() {
         task.receipt_tx = receipt_tx.into();
         let mut channel = task.transport.iface_manager().lock().await.new_channel(16);
         let expected_payload = payload.clone();
-        let owner = tokio::spawn(task.run_prepared(
-            PreparedDeliveryPayload { lxmf_payload: payload, propagation: None },
-            Arc::new(tokio::sync::Semaphore::new(1)),
-        ));
+        channel.rx_channel.send(rns_transport::iface::RxMessage {
+            address: *channel.address(), packet: remote.announce(OsRng, None).expect("signed announce"),
+            source: rns_transport::iface::IfaceSource::None,
+        }).await.expect("announce ingress");
+        while !task.transport.has_path(&remote.desc.address_hash).await { tokio::task::yield_now().await; }
+        let (stop, owner) = start_prepared(task,
+            PreparedDeliveryPayload { lxmf_payload: payload, propagation: None });
         let packet = tokio::time::timeout(Duration::from_secs(1), channel.tx_channel.recv())
             .await
             .expect("wire output")
@@ -50,14 +53,17 @@ async fn daemon_opportunistic_boundary_matches_serialized_python_messages() {
                 .expect("receipt timeout")
                 .expect("receipt");
             assert_eq!(receipt.status, "sent: opportunistic");
-            owner.await.expect("completed packet delivery");
+            assert!(!owner.is_finished(), "SINGLE handoff awaits receipt");
+            stop.send_replace(true);
+            owner.await.expect("production owner shutdown");
             assert!(channel.tx_channel.try_recv().is_err(), "no Link fallback");
         } else {
             assert_eq!(packet.header.packet_type, PacketType::LinkRequest, "{}", case["name"]);
             // This boundary test ends at the Link request; existing mixed-peer
             // tests prove its handshake and subsequent packet/Resource delivery.
-            owner.abort();
-            assert!(owner.await.expect_err("cancel pending Link").is_cancelled());
+            assert!(!owner.is_finished(), "Pending Link retains owner");
+            stop.send_replace(true);
+            owner.await.expect("production owner shutdown");
         }
     }
 }

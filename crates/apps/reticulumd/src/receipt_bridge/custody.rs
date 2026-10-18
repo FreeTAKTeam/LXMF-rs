@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{error::TrySendError, OwnedPermit, Sender};
 use tokio::sync::watch;
+mod packets;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CustodyCommit {
@@ -63,6 +64,7 @@ pub struct ReceiptPublisher {
     completion: tokio::sync::watch::Sender<()>,
     stopping: Arc<AtomicBool>,
     failed: Arc<AtomicBool>,
+    packets: Arc<Mutex<HashMap<[u8; 32], packets::PacketCorrelation>>>,
 }
 impl From<Sender<ReceiptEvent>> for ReceiptPublisher {
     fn from(sender: Sender<ReceiptEvent>) -> Self {
@@ -72,6 +74,7 @@ impl From<Sender<ReceiptEvent>> for ReceiptPublisher {
             completion: tokio::sync::watch::channel(()).0,
             stopping: Arc::new(AtomicBool::new(false)),
             failed: Arc::new(AtomicBool::new(false)),
+            packets: Default::default(),
         }
     }
 }
@@ -266,6 +269,7 @@ impl ReceiptPublisher {
             }
             Err(error) => log::error!("terminal receipt completion poisoned: {error}"),
         }
+        self.prune_link_packets(message_id, false);
     }
     /// Called by the sole receipt worker after persistence. This also retires
     /// unused dispatch-owner reservations; accepted terminal work remains fenced.
@@ -284,6 +288,7 @@ impl ReceiptPublisher {
             }
             Err(error) => log::error!("custody receipt completion poisoned: {error}"),
         }
+        self.prune_link_packets(message_id, outcome == CustodyCommit::Stored);
     }
     pub fn release_unsent(&self, message_id: &str) {
         match self.reservations.lock() {

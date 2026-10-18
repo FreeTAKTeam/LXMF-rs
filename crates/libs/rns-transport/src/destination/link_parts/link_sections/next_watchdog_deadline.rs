@@ -125,6 +125,7 @@ impl Link {
         }
         self.channel_rx_ring.clear();
         self.channel_open = false;
+        self.data_signal = None;
         self.status = LinkStatus::Closed;
         self.close_reason = Some(reason);
         self.peer_identity = Identity::default();
@@ -209,6 +210,7 @@ impl Link {
             self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
         }
         self.channel_rx_ring.clear();
+        self.data_signal = None;
         self.status = LinkStatus::Pending;
         self.close_reason = None;
         self.start_establishment();
@@ -235,8 +237,16 @@ impl Link {
         self.request_time.elapsed()
     }
 
+    pub fn is_initiator(&self) -> bool {
+        self.is_initiator
+    }
+
     pub fn status(&self) -> LinkStatus {
         self.status
+    }
+
+    pub(crate) fn packet_receipt_timeout(&self) -> Duration {
+        self.rtt.saturating_mul(6).max(Duration::from_millis(5))
     }
 
     pub fn id(&self) -> &LinkId {

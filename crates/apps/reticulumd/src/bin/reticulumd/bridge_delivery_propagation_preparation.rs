@@ -11,8 +11,19 @@ pub(in crate::bridge) async fn prepare_propagation(
     metrics: &Arc<DeliverySchedulerMetrics>,
     peer: &str,
 ) -> Result<(), DeliveryAttemptOutcome> {
-    if task.abort_if_cancelled("propagation") {
+    if task.stopping.as_ref().is_some_and(|stop| *stop.borrow() || stop.has_changed().is_err()) {
         return Err(DeliveryAttemptOutcome::Stopped);
+    }
+    match task.observe_delivery_terminal() {
+        Ok(false) => {}
+        Ok(true) => return Err(DeliveryAttemptOutcome::Stopped),
+        Err(error) => {
+            log::warn!(
+                "propagation preparation observation unavailable message_id={}: {error}",
+                task.message_id
+            );
+            return Err(DeliveryAttemptOutcome::AwaitStatus);
+        }
     }
     // Both initial preparation and fallback publish this cache only after
     // the durable write succeeds. Reuse the exact envelope on later attempts.
