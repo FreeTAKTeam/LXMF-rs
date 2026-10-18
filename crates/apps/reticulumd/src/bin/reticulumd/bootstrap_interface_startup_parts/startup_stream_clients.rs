@@ -1,5 +1,5 @@
 async fn startup_weave(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -20,7 +20,7 @@ async fn startup_weave(
         }
     };
 
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = adapter.preflight_open() {
             record_startup_failure(
                 record,
@@ -77,7 +77,7 @@ fn weave_runtime_metadata_json(
 
 #[allow(clippy::too_many_arguments)]
 async fn startup_tcp_client(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -99,7 +99,7 @@ async fn startup_tcp_client(
     };
 
     let endpoint = format!("{}:{}", host, port);
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = strict_tcp_client_preflight(endpoint.as_str()).await {
             record_startup_failure(
                 record,

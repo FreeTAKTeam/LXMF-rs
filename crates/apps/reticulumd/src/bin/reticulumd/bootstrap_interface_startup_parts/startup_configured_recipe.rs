@@ -8,7 +8,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
 ) where
     F: FnMut(&InterfaceConfig) -> Result<auto::AutoRuntimePlan, String>,
 {
-    let args = context.args;
+    let strict_interface_startup = context.strict_interface_startup;
     let selected_tcp_server = context.selected_tcp_server;
     let transport = context.transport;
     let iface_manager = context.iface_manager;
@@ -65,7 +65,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "local" if iface.shared_instance_type.as_deref() == Some("unix") => {
             match startup_local_unix(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 record,
@@ -89,7 +89,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "local_client" if iface.shared_instance_type.as_deref() == Some("unix") => {
             match startup_local_unix_client_attach(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 record,
@@ -110,7 +110,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         "local" => {
             if selected_tcp_server.local_attach_index == Some(index) {
                 if let Some(client_iface) = startup_local_tcp_attach(
-                    args,
+                    strict_interface_startup,
                     iface,
                     &label,
                     selected_tcp_server,
@@ -129,7 +129,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 && selected_tcp_server.selected_index != Some(index)
             {
                 match startup_synthetic_local_tcp_sidecar(
-                    args,
+                    strict_interface_startup,
                     iface,
                     &label,
                     record,
@@ -168,7 +168,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "local_client" => {
             if let Some(client_iface) = startup_local_tcp_client_attach(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 record,
@@ -185,7 +185,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "tcp_client" | "backbone_client" => {
             if let Some(client_iface) = startup_tcp_client(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 iface_manager,
@@ -208,7 +208,16 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
                 runtime_refreshes: udp_runtime_refreshes,
                 seeded_hot_apply_interfaces,
             };
-            if startup_udp(args, iface, &label, transport, iface_manager, record, &mut sinks).await
+            if startup_udp(
+                strict_interface_startup,
+                iface,
+                &label,
+                transport,
+                iface_manager,
+                record,
+                &mut sinks,
+            )
+            .await
             {
                 *startup_successes += 1;
                 native_root = udp_runtime_refreshes.last().map(|refresh| refresh.runtime_iface);
@@ -233,7 +242,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "serial" => {
             if startup_serial(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 iface_manager,
@@ -248,8 +257,15 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             }
         }
         "weave" => {
-            if let Some(refresh) =
-                startup_weave(args, iface, &label, iface_manager, record, startup_failures).await
+            if let Some(refresh) = startup_weave(
+                strict_interface_startup,
+                iface,
+                &label,
+                iface_manager,
+                record,
+                startup_failures,
+            )
+            .await
             {
                 *startup_successes += 1;
                 weave_control_bindings.push(WeaveControlBinding {
@@ -263,7 +279,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "kiss" | "ax25_kiss" => {
             if startup_kiss(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 iface_manager,
@@ -279,7 +295,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "kiss_tcp_client" => {
             if startup_kiss_tcp_client(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 iface_manager,
@@ -304,7 +320,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "i2p" => {
             if let Some(refresh) = startup_i2p(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 iface_manager,
@@ -376,8 +392,15 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
             }
         }
         "lora" => {
-            let started =
-                startup_lora(args, iface, &label, iface_manager, record, startup_failures).await;
+            let started = startup_lora(
+                strict_interface_startup,
+                iface,
+                &label,
+                iface_manager,
+                record,
+                startup_failures,
+            )
+            .await;
             if started.started {
                 *startup_successes += 1;
                 if let Some(refresh) = started.refresh {
@@ -391,7 +414,7 @@ async fn startup_configured_interface_with_auto_plan_builder<F>(
         }
         "rnode_multi" => {
             if let Some(refresh) = startup_rnode_multi(
-                args,
+                strict_interface_startup,
                 iface,
                 &label,
                 iface_manager,

@@ -1,5 +1,5 @@
 async fn startup_serial(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -21,7 +21,7 @@ async fn startup_serial(
         }
     };
 
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = adapter.preflight_open() {
             record_startup_failure(
                 record,
@@ -64,7 +64,7 @@ async fn startup_serial(
 }
 
 async fn startup_kiss(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -90,7 +90,7 @@ async fn startup_kiss(
         }
     };
 
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = adapter.preflight_open() {
             record_startup_failure(
                 record,
@@ -138,7 +138,7 @@ async fn startup_kiss(
 }
 
 async fn startup_kiss_tcp_client(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -160,7 +160,7 @@ async fn startup_kiss_tcp_client(
         }
     };
 
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = strict_tcp_client_preflight(adapter.addr()).await {
             record_startup_failure(
                 record,

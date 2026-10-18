@@ -72,6 +72,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Dispatcher preparation (locally verified) | Same initial behavior through one per-recipe dispatcher and existing typed batch | Existing configured-startup tests plus mixed ordered/disabled/failure characterization; preserve original indices, selected listener, Auto injection and all batch effects. Review/checkpoint before behavior changes |
 | Trusted root/effect retention (locally verified) | Every actual configured root enters the existing owner with original recipe identity and native effects | Native identical unnamed KISS roots reproduce the missing disable; collision, inactive/failed repair and original-slot controls pass. No caller metadata origin |
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration remains next |
+| Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration | Initial and restoration dispatch share constructor/defaults/context, including selected listeners | Disable → native release → restore exact authenticated traffic/status; retain failed readiness and no transient plaintext fallback |
 | Family composition | Qualify the finite twenty-row inventory using its applicable native/software backends | Managed streams/UDP/Pipe, PTY Serial/KISS, Auto/SAM, simulated radio/mesh, available BLE and shared-local cells; failed/degraded outcomes remain explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
@@ -141,3 +142,16 @@ There is no production delay, bind retry or authentication relaxation. Temporary
 process diagnostics are removed; logs and syscall traces remain under `/tmp` as
 recorded in PROGRESS.md. General trusted restoration and the twenty-family matrix
 remain open.
+
+The subsequent constructor preparation removes the CLI argument borrow from the
+per-recipe context and lower helpers. They receive only the existing strict
+preflight boolean; initial entry wrappers still translate Args without retaining
+it. The selected listener keeps its separate CLI-strict-or-config-panic policy.
+Its existing adapter module now owns the shared start function, including prepared
+policy, tuning, native shared-client classification, readiness and failed-record
+reporting. The manager guard ends before the readiness await. Failed readiness
+still retains the real root/status for cleanup; a missing selected recipe never
+falls back to unconfigured spawning. Three native contract cases pass before and
+after extraction; a fourth directly checks missing-recipe rejection and unrelated
+root preservation. Full all-feature daemon validation passes 31 library and 634
+binary tests. This is structural preparation for the next trusted restore task.

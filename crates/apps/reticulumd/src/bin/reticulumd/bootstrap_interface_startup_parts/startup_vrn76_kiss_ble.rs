@@ -110,7 +110,7 @@ struct LoraStartupResult {
 }
 
 async fn startup_lora(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -153,7 +153,7 @@ async fn startup_lora(
         };
         #[cfg(not(feature = "rnode-ble"))]
         {
-            let _ = (args, iface_manager);
+            let _ = (strict_interface_startup, iface_manager);
             let lora::RnodeBleDaemonConfig {
                 peripheral_id,
                 adapter,
@@ -260,7 +260,7 @@ async fn startup_lora(
         }
     };
 
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = adapter.preflight_open() {
             record_startup_failure(
                 record,

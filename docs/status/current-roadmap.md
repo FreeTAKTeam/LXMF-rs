@@ -126,9 +126,11 @@ Private occurrence bindings preserve duplicate/unnamed roots; one publication ti
 replaces detached refresh loops, controls retire with their native receivers, and
 cancelled shutdown awaits retain the original worker join. Tree retirement fences
 late children and still removes virtual routes after manager cleanup. Native
-controls and 31 library/630 binary daemon tests pass locally. Auto lifetime tests
+controls and 31 library/634 binary daemon tests pass locally. Auto lifetime tests
 retain their immediate exclusive-bind checks in isolated processes after a traced
-Pipe fork/exec interference control. General trusted restoration, remaining carrier
+Pipe fork/exec interference control. Per-recipe helpers now receive only their
+existing preflight flag, and selected listeners share one startup constructor
+while retaining their separate strict policy. General trusted restoration, remaining carrier
 lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

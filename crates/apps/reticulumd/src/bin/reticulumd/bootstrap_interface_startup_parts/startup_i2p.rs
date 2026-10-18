@@ -1,6 +1,6 @@
 #[allow(clippy::too_many_arguments)]
 async fn startup_i2p(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -25,7 +25,7 @@ async fn startup_i2p(
     }
     .with_transport_identity_hash(transport_identity_hash);
 
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = adapter.preflight_sam().await {
             record_startup_failure(
                 record,
@@ -39,20 +39,26 @@ async fn startup_i2p(
     }
 
     let peer_count = adapter.peers().len();
-    let i2p_metadata =
-        match i2p_runtime_metadata_json(args, &effective_iface, &adapter, peer_count).await {
-            Ok(metadata) => metadata,
-            Err(err) => {
-                record_startup_failure(
-                    record,
-                    startup_failures,
-                    label.to_string(),
-                    iface.kind.clone(),
-                    err,
-                );
-                return None;
-            }
-        };
+    let i2p_metadata = match i2p_runtime_metadata_json(
+        strict_interface_startup,
+        &effective_iface,
+        &adapter,
+        peer_count,
+    )
+    .await
+    {
+        Ok(metadata) => metadata,
+        Err(err) => {
+            record_startup_failure(
+                record,
+                startup_failures,
+                label.to_string(),
+                iface.kind.clone(),
+                err,
+            );
+            return None;
+        }
+    };
     let runtime_status = adapter.runtime_status_handle();
     let i2p_iface = record_prepared_spawn(
         spawn_configured(
@@ -94,7 +100,7 @@ fn i2p_config_with_storage_default(
 }
 
 async fn i2p_runtime_metadata_json(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     adapter: &rns_transport::iface::i2p::I2pInterface,
     peer_count: usize,
@@ -175,7 +181,7 @@ async fn i2p_runtime_metadata_json(
                         }
                     }
                 }
-                Ok(Err(err)) if args.strict_interface_startup => {
+                Ok(Err(err)) if strict_interface_startup => {
                     return Err(format!(
                         "i2p connectable destination preparation failed sam={} err={}",
                         adapter.sam_addr(),
@@ -188,7 +194,7 @@ async fn i2p_runtime_metadata_json(
                         serde_json::Value::String(err.to_string()),
                     );
                 }
-                Err(_) if args.strict_interface_startup => {
+                Err(_) if strict_interface_startup => {
                     return Err(format!(
                         "i2p connectable destination preparation timed out sam={}",
                         adapter.sam_addr()

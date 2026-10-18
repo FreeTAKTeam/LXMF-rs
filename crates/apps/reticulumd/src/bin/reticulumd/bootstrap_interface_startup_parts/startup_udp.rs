@@ -1,5 +1,5 @@
 async fn startup_udp(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     transport: &Transport,
@@ -21,7 +21,7 @@ async fn startup_udp(
         }
     };
 
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = udp::strict_preflight(bind_addr.as_str()).await {
             record_startup_failure(
                 record,

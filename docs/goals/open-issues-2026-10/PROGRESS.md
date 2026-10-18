@@ -1893,3 +1893,39 @@ validation only; terminal results and final-head review/CI/merge remain required
 - [BOOTSTRAP.md](BOOTSTRAP.md) now marks root/effect retention and publication/
   shutdown cutover locally verified. General trusted restoration, twenty-family
   composition, whole-item release/integration, one PR and hosted CI remain open.
+
+## Item 4 restoration constructor preparation
+
+- Checkpoint `184a895b6adc9c9112b8c8d038aec9570853a971` completed the reviewed
+  configured ownership/publication cutover above. This follow-up changes no
+  restoration behavior and retains the same numbered-item/PR boundary.
+- The per-recipe context and lower helpers now take only the existing strict
+  preflight boolean. The initial Args wrappers convert that one field; no CLI/RPC
+  credential or unrelated argument becomes retained context. Selected listener
+  strictness remains CLI strict OR `panic_on_interface_error`, independently.
+- Existing TCP/Backbone/Local listener startup moves into its adapter module.
+  The seven-argument function reuses the same builder, prepared policy and
+  original recipe/record; it retains labels, counts, strict readiness, status,
+  configured rejection, override behavior and native shared-client semantics.
+  Its manager guard is released before waiting for readiness. Failed bind
+  readiness still retains the native root/status; missing configuration for a
+  selected index never chooses unconfigured spawning.
+- Three native characterization cases pass before extraction in
+  `/tmp/lxmf-item4-startup-context-policy-baseline-native.log` and afterward in
+  `...-policy-after.log`: config-only strict occupied listener versus independent
+  non-listener preflight, policy rejection at the original record index, and
+  CLI override of a shadowed recipe. A bound but unlistened TCP socket keeps the
+  refused client endpoint reserved without a port-reservation race. Initial
+  fixture failures omitted explicit enable flags and used a forbidden enabled
+  client port zero; their earlier logs remain and are not production reds.
+- A fourth direct helper control verifies missing-recipe rejection and an
+  unrelated native channel. Full all-feature daemon validation passes 31 library
+  and 634 binary tests in `...-daemon.log` (30.32 seconds for binary tests).
+  Affected all-target/all-feature Clippy, default daemon check, Cargo and changed
+  include formatting, boundaries, module size, architecture, diagnostics scanner,
+  task links and diff checks pass. Both independent POST reviews approve the
+  structural preparation. Gate logs use the same `/tmp/lxmf-item4-startup-context-`
+  prefix with `clippy`, `default-check`, `fmt`, `includes-docs`, `boundaries`,
+  `size`, `architecture` and `diagnostics` suffixes.
+  General trusted restoration, immutable context retention, reconnect worker
+  joining and finite family composition remain subsequent work.

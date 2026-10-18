@@ -1,6 +1,6 @@
 #[allow(clippy::too_many_arguments)]
 async fn startup_local_tcp_attach(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     selected_tcp_server: &TcpServerSelection,
@@ -21,7 +21,7 @@ async fn startup_local_tcp_attach(
     };
 
     startup_local_tcp_attach_endpoint(
-        args,
+        strict_interface_startup,
         iface,
         label,
         endpoint,
@@ -34,7 +34,7 @@ async fn startup_local_tcp_attach(
 }
 
 async fn startup_local_tcp_client_attach(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     record: &mut InterfaceRecord,
@@ -54,7 +54,7 @@ async fn startup_local_tcp_client_attach(
     };
     let endpoint = format!("{}:{}", host, port);
     startup_local_tcp_attach_endpoint(
-        args,
+        strict_interface_startup,
         iface,
         label,
         endpoint.as_str(),
@@ -68,7 +68,7 @@ async fn startup_local_tcp_client_attach(
 
 #[allow(clippy::too_many_arguments)]
 async fn startup_local_tcp_attach_endpoint(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     endpoint: &str,
@@ -78,7 +78,7 @@ async fn startup_local_tcp_attach_endpoint(
     transport: &Transport,
 ) -> Option<AddressHash> {
     let iface_manager = &transport.iface_manager();
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = strict_tcp_client_preflight(endpoint).await {
             record_startup_failure(
                 record,
@@ -115,7 +115,7 @@ async fn startup_local_tcp_attach_endpoint(
 
 #[cfg(unix)]
 async fn startup_local_unix_client_attach(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     record: &mut InterfaceRecord,
@@ -137,7 +137,7 @@ async fn startup_local_unix_client_attach(
     };
     let endpoint = rns_transport::iface::local::LocalUnixEndpoint::from_config_value(socket_path);
     startup_local_unix_attach(
-        args,
+        strict_interface_startup,
         iface,
         label,
         endpoint,
@@ -151,7 +151,7 @@ async fn startup_local_unix_client_attach(
 
 #[cfg(not(unix))]
 async fn startup_local_unix_client_attach(
-    _args: &Args,
+    _strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     record: &mut InterfaceRecord,

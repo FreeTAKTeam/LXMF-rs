@@ -1,5 +1,5 @@
 async fn startup_rnode_multi(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -20,7 +20,7 @@ async fn startup_rnode_multi(
             return None;
         }
     };
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = adapter.preflight_open() {
             record_startup_failure(
                 record,

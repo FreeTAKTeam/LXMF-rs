@@ -1,5 +1,5 @@
 struct ConfiguredStartupContext<'a> {
-    args: &'a Args,
+    strict_interface_startup: bool,
     selected_tcp_server: &'a TcpServerSelection,
     transport: &'a Transport,
     iface_manager: &'a Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -27,7 +27,7 @@ where
     F: FnMut(&InterfaceConfig) -> Result<auto::AutoRuntimePlan, String>,
 {
     let context = ConfiguredStartupContext {
-        args,
+        strict_interface_startup: args.strict_interface_startup,
         selected_tcp_server,
         transport,
         iface_manager,

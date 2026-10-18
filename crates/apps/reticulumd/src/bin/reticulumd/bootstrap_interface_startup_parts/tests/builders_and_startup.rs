@@ -339,7 +339,7 @@ async fn udp_startup_tags_multicast_config_as_multicast_role() {
     };
 
     let started = startup_udp(
-        &args,
+        args.strict_interface_startup,
         &iface,
         "auto-style-multicast",
         &transport,
@@ -409,9 +409,16 @@ async fn udp_startup_seeds_unicast_config_for_hot_apply() {
         seeded_hot_apply_interfaces: &mut seeded_hot_apply_interfaces,
     };
 
-    let started =
-        startup_udp(&args, &iface, "udp-loopback", &transport, &manager, &mut record, &mut sinks)
-            .await;
+    let started = startup_udp(
+        args.strict_interface_startup,
+        &iface,
+        "udp-loopback",
+        &transport,
+        &manager,
+        &mut record,
+        &mut sinks,
+    )
+    .await;
 
     assert!(started);
     assert!(startup_failures.is_empty());
@@ -534,7 +541,7 @@ interfaces = [
     let mut serial_runtime_refreshes = Vec::new();
 
     let started = startup_serial(
-        &args,
+        args.strict_interface_startup,
         iface,
         "serial-main",
         &manager,
@@ -597,7 +604,7 @@ interfaces = [
     let mut kiss_runtime_refreshes = Vec::new();
 
     let started = startup_kiss(
-        &args,
+        args.strict_interface_startup,
         iface,
         "ax25-main",
         &manager,
@@ -661,7 +668,7 @@ interfaces = [
     let mut kiss_runtime_refreshes = Vec::new();
 
     let started = startup_kiss_tcp_client(
-        &args,
+        args.strict_interface_startup,
         iface,
         "kiss-wifi",
         &manager,

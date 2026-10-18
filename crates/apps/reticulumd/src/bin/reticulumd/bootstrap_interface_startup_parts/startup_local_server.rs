@@ -13,7 +13,7 @@ enum LocalTcpSidecarStartup {
 
 #[allow(clippy::too_many_arguments)]
 async fn startup_synthetic_local_tcp_sidecar(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     record: &mut InterfaceRecord,
@@ -49,7 +49,7 @@ async fn startup_synthetic_local_tcp_sidecar(
     let bind_addr = tcp_bind_addr(host.as_str(), port);
     if tcp_bind_addr_is_in_use(&bind_addr) {
         if let Some(client_iface) = startup_local_tcp_attach_endpoint(
-            args,
+            strict_interface_startup,
             iface,
             label,
             bind_addr.as_str(),
@@ -99,7 +99,7 @@ async fn startup_synthetic_local_tcp_sidecar(
 
 #[cfg(unix)]
 async fn startup_local_unix(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     record: &mut InterfaceRecord,
@@ -126,7 +126,7 @@ async fn startup_local_unix(
         Ok(()) => {}
         Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
             return startup_local_unix_attach(
-                args,
+                strict_interface_startup,
                 iface,
                 label,
                 endpoint,
@@ -192,7 +192,7 @@ async fn startup_local_unix(
 #[cfg(unix)]
 #[allow(clippy::too_many_arguments)]
 async fn startup_local_unix_attach(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     endpoint: rns_transport::iface::local::LocalUnixEndpoint,
@@ -202,7 +202,7 @@ async fn startup_local_unix_attach(
     transport: &Transport,
 ) -> LocalUnixStartup {
     let iface_manager = &transport.iface_manager();
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = rns_transport::iface::local::preflight_unix_connect(&endpoint).await {
             record_startup_failure(
                 record,
@@ -251,7 +251,7 @@ async fn startup_local_unix_attach(
 
 #[cfg(not(unix))]
 async fn startup_local_unix(
-    _args: &Args,
+    _strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     record: &mut InterfaceRecord,

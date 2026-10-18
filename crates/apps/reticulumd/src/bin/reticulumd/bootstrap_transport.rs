@@ -8,6 +8,9 @@ mod interface_startup;
 pub(crate) use interface_startup::build_tcp_client_adapter;
 #[path = "bootstrap_transport_path_restore.rs"]
 mod path_restore;
+#[cfg(test)]
+#[path = "bootstrap_transport_policy_tests.rs"]
+mod policy_tests;
 #[path = "bootstrap_transport_reconnect_synthesizer.rs"]
 mod reconnect_synthesizer;
 #[path = "bootstrap_transport_tcp_server_adapter.rs"]
@@ -46,15 +49,14 @@ use rns_core::identity::PrivateIdentity;
 use rns_rpc::{InterfaceRecord, ProbeReceiptRegistry};
 use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
-use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::transport::{
     InboundQueueLimits, RestoredReticulumPathIdentity, Transport, TransportConfig,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tcp_server_adapter::build_selected_tcp_server_adapter;
+use tcp_server_adapter::startup_selected_tcp_server;
 #[cfg(test)]
-use tcp_server_adapter::selected_fast_flap_policy;
+use tcp_server_adapter::{build_selected_tcp_server_adapter, selected_fast_flap_policy};
 
 const STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY: usize = 32;
 
@@ -177,98 +179,31 @@ pub(super) async fn start_transport_and_interfaces(
         let iface_manager = transport_instance.iface_manager();
         let (stream_reconnect_tx, stream_reconnect_rx) =
             tokio::sync::mpsc::channel::<AddressHash>(STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY);
-        let mut server_iface = None;
-        if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
-            let server = build_selected_tcp_server_adapter(
-                addr.clone(),
-                iface_manager.clone(),
-                &selected_tcp_server,
-            );
-            let (server, startup_result) = if tcp_startup::strict_startup(args, daemon_config) {
-                let (server, result) = server.with_startup_result();
-                (server, Some(result))
-            } else {
-                (server, None)
-            };
-            let runtime_status = server.runtime_status_handle();
-            let started = {
-                let mut manager = iface_manager.lock().await;
-                match selected_tcp_server.selected_index {
-                    Some(index) => {
-                        match daemon_config.and_then(|config| config.interfaces.get(index)) {
-                            Some(iface) => crate::interfaces::common::spawn_configured(
-                                &mut manager,
-                                server,
-                                TcpServer::spawn,
-                                rns_transport::iface::IfaceRole::Unicast,
-                                iface,
-                            ),
-                            None => Err(rns_transport::error::RnsError::InvalidArgument),
-                        }
-                    }
-                    None => Ok(manager.spawn(server, TcpServer::spawn)),
-                }
-            };
-            match started {
-                Ok(active_iface) => {
-                    log::info!(
-                        "[daemon] {} enabled iface={} bind={}",
-                        selected_tcp_server.kind,
-                        active_iface,
-                        addr
-                    );
-                    if let Some(startup_result) = startup_result {
-                        let label = selected_tcp_server
-                            .selected_index
-                            .and_then(|index| {
-                                daemon_config?
-                                    .interfaces
-                                    .get(index)
-                                    .map(|iface| interface_label(iface, index))
-                            })
-                            .unwrap_or_else(|| selected_tcp_server.kind.clone());
-                        tcp_startup::record_initial_bind_result(
-                            startup_result.await,
-                            label,
-                            selected_tcp_server.kind.clone(),
-                            &mut startup_successes,
-                            &mut startup_failures,
-                        );
-                    } else {
-                        startup_successes += 1;
-                    }
-                    server_iface = Some(active_iface);
-                    tcp_runtime_refreshes.push(TcpRuntimeRefresh {
-                        runtime_iface: active_iface,
-                        status: TcpRuntimeStatusSource::Listener(runtime_status),
-                    });
-                }
-                Err(error) => {
-                    let error = format!("interface runtime policy could not be installed: {error}");
-                    let label = selected_tcp_server
-                        .selected_index
-                        .and_then(|index| {
-                            daemon_config?
-                                .interfaces
-                                .get(index)
-                                .map(|iface| interface_label(iface, index))
-                        })
-                        .unwrap_or_else(|| selected_tcp_server.kind.clone());
-                    log::error!("[daemon] interface startup rejected name={label} err={error}");
-                    if let Some(record) = selected_tcp_server
-                        .selected_index
-                        .and_then(|index| configured_interfaces.get_mut(index))
-                    {
-                        mark_interface_startup_status(record, "failed", Some(&error), None);
-                    }
-                    startup_failures.push(InterfaceStartupFailure {
-                        label,
-                        kind: selected_tcp_server.kind.clone(),
-                        error,
-                    });
-                }
-            }
-        }
+        let selected_recipe = selected_tcp_server
+            .selected_index
+            .and_then(|index| daemon_config?.interfaces.get(index));
+        let selected_record = selected_tcp_server
+            .selected_index
+            .and_then(|index| configured_interfaces.get_mut(index));
+        let server_iface = if let Some((address, status)) = startup_selected_tcp_server(
+            &selected_tcp_server,
+            selected_recipe,
+            &iface_manager,
+            tcp_startup::strict_startup(args, daemon_config),
+            selected_record,
+            &mut startup_successes,
+            &mut startup_failures,
+        )
+        .await
+        {
+            tcp_runtime_refreshes.push(TcpRuntimeRefresh {
+                runtime_iface: address,
+                status: TcpRuntimeStatusSource::Listener(status),
+            });
+            Some(address)
+        } else {
+            None
+        };
 
         if let Some(config) = daemon_config {
             let mut transport_identity_hash = [0_u8; 16];

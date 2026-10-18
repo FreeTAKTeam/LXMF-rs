@@ -149,7 +149,7 @@ interfaces = [
     let args = test_args();
 
     let started = startup_rnode_multi(
-        &args,
+        args.strict_interface_startup,
         iface,
         "rnode-multi",
         &manager,
@@ -279,9 +279,15 @@ interfaces = [
     };
     let mut startup_failures = Vec::new();
 
-    let started =
-        startup_weave(&args, iface, "weave-main", &manager, &mut record, &mut startup_failures)
-            .await;
+    let started = startup_weave(
+        args.strict_interface_startup,
+        iface,
+        "weave-main",
+        &manager,
+        &mut record,
+        &mut startup_failures,
+    )
+    .await;
 
     let refresh = started.expect("weave should start");
     assert!(startup_failures.is_empty());
@@ -337,7 +343,7 @@ interfaces = [
     let mut startup_failures = Vec::new();
 
     let started = startup_i2p(
-        &args,
+        args.strict_interface_startup,
         iface,
         "i2p-main",
         &manager,
@@ -416,7 +422,7 @@ interfaces = [
     let mut startup_failures = Vec::new();
 
     let started = startup_i2p(
-        &args,
+        args.strict_interface_startup,
         iface,
         "i2p-main",
         &manager,
@@ -487,7 +493,7 @@ interfaces = [
     let mut startup_failures = Vec::new();
 
     let started = startup_i2p(
-        &args,
+        args.strict_interface_startup,
         iface,
         "i2p-main",
         &manager,
@@ -581,7 +587,7 @@ interfaces = [
     let mut startup_failures = Vec::new();
 
     let started = startup_i2p(
-        &args,
+        args.strict_interface_startup,
         iface,
         "i2p-main",
         &manager,
@@ -655,7 +661,7 @@ async fn strict_i2p_startup_records_fake_sam_handshake_rejection_without_spawnin
     args.strict_interface_startup = true;
 
     let started = startup_i2p(
-        &args,
+        args.strict_interface_startup,
         iface,
         "i2p-rejected",
         &manager,
