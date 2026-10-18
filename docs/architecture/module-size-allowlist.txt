@@ -32,7 +32,6 @@ crates/libs/rns-transport/src/iface/kiss_parts/module_prelude.rs
 crates/libs/rns-transport/src/iface/lora_parts/rnoderadiostatus.rs
 crates/libs/rns-transport/src/iface/rnode_ble_parts/module_prelude.rs
 crates/libs/rns-transport/src/iface/rnode_ble_parts/rnode_peripheral_matches.rs
-crates/libs/rns-transport/src/iface/rnode_multi.rs
 crates/libs/rns-transport/src/iface/serial_parts/module_prelude.rs
 crates/libs/rns-transport/src/iface/serial_parts/run_serial_stream.rs
 crates/libs/rns-transport/src/iface/tcp_client.rs

@@ -1012,6 +1012,44 @@ files. This completes the fourteenth declared software family row. Six families,
 whole-item integration/release checks, one PR, hosted CI and merge remain open;
 no hardware/Bluetooth scan/RF/public-network evidence is inferred.
 
+### RNodeMulti software family preparation
+
+LoRa/RNode checkpoint `040e4e9f` qualifies fourteen rows; six remain. Next is
+RNodeMulti's existing serial/TCP parent and configured vport children. Reuse the
+prepared Multicast dispatcher, unique native/mutation owner, typed status and
+RNode control bindings. Children are created once from configured vports before
+opening and survive reconnects; there is no dynamic child-learning API to add.
+IFAC remains eight bytes, native parent/child MTU 508, baud 115200, firmware 1.74,
+startup probe 1.5 seconds and failed-open retry 5 seconds. The specific pinned
+Python file's 1.5.5 delta adds descriptor closure in detach; preserve that target.
+
+| Task | Main-agent owner/files | Evidence and boundary |
+| --- | --- | --- |
+| Mechanical size preparation | Existing `iface/rnode_multi.rs` becomes private same-namespace includes: prelude, interface/supervisor, status/probe, stream and stream helpers; existing tests move under `rnode_multi_parts/tests` | First focused native 21-test baseline and daemon RNodeMulti controls, then exact expanded-body comparison and same tests after extraction. Keep public paths/test names, adjust only the moved IFAC-test include path, remove only the obsolete root allowance. Regular modules stay below 500/test files below 1200; no new exception or behavior change. PRE/structural POST/checkpoint precede behavior |
+| Native liveness and retained failure | Existing supervisor and shared parent/child online state | Genuine missing serial/refused TCP cases must expose false manager liveness before correction. Closed-stream/probe failure must retain its failure and existing retry 5 seconds rather than immediate reopen; existing independent stops still join. No new timer/option, and no stalled TCP-connect syscall proof is inferred from a refused endpoint |
+| Native live child policy | Existing manager child entries and vport fanout | Broadcast and ID-beacon controls must expose copied recipe outgoing flags bypassing live child policy. Use the existing manager's current policy at native admission; preserve direct vport isolation, parent controls and shared IFAC rotation. No second policy store or dispatcher |
+| Native pressure and startup boundary | Existing single stream/probe owner | Declare held receive queue and probe/init/data/control/ID/shutdown write/flush cases before their first run; actual Pending barriers, cancellation/join/EOF and no tail bytes or false admission. Preserve normal ready shutdown and initial/probe error semantics. A coalesced valid final probe reply plus authenticated first ingress must be delivered once instead of discarded |
+| Configured serial and TCP composition | Existing configured dispatcher, shared owned PTY/loopback helpers, vport/status/control/mutation owners | Exactly two traces cover safe strict failure, permissive error/repair, complete sparse-vport probe, both authenticated vports, live parent IFAC and child policy rotation, same-root/child reconnect, actual management bytes, unrelated TCP and joined descriptor/tree/control cleanup. Changed identity/key/MTU/vport-set restart proves fresh configured children and rejects retired vport controls. Configured MTU tests use 508 then1024; the pre-existing below 256 clamp remains outside this lifecycle change and no new minimum policy is inferred |
+
+The first structural pass changes no protocol, option layout, retry/read timeout,
+platform backend, owner count or qualification. Behavioral test counts/barriers
+and allowed files will be refined before their first red after structural POST.
+Main implements; explorer/PRE/correctness/maintainability roles stay read-only.
+No physical serial/Bluetooth/RF/public-network operation or item 5 work is allowed.
+Whole-item integration/release checks, one PR, hosted CI and merge remain open.
+
+The structural checkpoint now passes both independent POST reviews. Root and
+all private includes fit the active size limits; only the obsolete root allowance
+is removed. Derive placement moves with stream options and the original test
+namespace/public paths remain intact. Initial whitespace-only comparison finds
+two optional call commas changed by test-body formatting; canonical whole-module
+expansion is byte-identical and independently reproduced. Focused before/after
+native 21/21 and daemon 11/11 controls, affected Clippy and structural gates pass;
+the daemon library filter selects zero and provides no test acceptance. Exact
+commands/results and the comparison diagnostic are retained in PROGRESS.md.
+This is mechanical preparation only: fourteen rows remain qualified, with no
+RNodeMulti behavior or family promotion yet.
+
 ### Raw IFAC type preparation for UDP composition
 
 Checkpoint `c5ee78f50a3e8f13c5a1f0e3537f6d4702558694` records the reviewed

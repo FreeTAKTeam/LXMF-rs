@@ -2240,6 +2240,42 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 RNodeMulti mechanical preparation
+
+- LoRa/RNode checkpoint `040e4e9f` qualifies fourteen software rows; six remain.
+  Read-only exploration maps RNodeMulti to its existing prepared Multicast
+  parent, once-configured virtual vports, native stream/probe supervisor and
+  mutation/status/control owners. TRANSPORT.md records candidate lifecycle
+  gaps and fences; later behavioral cases still require refined PRE and reds.
+- Both PRE roles approve same-namespace private includes. Correctness review
+  catches derive placement at original line 449, which moves with stream options.
+  The 2,323-line module becomes root 14, prelude 84, interface 362, status/probe 452,
+  stream 292 and helpers 281 lines; unchanged tests move to an 819-line nested
+  test file. Public paths/test names and the original test-module wrapper stay;
+  only the moved IFAC include path and obsolete root allowance change.
+- The first whitespace-only expanded-source comparison fails because Rustfmt
+  removes two optional function-call trailing commas after test-body dedentation.
+  `/tmp/lxmf-item4-rnode-multi-structure-comparison-initial.log` records that
+  diagnostic. Formatting each whole expanded old/new module produces byte-identical
+  source, SHA256 `3683522b67b2025ea84fc4a34dba5cc28566eff3802bef6c0853966bae611d7b`,
+  in `...-structure-comparison.log`. No production correction is needed. Both
+  structural POST roles independently reproduce this comparison and approve.
+- Before/after native RNodeMulti tests pass 21/21 in 0.25 seconds; daemon filter
+  passes 11/11 binary controls in 0.02 seconds, while its library filter selects
+  zero. Logs are `/tmp/lxmf-item4-rnode-multi-{native,daemon}-{baseline,structure}.log`.
+  Affected all-target/all-feature Clippy, architecture, boundaries, size,
+  explicit seven-file formatting and diff pass in
+  `...-structure-{clippy,architecture,boundaries,size,fmt,diff}.log`.
+- No behavior, public option layout, policy, native timing, platform backend or
+  qualification changes. The pre-existing below 256 MTU clamp is retained;
+  lifecycle restart tests will use valid 508/1024. Candidate false liveness,
+  uncancellable operations, lost startup data and stale live fanout policy still
+  require regression proof and the existing-owner correction. No hardware/RF
+  or whole-item completion is inferred; one item 4 PR/hosted CI/merge remains open.
+
+Commands: `cargo test -p reticulum-rs-transport --lib iface::rnode_multi::tests`
+and `cargo test -p reticulumd --lib --bin reticulumd rnode_multi` before/after.
+
 ## Item 4 configured LoRa/RNode family qualification
 
 - Generic bearer checkpoint `c5321b21` completes the preceding native admission
