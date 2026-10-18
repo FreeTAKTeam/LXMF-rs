@@ -724,3 +724,43 @@ GitHub confirmed the squash merge at 2026-10-17T20:22:59Z; fetched main contains
   binary Clippy, formatting, boundaries, architecture and module-size checks pass.
   Logs: `/tmp/lxmf-item3-link-acquire-{red,green,transport,bridge,owner,quality,clippy,architecture,boundaries,size}.log`.
   This is local validation only; item 3 still has no PR or hosted CI result.
+
+
+### Item 3 propagation cache lifecycle
+
+- Removed the daemon cache's 25-second expiry and its unconditional transport
+  reset on a miss. All non-Closed native statuses remain reusable, including
+  Stale. Empty or mismatched selection hints delegate to atomic `Transport::link`
+  and cannot independently close a shared propagation Link or remove its Resource
+  state. Removed the displaced age field/constant rather than retaining stale
+  lifecycle metadata. Explicit reset and native closure retain their authority.
+- Two regressions fail against the preceding implementation at the intended
+  exact-Link preservation assertions. The Resource regression establishes a real
+  Link through two Rust Transport ingress paths, holds the first Resource in
+  flight across both empty and mismatched cache cases, starts a second distinct
+  payload, and checks actual recipient bytes plus correlated sender completion
+  proofs. No replacement Link request or failed/cancelled Resource is accepted.
+- The lifetime regression waits 26 real seconds because the displaced cache used
+  `std::time::Instant`. The native establishment allowance is 90 seconds; the
+  pending Link remains cached beyond the former grace and is replaced only after
+  explicit native close. This is not an automatic watchdog-expiry test. Resource
+  payloads are raw bytes, not LXMF envelopes for different final recipients.
+- POST review identified that same-Arc reacquisition alone could hide expired
+  cache state because Transport would reuse that Link anyway. Added a direct
+  cache-retention assertion before reacquisition and an isolated counterfactual
+  restoring only the old grace while leaving destructive reset removed.
+- The cache is explicitly a selection hint, not a lifetime lease. A concurrent
+  explicit reset may retire a returned Arc; the retained owner must observe exact
+  native state before dispatch. The forthcoming Link owner, continuous attempts,
+  activation waits, method-aware Resource recovery, SDK/ZeroMQ and mixed-reference
+  acceptance remain in scope and incomplete.
+- Validation: the isolated grace counterfactual fails at the direct cache
+  assertion with destructive reset still removed. After restoring the fix, all
+  101 bridge-owner tests pass, as do three legacy propagation-cache tests, the
+  issue-369 scanner, all-feature daemon library/binary Clippy, formatting,
+  boundaries, architecture and module-size checks. Logs:
+  `/tmp/lxmf-item3-propagation-cache-{red,grace-red,green,owner,legacy,quality,clippy,architecture,boundaries,size}.log`.
+- Correctness review accepts the final assertion/correlation changes. POST review
+  found no production blocker and its cache-policy evidence correction is fixed
+  and proven. The next retained-driver PRE boundary is recorded in LINK-OWNER.md.
+  This is local validation toward item 3, with no PR/hosted CI/completion claim.

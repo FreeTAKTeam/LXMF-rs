@@ -8,7 +8,7 @@ use rns_transport::identity::Identity;
 use rns_transport::packet::PacketContext;
 use rns_transport::transport::Transport;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(super) const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
 /// `LXMRouter.PROPAGATION_COST`: the cost to mine when the relay's announced
@@ -17,7 +17,6 @@ pub(super) const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
 /// the sender's target, and a relay run with no flexibility accepts nothing
 /// below its own cost.
 pub(crate) const DEFAULT_PROPAGATION_STAMP_COST: u32 = lxmf::stamp::DEFAULT_PROPAGATION_STAMP_COST;
-const PROPAGATION_LINK_ACTIVATION_GRACE: Duration = Duration::from_secs(25);
 
 pub(super) struct PropagationPayload {
     pub(super) bytes: Vec<u8>,
@@ -29,7 +28,6 @@ pub(super) struct PropagationPayload {
 pub(super) struct CachedPropagationLink {
     pub(super) node_hex: String,
     pub(super) link: Arc<tokio::sync::Mutex<Link>>,
-    pub(super) created_at: Instant,
 }
 
 pub(super) fn build_propagation_payload_until_cancelled(
@@ -61,6 +59,8 @@ pub(super) fn build_propagation_payload_until_cancelled(
     Ok(PropagationPayload { bytes, transient_id, stamp_value })
 }
 
+/// A selection hint, not a lifetime lease. Native Link state governs reuse;
+/// callers must still observe that exact Link before dispatch.
 pub(super) async fn cached_propagation_link(
     state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     node_hex: &str,
@@ -74,10 +74,7 @@ pub(super) async fn cached_propagation_link(
     }
 
     let status = cached.link.lock().await.status();
-    if status == LinkStatus::Active
-        || (status.not_yet_active()
-            && cached.created_at.elapsed() <= PROPAGATION_LINK_ACTIVATION_GRACE)
-    {
+    if status != LinkStatus::Closed {
         return Some(cached.link);
     }
 
@@ -95,14 +92,10 @@ pub(super) async fn propagation_link_for_node(
         return link;
     }
 
-    transport.reset_out_link(&destination.address_hash).await;
+    // A cache miss must not tear down Transport-owned Links or their Resources.
     let link = transport.link(destination).await;
     let mut guard = state.lock().await;
-    *guard = Some(CachedPropagationLink {
-        node_hex: node_hex.to_string(),
-        link: link.clone(),
-        created_at: Instant::now(),
-    });
+    *guard = Some(CachedPropagationLink { node_hex: node_hex.to_string(), link: link.clone() });
     link
 }
 
@@ -145,3 +138,7 @@ pub(crate) async fn wait_for_propagation_signal(
 fn now_secs_f64() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
 }
+
+#[cfg(test)]
+#[path = "bridge_propagation_tests.rs"]
+mod tests;

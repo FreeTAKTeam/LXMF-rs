@@ -137,10 +137,37 @@ Five deterministic transport regressions cover absent/Closed concurrent creators
 restart during preparation, removed-entry reuse, and contention during restart.
 Four regressions failed against the preceding implementation before the fix.
 
-The daemon propagation cache's 25-second expiry and unconditional reset remain
-pending. Remove those next so native lifecycle state governs reuse, including
-Stale, and prove a cache miss cannot destroy an active Resource. The retained
-message Link context, continuous retry budget and transfer owner remain pending.
+The daemon propagation cache now retains every non-Closed Link, including Stale,
+and delegates misses to atomic Transport acquisition without resetting existing
+Links. Its age timestamp and 25-second grace are removed. The cache is a selection
+hint, not a lease; explicit reset may still close a returned handle. Two real Rust
+Transports preserve a pending Resource across empty/mismatched hints, then finish
+two distinct raw Resource payloads with recipient bytes and sender proof events.
+These are transport payloads, not final-recipient LXMF envelope acceptance.
+
+A real 26-second test directly checks cache retention beyond the former grace
+while the Link's native establishment allowance is 90 seconds, then verifies
+replacement after explicit close. This does not prove automatic watchdog expiry.
+The retained message Link context, continuous retry budget and transfer owner
+remain pending.
+
+## Next retained-driver boundary
+
+PRE review selects one retained Link driver for the generic non-SINGLE branch of
+`bridge_delivery_completion.rs`. Do not add an ID-only `AwaitLink` that re-enters
+`run_direct`/`run_propagated`: those methods reselect Links, and the existing
+`wait_for_identity` loop resets its own retry state. Replace those scheduler-owned
+paths together. Keep an exact Arc, target, effective mode and outbound-identify
+requirement beside the prepared payload, then borrow its mode-specific bytes.
+
+Reuse `Transport::delivery_link` before requiring Direct identity resolution;
+its outbound-first ordering also governs pending outbound versus inbound reuse.
+Local propagation custody bypasses Link acquisition. Active dispatch receives the
+retained context, performs no selection or 20-second wait, and returns typed packet
+or Resource identity to the same owner. Pending activation and transfer handoff
+must retain admission outside execution permits; neither may fall through the
+existing immediate-release branch. Preserve registration before dispatch and the
+observed Resource ownership boundary while replacing detached transfer monitors.
 
 ## Required acceptance
 

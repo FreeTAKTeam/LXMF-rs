@@ -47,8 +47,9 @@ LXMF 1.2.0 completion. A further 42 production-reference Link/Resource scenarios
 (226 snapshots) now define the remaining mode-specific retry and completion
 contract; they are controlled Python evidence, not Rust implementation acceptance.
 Transport acquisition now shares one published outbound Link across concurrent
-callers and preserves reset/restart races; daemon activation and transfer ownership
-remain pending. See the
+callers and preserves reset/restart races. Propagation cache misses preserve live
+Links and Resources, with native state governing cache lifetime; daemon activation
+and transfer ownership remain pending. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).
 
 ## RCH resource regressions: issues 663, 657 and 655
