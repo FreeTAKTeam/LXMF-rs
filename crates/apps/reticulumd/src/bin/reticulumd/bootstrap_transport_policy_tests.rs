@@ -35,6 +35,10 @@ mod serial_family;
 #[path = "tests/bootstrap_weave_family.rs"]
 mod weave_family;
 
+#[cfg(target_os = "linux")]
+#[path = "tests/bootstrap_lora_family.rs"]
+mod lora_family;
+
 #[path = "tests/bootstrap_i2p_family.rs"]
 mod i2p_family;
 

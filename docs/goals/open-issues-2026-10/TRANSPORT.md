@@ -70,7 +70,7 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-The first thirteen rows have the declared software lifecycle qualification below;
+The first fourteen rows have the declared software lifecycle qualification below;
 other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
@@ -88,7 +88,7 @@ other rows remain open. Record exact test names/results when qualified.
 | AutoInterface | Two configured Linux manual-binding traces qualify native activation failure/partial cleanup, sixteen-byte IFAC, old/new virtual-child key and non-IFAC policy inheritance, peer-isolated configured-port routing and changed-identity restart; two queue-pressure regressions qualify joined receive-owner shutdown | Locally qualified for these software traces; manual bindings do not prove OS adoption or multicast ingress. Whole-item integration/hosted CI remain pending |
 | Meshtastic | Configured unavailable-bearer failure, simulated multi-chunk native admission/status, live same-root key rotation, unrelated TCP and changed-identity/key restart; two blocked native queue regressions plus independent bearer IFAC controls | Locally qualified for these software traces; the daemon path requires simulation loopback. External device/RF and whole-item integration/hosted CI remain separate |
 | Weave | Configured Linux PTY failure/repair, independently verified signed handshake, sixteen-byte IFAC rejection/authentication, old/new child policy and isolated replies, same-root reconnect, actual remote-display wire commands and changed-identity/key/MTU restart; eight native policy/interrupted-owner/pressure regressions | Locally qualified for these software traces; physical devices/RF/public-network and whole-item integration/hosted CI remain separate |
-| LoRa / RNode serial, TCP and existing bearer paths | Authenticated stream/fake bearer and startup-monitor failures | Configured validation failure, reconnect/restart/status |
+| LoRa / RNode serial, TCP and existing bearer paths | Two configured Linux serial/TCP traces cover owned state/device/refusal/firmware failure and repair, complete independent probe/radio bytes, eight-byte IFAC rejection/authentication, live rotation, same-root recovery, actual RNode control output, changed-identity/key/native-MTU restart and unrelated traffic; native supervisor/KISS pressure and both software bearer kinds have focused regressions | Locally qualified for these software traces; retained status cannot preserve retired command admission. Physical carriers/Bluetooth/RF and whole-item integration/hosted CI remain separate |
 | RNodeMulti | Authenticated vport, parent removes children on shutdown | Active-vport rotation and failed/restarted configuration |
 | RNode BLE | Fake-backend native ingress/egress and startup/runtime recovery | Daemon status composition and active-child rotation |
 | Generic BLE GATT | Production codec calls and fake startup lifecycle | Available backend packet-loop failure/reconnect composition |
@@ -857,7 +857,7 @@ configured MTU. Pinned Python RNode confirms IFAC eight/hardware MTU 508.
 | Native supervisor retirement | Same LoRa open/connect/retry and stream/probe owner | After real failure has published its barrier, four long-backoff serial/TCP × global/interface-stop cases must fail a two-second join before selecting existing cancellation around connection/retry waits. Two active-stream controls cover the independent stop inputs and joined existing probe monitor. Preserve configured backoff values and native liveness timing |
 | Shared KISS pending operations | Existing generic KISS stream/I/O helpers used by LoRa and prior Serial/KISS families; new nested native tests | Nine held-pressure cases: full native RX, init write/flush, packet write/flush, management write/flush and shutdown write/flush. Ready-shutdown and initial-write-failure controls prove exact normal cleanup frames/counters and preserve the no-cleanup error path. Keep exact queues/peers blocked through cancellation, join/EOF, no false successful output/admission. Existing command/data notifications use `try_send` and are not invented blocking handoffs |
 | Generic bearer attempt | Existing `rnode_bearer_interface.rs` and status owner; private test module | For both existing bearer kinds, test full receive-queue cancellation and retained terminal offline status; caller-owned fake attempts cover opening/close failure, valid startup/authentication, live key rotation, read failure, exactly-once close and a fresh changed-key attempt. Keep bounded platform reads single-owner; no competing timeout/read or daemon backend invention |
-| Configured ordinary LoRa serial | Existing startup/state guard, shared PTY observer, prepared worker/mutation/control owner; new Linux family tests | Owned invalid state fails before native root/control while unrelated TCP passes. Repair only owned state; missing alias reports offline error, PTY publication repairs the same root. Exact probe/radio echoes precede validated status, eight-byte IFAC negatives/traffic, live rotation and observed management bytes. Alias removal/closure/republication proves same-root recovery; joined shutdown and new Transport identity/key/explicit MTU restart retain unrelated traffic |
+| Configured ordinary LoRa serial | Existing startup/state guard, shared PTY observer, prepared worker/mutation/control owner; new Linux family tests | Owned invalid state fails before native root/control while unrelated TCP passes. Repair only owned state; missing alias reports offline error, PTY publication repairs the same root. Exact probe/radio echoes precede matching radio-ready status, eight-byte IFAC negatives/traffic, live rotation and observed management bytes. Alias removal/closure/republication proves same-root recovery; joined shutdown and new Transport identity/key/explicit MTU restart retain unrelated traffic |
 | Configured Python RNode TCP | Same existing startup/native owner, owned bound unlistened socket | Actual refusal then listen on the same port; invalid startup response closes the first connection, valid replacement recovers the same root. Default MTU 508, IFAC rejection/authentication, live rotation, native EOF/reconnect, exact management output and changed-key/identity/MTU restart qualify this path. Avoid strict-preflight dummy-peer confusion |
 
 Do not alter public/exhaustive option structs or add workers, queues, a backend
@@ -971,8 +971,46 @@ contents, both stop inputs, authenticated eight-byte IFAC/rotation, read plus
 close error retention and fresh caller-created attempts provide software bearer
 proof without changing native read ownership or startup timing. Both source
 POST roles and focused gates pass; PROGRESS.md retains commands, logs and scopes.
-Only the two configured LoRa/RNode serial/TCP traces remain for this family;
-current qualification remains thirteen of twenty, with no physical claim.
+At that bearer checkpoint only the two configured LoRa/RNode serial/TCP traces
+remained for this family; qualification stayed thirteen of twenty, with no
+physical claim. Their subsequent acceptance is recorded below.
+
+The configured-trace PRE is approved by both read-only roles. Declare exactly
+two Linux cases: ordinary serial LoRa checks corrupt and explicitly uncertain
+owned state before repair, then missing alias/PTY repair/reopen; Python-profile
+RNode TCP checks a bound-unlistened owned socket, unsupported firmware and valid
+same-root recovery. Serial fixture retry is the existing 50/100 ms configuration;
+TCP explicitly uses 2500/2500 ms so a transient error spans the existing two-second
+record-publication cadence. Native startup/probe/silence defaults stay unchanged.
+Observe native failure or peer EOF before starting the three-second published
+status bound. Readiness requires complete matching probe/radio echoes, online
+state and authenticated traffic, not a nonexistent configured validation flag.
+Restart uses the consumed `max_payload_bytes=200` setting, changed identity/key,
+fresh probe/radio state and retired old controls before installing the next
+attempt. Packet/EOF bounds stay two seconds and owner shutdown ten; remove only
+the owned PTY alias before closing its master. These cases introduce no new API,
+worker, dispatcher, physical operation or family claim before acceptance.
+
+Both configured LoRa/RNode traces now pass. The first actual run fails 2/2 at
+retired native command admission: a public status handle pins the interface and
+its receiver after task completion. The existing supervisor now closes that
+receiver once at final exit, preserving it across reconnects and keeping status
+readable. Corrected traces pass2/2, then review-tightened final defaults pass2/2
+with complete probe readiness and bounded input writes. The earlier zero-test
+filter and both real runs remain in PROGRESS.md with exact scopes. Serial owns
+corrupt/uncertain state repair and PTY aliases; TCP owns its refusal/listener and
+unsupported-firmware repair. Both retain same-root IFAC rotation/reconnect,
+actual safe management bytes, unrelated traffic and changed-identity/key/effective
+MTU restart with fresh native state and retired controls.
+
+Both final source reviews and affected gates pass: default transport 1,060,
+transport all-feature 1,089 (twelve existing ignores each), default daemon 31/680,
+final separate all-feature daemon 31/681. Full default daemon precedes the
+fixture-only tightening, covered by final focused default 2/2; no combined package
+all-feature pass is claimed. Ninety local link targets resolve across eleven
+files. This completes the fourteenth declared software family row. Six families,
+whole-item integration/release checks, one PR, hosted CI and merge remain open;
+no hardware/Bluetooth scan/RF/public-network evidence is inferred.
 
 ### Raw IFAC type preparation for UDP composition
 

@@ -230,8 +230,16 @@ reuses cancellation for receive admission, publishes final offline state and
 retains cleanup errors beside the original failure. Six new cases for the two
 existing bearer kinds and five prior controls pass with independent source
 review and focused gates, while native read ownership and timing remain intact.
-Configured LoRa/RNode serial/TCP family traces still remain open.
-Thirteen of twenty declared software family rows are locally qualified. Remaining
+Two configured LoRa/RNode serial/TCP traces now cover owned state/device/refusal/
+firmware failure and repair, complete probe/radio echoes, exact IFAC traffic,
+live rotation/reconnect, actual management bytes and changed-identity/key/MTU
+restart with unrelated traffic. They expose retired command admission surviving
+a retained status handle; final supervisor exit now closes that existing receiver.
+Both final source reviews and affected gates pass. Default transport 1,060 and
+transport all-feature 1,089 retain twelve existing ignores; default daemon 31/680
+precedes fixture-only write-bound/probe-assertion tightening, covered by final
+focused default 2/2. Separate final all-feature daemon 31/681 passes.
+Fourteen of twenty declared software family rows are locally qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

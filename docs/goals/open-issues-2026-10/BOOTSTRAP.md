@@ -3,7 +3,7 @@
 This refines the remaining family gate in [TRANSPORT.md](TRANSPORT.md) after
 `a0772c1d`; it does not add another PR or change the numbered plan. The three
 discovery process cases and finite deeper relay matrix are already qualified.
-The first thirteen TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto/Meshtastic/Weave rows now have the declared
+The first fourteen TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto/Meshtastic/Weave/LoRa rows now have the declared
 software lifecycle evidence below. Other family rows and whole-item integration
 remain open.
 
@@ -76,7 +76,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
-| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first thirteen TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto/Meshtastic/Weave rows have the declared software trace qualification here and in TRANSPORT.md. Remaining radio, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
+| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first fourteen TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto/Meshtastic/Weave/LoRa rows have the declared software trace qualification here and in TRANSPORT.md. Remaining radio, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
 Implementation stays in the main agent. PRE, correctness and maintainability POST
@@ -492,7 +492,27 @@ bounded corrections, then pass. Existing root/control owners and explicit PTY
 EOF/child waits establish joined cleanup. Both final source POST reviews and
 affected gates pass; final focused configured default/all-feature runs pass 2/2.
 TRANSPORT.md and PROGRESS.md preserve exact scopes/results, fixture corrections
-and the unchanged five-second retry/unused backoff-knob boundary. Thirteen of
-twenty software rows now qualify locally; seven families and whole-item
-integration/one PR/hosted CI/merge remain open, with no physical/RF/public-network
-qualification.
+and the unchanged five-second retry/unused backoff-knob boundary. At that
+Weave checkpoint, thirteen of twenty software rows qualified locally; seven
+families and whole-item integration/one PR/hosted CI/merge remained open, with
+no physical/RF/public-network qualification.
+
+### LoRa/RNode software lifecycle composition
+
+Subsequent native supervisor, shared KISS pressure and both generic bearer-kind
+checkpoints precede two configured serial/TCP traces. Owned corrupt/uncertain
+state, missing serial device, TCP refusal and unsupported firmware fail safely
+before repair. Complete independent probe/radio bytes and matching replies,
+eight-byte IFAC negatives/exact traffic, live key rotation, same-root reconnect,
+actual safe RNode RPC output and changed-identity/key/MTU restart qualify the
+software lifecycle while preserving unrelated TCP.
+
+Retained public status handles exposed an additional retirement gap: they kept
+the interface's radio command receiver alive after its task joined. The existing
+supervisor now closes that receiver once at final exit, retaining reconnect
+behavior and readable historical status. First actual configured run fails 2/2;
+corrected and final review-tightened traces pass. Both final source reviews and
+affected default/separate all-feature gates pass with exact scopes in PROGRESS.md.
+Fourteen of twenty rows now qualify locally; six families and whole-item
+integration/one PR/hosted CI/merge remain open. PTY observers are explicitly
+closed and reaped; physical/Bluetooth/RF/public-network evidence is not claimed.

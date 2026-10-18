@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; thirteen of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P, Auto, simulated Meshtastic and Weave family traces qualify locally. Seven other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; fourteen of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P, Auto, simulated Meshtastic, Weave and LoRa/RNode family traces qualify locally. Six other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -2240,6 +2240,68 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 configured LoRa/RNode family qualification
+
+- Generic bearer checkpoint `c5321b21` completes the preceding native admission
+  and terminal-status proof. Both read-only PRE roles approve two configured
+  Linux traces with native timing retained. Ordinary serial uses existing
+  50/100 ms retry; TCP explicitly uses 2500/2500 ms so transient failures remain
+  visible to the existing two-second record publisher. Native failure/EOF is
+  the barrier before each three-second published-error check.
+- Serial rejects both corrupt and explicitly uncertain owned state before
+  allocating a LoRa root/status/control, while unrelated TCP traffic succeeds.
+  Removing only that owned state permits native recreation; an absent owned
+  alias publishes contextual offline failure. Raw PTY publication repairs the
+  same root. Exact independent probe/radio command bytes and complete matching
+  detect/firmware/platform/MCU/radio echoes establish radio-ready online status.
+  Eight-byte-default IFAC rejects wrong-key/plaintext, authenticates exact
+  ingress/egress, rotates at the same root and survives alias removal/master
+  closure/republication. Actual safe RNode RPC query bytes and replies are
+  observed on the PTY. Every observer has bounded EOF and successful child wait.
+- The Python-profile RNode TCP case uses an owned bound-unlistened socket for
+  actual refusal, then listens on that same endpoint. Unsupported firmware
+  causes native EOF and retained failure projection; valid reconnect repairs
+  the same root. Both paths prove exact authenticated traffic/live rotation,
+  existing control dispatch, native reconnect, unrelated TCP continuity and
+  joined shutdown. Full restart changes Transport identity/key and uses the
+  consumed `max_payload_bytes=200` setting, following native MTU220/508 defaults.
+  Fresh probe/radio state and policy are checked; retired status stays readable
+  and unchanged, while its old command receiver and RPC binding reject work.
+- `/tmp/lxmf-item4-lora-configured-initial.log` selected zero tests because the
+  module filter omitted `transport_startup`; it is only a collection diagnostic.
+  The corrected first `lora_family::` run is 0/2 in 12.08 seconds in
+  `...-configured-first-cases.log`: both reach post-recovery shutdown but retained
+  public status handles keep command admission alive. Closing the existing
+  receiver once after the final supervisor loop fixes that owner defect without
+  changing reconnects or adding a task/API. Corrected run passes 2/2 in 12.15
+  seconds (`...-configured-corrected.log`). Both source POST roles approve.
+- Correctness review tightens fixture-only input writes to their declared
+  two-second bound and includes platform/MCU in complete probe readiness.
+  Final focused default passes 2/2 in 14.14 seconds in
+  `...-configured-tight-default.log`; no native timing/bound change follows.
+  Literal KISS constants and probe/radio commands are checked against both
+  exact pinned `RNodeInterface.py` files in `...-configured-reference.log`.
+  These are software protocol observations; no physical/RF delivery is inferred.
+- Affected default transport passes 1,060 tests and transport all-feature 1,089,
+  each with twelve existing ignores, both in 10.35 seconds. Default daemon
+  passes 31 library/680 binary tests (36.01 seconds); that broad run precedes the
+  fixture-only tightening, covered by final focused default. Separate final
+  all-feature daemon passes 31/681 (36.58 seconds) with the tightened fixture.
+  Logs are `/tmp/lxmf-item4-lora-family-{transport-default,transport-all-features,daemon-default,daemon-all-features}.log`.
+- Affected all-target/all-feature Clippy, diagnostics #369 (1/1), architecture,
+  boundaries, size, explicit three-file formatting, diff and 90 local Markdown
+  link targets across 11 files pass in
+  `/tmp/lxmf-item4-lora-family-{clippy,diagnostics,architecture,boundaries,size,fmt,diff,links}.log`.
+  Together with the preceding supervisor/KISS/generic-bearer checkpoints, these
+  two configured traces qualify the fourteenth of twenty software family rows.
+  Six families plus whole-item integration, one PR, hosted CI and merge remain.
+
+Commands: `cargo test -p reticulumd --bin reticulumd lora_family::`; affected
+`cargo test -p reticulum-rs-transport --lib`, its `--all-features` variant,
+and separate `cargo test -p reticulumd --lib --bins`/`--all-features`.
+Clippy uses `-p reticulum-rs-transport -p reticulumd --all-targets --all-features --no-deps -- -D warnings`;
+existing diagnostic/architecture/boundary/size owners remain unchanged.
+
 ## Item 4 generic RNode bearer admission and terminal status checkpoint
 
 - Shared KISS checkpoint `e4b3347a` precedes this existing-owner change. Six
@@ -2277,8 +2339,8 @@ validation only; terminal results and final-head review/CI/merge remain required
   boundaries, size and explicit four-file formatting pass in
   `/tmp/lxmf-item4-lora-bearer-{clippy,diagnostics,architecture,boundaries,size,fmt}.log`.
   The two configured LoRa/RNode traces remain open; no family promotion follows
-  this checkpoint. Thirteen of twenty rows, seven families plus whole-item
-  integration, one PR, hosted CI and merge remain unchanged.
+  that checkpoint. At that point thirteen of twenty rows were qualified, with
+  seven families plus whole-item integration, one PR, hosted CI and merge open.
 
 ## Item 4 shared KISS pending-I/O retirement checkpoint
 
@@ -2314,7 +2376,7 @@ validation only; terminal results and final-head review/CI/merge remain required
   At that shared-KISS checkpoint, generic bearer and configured LoRa/RNode
   traces remained open; the later bearer checkpoint is recorded above. This native
   shared-owner checkpoint did not qualify that family row: totals
-  remain thirteen of twenty, seven families plus whole-item integration/one
+  stayed thirteen of twenty, seven families plus whole-item integration/one
   PR/hosted CI/merge outstanding. No physical/RF/public-network evidence.
 
 Commands: red `cargo test -p reticulum-rs-transport --lib kiss::pressure_tests`;
@@ -2359,7 +2421,7 @@ diagnostics/architecture/boundary/size owners are unchanged.
   `/tmp/lxmf-item4-lora-supervisor-{clippy,diagnostics,architecture,boundaries,size,fmt,diff}.log`.
   At this checkpoint, shared KISS pressure/cleanup, generic bearer and configured
   serial/TCP traces remained pending. It qualified neither pressured retirement nor
-  the LoRa/RNode family row; thirteen of twenty rows remain locally qualified,
+  the LoRa/RNode family row; thirteen of twenty rows were then locally qualified,
   with seven families and whole-item integration/hosted/merge gates open.
 
 Commands: focused red filters `lora::tests::supervisor`, `retry_backoff_stops`
@@ -2371,7 +2433,7 @@ the diagnostics command is `cargo test -p reticulumd --test code_quality_issue_3
 
 ## Item 4 LoRa/RNode software family preparation
 
-- Weave checkpoint `92627fa3` qualifies thirteen of twenty software rows.
+- At Weave checkpoint `92627fa3`, thirteen of twenty software rows were qualified.
   Read-only exploration maps the next LoRa/RNode row to the existing configured
   dispatcher/state guard, native serial/TCP/KISS supervisor, RNode status/control
   projection and caller-owned generic bearer. Defaults remain IFAC eight,

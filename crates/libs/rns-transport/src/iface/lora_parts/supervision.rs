@@ -176,6 +176,7 @@ impl LoraInterface {
 
         online.store(false, std::sync::atomic::Ordering::Release);
         mark_lora_link_offline(&context.inner);
+        management_frame_rx.lock().await.close();
         iface_stop.cancel();
     }
 }
