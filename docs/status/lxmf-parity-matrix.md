@@ -91,8 +91,11 @@ Rust row adapter passes all snapshots through the production admitted owner with
 controlled measurement/turn inputs, native proofs and durable completion. Reference missing-receipt/external-close SENDING
 stalls are characterized behavior, not successful recovery. Late-proof retention,
 monotonic committed terminals and the signal decoder depth budget are explicit
-Rust differences. Target/baseline mixed-peer traces, propagation announce exchange,
-callback-following SDK/ZeroMQ delivery and final-head review/CI remain required.
+Rust differences. A canonical public SDK/ZeroMQ client now survives two real
+missing-peer send failures and external notification error/panic, then delivers
+signed native content with coherent status, replay and one persisted terminal
+outcome per operation. Target/baseline mixed-peer traces, propagation announce
+exchange and final-head review/CI remain required.
 No parity row or reference baseline is promoted. See
 [LINK-OWNER.md](../goals/open-issues-2026-10/LINK-OWNER.md) and
 [PROGRESS.md](../goals/open-issues-2026-10/PROGRESS.md).

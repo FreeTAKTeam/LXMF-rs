@@ -43,11 +43,7 @@ async fn coordinated_shutdown_interrupts_another_native_operations_blocked_handl
         peer_link.decrypt(advertisement.data.as_slice(), &mut plain).expect("peer decrypts"),
     )
     .expect("native advertisement");
-    let hashes = advertisement
-        .hashmap
-        .chunks_exact(4)
-        .map(|chunk| chunk.try_into().expect("part hash"))
-        .collect::<Vec<_>>();
+    let hashes = advertisement.hashmap.as_chunks::<4>().0.to_vec();
     assert!(hashes.len() > 1, "several Resource responses must fill the queue");
     let filler =
         link.lock().await.data_packet(b"queue occupancy").expect("unrelated native packet");

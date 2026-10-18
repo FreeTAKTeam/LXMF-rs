@@ -49,6 +49,7 @@ rnode-ble = ["rns_transport/rnode-ble"]
 vrn76-kiss-ble = ["rns_transport/vrn76-kiss-ble"]
 
 [dev-dependencies]
+lxmf-sdk = { path = "../../libs/lxmf-sdk", version = "0.14.0", default-features = false, features = ["zmq-pipeline-backend"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 

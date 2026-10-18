@@ -43,8 +43,10 @@ until transport shutdown.
 
 Local all-feature transport and daemon binary suites pass. The 47 controlled
 Python Link/Resource scenarios (263 snapshots) now pass the production-owner row adapter;
-full target/baseline mixed-peer traces and successful SDK v2/ZeroMQ recovery also
-remain pending. These local results do not establish final-head CI or LXMF 1.2.0
+the public SDK/ZeroMQ recovery qualification passes two real failed sends,
+external callback error/panic and subsequent signed native delivery with coherent
+status/replay and persisted terminal outcomes. Full target/baseline mixed-peer
+traces remain pending. These local results do not establish final-head CI or LXMF 1.2.0
 completion. The [accumulated delta ledger](lxmf-1.2.0-delta.md) preserves file-export,
 source-blackhole and autonomous-peer gaps. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-target-work-issue-648-incomplete).

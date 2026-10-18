@@ -2783,6 +2783,7 @@ dependencies = [
  "hkdf",
  "if-addrs",
  "log",
+ "lxmf-sdk",
  "lxmf-wire",
  "meshchat-api",
  "rand_core 0.6.4",

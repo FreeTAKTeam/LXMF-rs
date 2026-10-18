@@ -7,7 +7,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | --- | --- | --- | --- |
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
-| 3. LXMF 1.2.0 | Draft PR; in progress | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); published checkpoint `a6886c29bbc25bdcac55a9f02a1105d72ba90616` | Integrated remote Link/Resource owner, 47-case/263-row adapter and 44 focused owner tests pass locally; mixed-reference and SDK acceptance remain pending. First published checkpoint has 20 passing checks and 1 deliberate skip; integrated driver remains local. No merge. |
+| 3. LXMF 1.2.0 | Draft PR; in progress | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); published checkpoint `57f3efb46c3a17dc1e9099d9a7a649693dce15da` | Integrated owner/adapter passes locally. Canonical SDK recovery now passes locally; target/baseline mixed-peer qualification is ongoing. Hosted quality found a new Clippy lint in one test, corrected locally; fresh exact-head checks remain required. No merge. |
 | 4. Transport and RNS 1.5.5 | Pending | — | — |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
@@ -1072,3 +1072,57 @@ validation only; terminal results and final-head review/CI/merge remain required
   passed. Logs use `/tmp/lxmf-item3-link-cutover-{daemon,library,packet-bridge,369,clippy,boundaries,size,architecture}.log`.
   The default-feature architecture build emitted the pre-existing unused BLE
   runtime-status helper warning; the all-feature Clippy gate remains clean.
+
+## Item 3 SDK and mixed-reference qualification (in progress)
+
+- Public `Client<ZmqPipelineBackendClient>` now exercises the canonical router,
+  production delivery owner, real native Transport peer and SQLite together.
+  Two unknown-peer sends exhaust the unchanged protocol retry policy. External
+  receipt notification returns an error, then panics; the same client subsequently
+  delivers exact signed content to the intended peer. SDK status/replay, one
+  persisted terminal result per operation, callback recovery, admission release
+  and joined shutdown pass. Log: `/tmp/lxmf-item3-sdk-recovery.log` (28.79 seconds).
+- The sink is enabled through public revision-checked `configure`: startup's
+  negotiation type does not carry `event_sink`. This qualification does not
+  claim startup-field propagation. Independent correctness POST approved the
+  real SDK/native boundary; its requested exact exhaustion-cause assertion is
+  included in the following validation refresh.
+- The matrix keeps baseline `727830ce` as its default and adds explicit immutable
+  `lxmf-1.2.0` selection at `c3ff2d6d`, with unchanged RNS `99de23c0`. Neither
+  reference dirtiness nor candidate dirtiness/revision checks can be bypassed.
+  Baseline/target mismatch and clean-worktree gates have focused regressions.
+- Live smoke checks now require native Resource delivery and typed propagation
+  custody, including method, peer, representation, proof hash and envelope size.
+  They retain exact Python stored-content assertions. Wire announce app data and
+  Rust ingestion metadata are captured separately in the two propagated lanes.
+  These harness changes are not yet mixed-peer PASS evidence.
+- Hosted head `57f3efb4` failed only quality/its aggregate CI gate: new Clippy
+  `chunks_exact_to_as_chunks` flagged the shutdown test. Use the MSRV-supported
+  `as_chunks::<4>().0.to_vec()` conversion. Independent interoperability passed;
+  Verify was still running at the last check. The corrected head needs all
+  applicable hosted checks again.
+- Development target runs now pass `resource_transfer` (16,549 signed wire bytes,
+  native `delivered` Resource receipt), `propagated_rust_to_python` (302-byte
+  native packet custody and retained `lxmd`/`1.2.0` metadata) and
+  `propagated_python_to_rust` (Python observes `reticulumd`/`0.14.0` on the wire).
+  Reports are under `target/interop/item3/development/`. These dirty-worktree
+  runs do not replace clean-commit baseline/target matrix evidence.
+- The first target Resource run correctly rejected 16 KB under upstream's new
+  1 KB default. Both reference lanes now explicitly configure the baseline's
+  1 MB receiving policy; the delta ledger preserves this default difference.
+  No production limit or reference file was changed. The unused Rust inbound
+  hook is disabled for this outbound-only lane, as in other Rust-to-Python lanes.
+- Read-only maintainability review found first-page-only SDK capture and route
+  readiness preceding metadata ingestion. Capture now follows cursors, retains
+  all pages and hard-fails on gaps/truncation/stream changes; exact announce and
+  target peer metadata have a deadline-bound readiness barrier. A Bash regression
+  rejects a newly observed gap even when an older aggregate already contains a
+  valid completion, including invocation under `if` where errexit is disabled.
+  All **16** focused Python evidence/profile tests pass.
+- The complete daemon binary suite now passes **574** tests in 36.69 seconds,
+  including the stricter real-exhaustion failure cause. Workspace all-target,
+  all-feature Clippy with `-D warnings` passes in 21.51 seconds. Logs:
+  `/tmp/lxmf-item3-sdk-daemon-full.log`,
+  `/tmp/lxmf-item3-workspace-clippy.log` and
+  `/tmp/lxmf-item3-reference-evidence-unit.log`. Full clean matrices, workspace
+  tests and exact-head hosted checks remain required.

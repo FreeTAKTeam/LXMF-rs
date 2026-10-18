@@ -208,3 +208,7 @@ mod delivery_paths;
 
 #[path = "bridge_delivery_wakeup.rs"]
 mod delivery_wakeup;
+
+#[cfg(all(test, feature = "zmq-pipeline-rpc"))]
+#[path = "bridge_sdk_recovery_tests.rs"]
+mod sdk_recovery_tests;
