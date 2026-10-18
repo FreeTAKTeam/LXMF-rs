@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(test)]
+#[path = "tests/hdlc_shutdown.rs"]
+mod shutdown_tests;
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_hdlc_stream_with_runtime_and_ifac<R, W>(
     label: String,
@@ -102,15 +106,20 @@ pub(crate) async fn run_hdlc_stream_with_runtime_and_ifac<R, W>(
                                                     packet.context as u8,
                                                     packet.header.hops
                                                 );
-                                                if rx_channel
-                                                    .send(RxMessage {
+                                                let handoff = tokio::select! {
+                                                    _ = cancel.cancelled() => return,
+                                                    _ = iface_stop_rx.cancelled() => {
+                                                        stop.cancel();
+                                                        return;
+                                                    }
+                                                    _ = stop.cancelled() => return,
+                                                    result = rx_channel.send(RxMessage {
                                                         address: iface_address,
                                                         packet,
                                                         source: IfaceSource::None,
-                                                    })
-                                                    .await
-                                                    .is_err()
-                                                {
+                                                    }) => result,
+                                                };
+                                                if handoff.is_err() {
                                                     log::warn!(
                                                         "[tp-diag] transport receive queue closed iface={} label={}",
                                                         iface_address,
@@ -251,9 +260,21 @@ pub(crate) async fn run_hdlc_stream_with_runtime_and_ifac<R, W>(
                         }
 
                         if now.saturating_duration_since(last_write_at) > watchdog.keepalive_after {
-                            match stream.write_all(HDLC_KEEPALIVE_FRAME).await {
+                            let written = tokio::select! {
+                                _ = cancel.cancelled() => break,
+                                _ = iface_stop_tx.cancelled() => { stop.cancel(); break; }
+                                _ = stop.cancelled() => break,
+                                result = stream.write_all(HDLC_KEEPALIVE_FRAME) => result,
+                            };
+                            match written {
                                 Ok(()) => {
-                                    if let Err(err) = stream.flush().await {
+                                    let flushed = tokio::select! {
+                                        _ = cancel.cancelled() => break,
+                                        _ = iface_stop_tx.cancelled() => { stop.cancel(); break; }
+                                        _ = stop.cancelled() => break,
+                                        result = stream.flush() => result,
+                                    };
+                                    if let Err(err) = flushed {
                                         log::warn!("[tp-diag] keepalive flush failed iface={} err={}", iface_address, err);
                                         send_hdlc_stream_event(
                                             &events,
@@ -298,7 +319,13 @@ pub(crate) async fn run_hdlc_stream_with_runtime_and_ifac<R, W>(
                                     }
                                 }
                             }
-                                if let Err(err) = stream.write_all(wire).await {
+                                let written = tokio::select! {
+                                    _ = cancel.cancelled() => break,
+                                    _ = iface_stop_tx.cancelled() => { stop.cancel(); break; }
+                                    _ = stop.cancelled() => break,
+                                    result = stream.write_all(wire) => result,
+                                };
+                                if let Err(err) = written {
                                     log::warn!("[tp-diag] write_all failed iface={} err={}", iface_address, err);
                                     send_hdlc_stream_event(
                                         &events,
@@ -307,7 +334,13 @@ pub(crate) async fn run_hdlc_stream_with_runtime_and_ifac<R, W>(
                                     stop.cancel();
                                     break;
                                 }
-                                if let Err(err) = stream.flush().await {
+                                let flushed = tokio::select! {
+                                    _ = cancel.cancelled() => break,
+                                    _ = iface_stop_tx.cancelled() => { stop.cancel(); break; }
+                                    _ = stop.cancelled() => break,
+                                    result = stream.flush() => result,
+                                };
+                                if let Err(err) = flushed {
                                     log::warn!("[tp-diag] flush failed iface={} err={}", iface_address, err);
                                     send_hdlc_stream_event(
                                         &events,

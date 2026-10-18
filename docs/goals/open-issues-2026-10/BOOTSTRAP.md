@@ -3,7 +3,7 @@
 This refines the remaining family gate in [TRANSPORT.md](TRANSPORT.md) after
 `a0772c1d`; it does not add another PR or change the numbered plan. The three
 discovery process cases and finite deeper relay matrix are already qualified.
-The first eight TCP/Backbone/UDP/Pipe/Serial/KISS rows now have the declared
+The first ten TCP/Backbone/UDP/Pipe/Serial/KISS/I2P rows now have the declared
 software lifecycle evidence below. Other family rows and whole-item integration
 remain open.
 
@@ -76,7 +76,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
-| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first eight TCP/Backbone/UDP/Pipe/Serial/KISS rows have the declared software trace qualification below. Remaining Auto/SAM, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
+| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first ten TCP/Backbone/UDP/Pipe/Serial/KISS/I2P rows have the declared software trace qualification below. Remaining Auto, simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
 Implementation stays in the main agent. PRE, correctness and maintainability POST
@@ -371,5 +371,50 @@ does not block stdin EOF; output EOF and successful child wait prove fixture
 cleanup. No helper framing/crypto, unsafe Rust, new dependency, public API or
 production behavior change is introduced. Both source POST reviews approve;
 four final native cases pass in 6.08 seconds, and full daemon validation passes
-31 library/668 binary tests plus focused gates. Twelve other family rows and
-whole-item integration/hosted CI/merge remain open; this is Linux software evidence.
+31 library/668 binary tests plus focused gates. At this Serial/KISS checkpoint,
+twelve other family rows remained open. The current inventory includes the I2P
+qualification below; whole-item integration/hosted CI/merge remain open.
+
+## Configured I2P and shared stream teardown
+
+Six native fake-SAM traces in `tests/bootstrap_i2p_family.rs` and its nested
+shutdown module qualify outgoing and incoming software lifecycle composition:
+
+- `configured_i2p_outgoing_ifac_refusal_rotation_reconnect_and_restart`
+- `configured_i2p_incoming_ifac_failure_child_rotation_session_recovery_and_restart`
+- `configured_i2p_shutdown_joins_stalled_native_destination_generation`
+- `configured_i2p_shutdown_joins_stalled_incoming_session_create`
+- `configured_i2p_shutdown_joins_pending_incoming_stream_accept`
+- `configured_i2p_shutdown_joins_outgoing_setup_under_native_queue_pressure`
+
+All stall fixtures await configured startup at an unavailable reserved endpoint
+before listening, separating native setup from bootstrap's own preparation probe.
+The outgoing trace counts actual native direct admissions until enqueue failure.
+Default sixteen-byte IFAC, negative admission, exact traffic, retained parent/child
+rotation, native MTU and unrelated traffic are checked. Two incoming children
+remain isolated and authenticated across SAM session recreation; changed-key
+restart retires the old tree and uses a fresh Transport identity. Actual key-file
+contents establish persistence after recovery. Initial preparation metadata is a
+bootstrap snapshot; restarted preparation has a new identity-bound key path.
+
+Root and accept loops now own and join their nested workers. Private task sets
+retain accepted streams across session recreation, while pinned ACCEPT futures
+allow completion reaping without restarting a handshake. Incoming SAM waits and
+native direct enqueue observe existing stop tokens. Value-free SAM errors retain
+expired-session recovery and command context; private destination fallback is
+also removed from the ready log. No public API, defaults, queues or dependencies
+change.
+
+POST review additionally finds established shared HDLC handoffs could block
+these joins. The unchanged shared function is first extracted with a crate-visible
+re-export. Five valid blocked-input/output regressions fail before correction,
+then pass after cancellation-selected receive admission and packet/keepalive
+write/flush. Queues and peers remain blocked through joined completion, followed
+by EOF; no cancelled pending frame emits output success. Partial writes are
+abandoned by retiring that stream generation. Existing error handling, framing,
+IFAC order, pacing and watchdog behavior remain.
+
+Both final source reviews approve the bounded correction. These are loopback and
+in-memory software traces; public routers, other families, hardware and whole-item
+integration/hosted acceptance remain open. Ten of twenty family rows have local
+qualification; this does not complete item 4.

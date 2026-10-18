@@ -37,6 +37,7 @@ pub(super) async fn run_interface(context: InterfaceContext<I2pInterface>) {
         AddressHash,
         tokio::sync::mpsc::Sender<TxMessage>,
     >::new()));
+    let mut workers = tokio::task::JoinSet::new();
     for peer in peers {
         let Some(child_iface) = iface_manager
             .lock()
@@ -49,7 +50,7 @@ pub(super) async fn run_interface(context: InterfaceContext<I2pInterface>) {
         let (peer_tx, peer_rx) = tokio::sync::mpsc::channel(128);
         peer_routes.lock().await.insert(child_iface, peer_tx);
 
-        tokio::spawn(run_i2p_peer_loop_with_ifac(
+        workers.spawn(run_i2p_peer_loop_with_ifac(
             peer,
             child_iface,
             sam_addr.clone(),
@@ -67,7 +68,7 @@ pub(super) async fn run_interface(context: InterfaceContext<I2pInterface>) {
     }
 
     if connectable {
-        tokio::spawn(run_i2p_accept_loop_with_ifac(
+        workers.spawn(run_i2p_accept_loop_with_ifac(
             parent_iface,
             name,
             sam_addr.clone(),
@@ -91,6 +92,11 @@ pub(super) async fn run_interface(context: InterfaceContext<I2pInterface>) {
         tokio::select! {
             _ = context.cancel.cancelled() => break,
             _ = iface_stop.cancelled() => break,
+            Some(result) = workers.join_next(), if !workers.is_empty() => {
+                if let Err(error) = result {
+                    log::error!("I2P worker failed iface={parent_iface} error={error}");
+                }
+            }
             Some(message) = tx_channel.recv() => {
                 match message.tx_type {
                     TxMessageType::Broadcast(_) => {
@@ -104,7 +110,12 @@ pub(super) async fn run_interface(context: InterfaceContext<I2pInterface>) {
                     TxMessageType::Direct(address) => {
                         let sender = peer_routes.lock().await.get(&address).cloned();
                         if let Some(sender) = sender {
-                            if let Err(err) = sender.send(message).await {
+                            let result = tokio::select! {
+                                _ = context.cancel.cancelled() => break,
+                                _ = iface_stop.cancelled() => break,
+                                result = sender.send(message) => result,
+                            };
+                            if let Err(err) = result {
                                 log::warn!(
                                     "failed to enqueue I2P direct packet iface={address}: {err}"
                                 );
@@ -117,5 +128,10 @@ pub(super) async fn run_interface(context: InterfaceContext<I2pInterface>) {
     }
 
     iface_stop.cancel();
+    while let Some(result) = workers.join_next().await {
+        if let Err(error) = result {
+            log::error!("I2P worker failed during shutdown iface={parent_iface} error={error}");
+        }
+    }
     cleanup_i2p_peer_routes(&iface_manager, &peer_routes, &runtime_status).await;
 }

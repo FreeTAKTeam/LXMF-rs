@@ -22,20 +22,27 @@ pub(super) async fn run_i2p_accept_loop_with_ifac(
 ) {
     let session_id =
         format!("{}-accept", sam_session_id(parent_iface, transport_identity_hash.as_ref()));
+    // SAM session recreation must not retire already accepted peer streams.
+    let mut streams = tokio::task::JoinSet::new();
 
     loop {
         if cancel.is_cancelled() || iface_stop.is_cancelled() {
             break;
         }
 
-        let session_destination = match connectable_session_destination_with_identity(
-            sam_addr.as_str(),
-            &name,
-            state_path.as_ref(),
-            transport_identity_hash.as_ref(),
-        )
-        .await
-        {
+        while let Some(result) = streams.try_join_next() {
+            if let Err(error) = result {
+                log::error!("I2P accepted worker failed iface={parent_iface} error={error}");
+            }
+        }
+        let destination_result = tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = iface_stop.cancelled() => break,
+            result = connectable_session_destination_with_identity(
+                sam_addr.as_str(), &name, state_path.as_ref(), transport_identity_hash.as_ref(),
+            ) => result,
+        };
+        let session_destination = match destination_result {
             Ok(destination) => destination,
             Err(err) => {
                 runtime_status
@@ -57,37 +64,35 @@ pub(super) async fn run_i2p_accept_loop_with_ifac(
             }
         };
 
-        let (session_stream, destination) =
-            match create_sam_session(sam_addr.as_str(), session_id.as_str(), &session_destination)
-                .await
-            {
-                Ok(session) => session,
-                Err(err) => {
-                    runtime_status
-                        .lock()
-                        .expect("i2p runtime status mutex poisoned")
-                        .mark_accept_reconnecting(err.to_string());
-                    log::warn!(
-                        "failed to create I2P SAM accept session sam={} iface={} err={}",
-                        sam_addr,
-                        parent_iface,
-                        err
-                    );
-                    tokio::select! {
-                        _ = cancel.cancelled() => break,
-                        _ = iface_stop.cancelled() => break,
-                        _ = tokio::time::sleep(reconnect_wait) => {}
-                    }
-                    continue;
+        let session_result = tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = iface_stop.cancelled() => break,
+            result = create_sam_session(sam_addr.as_str(), session_id.as_str(), &session_destination) => result,
+        };
+        let (session_stream, _destination) = match session_result {
+            Ok(session) => session,
+            Err(err) => {
+                runtime_status
+                    .lock()
+                    .expect("i2p runtime status mutex poisoned")
+                    .mark_accept_reconnecting(err.to_string());
+                log::warn!(
+                    "failed to create I2P SAM accept session sam={} iface={} err={}",
+                    sam_addr,
+                    parent_iface,
+                    err
+                );
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = iface_stop.cancelled() => break,
+                    _ = tokio::time::sleep(reconnect_wait) => {}
                 }
-            };
+                continue;
+            }
+        };
 
         runtime_status.lock().expect("i2p runtime status mutex poisoned").mark_accept_listening();
-        log::info!(
-            "I2P SAM accept session ready iface={} destination={}",
-            parent_iface,
-            destination
-        );
+        log::info!("I2P SAM accept session ready iface={} sam={}", parent_iface, sam_addr);
         run_i2p_accept_session(
             session_stream,
             session_id.as_str(),
@@ -103,8 +108,16 @@ pub(super) async fn run_i2p_accept_loop_with_ifac(
             peer_routes.clone(),
             ifac_state.clone(),
             ifac_violations.clone(),
+            &mut streams,
         )
         .await;
+    }
+    while let Some(result) = streams.join_next().await {
+        if let Err(error) = result {
+            log::error!(
+                "I2P accepted worker failed during shutdown iface={parent_iface} error={error}"
+            );
+        }
     }
     runtime_status.lock().expect("i2p runtime status mutex poisoned").mark_accept_closed();
 }
@@ -127,13 +140,28 @@ async fn run_i2p_accept_session(
     >,
     ifac_state: IfacState,
     ifac_violations: Arc<std::sync::atomic::AtomicU64>,
+    streams: &mut tokio::task::JoinSet<()>,
 ) {
     loop {
         if cancel.is_cancelled() || iface_stop.is_cancelled() {
             break;
         }
 
-        let (remote_destination, stream) = match accept_sam_stream(sam_addr, session_id).await {
+        let accepted = accept_sam_stream(sam_addr, session_id);
+        tokio::pin!(accepted);
+        let accept_result = loop {
+            tokio::select! {
+                _ = cancel.cancelled() => return,
+                _ = iface_stop.cancelled() => return,
+                Some(result) = streams.join_next(), if !streams.is_empty() => {
+                    if let Err(error) = result {
+                        log::error!("I2P accepted worker failed iface={parent_iface} error={error}");
+                    }
+                }
+                result = &mut accepted => break result,
+            }
+        };
+        let (remote_destination, stream) = match accept_result {
             Ok(accepted) => accepted,
             Err(err) => {
                 let recreate_session = accept_error_requires_session_recreate(&err);
@@ -179,7 +207,7 @@ async fn run_i2p_accept_session(
             remote_destination,
             child_iface
         );
-        tokio::spawn(run_i2p_accepted_stream_with_ifac(
+        streams.spawn(run_i2p_accepted_stream_with_ifac(
             remote_destination,
             child_iface,
             mtu,

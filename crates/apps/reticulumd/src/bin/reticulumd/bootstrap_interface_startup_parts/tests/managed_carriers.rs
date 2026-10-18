@@ -633,7 +633,9 @@ async fn strict_i2p_startup_records_fake_sam_handshake_rejection_without_spawnin
         reader.read_line(&mut command).await.expect("read HELLO");
         reader
             .get_mut()
-            .write_all(b"HELLO REPLY RESULT=I2P_ERROR MESSAGE=disabled\n")
+            .write_all(
+                b"HELLO REPLY RESULT=I2P_ERROR MESSAGE=disabled PRIVATE=owned-private-sam-marker\n",
+            )
             .await
             .expect("reject HELLO");
         command
@@ -678,7 +680,12 @@ async fn strict_i2p_startup_records_fake_sam_handshake_rejection_without_spawnin
     assert!(manager.lock().await.interface_hashes().is_empty());
     assert_eq!(failures.len(), 1);
     assert!(failures[0].error.contains("preflight hello failed"));
-    assert!(failures[0].error.contains("disabled"));
+    assert!(failures[0].error.contains("unexpected SAM response for HELLO REPLY"));
+    assert!(!failures[0].error.contains("disabled"));
+    assert!(!failures[0].error.contains("owned-private-sam-marker"));
+    assert!(!serde_json::to_string(&record)
+        .expect("startup diagnostics")
+        .contains("owned-private-sam-marker"));
 }
 
 fn fake_i2p_private_key() -> String {

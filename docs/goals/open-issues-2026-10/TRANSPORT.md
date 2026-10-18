@@ -70,7 +70,7 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-The first eight rows have the declared software lifecycle qualification below;
+The first ten rows have the declared software lifecycle qualification below;
 other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
@@ -83,8 +83,8 @@ other rows remain open. Record exact test names/results when qualified.
 | Serial | Declared Linux PTY trace qualifies native open failure, same-root activation/key rotation/reopen, exact authenticated HDLC, changed-key configured restart, native MTU and unrelated traffic | Locally qualified for this Linux software trace; whole-item integration/hosted CI remain pending |
 | KISS / AX.25 serial | Two declared Linux PTY traces qualify native open failure/rotation/reopen/restart, independent initial command bytes and APZRNS/N0CALL-0 UI framing, exact IFAC traffic, native MTU and cleanup | Locally qualified for these Linux software traces; AX.25 address validation is not claimed. Whole-item integration/hosted CI remain pending |
 | KISS TCP | Declared configured refusal/same-socket activation, initial command bytes, native live key rotation/reconnect, changed-key restart and exact authenticated/unrelated traffic | Locally qualified for this software trace; whole-item integration/hosted CI remain pending |
-| I2P outgoing | Fake-SAM virtual peer authentication/rotation | SAM failure/reconnect, daemon status and cleanup |
-| I2P incoming | Authenticated accepted stream | Fake-SAM accept-loop failure/restart and accepted-child rotation |
+| I2P outgoing | Declared configured refusal, exact sixteen-byte-default IFAC, live child rotation, reconnect/restart, native MTU and unrelated traffic; actual native queue pressure and joined SAM setup shutdown | Locally qualified for these fake-SAM software traces; public router interoperability and whole-item integration/hosted CI remain pending |
+| I2P incoming | Declared preparation failure/redaction/recovery, persisted key file, old/new accepted-child rotation and peer isolation, session recreation retaining both children, changed-key restart and native setup/stream shutdown | Locally qualified for these fake-SAM software traces; recovered startup metadata remains a snapshot. Public router interoperability and whole-item integration/hosted CI remain pending |
 | AutoInterface | Authenticated peer transport bridge, owned-port restart | Configured activation failure/restart and live virtual-child policy |
 | Meshtastic | Authenticated tunnel, live rotation and stop retaining policy | Configured failure/status and reactivation |
 | Weave | Authenticated signed-handshake stream | Startup/reconnect errors, virtual endpoint rotation and restart |
@@ -420,8 +420,9 @@ No production change or pre-fix runtime defect is claimed. Both source POST role
 approve. Full daemon validation passes 31 library/668 binary tests, and focused
 Clippy/default/architecture/diagnostics/format/boundary/size gates pass.
 The three Serial/KISS inventory rows are locally qualified for these declared
-Linux software traces. Eight of twenty rows are now qualified; twelve other
-families, whole-item integration, one PR, exact-head hosted CI and merge remain
+Linux software traces. At this Serial/KISS checkpoint, eight of twenty rows were
+qualified and twelve families remained. The current inventory includes I2P below;
+whole-item integration, one PR, exact-head hosted CI and merge remain
 open. Physical behavior and AX.25 address validation remain unqualified.
 
 ### I2P software family composition board
@@ -510,6 +511,43 @@ Pinned Tokio source documents that cancelling `write_all` can leave a partial
 write. Cancellation here retires that stream generation: never resume the tail
 or emit successful write/keepalive events. Queue/peer barriers stay held until
 joined completion; the internal-stop case half-closes only the peer's input.
+
+The first shared-stream run has four output failures and a false RX pass:
+its empty default packet is rejected before admission. Keep that result in
+`/tmp/lxmf-item4-i2p-hdlc-red.log`, without claiming RX coverage. A nonempty
+roundtrip-validated packet then makes all five cases fail at their joined
+completion bound in `...-valid-red.log`. Cancellation-aware handoffs make all
+five pass in `...-green.log`, with queues/peers still held until join and EOF,
+and no cancelled pending-frame success event. Both final source POST roles
+approve the common owner correction and the I2P task hierarchy.
+
+The six configured I2P scenarios pass in 8.35 seconds before the shared correction
+and remain part of the full daemon suite. Wrong-key/plaintext rejection precedes
+matching ingress/egress at every phase. Existing/new accepted children retain
+parent policy and peer-isolated replies; both survive SAM session recreation.
+Recovery checks the actual private key file; initial `private_key_persisted` and
+`destination_prepare_error` are bootstrap snapshots, not refreshed claims.
+Changed-identity restart verifies fresh key path/preparation metadata. Native
+shutdown joins the root, peer/accept loops, accepted streams and internal HDLC
+tasks before final route cleanup; stalled native SAM sockets close at all three
+incoming stages. The outgoing pressure trace was already a passing control.
+
+Default transport tests pass 1,023 with 12 existing ignores; default daemon tests
+pass 31 library/673 binary cases. All-feature transport tests pass 1,052 with
+the same 12 ignores; all-feature daemon tests pass 31 library/674 binary cases
+in 33.98 seconds for the binary suite. All-target/all-feature transport/daemon Clippy, default
+checks, diagnostics, formatting, boundaries, module size and architecture pass.
+The first broad run retained one old raw-SAM-error expectation and one fixture
+counter lint; the test now requires safe HELLO context and absence of an owned
+private marker, and the counter uses its range index. An unformatted shortened
+error block is formatted. These failures are preserved; neither checks nor
+wire/queue/timing requirements are relaxed. Final logs use
+`/tmp/lxmf-item4-i2p-family-*-final.log` and `*-all-features.log`.
+
+The two I2P inventory rows are locally qualified for the declared fake-SAM
+software traces. Ten other families, whole-item integration/release checks,
+one item-4 PR, exact-head hosted CI and merge remain open. No prepared router,
+public network, hardware or full-issue qualification is inferred.
 
 ### Raw IFAC type preparation for UDP composition
 

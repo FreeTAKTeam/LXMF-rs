@@ -833,10 +833,7 @@ pub(crate) async fn accept_sam_stream(
     expect_sam_ok(&mut stream, "STREAM STATUS").await?;
     let remote_line = read_sam_line(&mut stream).await?;
     if remote_line.starts_with("STREAM STATUS") {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("SAM accept failed after status ok: {remote_line}"),
-        ));
+        return Err(sam_response_error("STREAM ACCEPT after status ok", &remote_line));
     }
     let remote_destination = remote_line
         .split_ascii_whitespace()
@@ -892,18 +889,12 @@ async fn generate_sam_destination(sam_addr: &str) -> io::Result<(String, String)
     sam_hello(&mut stream).await?;
     write_sam_line(&mut stream, "DEST GENERATE SIGNATURE_TYPE=7").await?;
     let response = expect_sam_prefix_line(&mut stream, "DEST REPLY").await?;
-    let public = sam_value(response.as_str(), "PUB").map(str::to_string).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("SAM DEST REPLY missing PUB: {response}"),
-        )
-    })?;
-    let private = sam_value(response.as_str(), "PRIV").map(str::to_string).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("SAM DEST REPLY missing PRIV: {response}"),
-        )
-    })?;
+    let public = sam_value(response.as_str(), "PUB")
+        .map(str::to_string)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "SAM DEST REPLY missing PUB"))?;
+    let private = sam_value(response.as_str(), "PRIV")
+        .map(str::to_string)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "SAM DEST REPLY missing PRIV"))?;
     Ok((public, private))
 }
 
@@ -1039,12 +1030,9 @@ async fn resolve_sam_destination(sam_addr: &str, destination: &str) -> io::Resul
     sam_hello(&mut stream).await?;
     write_sam_line(&mut stream, format!("NAMING LOOKUP NAME={destination}").as_str()).await?;
     let response = expect_sam_ok_line(&mut stream, "NAMING REPLY").await?;
-    sam_value(response.as_str(), "VALUE").map(str::to_string).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("SAM naming reply missing VALUE: {response}"),
-        )
-    })
+    sam_value(response.as_str(), "VALUE")
+        .map(str::to_string)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "SAM naming reply missing VALUE"))
 }
 
 async fn sam_hello(stream: &mut TcpStream) -> io::Result<()> {
@@ -1068,10 +1056,7 @@ async fn expect_sam_ok_line(stream: &mut TcpStream, prefix: &str) -> io::Result<
     if sam_line_ok(line.as_str(), prefix) {
         Ok(line)
     } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("unexpected SAM response for {prefix}: {line}"),
-        ))
+        Err(sam_response_error(prefix, &line))
     }
 }
 
@@ -1080,11 +1065,18 @@ async fn expect_sam_prefix_line(stream: &mut TcpStream, prefix: &str) -> io::Res
     if line.starts_with(prefix) {
         Ok(line)
     } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("unexpected SAM response for {prefix}: {line}"),
-        ))
+        Err(sam_response_error(prefix, &line))
     }
+}
+
+fn sam_response_error(prefix: &str, line: &str) -> io::Error {
+    // Preserve expired-session recovery without returning credentials from SAM.
+    let reason = if line.contains("is not a STREAM session") {
+        "SAM session is not a STREAM session"
+    } else {
+        "unexpected SAM response"
+    };
+    io::Error::new(io::ErrorKind::InvalidData, format!("{reason} for {prefix}"))
 }
 
 async fn read_sam_line(stream: &mut TcpStream) -> io::Result<String> {

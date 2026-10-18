@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; ten local checkpoints reviewed | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured startup, duplicate foundation/ordinary admission, native Link routing, request receipts, common live child policy, discovery preparation/runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. Remaining family lifecycle/configured-root ownership and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; ten of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS and I2P family traces qualify locally. Ten other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -2239,6 +2239,53 @@ validation only; terminal results and final-head review/CI/merge remain required
   others, whole-item integration/release checks, one PR, exact-head hosted CI and
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
+
+## Item 4 I2P lifecycle and shared stream shutdown qualification
+
+- Structural checkpoints `8715367b` and `c01d294d` preserve the I2P and shared
+  HDLC orchestration before behavior edits. Both PRE and structural POST roles
+  approve. The main agent implements all changes; immutable references and
+  public forwarding APIs remain unchanged.
+- Six configured fake-SAM cases retain their 2-pass/4-fail baseline in
+  `/tmp/lxmf-item4-i2p-family-native-red.log`, then pass 6/6 in 8.35 seconds in
+  `...-green.log`. Three incoming SAM sockets survive pre-fix joined root
+  shutdown, and malformed DEST REPLY exposes an owned private value. Owned
+  root/accept task sets, cancellation-aware setup and value-free errors fix
+  those failures. The outgoing lifecycle and actual native-queue pressure
+  teardown were already passing controls.
+- The incoming trace proves actual private-key file persistence, default
+  sixteen-byte IFAC rejection/exact traffic, old/new accepted-child rotation
+  and isolated replies, preserved active children across session recreation,
+  changed-key restart/native MTU and unrelated traffic. Recovered initial
+  persistence/error metadata remains a bootstrap snapshot; only the actual
+  file proves recovery. Restart preparation has a new identity-bound key path.
+- Correctness POST blocks qualification on established shared-stream I/O.
+  Five declared RX admission, packet write/flush and keepalive write/flush
+  regressions retain blocked resources through cancellation and require joined
+  completion, EOF and no false successful-output event. An initial empty-packet
+  RX fixture gives a false pass and is explicitly excluded from coverage.
+  The valid nonempty roundtrip guard gives 0/5 passing in
+  `/tmp/lxmf-item4-i2p-hdlc-valid-red.log`; cancellation-selected shared handoffs
+  give 5/5 in `...-green.log`. Existing token, queue, watchdog, framing and IFAC
+  behavior remains. Partial writes retire with that stream generation.
+- Both final source correctness and maintainability POST roles approve. The
+  first broad daemon run exposes an old raw-SAM-error expectation; its updated
+  regression requires safe HELLO context and absence of an owned private marker.
+  A fixture loop counter lint and shortened-error formatting are corrected;
+  initial logs remain and no gate/deadline is relaxed.
+- Final default suites pass 1,023 transport tests with 12 existing ignores and
+  31 library/673 binary daemon tests. All-feature suites pass 1,052 transport
+  tests with the same ignores and 31 library/674 binary daemon tests (33.98
+  seconds for the binary suite). All-target/all-feature transport/daemon Clippy,
+  default checks, diagnostics scanner, architecture, Cargo formatting,
+  boundaries and module size pass. Logs are
+  `/tmp/lxmf-item4-i2p-family-*-final.log` and `*-all-features.log`.
+- Live GitHub still reports the same 22 open issues and no PR for this branch
+  in `/tmp/lxmf-open-issues-item4-i2p.json`. Ten of twenty software family rows
+  are locally qualified. Ten other families, whole-item integration/release
+  checks, one PR, exact-head hosted CI and merge remain open. This is fake-SAM
+  and bounded stream software evidence, with no prepared-router, public-network,
+  hardware or whole-issue completion inferred.
 
 ## Item 4 shared HDLC shutdown preparation
 

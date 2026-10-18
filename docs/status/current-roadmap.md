@@ -172,8 +172,18 @@ framing, changed-key configured restart, native MTU and unrelated traffic. Raw
 PTY helpers are explicitly reaped; removing owned aliases prevents retries from
 opening another test's reused slave name.
 Both source reviews and focused gates pass with 31 library/668 binary daemon tests,
-without production changes. Eight of twenty declared software family rows are
-locally qualified. Remaining
+without production changes. Six configured fake-SAM I2P cases now cover refused
+setup, private-reply redaction/recovery, actual key persistence, default IFAC,
+old/new child rotation and isolation, session recreation, reconnect/restart and
+native MTU. Three pre-fix incoming setup sockets outlived joined root shutdown;
+root/accept task ownership and cancellation-aware setup now close them. Five
+additional shared HDLC regressions first fail under receive/write/flush pressure,
+then pass joined shutdown and peer EOF while pressure remains held. Cancellation
+retires partial frames without output-success events. Both source POST reviews
+approve; default and all-feature transport/daemon suites, Clippy and focused
+source gates pass. Recovered persistence metadata remains a bootstrap snapshot;
+the trace verifies the actual file. Ten of twenty declared software family rows
+are locally qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
