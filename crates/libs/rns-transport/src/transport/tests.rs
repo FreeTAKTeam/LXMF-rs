@@ -60,6 +60,9 @@ include!("tests_parts/duplicate_filter_python_matrix.rs");
 include!("tests_parts/packet_replay_restart.rs");
 include!("tests_parts/accepted_child_ifac_rotation.rs");
 
+#[path = "tests_parts/shared_attachment_activation.rs"]
+mod shared_attachment_activation;
+
 include!("tests_parts/reticulum_runtime_management.rs");
 
 include!("tests_parts/packet_proof_correlation.rs");

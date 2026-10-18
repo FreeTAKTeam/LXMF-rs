@@ -71,6 +71,7 @@ pub(super) struct TcpServerSelection {
     pub(super) fast_flapping_block_time: Option<f64>,
     pub(super) local_attach_addr: Option<String>,
     pub(super) local_attach_index: Option<usize>,
+    pub(super) native_shared_clients: bool,
 }
 
 pub(super) fn select_tcp_server_bind(
@@ -82,6 +83,7 @@ pub(super) fn select_tcp_server_bind(
             bind_addr: Some(addr.clone()),
             selected_index: None,
             kind: "tcp_server".to_string(),
+            native_shared_clients: false,
             client_mtu: None,
             client_forced_bitrate_bps: None,
             prefer_ipv6: false,
@@ -107,8 +109,8 @@ pub(super) fn select_tcp_server_bind(
         let Some(port) = iface.port else {
             continue;
         };
-        let host = tcp_listener_bind_host(iface)
-            .map_err(|err| format!("interfaces[{index}] {err}"))?;
+        let host =
+            tcp_listener_bind_host(iface).map_err(|err| format!("interfaces[{index}] {err}"))?;
         matches.push(TcpListenerMatch {
             index,
             kind: iface.kind.clone(),
@@ -134,11 +136,7 @@ pub(super) fn select_tcp_server_bind(
     if matches.len() > 1 {
         return Err(format!(
             "multiple enabled TCP listener interfaces configured without --transport override: {}",
-            matches
-                .iter()
-                .map(|entry| entry.bind_addr.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+            matches.iter().map(|entry| entry.bind_addr.as_str()).collect::<Vec<_>>().join(", ")
         ));
     }
 
@@ -151,6 +149,7 @@ pub(super) fn select_tcp_server_bind(
             bind_addr: None,
             selected_index: None,
             kind: selected.kind,
+            native_shared_clients: selected.synthetic_shared_tcp_local,
             client_mtu: selected.client_mtu,
             client_forced_bitrate_bps: selected.client_forced_bitrate_bps,
             prefer_ipv6: selected.prefer_ipv6,
@@ -168,6 +167,7 @@ pub(super) fn select_tcp_server_bind(
         bind_addr: Some(selected.bind_addr),
         selected_index: Some(selected.index),
         kind: selected.kind,
+        native_shared_clients: selected.synthetic_shared_tcp_local,
         client_mtu: selected.client_mtu,
         client_forced_bitrate_bps: selected.client_forced_bitrate_bps,
         prefer_ipv6: selected.prefer_ipv6,
@@ -237,14 +237,14 @@ pub(crate) fn resolve_tcp_listener_device_bind_host(
     device: &str,
     prefer_ipv6: bool,
 ) -> Result<String, String> {
-    let interfaces = if_addrs::get_if_addrs()
-        .map_err(|err| format!("failed to inspect network interfaces for device {device}: {err}"))?;
+    let interfaces = if_addrs::get_if_addrs().map_err(|err| {
+        format!("failed to inspect network interfaces for device {device}: {err}")
+    })?;
     let candidates = interfaces
         .iter()
         .map(|iface| (iface.name.as_str(), iface.ip(), iface.is_oper_up()))
         .collect::<Vec<_>>();
-    select_tcp_listener_device_ip(device, prefer_ipv6, &candidates)
-        .map(|addr| addr.to_string())
+    select_tcp_listener_device_ip(device, prefer_ipv6, &candidates).map(|addr| addr.to_string())
 }
 
 pub(crate) fn select_tcp_listener_device_ip(
@@ -268,9 +268,7 @@ pub(crate) fn select_tcp_listener_device_ip(
         _ => 1,
     });
     matches.into_iter().next().ok_or_else(|| {
-        format!(
-            "device {device} did not resolve to an operational bindable interface address"
-        )
+        format!("device {device} did not resolve to an operational bindable interface address")
     })
 }
 

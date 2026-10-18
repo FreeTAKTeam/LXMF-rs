@@ -1318,3 +1318,51 @@ validation only; terminal results and final-head review/CI/merge remain required
   `/tmp/lxmf-item4-record-publication-final.log`, and the focused before/after logs.
   No item-4 full workspace/release/reference run, hosted check, PR or merge has
   happened yet. The next slice cuts over configured bootstrap roots.
+
+### Item 4 configured bootstrap checkpoint
+
+- The first checkpoint is committed as `b6524635b4a72d0c7a2eac4750ba020a33cf1ffb`.
+  This second checkpoint cuts configured carrier roots over to the same fallible
+  preparation owner before worker construction: selected TCP/Backbone listener,
+  streams, UDP unicast/multicast, Pipe, I2P, serial/KISS, Auto, mesh/radio and
+  available BLE backend paths. Existing MTU/IFAC defaults, routing registration,
+  status handles and owned worker joins remain in their existing owners.
+- An attached client previously could start traffic before global attached mode
+  was installed. The native manager now retains an activation-gated worker;
+  Transport sets mode and releases the gate in one synchronous guarded handoff.
+  Preparation and activation do not overlap manager/handler guards. A real
+  held-handler regression reproduced three cancellation hangs before a cancel-vs-
+  lock select was added. Dropped startup and manager stop join without constructing
+  the carrier. Failed handoff preserves both possible prior modes, while successful
+  handoff commits mode independently of that worker's later lifetime.
+- The frozen local reference distinguishes automatic shared-instance setup from
+  explicitly configured Local interfaces. Only the existing trusted synthetic
+  marker selects plaintext TCP/Unix children. A real explicit Unix accepted-child
+  test first exposed plaintext admission despite parent IFAC; the default now
+  inherits IFAC and the native automatic path explicitly opts into plaintext.
+  Native wire tests cover first ingress/egress, exact negative-frame counts,
+  existing/new child rotation and joined listener/child shutdown. Daemon wiring
+  tests cover synthetic TCP sidecar, synthetic/explicit Unix, and both TCP/Unix
+  attached modes through configured startup.
+- Touched oversized startup and carrier files were extracted into bounded,
+  same-namespace carrier/status/worker sections. Existing test namespaces and
+  fixtures are preserved through included files under `/tests/`; public paths and
+  old spawn API bounds remain unchanged. Four obsolete module-size exemptions
+  were removed. The deferred API alone requires `Send + 'static` because it owns
+  the unconstructed worker until activation.
+- All-feature transport library: 982 passed, nine existing ignored. All-feature
+  daemon binary: 589 passed, zero ignored. The daemon configured subset is 17
+  passed and final interface-startup subset is 34 passed. Affected all-target/
+  all-feature Clippy, formatting, boundaries and module-size checks pass. Logs:
+  `/tmp/lxmf-item4-bootstrap-{transport,daemon}-tests.log`,
+  `/tmp/lxmf-item4-bootstrap-startup-tests.log`,
+  `/tmp/lxmf-item4-shared-daemon-policy.log`,
+  `/tmp/lxmf-item4-{shared-activation-red,shared-client-ifac-red}.log`,
+  `/tmp/lxmf-item4-bootstrap-clippy-final.log`.
+- Independent correctness and maintainability POST both approve this checkpoint
+  without a concrete remaining finding. App first-frame tests establish startup
+  wiring/authentication; native held-handler/constructor tests establish ordering
+  and cancellation. The issue-369 scanner and architecture checks also pass; logs
+  are `/tmp/lxmf-item4-bootstrap-{quality,architecture}.log`. The full family lifecycle,
+  duplicate-cache/queue, request, discovery, child policy and deeper recovery
+  requirements remain open. No item-4 hosted check, PR or merge yet.

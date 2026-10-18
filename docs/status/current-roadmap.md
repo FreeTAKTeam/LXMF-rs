@@ -73,7 +73,12 @@ hot-apply policy before starting workers. The existing mutation worker now owns
 committed interface records; native SDK/RPC calls explicitly acknowledge queued
 work, while actual status and completion events come from the worker. Focused
 wire, rollback, ordering and record-retention regressions pass. Configured bootstrap
-roots and the remaining carrier, duplicate-cache, request, discovery and deeper
+roots now use the prepared policy path, retaining carrier defaults and control
+handles. Shared attachments commit transport mode before worker activation, and
+automatic TCP/Unix shared clients retain their plaintext contract while explicit
+Local configuration enforces IFAC. First-wire, cancellation, key-rotation and new
+accepted-client regressions pass locally. The remaining carrier lifecycle,
+duplicate-cache, request, discovery and deeper
 recovery work remain open in the [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655

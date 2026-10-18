@@ -39,8 +39,22 @@ anything. Poisoned parent, inherited or plaintext-local child state rejects the
 whole publication without changing healthy states or metadata. Prepared spawn
 preserves old public wrappers, carrier defaults, control handles and the owned
 worker tree. TCP client/listener, UDP unicast/multicast and Pipe hot-apply install
-policy before constructing a worker. Configured bootstrap root cutover is still
-required; these changes do not qualify every family cell below.
+policy before constructing a worker. Configured bootstrap roots now use the same
+preparation owner, including carrier-specific IFAC defaults, control handles,
+multicast routing, Auto activation and available BLE backend paths. These changes
+do not qualify every family cell below.
+
+Shared-client attachment has an additional owned start gate. The manager retains
+the task and cancellation token; Transport commits attached-client mode and sends
+the gate under one handler guard without an await. Cancellation can interrupt
+lock acquisition, dropped startup cancels the gated context, and manager stop can
+join it while the handler remains blocked. Failed handoff preserves the previous
+mode. Successful handoff is not a liveness lease and does not roll mode back when
+one worker later stops. Automatic shared TCP/Unix accepted clients opt into the
+frozen plaintext exception using the existing trusted synthetic-origin marker;
+explicit Local records retain configured IFAC. Real stream and daemon regressions
+cover first traffic, rejection, parent rotation, new children and cleanup. Live
+non-IFAC child-policy propagation is still required.
 
 The existing native mutation worker now also owns committed interface-record
 publication. Opted-in SDK/RPC commands report queued/incomplete, and completion
@@ -77,8 +91,8 @@ Record exact test names/results when qualified; no row is complete yet.
 | RNode BLE | Fake-backend native ingress/egress and startup/runtime recovery | Daemon status composition and active-child rotation |
 | Generic BLE GATT | Production codec calls and fake startup lifecycle | Available backend packet-loop failure/reconnect composition |
 | VR-N76 KISS BLE | Codec calls and configuration/lifecycle primitives | Software-backend authentication, failure and restart |
-| Local Unix shared instance | Real plaintext exception across parent IFAC rotation | Immediate callback readiness and live non-IFAC policy |
-| Local TCP shared instance | Shared-instance integration | First-frame plaintext exception, readiness and live non-IFAC policy |
+| Local Unix shared instance | Configured synthetic/explicit first ingress, native ingress/egress, old/new child rotation, attachment mode and joined shutdown | Live non-IFAC policy and broader restart/error composition |
+| Local TCP shared instance | Native/explicit first ingress/egress, old/new child rotation, configured synthetic sidecar and attachment mode, gated cancellation/join | Live non-IFAC policy and broader restart/error composition |
 
 `reticulum_ble` currently reports `native_backend_pending`; retain truthful
 degraded configuration/status tests. Its missing native dual-role implementation

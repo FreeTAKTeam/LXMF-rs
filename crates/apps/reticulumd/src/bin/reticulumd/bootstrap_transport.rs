@@ -60,61 +60,7 @@ pub(super) fn reticulum_transport_enabled(daemon_config: Option<&DaemonConfig>) 
     daemon_config.is_some_and(DaemonConfig::reticulum_transport_enabled)
 }
 
-pub(super) struct TransportStartupArtifacts {
-    pub(super) selected_tcp_server: TcpServerSelection,
-    pub(super) transport: Option<Arc<Transport>>,
-    pub(super) peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
-    pub(super) announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    pub(super) propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    pub(super) control_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    pub(super) probe_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    pub(super) delivery_destination_hash_hex: Option<String>,
-    pub(super) propagation_destination_hash_hex: Option<String>,
-    pub(super) control_destination_hash_hex: Option<String>,
-    pub(super) delivery_source_hash: [u8; 16],
-    pub(super) configured_interfaces: Vec<InterfaceRecord>,
-    pub(super) restored_path_identities: Vec<RestoredReticulumPathIdentity>,
-    pub(super) startup_successes: usize,
-    pub(super) startup_failures: Vec<InterfaceStartupFailure>,
-    pub(super) seeded_hot_apply_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
-    pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
-    pub(super) auto_runtime_shutdowns: Vec<AutoRuntimeShutdown>,
-    pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
-    pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
-    pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
-    pub(super) kiss_runtime_refreshes: Vec<KissRuntimeRefresh>,
-    pub(super) ble_gatt_runtime_refreshes: Vec<BleGattRuntimeRefresh>,
-    pub(super) reticulum_ble_runtime_refreshes: Vec<ReticulumBleRuntimeRefresh>,
-    pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
-    pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
-    pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
-    pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
-    pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
-    pub(super) meshtastic_runtime_refreshes: Vec<MeshtasticRuntimeRefresh>,
-    #[cfg(feature = "vrn76-kiss-ble")]
-    pub(super) vrn76_runtime_refreshes: Vec<Vrn76RuntimeRefresh>,
-    pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
-    pub(super) weave_control_bindings: Vec<WeaveControlBinding>,
-}
-
-pub(super) struct TransportStartupInput<'a> {
-    pub(super) args: &'a Args,
-    pub(super) daemon_config: Option<&'a DaemonConfig>,
-    pub(super) identity: &'a PrivateIdentity,
-    pub(super) reticulum_storage_path: &'a std::path::Path,
-    pub(super) local_display_name: Option<&'a str>,
-    pub(super) local_announce_capabilities: &'a [String],
-    pub(super) propagation_announce_app_data: Option<Vec<u8>>,
-    pub(super) configured_interfaces: Vec<InterfaceRecord>,
-    pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    pub(super) receipt_tx: reticulum_daemon::receipt_bridge::ReceiptPublisher,
-    pub(super) probe_receipts: Arc<ProbeReceiptRegistry>,
-    pub(super) propagation_control_enabled: bool,
-    pub(super) respond_to_probes: bool,
-    pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
-    pub(super) local_hops_delta: bool,
-    pub(super) inbound_queue_limits: InboundQueueLimits,
-}
+include!("bootstrap_transport_types.rs");
 
 pub(super) async fn start_transport_and_interfaces(
     input: TransportStartupInput<'_>,
@@ -240,38 +186,83 @@ pub(super) async fn start_transport_and_interfaces(
                 (server, None)
             };
             let runtime_status = server.runtime_status_handle();
-            let active_iface = iface_manager.lock().await.spawn(server, TcpServer::spawn);
-            log::info!(
-                "[daemon] {} enabled iface={} bind={}",
-                selected_tcp_server.kind,
-                active_iface,
-                addr
-            );
-            if let Some(startup_result) = startup_result {
-                let label = selected_tcp_server
-                    .selected_index
-                    .and_then(|index| {
-                        daemon_config?
-                            .interfaces
-                            .get(index)
-                            .map(|iface| interface_label(iface, index))
-                    })
-                    .unwrap_or_else(|| selected_tcp_server.kind.clone());
-                tcp_startup::record_initial_bind_result(
-                    startup_result.await,
-                    label,
-                    selected_tcp_server.kind.clone(),
-                    &mut startup_successes,
-                    &mut startup_failures,
-                );
-            } else {
-                startup_successes += 1;
+            let started = {
+                let mut manager = iface_manager.lock().await;
+                match selected_tcp_server.selected_index {
+                    Some(index) => {
+                        match daemon_config.and_then(|config| config.interfaces.get(index)) {
+                            Some(iface) => crate::interfaces::common::spawn_configured(
+                                &mut manager,
+                                server,
+                                TcpServer::spawn,
+                                rns_transport::iface::IfaceRole::Unicast,
+                                iface,
+                            ),
+                            None => Err(rns_transport::error::RnsError::InvalidArgument),
+                        }
+                    }
+                    None => Ok(manager.spawn(server, TcpServer::spawn)),
+                }
+            };
+            match started {
+                Ok(active_iface) => {
+                    log::info!(
+                        "[daemon] {} enabled iface={} bind={}",
+                        selected_tcp_server.kind,
+                        active_iface,
+                        addr
+                    );
+                    if let Some(startup_result) = startup_result {
+                        let label = selected_tcp_server
+                            .selected_index
+                            .and_then(|index| {
+                                daemon_config?
+                                    .interfaces
+                                    .get(index)
+                                    .map(|iface| interface_label(iface, index))
+                            })
+                            .unwrap_or_else(|| selected_tcp_server.kind.clone());
+                        tcp_startup::record_initial_bind_result(
+                            startup_result.await,
+                            label,
+                            selected_tcp_server.kind.clone(),
+                            &mut startup_successes,
+                            &mut startup_failures,
+                        );
+                    } else {
+                        startup_successes += 1;
+                    }
+                    server_iface = Some(active_iface);
+                    tcp_runtime_refreshes.push(TcpRuntimeRefresh {
+                        runtime_iface: active_iface,
+                        status: TcpRuntimeStatusSource::Listener(runtime_status),
+                    });
+                }
+                Err(error) => {
+                    let error = format!("interface runtime policy could not be installed: {error}");
+                    let label = selected_tcp_server
+                        .selected_index
+                        .and_then(|index| {
+                            daemon_config?
+                                .interfaces
+                                .get(index)
+                                .map(|iface| interface_label(iface, index))
+                        })
+                        .unwrap_or_else(|| selected_tcp_server.kind.clone());
+                    log::error!("[daemon] interface startup rejected name={label} err={error}");
+                    if let Some(record) = selected_tcp_server
+                        .selected_index
+                        .and_then(|index| configured_interfaces.get_mut(index))
+                    {
+                        mark_interface_startup_status(record, "failed", Some(&error), None);
+                    }
+                    startup_failures.push(InterfaceStartupFailure {
+                        label,
+                        kind: selected_tcp_server.kind.clone(),
+                        error,
+                    });
+                }
             }
-            server_iface = Some(active_iface);
-            tcp_runtime_refreshes.push(TcpRuntimeRefresh {
-                runtime_iface: active_iface,
-                status: TcpRuntimeStatusSource::Listener(runtime_status),
-            });
         }
 
         if let Some(config) = daemon_config {
@@ -292,9 +283,6 @@ pub(super) async fn start_transport_and_interfaces(
             .await;
             startup_successes += startup.startup_successes;
             startup_failures.extend(startup.startup_failures);
-            if startup.connected_to_shared_instance {
-                transport_instance.set_connected_to_shared_instance(true).await;
-            }
             for iface in startup.tunnel_synth_ifaces {
                 transport_instance.synthesize_tunnel_on_interface(iface).await;
             }

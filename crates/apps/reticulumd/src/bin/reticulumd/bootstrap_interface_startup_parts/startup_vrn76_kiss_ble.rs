@@ -23,20 +23,25 @@ async fn startup_vrn76_kiss_ble(
     {
         let adapter = vrn76_kiss_ble::build_native_interface(iface, config);
         let runtime_status = adapter.runtime_status_handle();
-        let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-        let vrn76_iface = iface_manager.lock().await.spawn_as_with_mode(
-            adapter,
-            |context| async move {
-                rns_transport::iface::vrn76_kiss_ble::NativeVrn76KissBleInterface::spawn(context)
+        let Some(vrn76_iface) = record_prepared_spawn(
+            spawn_configured(
+                &mut *iface_manager.lock().await,
+                adapter,
+                |context| async move {
+                    rns_transport::iface::vrn76_kiss_ble::NativeVrn76KissBleInterface::spawn(
+                        context,
+                    )
                     .await;
-            },
-            IfaceRole::Unicast,
-            mode,
-        );
-        {
-            let mut manager = iface_manager.lock().await;
-            apply_interface_runtime_config(&mut manager, vrn76_iface, iface);
-        }
+                },
+                IfaceRole::Unicast,
+                iface,
+            ),
+            record,
+            startup_failures,
+            label,
+        ) else {
+            return Vrn76StartupResult::failed();
+        };
         log::info!(
             "[daemon] vrn76_kiss_ble enabled iface={} name={} peripheral_id={}",
             vrn76_iface,
@@ -47,7 +52,10 @@ async fn startup_vrn76_kiss_ble(
         mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
         Vrn76StartupResult {
             started: true,
-            refresh: Some(Vrn76RuntimeRefresh { runtime_iface: vrn76_iface, status: runtime_status }),
+            refresh: Some(Vrn76RuntimeRefresh {
+                runtime_iface: vrn76_iface,
+                status: runtime_status,
+            }),
         }
     }
 
@@ -136,7 +144,11 @@ async fn startup_lora(
                     iface.kind.clone(),
                     err,
                 );
-                return LoraStartupResult { started: false, refresh: None, management_binding: None };
+                return LoraStartupResult {
+                    started: false,
+                    refresh: None,
+                    management_binding: None,
+                };
             }
         };
         #[cfg(not(feature = "rnode-ble"))]
@@ -175,20 +187,29 @@ async fn startup_lora(
             let adapter = lora::build_native_rnode_ble_interface(iface, config);
             let status_handle = adapter.runtime_status_handle();
             let management_handle = adapter.rnode_management_handle();
-            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-            let rnode_iface = iface_manager.lock().await.spawn_as_with_mode(
-                adapter,
-                |context| async move {
-                    rns_transport::iface::rnode_ble::NativeRnodeBleKissInterface::spawn(context)
+            let Some(rnode_iface) = record_prepared_spawn(
+                spawn_configured(
+                    &mut *iface_manager.lock().await,
+                    adapter,
+                    |context| async move {
+                        rns_transport::iface::rnode_ble::NativeRnodeBleKissInterface::spawn(
+                            context,
+                        )
                         .await;
-                },
-                IfaceRole::Unicast,
-                mode,
-            );
-            {
-                let mut manager = iface_manager.lock().await;
-                apply_interface_runtime_config(&mut manager, rnode_iface, iface);
-            }
+                    },
+                    IfaceRole::Unicast,
+                    iface,
+                ),
+                record,
+                startup_failures,
+                label,
+            ) else {
+                return LoraStartupResult {
+                    started: false,
+                    refresh: None,
+                    management_binding: None,
+                };
+            };
             log::info!(
                 "[daemon] rnode_ble enabled iface={} name={} device={}",
                 rnode_iface,
@@ -252,17 +273,20 @@ async fn startup_lora(
         }
     }
 
-    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-    let (lora_iface, status_handle) = iface_manager.lock().await.spawn_as_with_mode_and_handle(
-        adapter,
-        |context| async move { rns_transport::iface::lora::LoraInterface::spawn(context).await },
-        IfaceRole::Unicast,
-        mode,
-    );
-    {
-        let mut manager = iface_manager.lock().await;
-        apply_interface_runtime_config(&mut manager, lora_iface, iface);
-    }
+    let Some((lora_iface, status_handle)) = record_prepared_spawn(
+        spawn_configured_with_handle(
+            &mut *iface_manager.lock().await,
+            adapter,
+            |context| async move { rns_transport::iface::lora::LoraInterface::spawn(context).await },
+            IfaceRole::Unicast,
+            iface,
+        ),
+        record,
+        startup_failures,
+        label,
+    ) else {
+        return LoraStartupResult { started: false, refresh: None, management_binding: None };
+    };
     log::info!(
         "[daemon] lora enabled iface={} name={} device={} baud_rate={}",
         lora_iface,
@@ -317,71 +341,24 @@ fn record_startup_failure(
     startup_failures.push(InterfaceStartupFailure { label, kind, error });
 }
 
-fn apply_interface_runtime_config(
-    manager: &mut rns_transport::iface::InterfaceManager,
-    address: AddressHash,
-    iface: &InterfaceConfig,
-) {
-    manager.set_gravity(address, iface.interface_gravity());
-    manager.set_outgoing(address, iface.outgoing());
-    manager.set_display_name(
-        address,
-        iface
-            .name
-            .as_deref()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(ToOwned::to_owned),
-    );
-    manager.set_tcp_client_path_table_metadata(
-        address,
-        crate::tcp_client_path_table::from_config(iface),
-    );
-    if iface.bitrate.is_some() || iface.announce_cap.is_some() {
-        let (current_bitrate, current_announce_cap) =
-            manager.announce_pacing(&address).unwrap_or((62_500, 2));
-        let bitrate = iface.bitrate.unwrap_or(current_bitrate);
-        let announce_cap = iface.announce_cap.unwrap_or(current_announce_cap);
-        manager.set_announce_pacing(address, bitrate, announce_cap);
+fn record_prepared_spawn<T>(
+    result: Result<T, rns_transport::error::RnsError>,
+    record: &mut InterfaceRecord,
+    startup_failures: &mut Vec<InterfaceStartupFailure>,
+    label: &str,
+) -> Option<T> {
+    match result {
+        Ok(started) => Some(started),
+        Err(error) => {
+            let kind = record.kind.clone();
+            record_startup_failure(
+                record,
+                startup_failures,
+                label.to_string(),
+                kind,
+                format!("interface runtime policy could not be installed: {error}"),
+            );
+            None
+        }
     }
-    manager.set_shared_config(
-        address,
-        rns_transport::iface::InterfaceSharedConfig {
-            announce_rate_target: iface.announce_rate_target,
-            announce_rate_grace: iface.announce_rate_grace,
-            announce_rate_penalty: iface.announce_rate_penalty,
-            bootstrap_only: iface.bootstrap_only,
-            announces_from_internal: iface.announces_from_internal,
-            announces_to_internal: iface.announces_to_internal,
-            ifac_size: iface.ifac_size,
-            network_name: iface.ifac_network_name().cloned(),
-            passphrase: iface.ifac_passphrase().cloned(),
-            ingress_control: iface.ingress_control,
-            egress_control: iface.egress_control,
-            ic_max_held_announces: iface.ic_max_held_announces,
-            ic_burst_hold: iface.ic_burst_hold,
-            ic_burst_freq_new: iface.ic_burst_freq_new,
-            ic_burst_freq: iface.ic_burst_freq,
-            ic_pr_burst_freq_new: iface.ic_pr_burst_freq_new,
-            ic_pr_burst_freq: iface.ic_pr_burst_freq,
-            ec_pr_freq: iface.ec_pr_freq,
-            ic_new_time: iface.ic_new_time,
-            ic_burst_penalty: iface.ic_burst_penalty,
-            ic_held_release_interval: iface.ic_held_release_interval,
-            discoverable: iface.discoverable,
-            announce_interval: iface.discovery_announce_interval_secs(),
-            discovery_stamp_value: iface.discovery_stamp_value,
-            discovery_name: iface.discovery_name.clone(),
-            discovery_lxmf_address: iface.discovery_lxmf_address.clone(),
-            discovery_encrypt: iface.discovery_encrypt,
-            reachable_on: iface.reachable_on.clone(),
-            publish_ifac: iface.publish_ifac,
-            latitude: iface.latitude,
-            longitude: iface.longitude,
-            height: iface.height,
-            discovery_frequency: iface.discovery_frequency,
-            discovery_bandwidth: iface.discovery_bandwidth,
-            discovery_modulation: iface.discovery_modulation,
-        },
-    );
 }

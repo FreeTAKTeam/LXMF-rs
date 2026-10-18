@@ -1,7 +1,5 @@
 # Temporary exceptions to module size budgets.
 # Keep this list short and remove entries as files are split.
-crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup_parts/module_prelude.rs
-crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup_parts/startup_udp.rs
 crates/apps/reticulumd/src/bin/reticulumd/bootstrap_parts/module_core.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_rnode_management.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_control_peer.rs
@@ -33,7 +31,6 @@ crates/libs/rns-transport/src/iface/auto_parts/default_multicast_discovery_addre
 crates/libs/rns-transport/src/iface/i2p.rs
 crates/libs/rns-transport/src/iface/kiss_parts/kisstcpclientinterface.rs
 crates/libs/rns-transport/src/iface/kiss_parts/module_prelude.rs
-crates/libs/rns-transport/src/iface/local.rs
 crates/libs/rns-transport/src/iface/lora_parts/lorainterface.rs
 crates/libs/rns-transport/src/iface/lora_parts/module_extra.rs
 crates/libs/rns-transport/src/iface/lora_parts/rnoderadiostatus.rs
@@ -43,7 +40,6 @@ crates/libs/rns-transport/src/iface/rnode_multi.rs
 crates/libs/rns-transport/src/iface/serial_parts/module_prelude.rs
 crates/libs/rns-transport/src/iface/serial_parts/run_serial_stream.rs
 crates/libs/rns-transport/src/iface/tcp_client.rs
-crates/libs/rns-transport/src/iface/tcp_server.rs
 crates/libs/rns-transport/src/iface/udp.rs
 crates/libs/rns-transport/src/iface/vrn76_kiss_ble_parts/module_prelude.rs
 crates/libs/rns-transport/src/iface/weave.rs

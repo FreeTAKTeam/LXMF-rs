@@ -466,6 +466,7 @@ mod announce;
 mod config;
 // core: construction and minimal high-level transport API methods.
 mod core;
+mod core_interfaces;
 // handler: packet send pipeline and routing/encryption outcomes.
 mod handler;
 mod ifac;

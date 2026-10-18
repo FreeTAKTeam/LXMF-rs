@@ -33,15 +33,68 @@ impl InterfaceManager {
         R: std::future::Future<Output = ()> + Send + 'static,
         P: FnOnce(&mut Self, AddressHash) -> Result<(), E>,
     {
+        let context = self.prepare_context(inner, role, mode, prepare)?;
+        let address = *context.channel.address();
+        let handle = context.inner.clone();
+        self.worker_tasks.insert(address, task::spawn(worker(context)));
+        Ok((address, handle))
+    }
+
+    /// Prepare an owned worker that cannot construct its carrier future until
+    /// the returned activation sender is used. Dropping that sender or stopping
+    /// the interface cancels the gated context and lets the worker tree join.
+    pub fn try_spawn_deferred_as_with_mode<T: Interface + Send + 'static, F, R, P, E>(
+        &mut self,
+        inner: T,
+        worker: F,
+        role: IfaceRole,
+        mode: InterfaceMode,
+        prepare: P,
+    ) -> Result<(AddressHash, tokio::sync::oneshot::Sender<()>, CancellationToken), E>
+    where
+        F: FnOnce(InterfaceContext<T>) -> R + Send + 'static,
+        R: std::future::Future<Output = ()> + Send + 'static,
+        P: FnOnce(&mut Self, AddressHash) -> Result<(), E>,
+    {
+        let context = self.prepare_context(inner, role, mode, prepare)?;
+        let address = *context.channel.address();
+        let cancel = context.cancel.clone();
+        let (activate, activated) = tokio::sync::oneshot::channel();
+        self.worker_tasks.insert(
+            address,
+            task::spawn(async move {
+                let cancel = context.cancel.clone();
+                let activated = tokio::select! {
+                    _ = cancel.cancelled() => false,
+                    result = activated => result.is_ok(),
+                };
+                if activated && !cancel.is_cancelled() {
+                    worker(context).await;
+                } else {
+                    cancel.cancel();
+                }
+            }),
+        );
+        Ok((address, activate, cancel))
+    }
+
+    fn prepare_context<T: Interface, P, E>(
+        &mut self,
+        inner: T,
+        role: IfaceRole,
+        mode: InterfaceMode,
+        prepare: P,
+    ) -> Result<InterfaceContext<T>, E>
+    where
+        P: FnOnce(&mut Self, AddressHash) -> Result<(), E>,
+    {
         let context = self.new_context_with_role_and_mode(inner, role, mode);
         let address = *context.channel.address();
         if let Err(error) = prepare(self, address) {
             self.stop_interface(address);
             return Err(error);
         }
-        let handle = context.inner.clone();
-        self.worker_tasks.insert(address, task::spawn(worker(context)));
-        Ok((address, handle))
+        Ok(context)
     }
 
     /// Spawn an accepted child only after copying its parent's runtime policy.
@@ -60,7 +113,7 @@ impl InterfaceManager {
         self.spawn_inheriting_with_ifac(source, inner, worker, true)
     }
 
-    /// Spawn a Unix shared-instance client with its parent's routing policy
+    /// Spawn a native local shared-instance client with its parent's routing policy
     /// but without inheriting IFAC. The pinned LocalServerInterface does not
     /// configure attached LocalClientInterface objects with its IFAC keys.
     pub fn spawn_local_shared_client<T: Interface, F, R>(

@@ -12,7 +12,9 @@ pub(super) fn build_selected_tcp_server_adapter(
         .client_mtu
         .map(|mtu| TcpServer::new(addr.clone(), iface_manager.clone()).with_client_mtu(mtu))
         .unwrap_or_else(|| TcpServer::new(addr, iface_manager));
-    server = server.with_prefer_ipv6(selected_tcp_server.prefer_ipv6);
+    server = server
+        .with_prefer_ipv6(selected_tcp_server.prefer_ipv6)
+        .with_plaintext_shared_clients(selected_tcp_server.native_shared_clients);
     if let Some(bitrate_bps) = selected_tcp_server.client_forced_bitrate_bps {
         server = server.with_client_forced_bitrate(bitrate_bps);
     }
