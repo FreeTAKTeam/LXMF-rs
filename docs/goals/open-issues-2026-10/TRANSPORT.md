@@ -839,6 +839,83 @@ Weave now qualifies the thirteenth declared software row. Seven families and
 whole-item integration/one PR/hosted CI/merge remain open. Backoff configuration
 is unchanged; these traces do not establish physical/RF/public-network behavior.
 
+### LoRa/RNode software family composition board
+
+Weave checkpoint `92627fa3` qualifies thirteen software rows; seven remain.
+The next row is ordinary LoRa, the Python RNode serial/TCP profile and the
+existing caller-owned generic bearer. Keep RNodeMulti and native RNode BLE as
+their later separate rows. Existing prepared Unicast activation, native status,
+RNode management and unique configured mutation ownership remain authoritative;
+this row has no virtual children. IFAC defaults to eight bytes. Ordinary LoRa
+MTU is 220, Python RNode profile MTU 508, and the generic bearer uses its existing
+configured MTU. Pinned Python RNode confirms IFAC eight/hardware MTU 508.
+
+| Task | Existing owner / bounded main-agent files | Declared evidence |
+| --- | --- | --- |
+| Mechanical size preparation | Private same-namespace LoRa includes: extract native spawn and management/status handles from `lora_parts/lorainterface.rs`; move `module_extra.rs` tests to `lora_parts/tests/core.rs`. Extract the existing generic KISS stream to `kiss_parts/stream.rs`, retaining public paths and test names | Baseline/post native LoRa, KISS and generic-bearer suites plus four configured Serial/KISS controls; expanded bodies unchanged. Touched regular files below 500/test files below 1,200, remove only obsolete allowances, no new exceptions. Review/checkpoint before behavior |
+| Native opening status | Existing LoRa serial/TCP supervisor and private status fields | Two owned missing/refused endpoints fail the native error-publication regression first, then publish contextual offline errors. Keep IFAC credentials outside diagnostics and clear prior errors through existing successful startup collection |
+| Native supervisor retirement | Same LoRa open/connect/retry and stream/probe owner | After real failure has published its barrier, four long-backoff serial/TCP × global/interface-stop cases must fail a two-second join before selecting existing cancellation around connection/retry waits. Two active-stream controls cover the independent stop inputs and joined existing probe monitor. Preserve configured backoff values and native liveness timing |
+| Shared KISS pending operations | Existing generic KISS stream/I/O helpers used by LoRa and prior Serial/KISS families; new nested native tests | Nine held-pressure cases: full native RX, init write/flush, packet write/flush, management write/flush and shutdown write/flush. Ready-shutdown and initial-write-failure controls prove exact normal cleanup frames/counters and preserve the no-cleanup error path. Keep exact queues/peers blocked through cancellation, join/EOF, no false successful output/admission. Existing command/data notifications use `try_send` and are not invented blocking handoffs |
+| Generic bearer attempt | Existing `rnode_bearer_interface.rs` and status owner; private test module | For both existing bearer kinds, test full receive-queue cancellation and retained terminal offline status; caller-owned fake attempts cover opening/close failure, valid startup/authentication, live key rotation, read failure, exactly-once close and a fresh changed-key attempt. Keep bounded platform reads single-owner; no competing timeout/read or daemon backend invention |
+| Configured ordinary LoRa serial | Existing startup/state guard, shared PTY observer, prepared worker/mutation/control owner; new Linux family tests | Owned invalid state fails before native root/control while unrelated TCP passes. Repair only owned state; missing alias reports offline error, PTY publication repairs the same root. Exact probe/radio echoes precede validated status, eight-byte IFAC negatives/traffic, live rotation and observed management bytes. Alias removal/closure/republication proves same-root recovery; joined shutdown and new Transport identity/key/explicit MTU restart retain unrelated traffic |
+| Configured Python RNode TCP | Same existing startup/native owner, owned bound unlistened socket | Actual refusal then listen on the same port; invalid startup response closes the first connection, valid replacement recovers the same root. Default MTU 508, IFAC rejection/authentication, live rotation, native EOF/reconnect, exact management output and changed-key/identity/MTU restart qualify this path. Avoid strict-preflight dummy-peer confusion |
+
+Do not alter public/exhaustive option structs or add workers, queues, a backend
+registry, protocol timers or dispatcher paths. Existing generic-bearer retry
+belongs to its caller. Its `runtime.poll().await` owns any bounded platform
+read and must not be wrapped in a shorter cancellation race; select only the
+blocked admission/write operations and always close the attempt. Final status
+must publish offline while retaining relevant error/traffic metadata.
+
+For shared KISS, evaluate a scoped I/O operation selected against the existing
+stop, with final status outside it. Preserve normal ready shutdown frames; an
+interrupted pending write may have produced a partial frame, so retire that
+stream without appending cleanup bytes. A pending cleanup write/flush must also
+observe the same stop. Prefer existing-token cancellation to a new timeout.
+The PRE roles must check this cleanup distinction and normal-stop selection
+before behavior implementation; the platform-bearer read rule above differs
+from ordinary cancellable Tokio stream I/O.
+
+Correctness PRE approves mechanical preparation and requires the initial-frame
+write-failure path to keep its existing no-shutdown return. An explicit private
+operation result must authorize cleanup only after an ordinary stream-loop exit,
+not initial failure or outer interruption. Real manager contexts clone the stop
+into their global cancellation field, but the public context can supply
+independent tokens: exercise both in native supervisor/active-stream controls.
+The existing private stream context may retain interface-stop; cancellation must
+cancel its existing child token, then await the same KISS future and already-owned
+probe monitor. Do not drop that compound owner or add another task.
+
+Both PRE roles approve with these fences. Baselines pass 18 LoRa, four KISS,
+five generic-bearer and four configured Serial/KISS cases. The mechanical split
+preserves Rustfmt-normalized reconstructed method/stream/test bodies; the first
+comparison helper omitted two separator blank lines, and its diagnostic diff
+is retained separately from the corrected successful comparison. Post-extraction
+tests pass the same counts. Both structural POST roles independently reconstruct
+and approve the unchanged source. Affected Clippy, architecture, boundaries,
+module size, explicit nine-file formatting and diff gates pass. No LoRa/RNode
+behavior or family promotion has occurred.
+
+The locked-version [Tokio select documentation](https://docs.rs/tokio/1.53.2/tokio/macro.select.html)
+confirms ordered polling with `biased`, assigns fairness to that ordering and
+identifies `write_all` as unsafe to abandon and restart. The proposed use retires
+an interrupted stream instead of restarting a partial write; existing inner stop
+selection must keep an otherwise-ready I/O loop responsive. The normal-cleanup
+control must prove that deterministic polling preserves ready shutdown frames.
+
+Declare one first run per scenario and retain every compile/runtime failure.
+Native pressure/packet/negative/silence/EOF/join bounds stay two seconds, normal
+configured status/setup three, and configured owner shutdown ten. Native LoRa
+retry can use its existing validated 50/100 ms test configuration; long-backoff
+regressions deliberately retain a value above the owner's join bound. Preserve
+the existing 3.5-second detect probe, fourteen-second TCP silence timeout and
+probe-monitor startup policy. Configured restarts use native defaults first,
+then a valid explicit MTU 200. Only owned local state, PTYs, loopback sockets
+and injected software bearers are used; no hardware, Bluetooth scan, RF or
+public-network activity. Main-agent PRE/structural POST/source POST and affected
+gates precede row qualification. Six other families and whole-item integration,
+one PR, hosted CI and merge would remain afterward.
+
 ### Raw IFAC type preparation for UDP composition
 
 Checkpoint `c5ee78f50a3e8f13c5a1f0e3537f6d4702558694` records the reviewed

@@ -2240,6 +2240,49 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 LoRa/RNode software family preparation
+
+- Weave checkpoint `92627fa3` qualifies thirteen of twenty software rows.
+  Read-only exploration maps the next LoRa/RNode row to the existing configured
+  dispatcher/state guard, native serial/TCP/KISS supervisor, RNode status/control
+  projection and caller-owned generic bearer. Defaults remain IFAC eight,
+  ordinary MTU 220 and Python RNode MTU 508; no virtual-child case applies.
+- The next TRANSPORT.md board declares mechanical preparation before behavior,
+  two opening-status regressions followed by four long-backoff stop regressions
+  and two active-stream controls for independent stop inputs,
+  nine shared-KISS pressure cases plus normal shutdown/initial-failure controls, two configured
+  serial/TCP traces and bounded fake-bearer attempts for both existing kinds.
+  Opening errors currently only log; retry waits/TCP connect and shared KISS or
+  bearer receive admission can hide cancellation. Generic bearer final status
+  can remain online. Reads owned by a platform backend remain single-owner.
+- Correctness PRE approves mechanical preparation and requires initial KISS
+  write failure to retain its no-cleanup path. Independent global/interface-stop
+  controls must cancel, then await the existing stream and probe monitor owner.
+  Both PRE roles now approve these fences; terminal bearer offline status must
+  preserve prior error/traffic and append a close failure.
+- Mechanical preparation extracts the existing LoRa spawn/offline helper and
+  management/status suffix into private includes, keeping its main types/methods
+  at 447 lines, supervision 163 and management 137. Existing LoRa tests move
+  unchanged inside the same tests-module wrapper to tests/core (459 lines),
+  reducing module_extra to 171. The existing generic KISS stream moves to a
+  380-line include, leaving its original file 465. Only three obsolete size
+  allowances are removed; untouched prelude/radio-status exceptions stay intact.
+- Rustfmt-normalized reconstructed source matches the prior HEAD exactly.
+  The first comparison helper omitted two boundary blank lines; the failure's
+  diagnostic diff is retained in
+  `/tmp/lxmf-item4-lora-structure-comparison-initial.log`. Corrected comparison
+  passes in `...-structure-comparison.log`, without any production correction.
+  Before/after native suites pass LoRa18/18 (0.16 seconds), KISS4/4 (0.04),
+  generic bearer5/5 (5.02/5.03) and configured Serial/KISS4/4 (6.08/6.07).
+  Logs remain in `/tmp/lxmf-item4-lora-{native,kiss,bearer,pty}-{baseline,structure}.log`.
+- Both structural POST roles independently reconstruct and approve unchanged
+  bodies, public paths/privacy and test names. Affected all-target/all-feature
+  Clippy, architecture, boundaries, module size, explicit nine-file formatting
+  and diff gates pass in `/tmp/lxmf-item4-lora-structure-*.log`.
+  No LoRa/RNode behavior change or qualification is claimed; all seven remaining
+  families/whole-item gates stay open. Physical/RF/public-network work is outside
+  this software scope.
+
 ## Item 4 Weave configured PTY lifecycle qualification
 
 - Two Linux cases use only the shared owned PTY observer and loopback TCP.

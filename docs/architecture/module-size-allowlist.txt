@@ -28,10 +28,7 @@ crates/libs/rns-rpc/src/rpc/helpers_parts/merge_fields_with_options.rs
 crates/libs/rns-rpc/src/storage/messages_parts/outbound_message_sections/core_tests.rs
 crates/libs/rns-transport/src/iface/auto_parts/default_multicast_discovery_address_sections/core_tests.rs
 crates/libs/rns-transport/src/iface/i2p.rs
-crates/libs/rns-transport/src/iface/kiss_parts/kisstcpclientinterface.rs
 crates/libs/rns-transport/src/iface/kiss_parts/module_prelude.rs
-crates/libs/rns-transport/src/iface/lora_parts/lorainterface.rs
-crates/libs/rns-transport/src/iface/lora_parts/module_extra.rs
 crates/libs/rns-transport/src/iface/lora_parts/rnoderadiostatus.rs
 crates/libs/rns-transport/src/iface/rnode_ble_parts/module_prelude.rs
 crates/libs/rns-transport/src/iface/rnode_ble_parts/rnode_peripheral_matches.rs
