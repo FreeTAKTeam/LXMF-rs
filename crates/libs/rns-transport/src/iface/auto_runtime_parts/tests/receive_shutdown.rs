@@ -6,30 +6,6 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch, Mutex};
 use tokio::time::{sleep, timeout, Duration};
 
-// Keep pre-exec Pipe children in other tests from retaining a copied UDP fd.
-fn runs_in_isolated_child() -> bool {
-    const MARKER: &str = "RETICULUM_AUTO_RECEIVE_SHUTDOWN_CHILD";
-    let case = std::thread::current().name().expect("exact test name").to_owned();
-    if std::env::var_os(MARKER).as_deref() == Some(std::ffi::OsStr::new(&case)) {
-        return false;
-    }
-    let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
-        .args([&case, "--exact", "--nocapture", "--test-threads=1"])
-        .env(MARKER, &case)
-        .output()
-        .expect("isolated native Auto receive test");
-    assert!(
-        output.status.success()
-            && String::from_utf8_lossy(&output.stdout)
-                .contains("test result: ok. 1 passed; 0 failed; 0 ignored;"),
-        "isolated native receive case {case} failed or selected no test: {}\n{}\n{}",
-        output.status,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    true
-}
-
 async fn blocked_receive_shutdown(full_events: bool) {
     let wait = AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other).initial_peering_wait;
     assert_eq!(wait, Duration::from_millis(1920));
@@ -181,7 +157,7 @@ async fn blocked_receive_shutdown(full_events: bool) {
 
 #[tokio::test]
 async fn native_auto_receiver_shutdown_joins_full_transport_queue() {
-    if runs_in_isolated_child() {
+    if auto_lifecycle_runs_in_child() {
         return;
     }
     blocked_receive_shutdown(false).await;
@@ -189,7 +165,7 @@ async fn native_auto_receiver_shutdown_joins_full_transport_queue() {
 
 #[tokio::test]
 async fn native_auto_receiver_shutdown_joins_full_event_queue() {
-    if runs_in_isolated_child() {
+    if auto_lifecycle_runs_in_child() {
         return;
     }
     blocked_receive_shutdown(true).await;

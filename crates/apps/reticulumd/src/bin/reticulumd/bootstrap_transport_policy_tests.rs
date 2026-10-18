@@ -30,6 +30,9 @@ mod serial_family;
 #[path = "tests/bootstrap_i2p_family.rs"]
 mod i2p_family;
 
+#[path = "tests/bootstrap_meshtastic_family.rs"]
+mod meshtastic_family;
+
 async fn start_fixture(
     args: &Args,
     config: &DaemonConfig,

@@ -54,10 +54,7 @@ impl MeshtasticInterface {
 
     #[must_use]
     pub fn runtime_status_json(&self) -> serde_json::Value {
-        self.runtime_status
-            .lock()
-            .expect("meshtastic status mutex poisoned")
-            .to_json()
+        self.runtime_status.lock().expect("meshtastic status mutex poisoned").to_json()
     }
 
     #[must_use]
@@ -73,11 +70,8 @@ impl MeshtasticInterface {
         let (rx_channel, mut tx_channel) = context.channel.split();
         let (name, config, mut inbound_rx, outbound_tx, runtime_status) = {
             let guard = context.inner.lock().expect("meshtastic interface mutex poisoned");
-            let inbound_rx = guard
-                .inbound_rx
-                .lock()
-                .expect("meshtastic inbound mutex poisoned")
-                .take();
+            let inbound_rx =
+                guard.inbound_rx.lock().expect("meshtastic inbound mutex poisoned").take();
             (
                 guard.name.clone(),
                 guard.config.clone(),
@@ -100,14 +94,19 @@ impl MeshtasticInterface {
                 _ = iface_stop.cancelled() => break,
                 received = inbound_rx.recv() => {
                     let Some(received) = received else { break };
-                    if !process_received_for_interface(
-                        &mut tunnel,
-                        received,
-                        iface_address,
-                        &rx_channel,
-                        &ifac_state,
-                        &ifac_violations,
-                    ).await {
+                    let admitted = tokio::select! {
+                        _ = context.cancel.cancelled() => break,
+                        _ = iface_stop.cancelled() => break,
+                        result = process_received_for_interface(
+                            &mut tunnel,
+                            received,
+                            iface_address,
+                            &rx_channel,
+                            &ifac_state,
+                            &ifac_violations,
+                        ) => result,
+                    };
+                    if !admitted {
                         break;
                     }
                     record_meshtastic_status(&runtime_status, tunnel.status());
@@ -122,7 +121,12 @@ impl MeshtasticInterface {
                 }
                 _ = send_tick.tick() => {
                     if let Some(frame) = tunnel.next_transmit() {
-                        if let Err(err) = outbound_tx.send(frame).await {
+                        let sent = tokio::select! {
+                            _ = context.cancel.cancelled() => break,
+                            _ = iface_stop.cancelled() => break,
+                            result = outbound_tx.send(frame) => result,
+                        };
+                        if let Err(err) = sent {
                             tunnel.status.last_error = Some(err.to_string());
                             log::warn!(
                                 "meshtastic_interface outbound queue closed name={} iface={}",
@@ -159,18 +163,12 @@ async fn process_received_for_interface(
         Ok(Some(data)) => match decode_packet_ifac(ifac_state, &data) {
             Ok(packet) => {
                 if rx_channel
-                    .send(RxMessage {
-                        address: iface_address,
-                        packet,
-                        source: IfaceSource::None,
-                    })
+                    .send(RxMessage { address: iface_address, packet, source: IfaceSource::None })
                     .await
                     .is_err()
                 {
                     tunnel.status.last_error = Some("transport receive queue closed".to_string());
-                    log::warn!(
-                        "meshtastic_interface receive queue closed iface={iface_address}"
-                    );
+                    log::warn!("meshtastic_interface receive queue closed iface={iface_address}");
                     return false;
                 }
             }

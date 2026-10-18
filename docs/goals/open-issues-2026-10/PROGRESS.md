@@ -8,7 +8,7 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | In progress; eleven of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P and Auto family traces qualify locally. Nine other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
+| 4. Transport and RNS 1.5.5 | In progress; twelve of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P, Auto and simulated Meshtastic family traces qualify locally. Eight other families and whole-item integration/hosted gates are open. No item-4 PR or merge yet. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
@@ -2240,6 +2240,72 @@ validation only; terminal results and final-head review/CI/merge remain required
   merge remain open. This is Linux software process evidence; no Windows,
   hardware, RF, public-network or whole-issue completion is inferred.
 
+## Item 4 Meshtastic software lifecycle and native queue shutdown qualification
+
+- Auto checkpoint `162db200` qualifies eleven of twenty declared software
+  family rows. The next board in TRANSPORT.md keeps Meshtastic explicitly
+  simulated, using the existing configured dispatcher, native worker and
+  unique mutation/auxiliary owner. Both PRE roles approve; review corrects the
+  native default to sixteen-byte IFAC without changing production defaults.
+- The configured failure/repair, multi-chunk native loopback, published status,
+  live same-root key rotation, unrelated TCP and changed-identity/key restart
+  baseline passes 1/1 in 6.05 seconds in
+  `/tmp/lxmf-item4-meshtastic-configured-initial.log`.
+- Two full native RX/output queue regressions retain their 0/2 pre-fix result
+  in 2.01 seconds in `...-shutdown-red.log`. Manual polling drives the real
+  native future to the pending handoff, then a Tokio task owns completion.
+  Exact queues stay held through independent stop-token cancellation and join;
+  input ownership closes without cancelled admission/output.
+- Selecting existing stop tokens around receive processing and outbound send
+  makes both pass alongside three existing independent bearer IFAC controls:
+  5/5 in 0.02 seconds in `...-native-green.log`. Both Meshtastic source POST
+  roles approve. Default affected suites pass 1,027 transport tests with twelve
+  existing ignores and 31 library/676 binary daemon tests in `...-default.log`.
+- The all-feature transport sequence stops at one existing Auto failed-startup
+  immediate exclusive-bind assertion: 1,055 pass, one failure, twelve existing
+  ignores in `...-transport-all-features.log`. Later commands did not run. The
+  failed run is retained. This natural failure is untraced, consistent with the
+  preceding controlled Auto/Pipe descriptor attribution rather than individually
+  PID-attributed here. Local socket vectors drop on the data-bind error before
+  runtime workers spawn. A bounded PRE amendment reuses existing exact-case
+  subprocess isolation for all three old Auto exclusive-bind lifetime cases,
+  sharing the existing private helper with the two pressure cases. Preserve all
+  assertions/deadlines/bind probes and declare one subsequent normal full run.
+  Both PRE roles approve. The three contiguous cases move into a 342-line
+  `tests/socket_lifecycle.rs` included in the same module, retaining exact case
+  names and reducing the old core test file from 1,448 to 1,105 lines without
+  adding an allowance. A Rustfmt-normalized comparison confirms the three
+  original bodies differ only by the isolation entry guards.
+- The declared subsequent normal all-feature transport run passes 1,056 tests
+  with twelve existing ignores in `...-transport-all-features-isolated.log`.
+  Separate daemon all-feature validation passes 31 library/677 binary tests.
+  Affected all-target/all-feature Clippy, default check, architecture,
+  diagnostics, explicit formatting, boundaries and module-size gates pass.
+  This locally qualifies the twelfth software family row, with eight remaining
+  plus whole-item integration, one PR, hosted CI and merge. Configured loopback
+  composition remains separate from independent native bearer authentication;
+  no external Meshtastic device or RF evidence is claimed.
+
+The checkpoint commands are:
+
+| Command | Output log suffix / result |
+| --- | --- |
+| `cargo test -p reticulum-rs-transport --lib iface::meshtastic::blocked_shutdown -- --nocapture` | `shutdown-red.log`, zero/two pass before fix |
+| `cargo test -p reticulum-rs-transport --lib meshtastic -- --nocapture` | `native-green.log`, five pass |
+| `cargo test -p reticulumd --bin reticulumd configured_meshtastic_failure_rotation_and_restart_preserve_simulated_delivery -- --nocapture` | `configured-initial.log`, one pass before fix |
+| `cargo test -p reticulumd -p reticulum-rs-transport --lib --bins` | `default.log`, pass |
+| `cargo test -p reticulum-rs-transport --all-features --lib` | `transport-all-features.log`, one Auto lifetime failure; `transport-all-features-isolated.log`, pass after harness correction |
+| `cargo test -p reticulumd --all-features --lib --bins` | `daemon-all-features.log`, pass |
+| `cargo clippy -p reticulumd -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings` | `clippy.log`, pass |
+| `cargo check -p reticulumd` | `default-check.log`, pass |
+| `cargo run -p xtask -- architecture-checks` | `architecture.log`, pass |
+| `cargo test -p reticulumd --test code_quality_issue_369` | `diagnostics.log`, pass |
+
+Suffixes use `/tmp/lxmf-item4-meshtastic-`. The explicit eight-file
+`rustfmt --edition 2021 --config skip_children=true --check` result is in
+`fmt-final.log`; boundary/module-size script output is in `boundaries.log`
+and `size-final.log`. Local task-document links and `git diff --check` pass.
+
 ## Item 4 Auto software lifecycle and receive-owner qualification
 
 - `60f756a7` commits reviewed I2P and shared HDLC behavior; ten of twenty family
@@ -2279,9 +2345,9 @@ validation only; terminal results and final-head review/CI/merge remain required
 - All-feature affected-package Clippy, default check, architecture, diagnostics,
   formatting, boundaries and module-size gates pass. Output logs remain in
   `/tmp/lxmf-item4-auto-family-{clippy,default-check,architecture,diagnostics,fmt,boundaries,size}.log`.
-  The Auto row is locally qualified: eleven of twenty declared software rows,
-  with nine remaining and whole-item integration, one PR, hosted CI and merge
-  still open. No OS enumeration, native multicast ingress, physical-carrier or
+  At the Auto checkpoint, eleven of twenty declared software rows were locally
+  qualified, with nine remaining and whole-item integration, one PR, hosted CI
+  and merge still open. No OS enumeration, native multicast ingress, physical-carrier or
   public-network qualification is inferred.
 
 The exact Cargo command scopes for this checkpoint are:

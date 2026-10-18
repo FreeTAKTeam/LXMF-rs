@@ -70,7 +70,7 @@ interface: actual carrier readiness stays explicit in its runtime status.
 Each row covers applicable configured startup/error, live configuration or
 reconnect, child inheritance/rotation, stop/restart and diagnostics. Existing
 focused codec/worker tests are inputs, not a pass for every composition cell.
-The first eleven rows have the declared software lifecycle qualification below;
+The first twelve rows have the declared software lifecycle qualification below;
 other rows remain open. Record exact test names/results when qualified.
 
 | Family | Existing bounded evidence | Missing composition to qualify |
@@ -86,7 +86,7 @@ other rows remain open. Record exact test names/results when qualified.
 | I2P outgoing | Declared configured refusal, exact sixteen-byte-default IFAC, live child rotation, reconnect/restart, native MTU and unrelated traffic; actual native queue pressure and joined SAM setup shutdown | Locally qualified for these fake-SAM software traces; public router interoperability and whole-item integration/hosted CI remain pending |
 | I2P incoming | Declared preparation failure/redaction/recovery, persisted key file, old/new accepted-child rotation and peer isolation, session recreation retaining both children, changed-key restart and native setup/stream shutdown | Locally qualified for these fake-SAM software traces; recovered startup metadata remains a snapshot. Public router interoperability and whole-item integration/hosted CI remain pending |
 | AutoInterface | Two configured Linux manual-binding traces qualify native activation failure/partial cleanup, sixteen-byte IFAC, old/new virtual-child key and non-IFAC policy inheritance, peer-isolated configured-port routing and changed-identity restart; two queue-pressure regressions qualify joined receive-owner shutdown | Locally qualified for these software traces; manual bindings do not prove OS adoption or multicast ingress. Whole-item integration/hosted CI remain pending |
-| Meshtastic | Authenticated tunnel, live rotation and stop retaining policy | Configured failure/status and reactivation |
+| Meshtastic | Configured unavailable-bearer failure, simulated multi-chunk native admission/status, live same-root key rotation, unrelated TCP and changed-identity/key restart; two blocked native queue regressions plus independent bearer IFAC controls | Locally qualified for these software traces; the daemon path requires simulation loopback. External device/RF and whole-item integration/hosted CI remain separate |
 | Weave | Authenticated signed-handshake stream | Startup/reconnect errors, virtual endpoint rotation and restart |
 | LoRa / RNode serial, TCP and existing bearer paths | Authenticated stream/fake bearer and startup-monitor failures | Configured validation failure, reconnect/restart/status |
 | RNodeMulti | Authenticated vport, parent removes children on shutdown | Active-vport rotation and failed/restarted configuration |
@@ -638,8 +638,104 @@ sixteen daemon propagation-decryption cases. This exposes unchanged independent
 cipher-feature wiring; no execution of that combined command on the prior
 checkpoint was performed. The failed run remains recorded, not reclassified
 as passing. Its sixteen cases pass in the standalone daemon command. The
-ordinary package gates, Clippy and focused source checks qualify Auto only;
-nine family rows and whole-item integration/hosted CI remain open.
+ordinary package gates, Clippy and focused source checks qualify Auto only.
+At that checkpoint, nine family rows and whole-item integration/hosted CI
+remained open; the current inventory includes subsequent Meshtastic evidence.
+
+### Meshtastic software family composition board
+
+Checkpoint `162db200` qualifies the Auto row; nine family rows remained open
+at that checkpoint.
+The existing configured Meshtastic path deliberately requires simulation
+loopback. Its native bearer handle/tunnel IFAC tests already establish wrong-key
+rejection, exact authenticated ingress/egress and live key rotation. Add the
+missing configured lifetime/status composition without exposing another handle
+or creating a new startup path. No native Meshtastic device or RF is involved.
+
+| Task | Main-agent owner/files | Declared evidence |
+| --- | --- | --- |
+| Configured failure, status and reactivation | Existing configured dispatcher/prepared spawn and unique mutation owner; new `tests/bootstrap_meshtastic_family.rs` registered by `bootstrap_transport_policy_tests.rs` | One `configured_meshtastic_failure_rotation_and_restart_preserve_simulated_delivery` case: parser rejects the unavailable-bearer configuration; the existing programmatic startup guard reports safe failure/no native root while unrelated TCP passes. A valid simulation configuration admits exact looped multi-chunk packets, publishes explicitly simulated/redacted native status and retains prepared sixteen-byte IFAC/native MTU. Live same-root key rotation preserves actual delivery and unrelated TCP. Joined shutdown retires both native and loopback workers; changed-key/new-identity configured restart admits fresh traffic and resets native counters. No child-inheritance case is invented for a family without virtual children |
+| Blocked native worker completion | Existing `meshtastic_parts/interface.rs`; new nested `meshtastic_parts/tests/blocked_shutdown.rs`, registration only in the existing test module | Two native RX/outbound queue cases prefill the actual relevant queue and drive the production worker future to its pending handoff. Keep queues/handles held through existing-token cancellation and actual task join; retain exact sentinels, absence of cancelled admission/output, closed inbound receiver and native stop state |
+
+Before the correction, both blocked paths await outside the worker's cancellation select.
+Use a standalone native manager and valid round-tripped tunnel frame, not a
+daemon consumer that drains the receive queue. Manual polling of the real
+pinned worker future gives a deterministic pending boundary before transferring
+it into a joined Tokio task. For outbound pressure, first poll with TX empty to
+consume the initial tick, then queue one nonempty packet and poll through native
+queueing. Wait the explicitly configured native send-tick deadline, then poll
+the sole ready tick against the full output queue. There
+are no other input events. Keep the held queue unchanged through cancellation.
+Retain both pre-fix outcomes; if red, select the existing stop tokens around
+the existing receive-processing future and outbound send. Do not change tunnel
+APIs, counters, fragmentation, default pacing, channel capacities or ownership.
+
+Declare one run per scenario before execution. Software fixtures explicitly
+configure a five-millisecond send delay and 64-byte chunk limit; production
+defaults remain unchanged. Setup/status bounds are three seconds, packet and
+negative/control bounds two seconds, and owned shutdown ten seconds. Preserve
+every result. The configured trace establishes simulated lifecycle composition;
+the existing independent bearer IFAC tests and new blocked-worker cases remain
+separate evidence, without claiming a configured external radio peer.
+
+Both PRE roles approve with those barriers. Correctness review corrects the
+initial eight-byte assumption: Meshtastic inherits the Interface trait's
+sixteen-byte default. Assert that native value with `ifac_size=None`; preserve
+the production default. Exercise the independent context/interface stop tokens,
+hold exact queue contents through join, and require closed native inbound
+ownership afterward. Tunnel processing counters alone are not delivery evidence.
+
+Main-agent implementation follows read-only PRE; correctness/maintainability
+POST and focused/native/configured tests precede the affected package gates,
+Clippy, diagnostics, architecture, formatting, boundaries and module-size checks.
+Qualify only the Meshtastic software row if those pass, then continue the eight
+remaining families and whole-item integration/one PR/hosted CI/merge.
+
+The configured baseline passes 1/1 in 6.05 seconds in
+`/tmp/lxmf-item4-meshtastic-configured-initial.log`. Both native queue cases
+reach their declared pending handoffs and fail shutdown completion before the
+correction (0/2 in 2.01 seconds, `...-shutdown-red.log`). Existing context and
+interface cancellation now select around receive processing and outbound send;
+the worker keeps its original tunnel, queues, status and IFAC owner. Both
+pressure cases and the three existing independent native IFAC controls pass
+5/5 in 0.02 seconds in `...-native-green.log`. Broader checks and source POST
+were still pending at that focused result.
+
+Both Meshtastic source POST roles approve and the default affected suites pass
+1,027 transport tests (twelve existing ignores) and 31 library/676 binary daemon
+tests. The first all-feature transport run stops with 1,055 passing and one
+existing Auto exclusive-bind failure, plus twelve existing ignores. Its output
+remains in `...-transport-all-features.log`. No later commands in the stopped
+validation sequence ran. This natural failure is untraced; it is consistent
+with the previously PID-attributed Auto/Pipe pre-exec descriptor-copy control,
+not individually attributed to a child here. On this failure path, discovery
+sockets are local values dropped by a failed data bind before worker spawning.
+
+The bounded harness correction hoists the existing exact-case child helper
+into Auto's private Unix-gated parent test module. Reuse it for both native
+pressure cases and the three existing exclusive-bind lifecycle cases (normal
+restart, echo-recovery restart and partial-startup failure/retry). Invoke before
+socket creation, keep successful one-test/non-ignored child evidence and every
+native assertion/deadline/immediate bind probe. No production behavior, shared
+bind setting, sleeps or retries change. Read-only PRE precedes the correction;
+declare one subsequent normal full-suite run rather than retrying until green.
+Both PRE roles approve. To respect the active size limit, the three contiguous
+lifetime cases move unchanged apart from the entry guard into
+`auto_runtime_parts/tests/socket_lifecycle.rs`, included in the same private
+module so exact case names remain stable. The old core test file drops from
+1,448 to 1,105 lines; the focused file is 342 lines. No allowance is added.
+
+The declared subsequent normal all-feature transport run passes 1,056 tests
+with twelve existing ignores in `...-transport-all-features-isolated.log`.
+A Rustfmt-normalized comparison confirms every original body is preserved
+apart from the three entry guards. Separate daemon all-feature validation
+passes 31 library/677 binary tests; affected all-target/all-feature Clippy,
+default check, diagnostics, architecture, explicit formatting, boundaries and
+module-size gates pass. Both Meshtastic source POST roles approve. This locally
+qualifies the twelfth software family row only. The configured path is an
+explicit loopback simulation, distinct from independent native bearer IFAC
+evidence. Eight families and whole-item integration/one PR/hosted CI/merge
+remain open; no external radio or RF qualification is inferred.
 
 ### Raw IFAC type preparation for UDP composition
 

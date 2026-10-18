@@ -193,8 +193,18 @@ do not establish OS adoption or multicast ingress. A separately retained combine
 package all-feature run exposes unchanged independent cipher-feature wiring:
 transport AES-128 with core AES-256 fails sixteen daemon cases; the standalone
 daemon all-feature command passes those cases. See the execution record for exact
-command scopes. Eleven of twenty declared software family rows are locally
-qualified. Remaining
+command scopes. A configured Meshtastic simulation trace now composes schema
+and startup-guard failure, actual multi-chunk admission, explicit simulated
+status, same-root rotation, unrelated TCP and joined changed-identity/key
+restart. Two native queue-pressure cases fail before existing-token selection
+around blocked handoffs, then pass with exact held queues and closed input
+ownership. Independent bearer IFAC evidence stays separate from configured
+loopback composition. An old Auto immediate-bind failure is retained as
+untraced/consistent with prior controlled descriptor inheritance; its unchanged
+lifetime bodies now reuse exact-case isolation. The declared next all-feature
+transport run passes 1,056 tests (twelve existing ignores), separate daemon
+validation passes 31/677, and affected Clippy/focused gates pass.
+Twelve of twenty declared software family rows are locally qualified. Remaining
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 

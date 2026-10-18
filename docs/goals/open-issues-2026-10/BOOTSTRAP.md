@@ -3,7 +3,7 @@
 This refines the remaining family gate in [TRANSPORT.md](TRANSPORT.md) after
 `a0772c1d`; it does not add another PR or change the numbered plan. The three
 discovery process cases and finite deeper relay matrix are already qualified.
-The first eleven TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto rows now have the declared
+The first twelve TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto/Meshtastic rows now have the declared
 software lifecycle evidence below. Other family rows and whole-item integration
 remain open.
 
@@ -76,7 +76,7 @@ the cleanup evidence even if a concurrent manager cleanup removes registrations.
 | Status/control/shutdown cutover (locally verified) | Existing entry retains typed handles and unique Auto shutdown; one publication owner replaces old fixed loops | Single two-second publication, synchronous initial controls, old-handle rejection, cancelled shutdown recovery, admission fencing, all-worker joins and unrelated-root continuity pass. General restoration is qualified below |
 | Restoration constructor preparation (locally verified) | Per-recipe context carries only the strict preflight boolean; selected TCP/Backbone/Local listener construction is callable from its existing adapter module | Config-only strict listener failure, independent carrier preflight policy, original-index rejection, override and missing-recipe controls preserve native ownership, labels, counts and fail-closed preparation. No restoration behavior changes yet |
 | Trusted restoration (locally verified) | Initial and restoration dispatch share constructor/defaults/context, including selected listeners; the same worker owns reconnect completion | Reordered KISS exact authenticated traffic and unrelated TCP continuity pass. Public endpoint replacement restores one original recipe in the current slot. Failed listener attempts retire and retry; common/degraded status and first control visibility are preserved |
-| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first eleven TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto rows have the declared software trace qualification below. Remaining simulated radio/mesh, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
+| Family composition (in progress) | Qualify the finite twenty-row inventory using its applicable native/software backends | The first twelve TCP/Backbone/UDP/Pipe/Serial/KISS/I2P/Auto/Meshtastic rows have the declared software trace qualification below. Remaining Weave/radio, available BLE and shared-local cells remain open; failed/degraded outcomes stay explicit |
 | Whole-item integration | Complete item-4 regressions, release checks, independent final review, one PR, exact-head hosted CI and normal merge | Existing PLAN.md/ACCEPTANCE.md gates; no item 5 work before merge |
 
 Implementation stays in the main agent. PRE, correctness and maintainability POST
@@ -449,5 +449,33 @@ watch selections, while queues remain full through join and exclusive rebind
 before manager retirement. Cancelled forwarding does not become delivery.
 Both final source reviews and ordinary affected-package gates pass; the retained
 combined-package cipher-feature failure and exact command scopes are recorded
-in PROGRESS.md. Eleven of twenty software rows are locally qualified; nine
-families and whole-item integration/hosted acceptance remain open.
+in PROGRESS.md. At the Auto checkpoint, eleven of twenty software rows were
+locally qualified; nine families and whole-item integration/hosted acceptance
+remained open.
+
+## Configured Meshtastic simulation and native queue pressure
+
+`configured_meshtastic_failure_rotation_and_restart_preserve_simulated_delivery`
+uses the existing configured dispatcher and unique mutation owner. The schema
+rejects an unavailable native bearer; the independent programmatic startup guard
+reports failed/no-root safely while unrelated TCP continues. Repaired simulation
+configuration transfers its native and loopback workers to the owner and proves
+actual multi-chunk native Transport admission, explicitly simulated/redacted
+status, retained sixteen-byte-default policy and native MTU, same-root key
+rotation, unrelated TCP and joined changed-identity/key restart. Existing bearer
+IFAC tests provide separate wrong-key/plaintext rejection and exact authenticated
+traffic evidence. No configured external-radio peer is claimed.
+
+Two native full receive/output queue cases fail before cancellation selection,
+then pass with queues held through joined completion, exact sentinels, no
+cancelled admission/output and closed inbound ownership. They use the existing
+worker and stop tokens. A subsequently exposed old Auto immediate-bind failure
+is untraced but consistent with the preceding controlled pre-exec descriptor
+copy. The three old socket-lifetime cases now reuse private exact-case isolation
+with unchanged bodies/budgets; extracting them also reduces the old test file
+below 1,200 lines. The declared next normal transport run passes 1,056 tests with
+twelve existing ignores. Separate daemon all-feature validation passes 31/677;
+Clippy and focused gates pass. Exact results and commands remain in PROGRESS.md.
+Twelve of twenty software rows are locally qualified, with eight families and
+whole-item integration/hosted acceptance still open. No physical/RF evidence
+or whole-item completion is inferred.
