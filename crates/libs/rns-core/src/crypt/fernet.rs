@@ -42,10 +42,20 @@ pub struct Token<'a>(&'a [u8]);
 // eight byte TIMESTAMP field at the start of each token. These fields are
 // not relevant to Reticulum. They are therefore stripped from this
 // implementation, since they incur overhead and leak initiator metadata.
-pub struct Fernet<R: CryptoRngCore> {
-    rng: R,
+//
+// `CachedFernet` holds only the key material. Verification and decryption
+// are deterministic, so they never need randomness; only `encrypt` draws an
+// IV from an RNG, which it takes as a parameter. `Fernet<R>` pairs the key
+// material with an RNG for callers that encrypt repeatedly.
+#[derive(Clone)]
+pub struct CachedFernet {
     sign_key: [u8; AES_KEY_SIZE],
     enc_key: AesKey,
+}
+
+pub struct Fernet<R: CryptoRngCore> {
+    rng: R,
+    keys: CachedFernet,
 }
 
 impl<'a> PlainText<'a> {
@@ -91,12 +101,12 @@ impl<'a> From<&'a [u8]> for Token<'a> {
     }
 }
 
-impl<R: CryptoRngCore + Copy> Fernet<R> {
-    pub fn new(sign_key: [u8; AES_KEY_SIZE], enc_key: AesKey, rng: R) -> Self {
-        Self { rng, sign_key, enc_key }
+impl CachedFernet {
+    pub fn new(sign_key: [u8; AES_KEY_SIZE], enc_key: AesKey) -> Self {
+        Self { sign_key, enc_key }
     }
 
-    pub fn new_from_slices(sign_key: &[u8], enc_key: &[u8], rng: R) -> Self {
+    pub fn new_from_slices(sign_key: &[u8], enc_key: &[u8]) -> Self {
         let mut sign_key_bytes = [0u8; AES_KEY_SIZE];
         let sign_len = cmp::min(AES_KEY_SIZE, sign_key.len());
         sign_key_bytes[..sign_len].copy_from_slice(&sign_key[..sign_len]);
@@ -105,19 +115,22 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
         let enc_len = cmp::min(AES_KEY_SIZE, enc_key.len());
         enc_key_bytes[..enc_len].copy_from_slice(&enc_key[..enc_len]);
 
-        Self { rng, sign_key: sign_key_bytes, enc_key: enc_key_bytes.into() }
+        Self { sign_key: sign_key_bytes, enc_key: enc_key_bytes.into() }
     }
 
-    pub fn new_rand(mut rng: R) -> Self {
+    pub fn new_rand<R: CryptoRngCore>(mut rng: R) -> Self {
         let mut sign_key = [0u8; AES_KEY_SIZE];
         rng.fill_bytes(&mut sign_key);
         let enc_key = AesCbcEnc::generate_key(&mut rng);
 
-        Self { rng, sign_key, enc_key }
+        Self { sign_key, enc_key }
     }
 
-    pub fn encrypt<'a>(
+    /// Encrypts `text` into `out_buf`, drawing the IV from `rng`. This is the
+    /// only Fernet operation that needs randomness.
+    pub fn encrypt<'a, R: CryptoRngCore>(
         &self,
+        rng: R,
         text: PlainText,
         out_buf: &'a mut [u8],
     ) -> Result<Token<'a>, RnsError> {
@@ -139,7 +152,7 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
         let mut out_len = 0;
 
         // Generate random IV
-        let iv = AesCbcEnc::generate_iv(self.rng);
+        let iv = AesCbcEnc::generate_iv(rng);
         out_buf[..iv.len()].copy_from_slice(iv.as_slice());
 
         out_len += iv.len();
@@ -236,12 +249,50 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
     }
 }
 
+impl<R: CryptoRngCore + Copy> Fernet<R> {
+    pub fn new(sign_key: [u8; AES_KEY_SIZE], enc_key: AesKey, rng: R) -> Self {
+        Self { rng, keys: CachedFernet::new(sign_key, enc_key) }
+    }
+
+    pub fn new_from_slices(sign_key: &[u8], enc_key: &[u8], rng: R) -> Self {
+        Self { rng, keys: CachedFernet::new_from_slices(sign_key, enc_key) }
+    }
+
+    pub fn new_rand(rng: R) -> Self {
+        Self { rng, keys: CachedFernet::new_rand(rng) }
+    }
+
+    pub fn encrypt<'a>(
+        &self,
+        text: PlainText,
+        out_buf: &'a mut [u8],
+    ) -> Result<Token<'a>, RnsError> {
+        self.keys.encrypt(self.rng, text, out_buf)
+    }
+
+    pub fn verify<'a>(&self, token: Token<'a>) -> Result<VerifiedToken<'a>, RnsError> {
+        self.keys.verify(token)
+    }
+
+    pub fn decrypt<'a, 'b>(
+        &self,
+        token: VerifiedToken<'a>,
+        out_buf: &'b mut [u8],
+    ) -> Result<PlainText<'b>, RnsError> {
+        self.keys.decrypt(token, out_buf)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::crypt::fernet::{Fernet, Token, AES_BLOCK_SIZE, FERNET_OVERHEAD_SIZE};
+    use crate::crypt::fernet::{
+        CachedFernet, Fernet, Token, AES_BLOCK_SIZE, AES_KEY_SIZE, FERNET_OVERHEAD_SIZE,
+    };
     use crate::error::RnsError;
     use core::str;
     use rand_core::OsRng;
+
+    const KEY: [u8; AES_KEY_SIZE] = [7u8; AES_KEY_SIZE];
 
     #[test]
     fn encrypt_then_decrypt() {
@@ -292,6 +343,62 @@ mod tests {
         let mut out_buf = [0u8; BUF_SIZE];
         let token_len =
             fernet.encrypt("authenticated".into(), &mut out_buf).expect("cipher token").len();
+        out_buf[token_len - 1] ^= 1;
+
+        assert!(matches!(
+            fernet.verify(Token::from(&out_buf[..token_len])),
+            Err(RnsError::IncorrectSignature)
+        ));
+    }
+
+    #[test]
+    fn cached_fernet_decrypts_without_an_rng() {
+        const BUF_SIZE: usize = 256;
+        let out_msg: &str = "#FERNET_RNG_FREE_DECRYPT#";
+
+        let mut out_buf = [0u8; BUF_SIZE];
+        let token = Fernet::new_from_slices(&KEY, &KEY, OsRng)
+            .encrypt(out_msg.into(), &mut out_buf[..])
+            .expect("cipher token");
+
+        // Decryption side is constructed from key material only.
+        let receiver = CachedFernet::new_from_slices(&KEY, &KEY);
+        let verified = receiver.verify(token).expect("verified token");
+        let mut in_buf = [0u8; BUF_SIZE];
+        let in_msg = str::from_utf8(receiver.decrypt(verified, &mut in_buf).expect("decoded").0)
+            .expect("valid string");
+
+        assert_eq!(in_msg, out_msg);
+    }
+
+    #[test]
+    fn cached_fernet_encrypt_interoperates_with_fernet_decrypt() {
+        const BUF_SIZE: usize = 256;
+        let out_msg: &str = "#CACHED_ENCRYPT#";
+
+        let mut out_buf = [0u8; BUF_SIZE];
+        let token = CachedFernet::new_from_slices(&KEY, &KEY)
+            .encrypt(OsRng, out_msg.into(), &mut out_buf[..])
+            .expect("cipher token");
+
+        let receiver = Fernet::new_from_slices(&KEY, &KEY, OsRng);
+        let verified = receiver.verify(token).expect("verified token");
+        let mut in_buf = [0u8; BUF_SIZE];
+        let in_msg = str::from_utf8(receiver.decrypt(verified, &mut in_buf).expect("decoded").0)
+            .expect("valid string");
+
+        assert_eq!(in_msg, out_msg);
+    }
+
+    #[test]
+    fn cached_verify_rejects_tampered_authentication_tag() {
+        const BUF_SIZE: usize = 256;
+        let fernet = CachedFernet::new_from_slices(&KEY, &KEY);
+        let mut out_buf = [0u8; BUF_SIZE];
+        let token_len = fernet
+            .encrypt(OsRng, "authenticated".into(), &mut out_buf)
+            .expect("cipher token")
+            .len();
         out_buf[token_len - 1] ^= 1;
 
         assert!(matches!(

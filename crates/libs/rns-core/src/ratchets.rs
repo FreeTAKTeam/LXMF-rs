@@ -7,7 +7,7 @@ use rand_core::CryptoRngCore;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
 use crate::crypt::fernet::{
-    Fernet, PlainText, Token, FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE,
+    CachedFernet, Fernet, PlainText, Token, FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE,
 };
 use crate::error::RnsError;
 use crate::identity::{DerivedKey, PrivateIdentity, PUBLIC_KEY_LENGTH};
@@ -82,8 +82,8 @@ pub fn decrypt_with_private_key_into<'a>(
     let key_bytes = derived.as_bytes();
     let split = key_bytes.len() / 2;
 
-    let fernet =
-        Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rand_core::OsRng);
+    // Verification and decryption are deterministic, so no RNG is involved.
+    let fernet = CachedFernet::new_from_slices(&key_bytes[..split], &key_bytes[split..]);
     let token = Token::from(&ciphertext[PUBLIC_KEY_LENGTH..]);
     let verified = fernet.verify(token).map_err(|_| RnsError::CryptoError)?;
     let plain = fernet.decrypt(verified, out).map_err(|_| RnsError::CryptoError)?;
@@ -117,8 +117,8 @@ pub fn decrypt_with_identity_into<'a>(
     let key_bytes = derived.as_bytes();
     let split = key_bytes.len() / 2;
 
-    let fernet =
-        Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rand_core::OsRng);
+    // Verification and decryption are deterministic, so no RNG is involved.
+    let fernet = CachedFernet::new_from_slices(&key_bytes[..split], &key_bytes[split..]);
     let token = Token::from(&ciphertext[PUBLIC_KEY_LENGTH..]);
     let verified = fernet.verify(token).map_err(|_| RnsError::CryptoError)?;
     let plain = fernet.decrypt(verified, out).map_err(|_| RnsError::CryptoError)?;
