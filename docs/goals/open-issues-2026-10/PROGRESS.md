@@ -52,6 +52,18 @@ selection (98 targets across ten packages, retaining declared ignores) pass
 locally after the correction. No ordering, roaming, or admission assertion was
 relaxed.
 
+The legacy Python-channel LRPROOF case expected a relay to suppress the second
+valid proof, contradicting the frozen reference and the approved transit rule in
+[TRANSPORT.md](TRANSPORT.md). Its oracle now requires both validated transit
+copies to forward while preserving exactly one application delivery. The
+wrong-interface and invalid-signature native controls remain in force. The
+reference defers duplicate remembering for link-table packets and LRPROOF in
+[`Transport.py` at the frozen revision](https://github.com/markqvist/Reticulum/blob/ea98db4f53dcf0defc0e71a16e60d28b1229c4e6/RNS/Transport.py#L1942).
+The complete pinned-baseline Python-channel selection passes locally: 66 tests,
+with the same two exclusions reported by the CI selection. The virtual PR HIL
+profile also passes all twelve cases. These checks do not claim physical-device
+or whole-item release acceptance.
+
 ## Item 1 evidence
 
 - Live open issue query returned 22 issues; live open PR query returned none.
