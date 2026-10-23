@@ -71,6 +71,17 @@ responses. Both the setup and coordinated-shutdown deadlines remain two seconds.
 The revised fixture passes fifty consecutive repeats, and the full workspace
 lib/bin nextest selection passes 3,436 tests with its existing 106 skips.
 
+Hosted Verify run [39962052953](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/39962052953),
+attempt 2 on `7f5d871d`, passes all 23 PR HIL cases on their first attempts,
+including 66 Python-channel and 30 baseline compatibility cases. The next
+clean-checkout assertion fails because this increment checks out `LXMF-feature`
+but omits that exact auxiliary directory from its exclusions. The workflow now
+excludes all six declared auxiliary checkouts and prints status before checking
+cleanliness. A temporary Git fixture reproduces the old failure, accepts only
+the declared checkouts after repair, and still rejects tracked edits and an
+unexpected untracked file. The later exact-target and utility steps were skipped
+by that failed assertion; their final hosted result remains pending on #674.
+
 ## Item 1 evidence
 
 - Live open issue query returned 22 issues; live open PR query returned none.

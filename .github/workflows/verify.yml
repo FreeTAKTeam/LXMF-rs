@@ -334,11 +334,13 @@ jobs:
         run: |
           cat >> .git/info/exclude <<'EOF'
           /LXMF/
+          /LXMF-feature/
           /Reticulum/
           /Reticulum-feature/
           /Reticulum-parity/
           /reticulum-conformance/
           EOF
+          git status --short
           test -z "$(git status --porcelain --untracked-files=all)"
 
       - name: Run exact-target Python compatibility matrix
