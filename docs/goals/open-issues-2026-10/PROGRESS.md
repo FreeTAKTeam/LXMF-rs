@@ -43,6 +43,15 @@ workspace all-target/all-feature Clippy, workspace formatting, architecture,
 dependency boundaries and module size. Hosted platform and integration checks
 for the repaired checkpoint are tracked on #674.
 
+The follow-up transport-policy integration regression exposed a generated Type 1
+path request carrying a phantom transport header field. The generator now keeps
+the requesting transport identity only in its payload, matching the pinned
+Python constructor. All eight transport-policy tests, 1,090 all-feature transport
+unit tests (twelve existing ignores), and the complete broad CI integration
+selection (98 targets across ten packages, retaining declared ignores) pass
+locally after the correction. No ordering, roaming, or admission assertion was
+relaxed.
+
 ## Item 1 evidence
 
 - Live open issue query returned 22 issues; live open PR query returned none.

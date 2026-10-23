@@ -67,6 +67,13 @@ it does not pass and no release readiness is claimed. The
 source-blackhole and autonomous-peer gaps. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-software-qualification-issue-648).
 
+Item 4 checkpoint stabilization on 2026-10-23 also corrects generated Type 1
+path requests: the requester identity stays in the payload, and the transport
+header field is absent, matching pinned Python behavior. The eight production
+transport-policy tests and all 98 targets in the broad CI integration selection
+pass locally. This does not complete the remaining interface families or claim
+whole-item release acceptance.
+
 Item 4 is in progress on that merge. Its first IFAC slice resolves raw SDK
 credential aliases consistently, publishes shared policy fallibly, and installs
 hot-apply policy before starting workers. The existing mutation worker now owns
