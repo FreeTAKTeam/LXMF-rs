@@ -15,7 +15,8 @@ use super::rnode_bearer::{
 };
 pub use super::rnode_bearer_status::RnodeBearerRuntimeStatusHandle;
 use super::rnode_bearer_status::{
-    append_error_status, publish_monitor_status, set_error_status, RnodeBearerTraffic,
+    append_error_status, mark_offline_status, publish_monitor_status, set_error_status,
+    RnodeBearerTraffic,
 };
 use super::rnode_ble::{
     rnode_ble_initial_runtime_status_json, rnode_ble_payload_writes_enabled,
@@ -144,7 +145,7 @@ impl<B> RnodeBearerKissInterface<B> {
         let mut attempt_failed = false;
         let mut cancelled = false;
 
-        while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
+        'attempt: while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
             if !radio_config_sent && Instant::now() >= detection_deadline {
                 radio_config_sent = true;
                 let Some(result) =
@@ -330,17 +331,27 @@ impl<B> RnodeBearerKissInterface<B> {
                         );
                         match decode_packet_ifac(&ifac_state, &payload) {
                             Ok(packet) => {
-                                if rx_channel
-                                    .send(RxMessage {
+                                let result = run_or_cancel(
+                                    rx_channel.send(RxMessage {
                                         address: iface_address,
                                         packet,
                                         source: IfaceSource::None,
-                                    })
-                                    .await
-                                    .is_err()
-                                {
-                                    iface_stop.cancel();
-                                    break;
+                                    }),
+                                    &context.cancel,
+                                    &iface_stop,
+                                )
+                                .await;
+                                match result {
+                                    Some(Ok(())) => {}
+                                    Some(Err(_)) => {
+                                        log::warn!("RNode receive queue closed iface={label}");
+                                        iface_stop.cancel();
+                                        break 'attempt;
+                                    }
+                                    None => {
+                                        cancelled = true;
+                                        break 'attempt;
+                                    }
                                 }
                             }
                             Err(error) => {
@@ -375,14 +386,19 @@ impl<B> RnodeBearerKissInterface<B> {
 
         if cancelled || context.cancel.is_cancelled() || iface_stop.is_cancelled() {
             if let Err(error) = runtime.close().await {
-                log::warn!("RNode bearer close failed iface={label} error={error:?}");
+                let message = format!("RNode bearer close failed iface={label} error={error:?}");
+                log::warn!("{message}");
+                append_error_status(&status, &message);
             }
         } else {
             let shutdown_prefix = monitor.external_framebuffer_frame(false).into_iter().collect();
             if let Err(error) = runtime.shutdown_with_prefix_frames(shutdown_prefix).await {
-                log::warn!("RNode bearer shutdown failed iface={label} error={error:?}");
+                let message = format!("RNode bearer shutdown failed iface={label} error={error:?}");
+                log::warn!("{message}");
+                append_error_status(&status, &message);
             }
         }
+        mark_offline_status(&status);
         iface_stop.cancel();
     }
 }

@@ -7,7 +7,12 @@ pub(crate) fn validate_link_request_proof_packet(
     const MTU_PROOF_LEN: usize = SIGNATURE_LENGTH + PUBLIC_KEY_LENGTH + LINK_MTU_SIZE;
     const SIGN_DATA_LEN: usize = ADDRESS_HASH_SIZE + PUBLIC_KEY_LENGTH * 2 + LINK_MTU_SIZE;
 
-    if packet.data.len() < MIN_PROOF_LEN {
+    if packet.header.packet_type != PacketType::Proof
+        || packet.header.destination_type != DestinationType::Link
+        || packet.context != PacketContext::LinkRequestProof
+        || packet.destination != *id
+        || ![MIN_PROOF_LEN, MTU_PROOF_LEN].contains(&packet.data.len())
+    {
         return Err(RnsError::PacketError);
     }
 
@@ -66,8 +71,9 @@ pub(crate) fn validate_link_packet_proof(
 
     let mut hash = [0u8; HASH_SIZE];
     hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
-    let signature = Signature::from_slice(&packet.data.as_slice()[HASH_SIZE..HASH_SIZE + SIGNATURE_LENGTH])
-        .map_err(|_| RnsError::CryptoError)?;
+    let signature =
+        Signature::from_slice(&packet.data.as_slice()[HASH_SIZE..HASH_SIZE + SIGNATURE_LENGTH])
+            .map_err(|_| RnsError::CryptoError)?;
 
     identity.verify(&hash, &signature)?;
 

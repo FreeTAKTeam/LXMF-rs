@@ -13,7 +13,8 @@ pub(in crate::transport) async fn handle_check_links<'a>(
     let now = std::time::Instant::now();
 
     // Clean up input links
-    for link_entry in &handler.in_links {
+    let inbound = handler.in_links.iter().map(|(id, link)| (*id, link.clone())).collect::<Vec<_>>();
+    for link_entry in inbound {
         let mut link = link_entry.1.lock().await;
         if let Some(iface) = link.ingress_iface() {
             for packet in link.poll_channel_timeouts(now) {
@@ -22,13 +23,13 @@ pub(in crate::transport) async fn handle_check_links<'a>(
         }
         match link.status() {
             LinkStatus::Closed => {
-                links_to_remove.push(*link_entry.0);
+                links_to_remove.push(link_entry.0);
                 closed_link_ids.push(*link.id());
             }
             LinkStatus::Pending | LinkStatus::Handshake => {
                 if link.elapsed() > INTERVAL_INPUT_LINK_CLEANUP {
                     link.close_with_reason(LinkCloseReason::Timeout);
-                    links_to_remove.push(*link_entry.0);
+                    links_to_remove.push(link_entry.0);
                     closed_link_ids.push(*link.id());
                 }
             }
@@ -38,11 +39,16 @@ pub(in crate::transport) async fn handle_check_links<'a>(
                         direct_messages
                             .push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
                     }
-                    links_to_remove.push(*link_entry.0);
+                    links_to_remove.push(link_entry.0);
                     closed_link_ids.push(*link.id());
                 }
             }
         }
+        direct_messages.extend(super::super::requests::poll_request_cleanup(
+            &mut handler,
+            &mut link,
+            now,
+        ));
     }
 
     for addr in &links_to_remove {
@@ -55,7 +61,9 @@ pub(in crate::transport) async fn handle_check_links<'a>(
     links_to_remove.clear();
     closed_link_ids.clear();
 
-    for link_entry in &handler.out_links {
+    let outbound =
+        handler.out_links.iter().map(|(id, link)| (*id, link.clone())).collect::<Vec<_>>();
+    for link_entry in outbound {
         let mut link = link_entry.1.lock().await;
         if let Some(iface) = link.ingress_iface() {
             for packet in link.poll_channel_timeouts(now) {
@@ -67,7 +75,7 @@ pub(in crate::transport) async fn handle_check_links<'a>(
                 let destination = link.destination().address_hash;
                 let rediscover_closed_pending =
                     !handler.config.transport_enabled && !link.was_activated();
-                links_to_remove.push(*link_entry.0);
+                links_to_remove.push(link_entry.0);
                 closed_link_ids.push(*link.id());
                 if rediscover_closed_pending {
                     closed_pending_destinations.push(destination);
@@ -87,7 +95,7 @@ pub(in crate::transport) async fn handle_check_links<'a>(
                         direct_messages
                             .push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
                     }
-                    links_to_remove.push(*link_entry.0);
+                    links_to_remove.push(link_entry.0);
                     closed_link_ids.push(*link.id());
                 }
                 LinkWatchdogAction::None => {}
@@ -103,7 +111,7 @@ pub(in crate::transport) async fn handle_check_links<'a>(
                 );
                 let destination = link.destination().address_hash;
                 link.close_with_reason(LinkCloseReason::Timeout);
-                links_to_remove.push(*link_entry.0);
+                links_to_remove.push(link_entry.0);
                 closed_link_ids.push(*link.id());
                 if !handler.config.transport_enabled {
                     closed_pending_destinations.push(destination);
@@ -126,6 +134,11 @@ pub(in crate::transport) async fn handle_check_links<'a>(
             }
             LinkStatus::Handshake => {}
         }
+        direct_messages.extend(super::super::requests::poll_request_cleanup(
+            &mut handler,
+            &mut link,
+            now,
+        ));
     }
 
     for addr in &links_to_remove {
@@ -134,8 +147,7 @@ pub(in crate::transport) async fn handle_check_links<'a>(
     for link_id in &closed_link_ids {
         handler.resource_manager.remove_link_state(*link_id);
     }
-    let resource_events = handler.resource_manager.drain_events();
-    super::super::resource_wire::publish_resource_events(&handler, resource_events);
+    super::super::resource_wire::publish_resource_events(&mut handler).await;
     closed_pending_destinations.sort();
     closed_pending_destinations.dedup();
     for destination in closed_pending_destinations {

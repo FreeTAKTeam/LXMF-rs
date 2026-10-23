@@ -448,6 +448,7 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
     let inbound_queues = handler.inbound_queues.clone();
 
     for released_announce in released {
+        let wire_hops = released_announce.packet.header.hops;
         let queued = QueuedInbound {
             message: RxMessage {
                 address: released_announce.iface,
@@ -455,10 +456,33 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
                 source: released_announce.source,
             },
             ingress_limited: true,
-            packet_cache_inserted: false,
+            wire_hops,
             path_request: None,
         };
-        if let Err(full) = inbound_queues.enqueue(InboundTrafficClass::IngressLimited, queued) {
+        if let Err(failure) = super::inbound_processing::admission::try_enqueue_inbound_message(
+            &handler,
+            &inbound_queues,
+            InboundTrafficClass::IngressLimited,
+            queued,
+        )
+        .await
+        {
+            let full = match failure {
+                super::inbound_processing::admission::AdmissionFailure::Full(full) => full,
+                super::inbound_processing::admission::AdmissionFailure::Filtered(candidate) => {
+                    handler
+                        .iface_manager
+                        .lock()
+                        .await
+                        .record_packet_filter_hit(candidate.message.address);
+                    log::warn!(
+                        "released announce failed packet filter iface={} hash={}",
+                        candidate.message.address,
+                        candidate.message.packet.hash()
+                    );
+                    continue;
+                }
+            };
             log::warn!(
                 "dropping released announce because ingress-limited queue is full iface={} hash={}",
                 full.item.message.address,

@@ -1,5 +1,40 @@
 const ROTATED_IFAC_PASSPHRASE: &str = "lxmf-rs-issue-605-ifac-rotated-secret";
 
+fn wait_for_ifac_reconfiguration(rpc_port: u16, acknowledgement: Value) -> Result<(), String> {
+    if acknowledgement["queued"] != true
+        || acknowledgement["complete"] != false
+        || acknowledgement["updated"] != false
+    {
+        return Err(format!("expected native queue acknowledgement: {acknowledgement}"));
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut cursor = Value::Null;
+    while Instant::now() < deadline {
+        let batch =
+            rpc_call(rpc_port, "sdk_poll_events_v2", Some(json!({"cursor": cursor, "max": 128})))?;
+        cursor = batch["next_cursor"].clone();
+        let events = batch["events"].as_array().ok_or("missing native completion events")?;
+        if let Some(event) = events.iter().find(|event| event["event_type"] == "interfaces_updated") {
+            let payload = &event["payload"];
+            let record = payload["interfaces"]
+                .as_array()
+                .and_then(|records| records.iter().find(|record| record["name"] == "ifac-udp"))
+                .ok_or("native completion omitted the IFAC interface")?;
+            if payload["complete"] != true
+                || payload["queued"] != false
+                || record["settings"]["network_name"] != IFAC_NETWORK_NAME
+                || record["settings"]["ifac_size"] != IFAC_SIZE_BITS
+                || !record["settings"]["_runtime"]["apply"].is_null()
+            {
+                return Err("native completion did not install the expected IFAC policy".into());
+            }
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Err("native IFAC reconfiguration did not complete before the deadline".into())
+}
+
 fn udp_ifac_interface_with_passphrase(
     name: &str,
     listen_port: u16,
@@ -218,9 +253,7 @@ fn python_rust_lxmd_ifac_udp_credential_rotation_and_restart_e2e() {
                 }]
             })),
         )?;
-        if reconfiguration.get("updated").and_then(Value::as_bool) != Some(true) {
-            return Err(format!("IFAC credential rotation was not applied: {reconfiguration}"));
-        }
+        wait_for_ifac_reconfiguration(rust_rpc_port, reconfiguration)?;
 
         drop(python_b_udp_reservation);
         python_b_node = Some(spawn_python_endpoint(

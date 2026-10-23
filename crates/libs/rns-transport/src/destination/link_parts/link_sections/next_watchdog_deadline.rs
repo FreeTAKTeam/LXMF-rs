@@ -1,6 +1,12 @@
 impl Link {
-
     pub fn next_watchdog_deadline(&self, initiator: bool) -> Option<Instant> {
+        match (self.link_watchdog_deadline(initiator), self.requests.next_deadline()) {
+            (Some(link), Some(request)) => Some(link.min(request)),
+            (link, request) => link.or(request),
+        }
+    }
+
+    fn link_watchdog_deadline(&self, initiator: bool) -> Option<Instant> {
         match self.status {
             LinkStatus::Active => {
                 let inbound_anchor = self.inbound_anchor();
@@ -97,7 +103,8 @@ impl Link {
             LinkEvent::PeerIdentified(_) => "peer_identified",
             LinkEvent::Closed => "closed",
         };
-        let close_reason = if matches!(&event, LinkEvent::Closed) { self.close_reason } else { None };
+        let close_reason =
+            if matches!(&event, LinkEvent::Closed) { self.close_reason } else { None };
         if self
             .event_tx
             .send(LinkEventData {
@@ -119,6 +126,7 @@ impl Link {
         if self.status == LinkStatus::Closed {
             return;
         }
+        self.requests.reset(RequestFailure::LinkClosed);
 
         for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
             self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
@@ -205,12 +213,18 @@ impl Link {
 
     pub fn restart(&mut self) {
         log::warn!("link({}): restart after {}s", self.id, self.request_time.elapsed().as_secs());
+        self.requests.reset(RequestFailure::LinkClosed);
 
         for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
             self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
         }
         self.channel_rx_ring.clear();
         self.data_signal = None;
+        // Keep the public old ID until request() computes its replacement, but
+        // reject old proof/dispatch state during this not-yet-requested interval.
+        self.proof_generation_ready = false;
+        self.expected_proof_hops = None;
+        self.proof_hops_rebalanced = false;
         self.status = LinkStatus::Pending;
         self.close_reason = None;
         self.start_establishment();

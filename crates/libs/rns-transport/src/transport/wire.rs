@@ -6,12 +6,17 @@ use super::*;
 use crate::packet::Header;
 
 include!("wire_parts/link_proof_forward.rs");
+include!("wire_parts/local_link_proof.rs");
+include!("wire_parts/transit_link_packet.rs");
 
 pub(super) async fn handle_proof(
     packet: Packet,
     handler: Arc<Mutex<TransportHandler>>,
     iface: AddressHash,
 ) {
+    if forward_transit_link_packet(&packet, &mut *handler.lock().await, iface).await {
+        return;
+    }
     if resource_wire::is_link_resource_proof(&packet) {
         resource_wire::handle_resource_proof(packet, handler, iface).await;
         return;
@@ -83,16 +88,7 @@ pub(super) async fn handle_proof(
         }
     }
 
-    let mut rtt_messages = Vec::new();
-    for link in handler.out_links.values() {
-        let mut link = link.lock().await;
-        if let LinkHandleResult::Activated = link.handle_packet(&packet, iface) {
-            rtt_messages.push(TxMessage {
-                tx_type: TxMessageType::Direct(iface),
-                packet: link.create_rtt(),
-            });
-        }
-    }
+    let rtt_messages = handle_outbound_link_proof(&packet, &mut handler, iface).await;
     for message in rtt_messages {
         let dispatch = handler.send(message).await;
         if dispatch.sent_ifaces == 0 {
@@ -105,18 +101,7 @@ pub(super) async fn handle_proof(
         }
     }
 
-    let maybe_packet = if should_forward_link_table_proof(&packet, &handler, iface).await {
-        if packet.header.destination_type == DestinationType::Link
-            && matches!(packet.context, PacketContext::None | PacketContext::LinkProof)
-        {
-            // A reply over an established Link needs its proof routed toward the responder.
-            handler.link_table.handle_link_packet(&packet, iface)
-        } else {
-            handler.link_table.handle_proof(&packet)
-        }
-    } else {
-        None
-    };
+    let maybe_packet = forward_link_request_proof(&packet, &mut handler, iface).await;
 
     if let Some((packet, iface)) = maybe_packet {
         log::debug!(
@@ -125,7 +110,8 @@ pub(super) async fn handle_proof(
             packet.destination,
             iface
         );
-        handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
+        let message = TxMessage { tx_type: TxMessageType::Direct(iface), packet };
+        handler.send_transit_link_request_proof(message).await;
     } else if packet.context == PacketContext::LinkRequestProof {
         log::debug!(
             "[tp-diag] lrproof_not_forwarded node={} link={} ingress_iface={}",
@@ -136,36 +122,14 @@ pub(super) async fn handle_proof(
     }
 }
 
-pub(super) async fn handle_keepalive_response<'a>(
-    packet: &Packet,
-    handler: &mut MutexGuard<'a, TransportHandler>,
-) -> bool {
-    if packet.context == PacketContext::KeepAlive
-        && packet.data.as_slice()[0] == KEEP_ALIVE_RESPONSE
-    {
-        let lookup = if handler.config.transport_enabled {
-            handler.link_table.handle_keepalive(packet)
-        } else {
-            None
-        };
-
-        if let Some((propagated, iface)) = lookup {
-            handler
-                .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet: propagated })
-                .await;
-        }
-
-        return true;
-    }
-
-    false
-}
-
 pub(super) async fn handle_data<'a>(
     packet: &Packet,
     iface: AddressHash,
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
+    if forward_transit_link_packet(packet, &mut handler, iface).await {
+        return;
+    }
     handler.packet_cache.lock().await.note_source(packet, iface);
     let mut data_handled = false;
 
@@ -208,26 +172,6 @@ pub(super) async fn handle_data<'a>(
         }
         for packet in proof_packets {
             handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
-        }
-
-        if handle_keepalive_response(packet, &mut handler).await {
-            return;
-        }
-
-        let forwarded_packet = if handler.config.transport_enabled {
-            handler.link_table.handle_link_packet(packet, iface)
-        } else {
-            None
-        };
-        if let Some((packet, iface)) = forwarded_packet {
-            log::debug!(
-                "[tp-diag] wire_link_forward node={} link={} iface={}",
-                handler.config.name,
-                packet.destination,
-                iface
-            );
-            handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
-            return;
         }
     }
 

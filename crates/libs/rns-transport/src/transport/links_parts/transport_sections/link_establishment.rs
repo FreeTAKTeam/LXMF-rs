@@ -56,17 +56,18 @@ impl Transport {
             };
 
             let mut handler = self.handler.lock().await;
-            let unchanged = match (handler.out_links.get(&destination.address_hash), observed.as_ref()) {
-                (None, None) => true,
-                (Some(current), Some(previous)) => Arc::ptr_eq(current, previous),
-                _ => false,
-            };
+            let unchanged =
+                match (handler.out_links.get(&destination.address_hash), observed.as_ref()) {
+                    (None, None) => true,
+                    (Some(current), Some(previous)) => Arc::ptr_eq(current, previous),
+                    _ => false,
+                };
             if !unchanged {
                 continue;
             }
             // A public restart can revive the same Arc during preparation. Keep
             // its status stable through publication, without awaiting under handler.
-            let previous_guard = if let Some(previous) = observed.as_ref() {
+            let mut previous_guard = if let Some(previous) = observed.as_ref() {
                 match previous.try_lock() {
                     Ok(guard) => Some(guard),
                     Err(_) => {
@@ -82,6 +83,10 @@ impl Transport {
                 if guard.status() != LinkStatus::Closed {
                     return previous.clone();
                 }
+            }
+
+            if let Some(previous) = previous_guard.as_deref_mut() {
+                super::requests::retire_closed_link(&mut handler, previous);
             }
 
             log::debug!(
@@ -112,9 +117,8 @@ impl Transport {
     ) -> Duration {
         let per_hop = crate::destination::link::ESTABLISHMENT_TIMEOUT_PER_HOP;
         let first_hop_timeout = match self.next_hop_metrics(destination).await {
-            Some(metrics) => {
-                metrics.first_hop_timeout(next_hop_mtu.unwrap_or(crate::packet::PACKET_MDU), per_hop)
-            }
+            Some(metrics) => metrics
+                .first_hop_timeout(next_hop_mtu.unwrap_or(crate::packet::PACKET_MDU), per_hop),
             None => per_hop,
         };
         first_hop_timeout + per_hop * u32::from(hops.max(1))

@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-10-15
+Last reassessed: 2026-10-18
 MeshChat POC evidence added: 2026-09-27
 MeshChat saved interface controls added: 2026-10-15
 
@@ -54,13 +54,194 @@ propagation announces exchange honest `lxmd`/`1.2.0` and `reticulumd`/`0.14.0`
 metadata. The 16 KB Resource lane explicitly uses a 1 MB Python receiving policy;
 upstream's new 1 KB default remains a documented difference.
 
-These results qualify the scoped increment, with final-head review and hosted CI
-still required before merge. Workspace tests and all-feature Clippy pass. The
+The scoped increment merged in [PR #673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673)
+at `9c27747753488ed950c52a2c7717ddec14478786`, after independent review and
+verification of final head `609edf12`: 20 successful hosted checks and one
+deliberately inapplicable publication skip. Hosted baseline compatibility passed
+30/30 and PR HIL passed 23/23 on first attempts. The independent peer gate passed
+with its existing explicit divergences (79 pass, three peer failures and two
+dependency-blocked cases), not an 84-case pass. Workspace tests and all-feature Clippy pass. The
 release-check reaches the pre-existing published ZeroMQ/UUID dependency conflict;
 it does not pass and no release readiness is claimed. The
 [accumulated delta ledger](lxmf-1.2.0-delta.md) preserves file-export,
 source-blackhole and autonomous-peer gaps. See the
 [LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-software-qualification-issue-648).
+
+Item 4 is in progress on that merge. Its first IFAC slice resolves raw SDK
+credential aliases consistently, publishes shared policy fallibly, and installs
+hot-apply policy before starting workers. The existing mutation worker now owns
+committed interface records; native SDK/RPC calls explicitly acknowledge queued
+work, while actual status and completion events come from the worker. Focused
+wire, rollback, ordering and record-retention regressions pass. Configured bootstrap
+roots now use the prepared policy path, retaining carrier defaults and control
+handles. Shared attachments commit transport mode before worker activation, and
+automatic TCP/Unix shared clients retain their plaintext contract while explicit
+Local configuration enforces IFAC. First-wire, cancellation, key-rotation and new
+accepted-client regressions pass locally. Duplicate membership now uses independent
+current/previous generations with bounded maintenance and owner-only persistence.
+Ordinary queue admission commits filtering/enqueue/remembering together; full
+queues preserve proof state. A frozen 21-context differential qualifies the filter
+predicate. Native Link routing now binds pending proofs to the request generation,
+preserves retry binding, applies one valid-proof-authorized hop rebalance, and
+remembers local matching-hop proofs before validation. Transit LRPROOF replay
+avoids originating hash remembering; ordinary Link and KeepAlive routing share
+validated interface/hop checks. Actual queue changes and retained late-receipt
+regressions pass. A pinned Python Resource round trip also passes. Native
+request receipts now retain packet/Resource outcomes through one Link-owned book,
+with exact generation/registration binding, response admission, timeout phases
+and cancellation. ResourceManager validates a response receiver before binding
+its hashes; request cleanup cannot remove ordinary or other-request transfers.
+Native lifecycle retirement/shutdown settles retained observers before removing
+their owner, and utility clients can abandon optional cancellation/close I/O
+after native cleanup commits. See the bounded
+[request contract](../goals/open-issues-2026-10/REQUESTS.md) for evidence and limits.
+The common InterfaceManager setters now propagate mode, outgoing, gravity and
+announce pacing through registered descendants. Native dispatch, queued release
+and exact signed-announce tie-breaking qualify the live consumers while preserving
+IFAC choices, unrelated trees and committed queue/path state.
+Discovery preparation now parses all startup configuration views from one file
+snapshot while preserving independent fallbacks and exhaustive public structs.
+The pure planner reserves collision suffixes, excludes unsafe endpoint classes,
+and accepts the explicit qualification override through an additive initial
+planning method. A controlled exact-1.5.5 comparison covers 78 qualification
+cases, nine endpoints and sequential names, including large version components.
+The existing mutation worker now consumes that policy for prepared native
+admission, persisted live observations and five-second refill/monitoring.
+Native packet provenance, blackholes, contention-safe downtime, session detach
+suppression, key collisions, whole-tree stop and retained status refresh pass
+bounded regressions. Trusted bootstrap recovery covers four managed kinds plus
+private Backbone clients; broader family recipes remain open. A local daemon
+process connects to a test-owned socket. The three exact-target Python process
+cases now pass: Rust default accepts Python, Python default rejects honest Rust
+with free slots and a working control, and Python override accepts Rust. Positive
+traces assert exact signed LXMF content on the selected native Backbone route and
+separate sender receipts. The honest Rust publisher identifies as LXMF-rs.
+The deeper recovery matrix also passes all 24 Direct packet/Resource deliveries
+across three fresh three-relay topologies before and after middle replacement.
+Endpoint/edge processes and native Link caches persist; fresh edge routes bind
+to the replacement identity, and exact signed recipient bytes and independent
+sender receipts qualify each cell. The shared per-recipe dispatcher now transfers
+actual configured roots and unique effects into the existing mutation owner.
+Private occurrence bindings preserve duplicate/unnamed roots; one publication tick
+replaces detached refresh loops, controls retire with their native receivers, and
+cancelled shutdown awaits retain the original worker join. Tree retirement fences
+late children and still removes virtual routes after manager cleanup. Native
+controls and 31 library/642 binary daemon tests pass locally. Auto lifetime tests
+retain their immediate exclusive-bind checks in isolated processes after a traced
+Pipe fork/exec interference control. Per-recipe helpers now receive only their
+existing preflight flag, and selected listeners share one startup constructor
+while retaining their separate strict policy. The same worker now retains narrow
+startup context and joins reconnect completion. Trusted restoration preserves
+original recipe identity, current publication slots, common/degraded status and
+first control visibility. Native KISS authentication/reorder, TCP endpoint
+replacement/continuity and failed listener retry controls pass. Public/named TCP
+clients now reuse schema-validated startup options and preserve initial/reconnect
+tunnel hooks through replacement and failed-reload rollback. Five option-only
+native replacements and signed/authenticated rollback/reconnect traffic pass;
+full daemon validation passes 31 library/646 binary tests. Four subsequent
+TCP/Backbone native lifecycle traces qualify the first two declared software
+family rows: connection failure/reconnect, existing/new child key rotation,
+named TCP rollback/reload/detach/attach, changed-key configured restart and exact
+unrelated traffic. Listener preference forwarding, native IPv4 fallback and
+tested numeric/wildcard bind collisions are covered; local IPv6 wire evidence
+uses a dual-loopback hostname with separate exact-`localhost` preparation controls.
+Both independent source reviews approve, and final daemon validation passes
+31 library/653 binary tests. Raw IFAC admission now rejects malformed object
+credentials/sizes before queueing and preserves signed negative-size presence
+as typed startup does. Shared alias lists retain precedence, null/empty fallback
+and whitespace; opaque settings metadata stays compatible. A real SDK/ZeroMQ
+rejection/recovery trace preserves authenticated UDP, unrelated TCP and joined
+cleanup. Six focused controls and 31 library/660 binary daemon tests pass with
+independent source POST approval. Two subsequent UDP native traces qualify the
+unicast/multicast software lifecycle rows: committed-key rollback after a real
+bind failure, unrelated traffic during owned cleanup, named reload/detach/attach,
+loopback multicast group egress, signed unicast peer learning, key rotation,
+peer-isolated direct replies and same-destination route rebinding across changed-key
+replacement/restart. Cached paths remain subject to existing maintenance; retired
+hashes lose dispatch authority. No production behavior changes are needed.
+Both independent source reviews approve; 31 library/662 binary daemon tests and
+focused gates pass. Two Linux Pipe process traces then cover configured missing
+executable failure/repair, independent default-tag authentication, same-process
+key rotation, exit/respawn, named failed-reload rollback, detach/attach and native
+MTU. Direct-child identity, socket EOF and /proc disappearance prove reaping;
+unrelated traffic and owned shutdown persist. Both source reviews and focused
+gates pass with 31 library/664 binary daemon tests, without production changes.
+Four Linux Serial/KISS cases then cover real device-open/refused-connect failures,
+same-root key rotation and reopen/reconnect, exact independent initialization/UI
+framing, changed-key configured restart, native MTU and unrelated traffic. Raw
+PTY helpers are explicitly reaped; removing owned aliases prevents retries from
+opening another test's reused slave name.
+Both source reviews and focused gates pass with 31 library/668 binary daemon tests,
+without production changes. Six configured fake-SAM I2P cases now cover refused
+setup, private-reply redaction/recovery, actual key persistence, default IFAC,
+old/new child rotation and isolation, session recreation, reconnect/restart and
+native MTU. Three pre-fix incoming setup sockets outlived joined root shutdown;
+root/accept task ownership and cancellation-aware setup now close them. Five
+additional shared HDLC regressions first fail under receive/write/flush pressure,
+then pass joined shutdown and peer EOF while pressure remains held. Cancellation
+retires partial frames without output-success events. Both source POST reviews
+approve; default and all-feature transport/daemon suites, Clippy and focused
+source gates pass. Recovered persistence metadata remains a bootstrap snapshot;
+the trace verifies the actual file. Two configured Linux Auto traces then prove
+native bind-failure/partial cleanup, default IFAC, existing/new virtual-child key
+and non-IFAC policy inheritance, configured-port peer isolation, unrelated TCP
+and changed-identity restart. Two native pressure regressions fail before the
+existing receive owner observes shutdown during forwarding/event sends, then
+pass joined completion and exclusive socket rebind with queues still held.
+Both source POST roles and ordinary affected-package gates pass. Manual bindings
+do not establish OS adoption or multicast ingress. A separately retained combined
+package all-feature run exposes unchanged independent cipher-feature wiring:
+transport AES-128 with core AES-256 fails sixteen daemon cases; the standalone
+daemon all-feature command passes those cases. See the execution record for exact
+command scopes. A configured Meshtastic simulation trace now composes schema
+and startup-guard failure, actual multi-chunk admission, explicit simulated
+status, same-root rotation, unrelated TCP and joined changed-identity/key
+restart. Two native queue-pressure cases fail before existing-token selection
+around blocked handoffs, then pass with exact held queues and closed input
+ownership. Independent bearer IFAC evidence stays separate from configured
+loopback composition. An old Auto immediate-bind failure is retained as
+untraced/consistent with prior controlled descriptor inheritance; its unchanged
+lifetime bodies now reuse exact-case isolation. The declared next all-feature
+transport run passes 1,056 tests (twelve existing ignores), separate daemon
+validation passes 31/677, and affected Clippy/focused gates pass.
+A configured Weave PTY trace now verifies signed discovery/CONNECT, native
+sixteen-byte IFAC rejection/authentication, old/new child policy and isolated
+endpoint replies, same-root recovery, actual remote-display wire commands and
+changed-identity/key/MTU restart with joined native/control/observer cleanup.
+Eight native regressions fail before correcting inherited outgoing policy,
+blocked I/O cancellation and interrupted child ownership, then pass; mandatory
+cleanup uses the existing manager tree outside cancellable I/O. Both final
+source reviews approve, final configured default/all-feature cases pass 2/2,
+and affected suites/Clippy/focused gates pass. The full default daemon run
+precedes a quiet-observer tightening covered by the final focused run; exact
+scopes and retained failures remain in the execution record.
+LoRa/RNode's next bounded supervisor increment now publishes contextual native
+opening errors and observes independent global/interface stop inputs through
+connect/retry and the existing stream/probe owner. Failure/stop regressions and
+the final 26-case native suite pass with independent source review and focused
+gates. Those supervisor active-stream controls are unpressured. Separately, nine
+native shared-KISS pressure cases fail before scoped I/O cancellation, then pass
+alongside exact ready-shutdown and initial-error/no-cleanup controls (15 total).
+Initial failure and interrupted I/O append no shutdown bytes; ordinary ready
+cleanup remains intact. Independent source reviews and affected gates pass;
+default transport passes 1,054, transport all-feature 1,083 (twelve existing
+ignores each) and default daemon 31/678. A subsequent generic bearer checkpoint
+reuses cancellation for receive admission, publishes final offline state and
+retains cleanup errors beside the original failure. Six new cases for the two
+existing bearer kinds and five prior controls pass with independent source
+review and focused gates, while native read ownership and timing remain intact.
+Two configured LoRa/RNode serial/TCP traces now cover owned state/device/refusal/
+firmware failure and repair, complete probe/radio echoes, exact IFAC traffic,
+live rotation/reconnect, actual management bytes and changed-identity/key/MTU
+restart with unrelated traffic. They expose retired command admission surviving
+a retained status handle; final supervisor exit now closes that existing receiver.
+Both final source reviews and affected gates pass. Default transport 1,060 and
+transport all-feature 1,089 retain twelve existing ignores; default daemon 31/680
+precedes fixture-only write-bound/probe-assertion tightening, covered by final
+focused default 2/2. Separate final all-feature daemon 31/681 passes.
+Fourteen of twenty declared software family rows are locally qualified. Remaining
+carrier lifecycle composition and whole-item integration/hosted work remain open in the
+[execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
 ## RCH resource regressions: issues 663, 657 and 655
 
@@ -126,7 +307,8 @@ path; the daemon
 does not yet activate auto-connect from it. Named attach/detach/reload covers
 only existing TCP client/server, UDP, and Pipe hot-apply paths; the separate
 `set_interfaces` RPC still acknowledges queue admission. Broader Markdown
-rendering and pending Link request-receipt states remain open. An uninterrupted
+rendering remains open; later native request-receipt qualification is recorded
+in item 4 above. An uninterrupted
 local `cargo xtask release-check` passed on the code-identical candidate.
 The exact integrated commit `fbc75b86e15550722923b366398f0a4116182894`
 passed [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456558),

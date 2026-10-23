@@ -637,11 +637,37 @@ pub fn spawn_multicast_udp_with_status(
     bind_addr: String,
     forward_addr: Option<String>,
 ) -> (AddressHash, Arc<TokioMutex<PeerRouting>>, UdpRuntimeStatusHandle) {
+    try_spawn_multicast_udp_with_status(
+        mgr,
+        bind_addr,
+        forward_addr,
+        super::InterfaceMode::default(),
+        |_, _| Ok::<(), std::convert::Infallible>(()),
+    )
+    .unwrap_or_else(|never| match never {})
+}
+
+pub fn try_spawn_multicast_udp_with_status<P, E>(
+    mgr: &mut InterfaceManager,
+    bind_addr: String,
+    forward_addr: Option<String>,
+    mode: super::InterfaceMode,
+    prepare: P,
+) -> Result<(AddressHash, Arc<TokioMutex<PeerRouting>>, UdpRuntimeStatusHandle), E>
+where
+    P: FnOnce(&mut InterfaceManager, AddressHash) -> Result<(), E>,
+{
     let peer_routing = Arc::new(TokioMutex::new(PeerRouting::new()));
     let iface = UdpInterface::new_multicast(bind_addr, forward_addr, peer_routing.clone());
     let status = iface.runtime_status_handle();
-    let hash = mgr.spawn_as(iface, UdpInterface::spawn, IfaceRole::Multicast);
-    (hash, peer_routing, status)
+    let hash = mgr.try_spawn_as_with_mode(
+        iface,
+        UdpInterface::spawn,
+        IfaceRole::Multicast,
+        mode,
+        prepare,
+    )?;
+    Ok((hash, peer_routing, status))
 }
 
 pub fn encode_frame(data: &[u8]) -> Result<Vec<u8>, RnsError> {

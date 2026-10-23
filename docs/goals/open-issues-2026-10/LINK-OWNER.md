@@ -390,7 +390,13 @@ native Resource/custody evidence. The same public SDK/ZeroMQ client passes two
 real missing-peer failures, external callback error/panic and subsequent signed
 native delivery, with coherent replay/status and one durable terminal per message.
 The receiving-size configuration and broader accumulated gaps remain explicit in
-the delta ledger. Final-head review, hosted CI and merge remain required.
+the delta ledger. Final head `609edf12` passed independent final review/verifier
+approval and all required hosted gates (20 successful checks; one deliberate
+publication skip). Hosted baseline compatibility passed 30/30, PR HIL passed
+23/23 on first attempts, and the independent peer gate retained its explicit
+79-pass/three-known-peer-failure/two-dependency-blocked boundary. PR #673 merged
+at `9c27747753488ed950c52a2c7717ddec14478786`; fetched main and the tested merge
+tree were independently verified. The four approved slices are complete.
 Historical prerequisite notes above describe their checkpoints;
 [PROGRESS.md](PROGRESS.md) records the current integration.
 

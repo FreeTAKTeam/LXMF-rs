@@ -108,8 +108,13 @@ peer, representation and proof hash; final-recipient stored content is checked
 separately from propagation custody. Resource acceptance is configured to 1 MB
 at both pins, not an equivalence claim for the target's changed 1 KB default.
 
-The four approved item-3 slices have local acceptance; final-head review and
-hosted CI remain required before merge. The accumulated file-export,
+The four approved item-3 slices merged in
+[PR #673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673), merge `9c277477`,
+after independent final review/verifier approval. Final head `609edf12` has
+20 successful hosted checks and one deliberate publication skip. Hosted baseline
+compatibility passes 30/30; PR HIL passes 23/23 on first attempts. The independent
+peer gate passes its unchanged divergence policy, with 79 passes, three known
+peer failures and two dependency-blocked cases. The accumulated file-export,
 source-blackhole, persistence and autonomous-peer boundaries remain in the delta
 ledger. Release-check reaches the existing published ZeroMQ/UUID conflict after
 passing its software test stages; later release stages remain unperformed.

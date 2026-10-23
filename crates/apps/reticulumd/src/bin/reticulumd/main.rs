@@ -10,6 +10,7 @@ mod bridge_path_lookup;
 mod bridge_rnode_management;
 mod bridge_transport_status;
 mod bridge_weave_control;
+mod configured_interface_runtime;
 mod direct_backchannel;
 mod discovery_publish;
 mod inbound_worker;
@@ -128,7 +129,7 @@ async fn main() {
         let mut receipt_owner = context.receipt_owner;
         let daemon = context.daemon.clone();
         let path_table_persistence = context.path_table_persistence;
-        let auto_runtime_shutdowns = context.auto_runtime_shutdowns;
+        let interface_owner = context.interface_owner;
         spawn_meshchat_api(
             meshchat_bind,
             meshchat_assets,
@@ -149,7 +150,13 @@ async fn main() {
         {
             log::error!("outbound shutdown owner failed: {error}");
         }
-        bootstrap::shutdown_auto_interfaces(auto_runtime_shutdowns).await;
+        let mut unclean_interfaces = false;
+        if let Some(mut owner) = interface_owner {
+            if let Err(error) = owner.shutdown().await {
+                log::error!("[daemon] interface owner shutdown failed: {error}");
+                unclean_interfaces = true;
+            }
+        }
         let mut unclean_receipts = false;
         if let Some(owner) = receipt_owner {
             if let Err(error) = owner.drain().await {
@@ -159,7 +166,7 @@ async fn main() {
         }
         announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence)
             .await;
-        if unclean_receipts {
+        if unclean_receipts || unclean_interfaces {
             std::process::exit(1);
         }
     }
@@ -182,7 +189,7 @@ async fn run_daemon_loops(
         rpc_tls,
         mut receipt_owner,
         path_table_persistence,
-        auto_runtime_shutdowns,
+        interface_owner,
     } = context;
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     spawn_meshchat_api(
@@ -256,7 +263,13 @@ async fn run_daemon_loops(
             log::error!("[daemon] signal task failed: {error}");
         }
     }
-    bootstrap::shutdown_auto_interfaces(auto_runtime_shutdowns).await;
+    let mut unclean_interfaces = false;
+    if let Some(mut owner) = interface_owner {
+        if let Err(error) = owner.shutdown().await {
+            log::error!("[daemon] interface owner shutdown failed: {error}");
+            unclean_interfaces = true;
+        }
+    }
     let mut unclean_receipts = false;
     if let Some(owner) = receipt_owner {
         if let Err(error) = owner.drain().await {
@@ -265,7 +278,7 @@ async fn run_daemon_loops(
         }
     }
     announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence).await;
-    if unclean_receipts {
+    if unclean_receipts || unclean_interfaces {
         std::process::exit(1);
     }
 }

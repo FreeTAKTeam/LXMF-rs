@@ -5,10 +5,17 @@ use super::{
 };
 #[path = "bootstrap_interface_startup.rs"]
 mod interface_startup;
+pub(crate) use interface_startup::build_tcp_client_adapter;
+#[path = "bootstrap_transport_restore.rs"]
+mod configured_restore;
 #[path = "bootstrap_transport_path_restore.rs"]
 mod path_restore;
+#[cfg(test)]
+#[path = "bootstrap_transport_policy_tests.rs"]
+mod policy_tests;
 #[path = "bootstrap_transport_reconnect_synthesizer.rs"]
 mod reconnect_synthesizer;
+pub(crate) use configured_restore::ConfiguredStartupRuntime;
 #[path = "bootstrap_transport_tcp_server_adapter.rs"]
 mod tcp_server_adapter;
 #[path = "bootstrap_transport_tcp_startup.rs"]
@@ -21,16 +28,17 @@ mod transport_destinations;
 use crate::bridge::PeerCrypto;
 use crate::interfaces::common::interface_label;
 use crate::Args;
-#[cfg(test)]
-pub(super) use interface_startup::LoraRuntimeStatusSource;
-#[cfg(feature = "vrn76-kiss-ble")]
+pub(crate) use interface_startup::LoraRuntimeStatusSource;
+#[cfg(all(test, feature = "vrn76-kiss-ble"))]
 pub(super) use interface_startup::Vrn76RuntimeRefresh;
+#[cfg(test)]
 pub(super) use interface_startup::{
-    AutoRuntimeRefresh, AutoRuntimeShutdown, BleGattRuntimeRefresh, I2pRuntimeRefresh,
-    KissRuntimeRefresh, LoraRuntimeRefresh, MeshtasticRuntimeRefresh, PipeRuntimeRefresh,
-    RNodeManagementBinding, RNodeMultiRuntimeRefresh, ReticulumBleRuntimeRefresh,
-    SerialRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource, UdpRuntimeRefresh,
-    WeaveControlBinding, WeaveRuntimeRefresh,
+    AutoRuntimeRefresh, BleGattRuntimeRefresh, I2pRuntimeRefresh, KissRuntimeRefresh,
+    LoraRuntimeRefresh, PipeRuntimeRefresh, RNodeMultiRuntimeRefresh, SerialRuntimeRefresh,
+    UdpRuntimeRefresh, WeaveRuntimeRefresh,
+};
+pub(crate) use interface_startup::{
+    AutoRuntimeShutdown, InterfaceStartupBatch, TcpRuntimeRefresh, TcpRuntimeStatusSource,
 };
 use path_restore::{
     mark_path_table_restore_status, mark_path_table_restore_status_on_enabled_interfaces,
@@ -44,15 +52,14 @@ use rns_core::identity::PrivateIdentity;
 use rns_rpc::{InterfaceRecord, ProbeReceiptRegistry};
 use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
-use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::transport::{
     InboundQueueLimits, RestoredReticulumPathIdentity, Transport, TransportConfig,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tcp_server_adapter::build_selected_tcp_server_adapter;
+use tcp_server_adapter::startup_selected_tcp_server;
 #[cfg(test)]
-use tcp_server_adapter::selected_fast_flap_policy;
+use tcp_server_adapter::{build_selected_tcp_server_adapter, selected_fast_flap_policy};
 
 const STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY: usize = 32;
 
@@ -60,61 +67,7 @@ pub(super) fn reticulum_transport_enabled(daemon_config: Option<&DaemonConfig>) 
     daemon_config.is_some_and(DaemonConfig::reticulum_transport_enabled)
 }
 
-pub(super) struct TransportStartupArtifacts {
-    pub(super) selected_tcp_server: TcpServerSelection,
-    pub(super) transport: Option<Arc<Transport>>,
-    pub(super) peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
-    pub(super) announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    pub(super) propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    pub(super) control_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    pub(super) probe_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    pub(super) delivery_destination_hash_hex: Option<String>,
-    pub(super) propagation_destination_hash_hex: Option<String>,
-    pub(super) control_destination_hash_hex: Option<String>,
-    pub(super) delivery_source_hash: [u8; 16],
-    pub(super) configured_interfaces: Vec<InterfaceRecord>,
-    pub(super) restored_path_identities: Vec<RestoredReticulumPathIdentity>,
-    pub(super) startup_successes: usize,
-    pub(super) startup_failures: Vec<InterfaceStartupFailure>,
-    pub(super) seeded_hot_apply_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
-    pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
-    pub(super) auto_runtime_shutdowns: Vec<AutoRuntimeShutdown>,
-    pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
-    pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
-    pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
-    pub(super) kiss_runtime_refreshes: Vec<KissRuntimeRefresh>,
-    pub(super) ble_gatt_runtime_refreshes: Vec<BleGattRuntimeRefresh>,
-    pub(super) reticulum_ble_runtime_refreshes: Vec<ReticulumBleRuntimeRefresh>,
-    pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
-    pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
-    pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
-    pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
-    pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
-    pub(super) meshtastic_runtime_refreshes: Vec<MeshtasticRuntimeRefresh>,
-    #[cfg(feature = "vrn76-kiss-ble")]
-    pub(super) vrn76_runtime_refreshes: Vec<Vrn76RuntimeRefresh>,
-    pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
-    pub(super) weave_control_bindings: Vec<WeaveControlBinding>,
-}
-
-pub(super) struct TransportStartupInput<'a> {
-    pub(super) args: &'a Args,
-    pub(super) daemon_config: Option<&'a DaemonConfig>,
-    pub(super) identity: &'a PrivateIdentity,
-    pub(super) reticulum_storage_path: &'a std::path::Path,
-    pub(super) local_display_name: Option<&'a str>,
-    pub(super) local_announce_capabilities: &'a [String],
-    pub(super) propagation_announce_app_data: Option<Vec<u8>>,
-    pub(super) configured_interfaces: Vec<InterfaceRecord>,
-    pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    pub(super) receipt_tx: reticulum_daemon::receipt_bridge::ReceiptPublisher,
-    pub(super) probe_receipts: Arc<ProbeReceiptRegistry>,
-    pub(super) propagation_control_enabled: bool,
-    pub(super) respond_to_probes: bool,
-    pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
-    pub(super) local_hops_delta: bool,
-    pub(super) inbound_queue_limits: InboundQueueLimits,
-}
+include!("bootstrap_transport_types.rs");
 
 pub(super) async fn start_transport_and_interfaces(
     input: TransportStartupInput<'_>,
@@ -136,6 +89,7 @@ pub(super) async fn start_transport_and_interfaces(
         propagation_announce_config,
         local_hops_delta,
         inbound_queue_limits,
+        discovery_enabled,
     } = input;
 
     for record in &mut configured_interfaces {
@@ -151,10 +105,12 @@ pub(super) async fn start_transport_and_interfaces(
     let has_enabled_configured_interface =
         daemon_config.is_some_and(|config| config.interfaces.iter().any(|iface| iface.enabled()));
     let transport_required = args.zmq_durable_broker
+        || discovery_enabled
         || selected_tcp_server.bind_addr.is_some()
         || has_enabled_configured_interface;
 
     let mut transport: Option<Arc<Transport>> = None;
+    let mut configured_startup = None;
     let peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
     let mut propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
@@ -166,6 +122,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut delivery_source_hash = [0u8; 16];
     let mut restored_path_identities = Vec::new();
     let mut startup_successes = 0usize;
+    let mut configured_roots = Vec::new();
     let mut startup_failures = Vec::new();
     let mut seeded_hot_apply_interfaces = Vec::new();
     let mut auto_runtime_refreshes = Vec::new();
@@ -226,53 +183,31 @@ pub(super) async fn start_transport_and_interfaces(
         let iface_manager = transport_instance.iface_manager();
         let (stream_reconnect_tx, stream_reconnect_rx) =
             tokio::sync::mpsc::channel::<AddressHash>(STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY);
-        let mut server_iface = None;
-        if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
-            let server = build_selected_tcp_server_adapter(
-                addr.clone(),
-                iface_manager.clone(),
-                &selected_tcp_server,
-            );
-            let (server, startup_result) = if tcp_startup::strict_startup(args, daemon_config) {
-                let (server, result) = server.with_startup_result();
-                (server, Some(result))
-            } else {
-                (server, None)
-            };
-            let runtime_status = server.runtime_status_handle();
-            let active_iface = iface_manager.lock().await.spawn(server, TcpServer::spawn);
-            log::info!(
-                "[daemon] {} enabled iface={} bind={}",
-                selected_tcp_server.kind,
-                active_iface,
-                addr
-            );
-            if let Some(startup_result) = startup_result {
-                let label = selected_tcp_server
-                    .selected_index
-                    .and_then(|index| {
-                        daemon_config?
-                            .interfaces
-                            .get(index)
-                            .map(|iface| interface_label(iface, index))
-                    })
-                    .unwrap_or_else(|| selected_tcp_server.kind.clone());
-                tcp_startup::record_initial_bind_result(
-                    startup_result.await,
-                    label,
-                    selected_tcp_server.kind.clone(),
-                    &mut startup_successes,
-                    &mut startup_failures,
-                );
-            } else {
-                startup_successes += 1;
-            }
-            server_iface = Some(active_iface);
+        let selected_recipe = selected_tcp_server
+            .selected_index
+            .and_then(|index| daemon_config?.interfaces.get(index));
+        let selected_record = selected_tcp_server
+            .selected_index
+            .and_then(|index| configured_interfaces.get_mut(index));
+        let server_iface = if let Some((address, status)) = startup_selected_tcp_server(
+            &selected_tcp_server,
+            selected_recipe,
+            &iface_manager,
+            tcp_startup::strict_startup(args, daemon_config),
+            selected_record,
+            &mut startup_successes,
+            &mut startup_failures,
+        )
+        .await
+        {
             tcp_runtime_refreshes.push(TcpRuntimeRefresh {
-                runtime_iface: active_iface,
-                status: TcpRuntimeStatusSource::Listener(runtime_status),
+                runtime_iface: address,
+                status: TcpRuntimeStatusSource::Listener(status),
             });
-        }
+            Some(address)
+        } else {
+            None
+        };
 
         if let Some(config) = daemon_config {
             let mut transport_identity_hash = [0_u8; 16];
@@ -290,11 +225,9 @@ pub(super) async fn start_transport_and_interfaces(
                 Some(transport_identity_hash),
             )
             .await;
+            configured_roots.extend(startup.configured_roots);
             startup_successes += startup.startup_successes;
             startup_failures.extend(startup.startup_failures);
-            if startup.connected_to_shared_instance {
-                transport_instance.set_connected_to_shared_instance(true).await;
-            }
             for iface in startup.tunnel_synth_ifaces {
                 transport_instance.synthesize_tunnel_on_interface(iface).await;
             }
@@ -365,6 +298,7 @@ pub(super) async fn start_transport_and_interfaces(
                 );
                 mark_interface_runtime_managed(&mut server_record, "daemon_transport");
                 mark_path_table_restore_status(&mut server_record, &path_table_restore_status);
+                configured_roots.push((configured_interfaces.len(), *active_iface));
                 configured_interfaces.push(server_record);
             }
         }
@@ -392,7 +326,22 @@ pub(super) async fn start_transport_and_interfaces(
         delivery_source_hash = destinations.delivery_source_hash;
 
         let transport_arc = Arc::new(transport_instance);
-        spawn_stream_reconnect_tunnel_synthesizer(transport_arc.clone(), stream_reconnect_rx);
+        let reconnect_completion =
+            spawn_stream_reconnect_tunnel_synthesizer(transport_arc.clone(), stream_reconnect_rx);
+        configured_startup = Some(ConfiguredStartupRuntime {
+            selection: selected_tcp_server.clone(),
+            strict_interface_startup: args.strict_interface_startup,
+            strict_selected_listener: args.strict_interface_startup
+                || daemon_config.is_some_and(|config| config.panic_on_interface_error),
+            storage_path: reticulum_storage_path.to_owned(),
+            identity_hash: identity
+                .address_hash()
+                .as_slice()
+                .try_into()
+                .expect("transport identity address is sixteen bytes"),
+            reconnect_events: stream_reconnect_tx,
+            reconnect_completion,
+        });
         transport = Some(transport_arc);
     } else if let Some(config) = daemon_config {
         log::warn!(
@@ -426,6 +375,7 @@ pub(super) async fn start_transport_and_interfaces(
     TransportStartupArtifacts {
         selected_tcp_server,
         transport,
+        configured_startup,
         peer_crypto,
         announce_destination,
         propagation_destination,
@@ -437,26 +387,30 @@ pub(super) async fn start_transport_and_interfaces(
         delivery_source_hash,
         configured_interfaces,
         restored_path_identities,
-        startup_successes,
-        startup_failures,
-        seeded_hot_apply_interfaces,
-        auto_runtime_refreshes,
-        auto_runtime_shutdowns,
-        pipe_runtime_refreshes,
-        udp_runtime_refreshes,
-        serial_runtime_refreshes,
-        kiss_runtime_refreshes,
-        ble_gatt_runtime_refreshes,
-        reticulum_ble_runtime_refreshes,
-        i2p_runtime_refreshes,
-        tcp_runtime_refreshes,
-        weave_runtime_refreshes,
-        rnode_multi_runtime_refreshes,
-        lora_runtime_refreshes,
-        meshtastic_runtime_refreshes,
-        #[cfg(feature = "vrn76-kiss-ble")]
-        vrn76_runtime_refreshes,
-        rnode_management_bindings,
-        weave_control_bindings,
+        interfaces: InterfaceStartupBatch {
+            configured_roots,
+            tunnel_synth_ifaces: Vec::new(),
+            startup_successes,
+            startup_failures,
+            seeded_hot_apply_interfaces,
+            auto_runtime_refreshes,
+            auto_runtime_shutdowns,
+            pipe_runtime_refreshes,
+            udp_runtime_refreshes,
+            serial_runtime_refreshes,
+            kiss_runtime_refreshes,
+            ble_gatt_runtime_refreshes,
+            reticulum_ble_runtime_refreshes,
+            i2p_runtime_refreshes,
+            tcp_runtime_refreshes,
+            weave_runtime_refreshes,
+            rnode_multi_runtime_refreshes,
+            lora_runtime_refreshes,
+            meshtastic_runtime_refreshes,
+            #[cfg(feature = "vrn76-kiss-ble")]
+            vrn76_runtime_refreshes,
+            rnode_management_bindings,
+            weave_control_bindings,
+        },
     }
 }

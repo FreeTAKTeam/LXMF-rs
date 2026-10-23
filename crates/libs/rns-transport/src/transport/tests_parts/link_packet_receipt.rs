@@ -10,16 +10,27 @@ async fn declining_duplicate_owned_packet_preserves_the_original_proof_observer_
     let (transport, link, peer, mut channel, _) = lifecycle_fixture(false).await;
     let packet = link.lock().await.data_packet(b"immutable native packet").expect("packet");
     let mut original = None;
-    transport.send_link_packet_on_bound_iface_observed(&link, packet.clone(), |receipt| {
-        original = Some(receipt); true
-    }).await.expect("original handoff");
+    transport
+        .send_link_packet_on_bound_iface_observed(&link, packet.clone(), |receipt| {
+            original = Some(receipt);
+            true
+        })
+        .await
+        .expect("original handoff");
     channel.tx_channel.try_recv().expect("one native packet");
     let original = original.expect("original receipt");
     let sent_at = original.sent_at().expect("original timer");
     let mut duplicate = None;
-    assert_eq!(transport.send_link_packet_on_bound_iface_observed(&link, packet.clone(), |receipt| {
-        duplicate = Some(receipt); false
-    }).await.expect("duplicate observation"), None);
+    assert_eq!(
+        transport
+            .send_link_packet_on_bound_iface_observed(&link, packet.clone(), |receipt| {
+                duplicate = Some(receipt);
+                false
+            })
+            .await
+            .expect("duplicate observation"),
+        None
+    );
     assert!(channel.tx_channel.try_recv().is_err(), "declined duplicate cannot hand off");
     let duplicate = duplicate.expect("duplicate token");
     assert_eq!(duplicate.sent_at(), Some(sent_at), "duplicate cannot rearm its timer");
@@ -94,6 +105,23 @@ async fn owned_link_packet_proof_survives_timeout_teardown_and_cache_expiry() {
     let sent_at = receipt.sent_at().expect("successful handoff arms timer");
     assert!(!receipt.expired(sent_at + receipt.timeout()));
     assert!(receipt.expired(sent_at + receipt.timeout() + Duration::from_nanos(1)));
+    let queues = InboundQueues::new(InboundQueueLimits::default());
+    let (class, queued) = preprocess_inbound_message(
+        &transport.handler,
+        &transport.iface_messages_tx,
+        RxMessage { address: *channel.address(), packet: proof, source: IfaceSource::None },
+    )
+    .await
+    .expect("signed receipt reaches wire admission before teardown");
+    assert!(
+        super::inbound_processing::enqueue_inbound_message(
+            &transport.handler,
+            &queues,
+            class,
+            queued,
+        )
+        .await
+    );
     transport.teardown_link(&link).await.expect("teardown");
     channel.tx_channel.try_recv().expect("teardown handoff");
     let (mut replacement, _) = activated_link_pair(destination, &signer);
@@ -105,7 +133,11 @@ async fn owned_link_packet_proof_survives_timeout_teardown_and_cache_expiry() {
         .out_links
         .insert(destination.address_hash, Arc::new(Mutex::new(replacement)));
     transport.handler.lock().await.packet_cache.lock().await.release(Duration::ZERO);
-    handle_proof(proof, transport.get_handler(), *channel.address()).await;
+    super::inbound_processing::process_inbound_message(
+        transport.handler.clone(),
+        queues.try_dequeue().expect("receipt queued across teardown"),
+    )
+    .await;
     receipt.wait_proved().await.expect("real signed proof through native ingress handler");
     assert_eq!(seen.lock().expect("receipts").as_slice(), &[hash.to_bytes()]);
     assert!(!receipt.expired(sent_at + receipt.timeout() + Duration::from_secs(1)));

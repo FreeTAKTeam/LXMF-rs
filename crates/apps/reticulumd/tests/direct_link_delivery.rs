@@ -1,7 +1,7 @@
 use rand_core::OsRng;
 use rns_core::identity::PrivateIdentity;
 use rns_transport::delivery::{send_via_link, LinkSendResult};
-use rns_transport::destination::link::Link;
+use rns_transport::destination::link::{Link, LinkHandleResult};
 use rns_transport::destination::{DestinationDesc, DestinationName};
 use rns_transport::iface::{Interface, InterfaceContext};
 use rns_transport::packet::{DestinationType, PacketType};
@@ -45,10 +45,13 @@ async fn direct_send_uses_link_payloads() {
     let mut input_link =
         Link::new_from_request(&request, receiver.sign_key().clone(), destination, event_tx)
             .expect("input link");
-    let proof = input_link.prove();
+    let mut proof = input_link.prove();
+    proof.header.hops = transport.hops_to(&destination.address_hash).await;
 
-    link.lock().await.handle_packet(&proof, proof_iface);
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(matches!(
+        link.lock().await.handle_packet(&proof, proof_iface),
+        LinkHandleResult::Activated
+    ));
 
     let result = send_via_link(&transport, destination, b"hello link", Duration::from_secs(1))
         .await

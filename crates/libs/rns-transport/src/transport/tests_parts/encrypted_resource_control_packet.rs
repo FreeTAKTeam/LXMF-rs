@@ -348,14 +348,10 @@ async fn handle_inbound_for_test_accepts_python_style_link_proof_with_none_conte
     let (tx, _) = tokio::sync::broadcast::channel(4);
     let mut outbound = Link::new(destination, tx.clone());
     let request = outbound.request();
-    let mut inbound =
-        Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
-            .expect("link request should parse");
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
     let iface = AddressHash::new_from_rand(OsRng);
-    assert!(matches!(
-        outbound.handle_packet(&inbound.prove(), iface),
-        LinkHandleResult::Activated
-    ));
+    assert!(matches!(outbound.handle_packet(&inbound.prove(), iface), LinkHandleResult::Activated));
 
     let packet = outbound.data_packet(b"python proof context").expect("link packet");
     let mut proof = match inbound.handle_packet(&packet, iface) {
@@ -585,10 +581,7 @@ async fn routed_link_request_preserves_python_default_mtu_signalling_when_ifaces
     data.safe_write(requester.as_identity().verifying_key.as_bytes());
     data.safe_write(&[0x20, 0x01, 0xF4]);
     let request = Packet {
-        header: Header {
-            packet_type: PacketType::LinkRequest,
-            ..Default::default()
-        },
+        header: Header { packet_type: PacketType::LinkRequest, ..Default::default() },
         destination: destination_hash,
         context: PacketContext::None,
         data,
@@ -729,7 +722,7 @@ async fn routed_link_request_proof_preserves_wire_shape_when_forwarded_backwards
     let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
     let mut request = outbound_link.request();
     request.header.hops = 1;
-    link_table.add(&request, request.destination, received_from, next_hop, next_hop_iface);
+    link_table.add(&request, request.destination, received_from, next_hop, next_hop_iface, 0);
 
     let mut inbound = Link::new_from_request(
         &request,
@@ -763,7 +756,7 @@ async fn routed_link_resource_request_forwards_back_to_link_requester() {
     let (tx, _) = tokio::sync::broadcast::channel(4);
     let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
     let request = outbound_link.request();
-    link_table.add(&request, request.destination, received_from, next_hop, next_hop_iface);
+    link_table.add(&request, request.destination, received_from, next_hop, next_hop_iface, 0);
 
     let mut inbound = Link::new_from_request(
         &request,
@@ -841,6 +834,7 @@ async fn routed_link_resource_proof_forwards_back_to_link_requester() {
             received_from,
             next_hop,
             next_hop_iface,
+            0,
         );
         assert!(guard.link_table.handle_proof(&link_request_proof).is_some());
     }
@@ -915,6 +909,7 @@ async fn routed_reverse_transfer_resource_proof_forwards_to_link_responder() {
             requester_iface.address,
             request.destination,
             responder_iface.address,
+            0,
         );
         assert!(guard.link_table.handle_proof(&link_request_proof).is_some());
     }
@@ -984,6 +979,7 @@ async fn routed_link_packet_proof_forwards_back_to_link_requester() {
             received_from,
             next_hop,
             next_hop_iface,
+            0,
         );
         assert!(guard.link_table.handle_proof(&link_request_proof).is_some());
     }
@@ -1048,6 +1044,7 @@ async fn disabled_transport_does_not_forward_established_link_traffic() {
             received_from,
             next_hop,
             next_hop_iface,
+            0,
         );
         assert!(guard.link_table.handle_proof(&link_request_proof).is_some());
     }

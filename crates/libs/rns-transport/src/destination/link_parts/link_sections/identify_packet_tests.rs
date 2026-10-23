@@ -20,12 +20,7 @@ mod identify_packet_tests {
         payload
     }
 
-    fn linked_pair() -> (
-        Link,
-        Link,
-        AddressHash,
-        tokio::sync::broadcast::Receiver<LinkEventData>,
-    ) {
+    fn linked_pair() -> (Link, Link, AddressHash, tokio::sync::broadcast::Receiver<LinkEventData>) {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();
         let destination = DestinationDesc {
@@ -37,13 +32,9 @@ mod identify_packet_tests {
 
         let mut outbound = Link::new(destination, tx.clone());
         let request = outbound.request();
-        let mut inbound = Link::new_from_request(
-            &request,
-            signer.sign_key().clone(),
-            destination,
-            tx,
-        )
-        .expect("link request should parse");
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
         let iface = AddressHash::new_from_rand(OsRng);
         assert!(matches!(
             outbound.handle_packet(&inbound.prove(), iface),
@@ -82,13 +73,8 @@ mod identify_packet_tests {
     #[test]
     fn parse_link_identify_rejects_every_invalid_length_without_parsing() {
         let link_id = AddressHash::new([0x01; ADDRESS_HASH_SIZE]);
-        let invalid_lengths = [
-            0,
-            1,
-            LINK_IDENTIFY_PAYLOAD_LENGTH - 1,
-            LINK_IDENTIFY_PAYLOAD_LENGTH + 1,
-            1024 * 1024,
-        ];
+        let invalid_lengths =
+            [0, 1, LINK_IDENTIFY_PAYLOAD_LENGTH - 1, LINK_IDENTIFY_PAYLOAD_LENGTH + 1, 1024 * 1024];
 
         for length in invalid_lengths {
             let payload = vec![0u8; length];
@@ -140,10 +126,7 @@ mod identify_packet_tests {
 
         let packet = inbound.identify_packet(&payload).expect("identify packet");
         assert_eq!(packet.context, PacketContext::LinkIdentify);
-        assert!(matches!(
-            outbound.handle_packet(&packet, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None));
 
         let event = rx.try_recv().expect("peer identified event");
         match event.event {
@@ -182,7 +165,8 @@ mod identify_packet_tests {
         let valid_payload = build_test_identify_payload(&announced, outbound.id());
         let mut invalid_payload = valid_payload.clone();
         invalid_payload[PUBLIC_KEY_LENGTH * 2] ^= 0x80;
-        let invalid_packet = inbound.identify_packet(&invalid_payload).expect("invalid packet build");
+        let invalid_packet =
+            inbound.identify_packet(&invalid_payload).expect("invalid packet build");
 
         for _ in 0..256 {
             assert!(matches!(
@@ -193,10 +177,7 @@ mod identify_packet_tests {
         assert!(rx.try_recv().is_err(), "invalid identify payload emitted an event");
 
         let valid_packet = inbound.identify_packet(&valid_payload).expect("valid packet build");
-        assert!(matches!(
-            outbound.handle_packet(&valid_packet, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&valid_packet, iface), LinkHandleResult::None));
         assert!(matches!(
             rx.try_recv().expect("peer identified after invalid traffic").event,
             LinkEvent::PeerIdentified(_)
@@ -210,17 +191,15 @@ mod identify_packet_tests {
         let valid_payload = build_test_identify_payload(&announced, outbound.id());
         let mut invalid_payload = valid_payload.clone();
         invalid_payload[PUBLIC_KEY_LENGTH * 2] ^= 0x40;
-        let invalid_packet = inbound.identify_packet(&invalid_payload).expect("invalid packet build");
+        let invalid_packet =
+            inbound.identify_packet(&invalid_payload).expect("invalid packet build");
 
         outbound.status = LinkStatus::Stale;
         outbound.stale_since = Some(Instant::now());
         outbound.last_inbound = None;
         outbound.last_data = None;
 
-        assert!(matches!(
-            outbound.handle_packet(&invalid_packet, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&invalid_packet, iface), LinkHandleResult::None));
         assert_eq!(outbound.status, LinkStatus::Stale);
         assert!(outbound.stale_since.is_some());
         assert!(outbound.last_inbound.is_none());
@@ -228,10 +207,7 @@ mod identify_packet_tests {
         assert!(rx.try_recv().is_err());
 
         let valid_packet = inbound.identify_packet(&valid_payload).expect("valid packet build");
-        assert!(matches!(
-            outbound.handle_packet(&valid_packet, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&valid_packet, iface), LinkHandleResult::None));
         assert_eq!(outbound.status, LinkStatus::Active);
         assert!(outbound.stale_since.is_none());
         assert!(outbound.last_inbound.is_some());
@@ -246,37 +222,23 @@ mod identify_packet_tests {
         let (mut outbound, inbound, iface, _) = linked_pair();
         let baseline_rtt = outbound.rtt;
         let baseline_last_inbound = outbound.last_inbound;
-        let invalid_values = [
-            f32::NAN,
-            f32::INFINITY,
-            f32::NEG_INFINITY,
-            -1.0,
-            KEEPALIVE_MAX_SECS + 1.0,
-        ];
+        let invalid_values =
+            [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, KEEPALIVE_MAX_SECS + 1.0];
 
         for value in invalid_values {
             let packet = rtt_packet(&inbound, value, false);
-            assert!(matches!(
-                outbound.handle_packet(&packet, iface),
-                LinkHandleResult::None
-            ));
+            assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None));
             assert_eq!(outbound.rtt, baseline_rtt);
             assert_eq!(outbound.last_inbound, baseline_last_inbound);
         }
 
         let trailing = rtt_packet(&inbound, 0.25, true);
-        assert!(matches!(
-            outbound.handle_packet(&trailing, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&trailing, iface), LinkHandleResult::None));
         assert_eq!(outbound.rtt, baseline_rtt);
         assert_eq!(outbound.last_inbound, baseline_last_inbound);
 
         let valid = rtt_packet(&inbound, 0.25, false);
-        assert!(matches!(
-            outbound.handle_packet(&valid, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&valid, iface), LinkHandleResult::None));
         assert!(outbound.rtt >= Duration::from_secs_f32(0.25));
         assert!(outbound.last_inbound.is_some());
     }
@@ -291,19 +253,13 @@ mod identify_packet_tests {
         outbound.stale_since = Some(Instant::now());
         outbound.last_inbound = None;
 
-        assert!(matches!(
-            outbound.handle_packet(&malformed, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&malformed, iface), LinkHandleResult::None));
         assert_eq!(outbound.status, LinkStatus::Stale);
         assert!(outbound.stale_since.is_some());
         assert!(outbound.last_inbound.is_none());
 
         let valid = inbound.keep_alive_packet(0xFF);
-        assert!(matches!(
-            outbound.handle_packet(&valid, iface),
-            LinkHandleResult::KeepAlive
-        ));
+        assert!(matches!(outbound.handle_packet(&valid, iface), LinkHandleResult::KeepAlive));
         assert_eq!(outbound.status, LinkStatus::Active);
         assert!(outbound.stale_since.is_none());
         assert!(outbound.last_inbound.is_some());
@@ -321,10 +277,7 @@ mod identify_packet_tests {
         outbound.stale_since = Some(Instant::now());
         outbound.last_inbound = None;
 
-        assert!(matches!(
-            outbound.handle_packet(&packet, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None));
         assert_eq!(outbound.status, LinkStatus::Stale);
         assert!(outbound.stale_since.is_some());
         assert!(outbound.last_inbound.is_none());
@@ -354,7 +307,11 @@ mod identify_packet_tests {
         let event = rx.try_recv().expect("the request is posted to the link's event stream");
         match event.event {
             LinkEvent::Data(payload) => {
-                assert_eq!(payload.as_slice(), request, "the request must survive the round trip byte for byte");
+                assert_eq!(
+                    payload.as_slice(),
+                    request,
+                    "the request must survive the round trip byte for byte"
+                );
                 assert_eq!(payload.context(), PacketContext::Request);
                 assert_eq!(
                     payload.request_id(),
@@ -382,7 +339,7 @@ mod identify_packet_tests {
         // The `[request_id, response]` envelope real Reticulum packs — its
         // contents are the application's business, but the transport has to
         // carry them unchanged.
-        let envelope = b"\x92\xc4\x04abcd\xc4\x05hello";
+        let envelope = b"\x92\xc4\x10abcdefghijklmnop\xc4\x05hello";
         let packet = outbound.response_packet(envelope).expect("a response packet can be built");
         assert_eq!(packet.context, PacketContext::Response);
 
@@ -391,8 +348,16 @@ mod identify_packet_tests {
         let event = rx.try_recv().expect("the response is posted to the link's event stream");
         match event.event {
             LinkEvent::Data(payload) => {
-                assert_eq!(payload.as_slice(), envelope, "the envelope must survive the round trip byte for byte");
-                assert_eq!(payload.context(), PacketContext::Response, "…and still be recognisable as a response");
+                assert_eq!(
+                    payload.as_slice(),
+                    envelope,
+                    "the envelope must survive the round trip byte for byte"
+                );
+                assert_eq!(
+                    payload.context(),
+                    PacketContext::Response,
+                    "…and still be recognisable as a response"
+                );
             }
             _ => panic!("expected the response to arrive as LinkEvent::Data"),
         }
@@ -412,22 +377,19 @@ mod identify_packet_tests {
         rmpv::encode::write_value(
             &mut envelope,
             &rmpv::Value::Array(vec![
-            rmpv::Value::Binary(request_id.to_vec()),
-            rmpv::Value::Binary(b"hello".to_vec()),
+                rmpv::Value::Binary(request_id.to_vec()),
+                rmpv::Value::Binary(b"hello".to_vec()),
             ]),
         )
         .expect("response envelope");
         let response = inbound.response_packet(&envelope).expect("response packet");
 
-        assert!(matches!(
-            outbound.handle_packet(&response, iface),
-            LinkHandleResult::None
-        ));
+        assert!(matches!(outbound.handle_packet(&response, iface), LinkHandleResult::None));
         assert!(rx.try_recv().is_err(), "an oversized response must not reach consumers");
     }
 
     #[tokio::test]
-    async fn bounded_direct_response_is_delivered_and_consumes_the_limit() {
+    async fn bounded_direct_response_is_delivered_and_retains_terminal_identity() {
         let (mut outbound, inbound, iface, mut rx) = linked_pair();
         let packet = outbound
             .request_packet_with_max_response_size(b"request", Some(8))
@@ -438,8 +400,8 @@ mod identify_packet_tests {
         rmpv::encode::write_value(
             &mut envelope,
             &rmpv::Value::Array(vec![
-            rmpv::Value::Binary(request_id.to_vec()),
-            rmpv::Value::Binary(b"hello".to_vec()),
+                rmpv::Value::Binary(request_id.to_vec()),
+                rmpv::Value::Binary(b"hello".to_vec()),
             ]),
         )
         .expect("response envelope");
@@ -449,11 +411,9 @@ mod identify_packet_tests {
         let event = rx.try_recv().expect("bounded response should be delivered");
         assert!(matches!(event.event, LinkEvent::Data(_)));
 
-        // The reference consumes the pending request limit with the first
-        // response. A second response with the same id is therefore treated
-        // as unbounded only if the caller registered a new request.
+        // Removing the pending request does not make a duplicate response into
+        // an unbounded new request. Keep its terminal identity for this generation.
         outbound.handle_packet(&response, iface);
-        assert!(rx.try_recv().is_ok(), "a later response is not blocked by a stale limit");
+        assert!(rx.try_recv().is_err(), "a later response cannot reopen a completed request");
     }
-
 }

@@ -25,7 +25,7 @@ impl Transport {
             let mut handler = self.handler.lock().await;
             // Match the handler -> Link order without waiting on a busy Link
             // while unrelated transport work holds behind the handler.
-            let link_guard = match link.try_lock() {
+            let mut link_guard = match link.try_lock() {
                 Ok(guard) => guard,
                 Err(_) => {
                     drop(handler);
@@ -34,9 +34,13 @@ impl Transport {
                 }
             };
             let packet = handler.resource_manager.cancel_outgoing(resource_hash, &link_guard)?;
-            let events = handler.resource_manager.drain_events();
-            super::resource_wire::publish_resource_events(&handler, events);
-            break (link_guard.ingress_iface(), packet);
+            let iface = link_guard.ingress_iface();
+            super::resource_wire::publish_resource_events_for_link(
+                &mut handler,
+                *link_guard.id(),
+                Some(&mut link_guard),
+            );
+            break (iface, packet);
         };
         self.dispatch_link_lifecycle_packet(iface, packet).await
     }
@@ -55,7 +59,9 @@ impl Transport {
     /// dispatch. After observation, dropping the future can omit that frame but
     /// cannot undo local cleanup. The observer must not re-enter Transport.
     pub async fn teardown_link_observed(
-        &self, link: &Arc<Mutex<Link>>, locally_closed: impl FnOnce(),
+        &self,
+        link: &Arc<Mutex<Link>>,
+        locally_closed: impl FnOnce(),
     ) -> Result<bool, RnsError> {
         let mut locally_closed = Some(locally_closed);
         let (iface, packet) = loop {
@@ -70,12 +76,21 @@ impl Transport {
             };
             let link_id = *link_guard.id();
             let iface = link_guard.ingress_iface();
+            super::resource_wire::publish_resource_events_for_link(
+                &mut handler,
+                link_id,
+                Some(&mut link_guard),
+            );
             let packet = link_guard.try_teardown();
+            super::requests::retire_closed_link(&mut handler, &mut link_guard);
             handler.out_links.retain(|_, current| !Arc::ptr_eq(current, link));
             handler.in_links.retain(|_, current| !Arc::ptr_eq(current, link));
             handler.resource_manager.remove_link_state(link_id);
-            let events = handler.resource_manager.drain_events();
-            super::resource_wire::publish_resource_events(&handler, events);
+            super::resource_wire::publish_resource_events_for_link(
+                &mut handler,
+                link_id,
+                Some(&mut link_guard),
+            );
             locally_closed.take().expect("local close observed once")();
             break (iface, packet?);
         };

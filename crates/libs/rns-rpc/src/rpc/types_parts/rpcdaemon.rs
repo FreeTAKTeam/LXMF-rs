@@ -124,10 +124,27 @@ pub trait AnnounceBridge: Send + Sync {
 }
 
 pub trait InterfaceMutationBridge: Send + Sync {
+    /// An asynchronous native owner publishes committed interface records
+    /// itself. Its return value acknowledges queue admission only. Legacy
+    /// bridges keep the default synchronous return-and-store behavior.
+    fn publishes_interface_records(&self) -> bool {
+        false
+    }
+
     fn apply_interfaces(
         &self,
         interfaces: Vec<InterfaceRecord>,
     ) -> Result<Vec<InterfaceRecord>, std::io::Error>;
+
+    /// Retain reload completion context when an asynchronous bridge defers
+    /// publication. Synchronous bridges preserve the existing apply behavior.
+    fn reload_interfaces(
+        &self,
+        interfaces: Vec<InterfaceRecord>,
+        _timestamp: i64,
+    ) -> Result<Vec<InterfaceRecord>, std::io::Error> {
+        self.apply_interfaces(interfaces)
+    }
 
     fn manage_named_interface(
         &self,

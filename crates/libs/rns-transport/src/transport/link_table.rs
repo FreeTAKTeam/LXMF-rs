@@ -20,7 +20,7 @@ pub struct LinkEntry {
     pub received_from: AddressHash,
     pub original_destination: AddressHash,
     pub taken_hops: u8,
-    pub remaining_hops: u8,
+    pub remaining_hops: Option<u8>,
     pub validated: bool,
     proof_validation_policy: LinkProofValidationPolicy,
 }
@@ -71,6 +71,7 @@ impl LinkTable {
         received_from: AddressHash,
         next_hop: AddressHash,
         iface: AddressHash,
+        remaining_hops: u8,
     ) {
         self.add_with_proof_validation_policy(
             link_request,
@@ -78,7 +79,7 @@ impl LinkTable {
             received_from,
             next_hop,
             iface,
-            LinkProofValidationPolicy::DestinationIdentity,
+            (Some(remaining_hops), LinkProofValidationPolicy::DestinationIdentity),
         );
     }
 
@@ -99,7 +100,7 @@ impl LinkTable {
             received_from,
             next_hop,
             iface,
-            LinkProofValidationPolicy::SharedOwnerHandoff,
+            (None, LinkProofValidationPolicy::SharedOwnerHandoff),
         );
     }
 
@@ -110,8 +111,9 @@ impl LinkTable {
         received_from: AddressHash,
         next_hop: AddressHash,
         iface: AddressHash,
-        proof_validation_policy: LinkProofValidationPolicy,
+        proof_policy: (Option<u8>, LinkProofValidationPolicy),
     ) {
+        let (remaining_hops, proof_validation_policy) = proof_policy;
         let link_id = LinkId::from(link_request);
 
         if self.entries.contains_key(&link_id) {
@@ -129,7 +131,7 @@ impl LinkTable {
             received_from,
             original_destination: destination,
             taken_hops,
-            remaining_hops: 0,
+            remaining_hops,
             validated: false,
             proof_validation_policy,
         };
@@ -153,6 +155,14 @@ impl LinkTable {
         self.entries.get(link_id).map(|entry| (entry.original_destination, entry.next_hop_iface))
     }
 
+    pub(super) fn relay_interfaces(&self, link_id: &LinkId) -> Option<(AddressHash, AddressHash)> {
+        self.entries.get(link_id).map(|entry| (entry.received_from, entry.next_hop_iface))
+    }
+
+    pub(super) fn remaining_hops(&self, link_id: &LinkId) -> Option<u8> {
+        self.entries.get(link_id).and_then(|entry| entry.remaining_hops)
+    }
+
     /// Whether `link_id` was sent to the recorded shared owner interface.
     /// This does not authorize ordinary transit LinkRequest proofs.
     pub fn allows_shared_owner_proof_on_iface(&self, link_id: &LinkId, iface: AddressHash) -> bool {
@@ -162,18 +172,18 @@ impl LinkTable {
         })
     }
 
-    pub fn handle_keepalive(&mut self, packet: &Packet) -> Option<(Packet, AddressHash)> {
-        if let Some(entry) = self.entries.get_mut(&packet.destination) {
-            entry.timestamp = Instant::now();
-            return Some(send_backwards(packet, entry));
-        }
-        None
-    }
-
+    /// Caller has validated the destination signature or the explicit trusted
+    /// shared-owner handoff, and checked the recorded next-hop interface.
     pub fn handle_proof(&mut self, proof: &Packet) -> Option<(Packet, AddressHash)> {
         match self.entries.get_mut(&proof.destination) {
             Some(entry) => {
-                entry.remaining_hops = proof.header.hops;
+                if entry.validated && entry.remaining_hops != Some(proof.header.hops) {
+                    return None;
+                }
+                // An identityless shared handoff starts with unknown distance;
+                // its first trusted-owner observation binds it, without claiming
+                // signed path rebalancing or manufacturing a destination path.
+                entry.remaining_hops = Some(proof.header.hops);
                 entry.validated = true;
                 entry.timestamp = Instant::now();
 
@@ -193,9 +203,18 @@ impl LinkTable {
         if !entry.validated {
             return None;
         }
-        let target = if received_on == entry.next_hop_iface {
+        let remaining_hops = entry.remaining_hops?;
+        let hops = packet.header.hops;
+        let target = if entry.next_hop_iface == entry.received_from {
+            if received_on != entry.next_hop_iface
+                || (hops != remaining_hops && hops != entry.taken_hops)
+            {
+                return None;
+            }
+            entry.next_hop_iface
+        } else if received_on == entry.next_hop_iface && hops == remaining_hops {
             entry.received_from
-        } else if received_on == entry.received_from {
+        } else if received_on == entry.received_from && hops == entry.taken_hops {
             entry.next_hop_iface
         } else {
             return None;
@@ -237,11 +256,75 @@ impl LinkTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::packet::{DestinationType, PacketContext, PacketType};
 
     #[test]
     fn link_table_len_reports_empty_table() {
         let table = LinkTable::new(Duration::from_secs(5), Duration::from_secs(30));
 
         assert_eq!(table.len(), 0);
+    }
+
+    #[test]
+    fn validated_link_direction_uses_both_hop_counts_and_same_interface_guard() {
+        for same_interface in [false, true] {
+            let requester = AddressHash::new_from_slice(&[1; 16]);
+            let responder =
+                if same_interface { requester } else { AddressHash::new_from_slice(&[2; 16]) };
+            let unrelated = AddressHash::new_from_slice(&[3; 16]);
+            let mut request = Packet::default();
+            request.header.packet_type = PacketType::LinkRequest;
+            request.header.hops = 2;
+            let id = LinkId::from(&request);
+            let mut table = LinkTable::new(Duration::from_secs(5), Duration::from_secs(30));
+            table.add(&request, request.destination, requester, request.destination, responder, 4);
+            let mut packet = Packet { destination: id, ..Packet::default() };
+            packet.header.destination_type = DestinationType::Link;
+            packet.header.packet_type = PacketType::Data;
+            packet.header.hops = 4;
+            assert!(
+                table.handle_link_packet(&packet, responder).is_none(),
+                "pending rejects traffic"
+            );
+            let mut proof = packet.clone();
+            proof.header.packet_type = PacketType::Proof;
+            proof.context = PacketContext::LinkRequestProof;
+            assert!(table.handle_proof(&proof).is_some());
+            for context in [
+                PacketContext::None,
+                PacketContext::KeepAlive,
+                PacketContext::ResourceRequest,
+                PacketContext::ResourceProof,
+            ] {
+                packet.context = context;
+                for received_on in [requester, responder, unrelated] {
+                    for hops in [0, 1, 2, 3, 4, 5] {
+                        packet.header.hops = hops;
+                        let expected = if same_interface {
+                            (received_on == requester && matches!(hops, 2 | 4)).then_some(requester)
+                        } else if received_on == responder && hops == 4 {
+                            Some(requester)
+                        } else if received_on == requester && hops == 2 {
+                            Some(responder)
+                        } else {
+                            None
+                        };
+                        let before = table.entries[&id].timestamp;
+                        assert_eq!(
+                            table
+                                .handle_link_packet(&packet, received_on)
+                                .map(|(_, target)| target),
+                            expected
+                        );
+                        if expected.is_none() {
+                            assert_eq!(
+                                table.entries[&id].timestamp, before,
+                                "rejection cannot refresh lifetime"
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 }

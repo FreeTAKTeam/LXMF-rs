@@ -156,6 +156,7 @@ const INTERVAL_IFACE_CLEANUP: Duration = Duration::from_secs(10);
 const INTERVAL_ANNOUNCES_RETRANSMIT: Duration = Duration::from_secs(1);
 const INTERVAL_KEEP_PACKET_CACHED: Duration = Duration::from_secs(180);
 const INTERVAL_PACKET_CACHE_CLEANUP: Duration = Duration::from_secs(90);
+const INTERVAL_PACKET_MEMBERSHIP_MAINTENANCE: Duration = Duration::from_millis(250);
 const LOCAL_PATH_RESPONSE_COOLDOWN: Duration = Duration::from_millis(750);
 
 /// How long an auto-spawned per-peer unicast UDP iface may sit idle
@@ -309,7 +310,7 @@ pub(crate) struct TransportHandler {
 struct QueuedInbound {
     message: RxMessage,
     ingress_limited: bool,
-    packet_cache_inserted: bool,
+    wire_hops: u8,
     path_request: Option<PathRequest>,
 }
 
@@ -466,6 +467,7 @@ mod announce;
 mod config;
 // core: construction and minimal high-level transport API methods.
 mod core;
+mod core_interfaces;
 // handler: packet send pipeline and routing/encryption outcomes.
 mod handler;
 mod ifac;
@@ -478,6 +480,7 @@ mod links;
 mod path;
 mod profiling;
 // resource_wire: link-scoped resource packet handling on inbound wire paths.
+mod requests;
 mod resource_wire;
 // wire_encryption: packet-context policy for transport-layer encryption.
 mod wire_encryption;

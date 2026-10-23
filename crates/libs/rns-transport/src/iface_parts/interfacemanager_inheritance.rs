@@ -12,6 +12,9 @@ impl InterfaceManager {
         let Some(source_iface) = self.ifaces.iter().find(|iface| iface.address == source) else {
             return false;
         };
+        if source_iface.stop.is_cancelled() {
+            return false;
+        }
         let mode = source_iface.mode;
         let gravity = source_iface.gravity;
         let outgoing = source_iface.outgoing;
@@ -32,7 +35,8 @@ impl InterfaceManager {
             None
         };
 
-        let Some(target_iface) = self.ifaces.iter_mut().find(|iface| iface.address == target) else {
+        let Some(target_iface) = self.ifaces.iter_mut().find(|iface| iface.address == target)
+        else {
             return false;
         };
         let Ok(mut target_context) = target_iface.ifac_state.write() else {
