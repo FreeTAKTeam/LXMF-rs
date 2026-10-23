@@ -64,6 +64,13 @@ with the same two exclusions reported by the CI selection. The virtual PR HIL
 profile also passes all twelve cases. These checks do not claim physical-device
 or whole-item release acceptance.
 
+A later nextest run hit the coordinated-shutdown fixture's setup deadline.
+The old fixture passed twenty local repeats; its setup now waits for an actual
+native Resource response before probing the handler held by remaining queued
+responses. Both the setup and coordinated-shutdown deadlines remain two seconds.
+The revised fixture passes fifty consecutive repeats, and the full workspace
+lib/bin nextest selection passes 3,436 tests with its existing 106 skips.
+
 ## Item 1 evidence
 
 - Live open issue query returned 22 issues; live open PR query returned none.
