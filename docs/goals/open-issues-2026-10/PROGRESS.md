@@ -82,6 +82,15 @@ the declared checkouts after repair, and still rejects tracked edits and an
 unexpected untracked file. The later exact-target and utility steps were skipped
 by that failed assertion; their final hosted result remains pending on #674.
 
+The next hosted unit run reports `sending` rather than `rejected` at the active
+propagation creator's signal snapshot. The fixture's completion-settling loop
+could silently exhaust 10,000 yields while a real receipt commit remained
+pending. It now waits for commit and owner retirement with an explicit two-second
+wall-clock bound, leaving the paused oracle clock and all 47 cases/263 snapshot
+assertions unchanged. Both the old and revised fixture pass twenty local stress
+repeats; no local reproduction or production-policy change is claimed. Final
+workspace and hosted validation remain tracked on #674.
+
 ## Item 1 evidence
 
 - Live open issue query returned 22 issues; live open PR query returned none.
