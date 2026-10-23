@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
 
@@ -13,8 +13,18 @@ pub struct PacketTrack {
     pub destination: AddressHash,
 }
 
+#[cfg(test)]
+#[path = "tests/packet_cache_generations.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "tests/duplicate_filter_reference.rs"]
+mod reference_tests;
+
 pub struct PacketCache {
     pub(super) link_receipts: super::link_packet_receipt::LinkReceiptRegistry,
+    current: HashSet<Hash>,
+    previous: HashSet<Hash>,
     map: HashMap<Hash, PacketTrack>,
     by_proof_destination: HashMap<AddressHash, Hash>,
     remove_cache: Vec<Hash>,
@@ -24,6 +34,8 @@ impl PacketCache {
     pub fn new() -> Self {
         Self {
             link_receipts: Default::default(),
+            current: HashSet::new(),
+            previous: HashSet::new(),
             map: HashMap::new(),
             by_proof_destination: HashMap::new(),
             remove_cache: Vec::new(),
@@ -47,30 +59,55 @@ impl PacketCache {
         self.remove_cache.clear();
     }
 
+    #[cfg(test)]
     pub fn update(&mut self, packet: &Packet) -> bool {
         let hash = packet.hash();
+        let is_new = !self.contains_hash(&hash);
+        self.remember_hash(hash);
+        self.track_packet(packet);
+        is_new
+    }
 
-        // Track outbound Data packets by their would-be proof destination too,
-        // not just ones we've seen inbound via `note_source`. Without this, a
-        // packet we originate ourselves (never passed to `note_source`, which
-        // only runs for received Data packets) has no cache entry, and an
-        // explicit delivery proof for it falls through to the fallback in
-        // `validate_destination_receipt_proof` callers that trusted any known
-        // identity's signature — letting a peer forge a receipt for a packet
-        // addressed to someone else. See `wire.rs::validated_receipt_hash`.
+    pub(super) fn contains_hash(&self, hash: &Hash) -> bool {
+        self.current.contains(hash) || self.previous.contains(hash)
+    }
+
+    pub(super) fn remember_hash(&mut self, hash: Hash) {
+        self.current.insert(hash);
+    }
+
+    pub(super) fn forget_hash(&mut self, hash: &Hash) {
+        self.current.remove(hash);
+        self.previous.remove(hash);
+    }
+
+    /// Frozen RNS maintenance rotates only when the current generation exceeds
+    /// half the one-million hash budget. Proof/source context has its own TTL.
+    pub(super) fn maintain_duplicate_generations(&mut self) -> bool {
+        const HASHLIST_MAXSIZE: usize = 1_000_000;
+        if self.current.len() <= HASHLIST_MAXSIZE / 2 {
+            return false;
+        }
+        self.previous = std::mem::take(&mut self.current);
+        true
+    }
+
+    pub(super) fn track_packet(&mut self, packet: &Packet) {
+        let hash = packet.hash();
+
+        // Register outbound Data before handoff as well as recording received
+        // Data through note_source. wire_receipt::validated_receipt_hash requires
+        // this exact packet/recipient binding for explicit and implicit proofs;
+        // duplicate membership alone carries no recipient or source authority.
         if packet.header.packet_type == PacketType::Data {
             self.by_proof_destination.insert(AddressHash::new_from_hash(&hash), hash);
         }
-
-        let mut is_new_packet = false;
 
         let track = self.map.get_mut(&hash);
         if let Some(track) = track {
             track.time = Instant::now();
             track.min_hops = min(packet.header.hops, track.min_hops);
         } else {
-            is_new_packet = true;
-
             self.map.insert(
                 hash,
                 PacketTrack {
@@ -81,30 +118,16 @@ impl PacketCache {
                 },
             );
         }
-
-        is_new_packet
     }
 
     pub fn restore_hashes(&mut self, hashes: impl IntoIterator<Item = Hash>) -> usize {
         let mut restored = 0;
         for hash in hashes {
-            if let std::collections::hash_map::Entry::Vacant(entry) = self.map.entry(hash) {
-                entry.insert(PacketTrack {
-                    time: Instant::now(),
-                    min_hops: 0,
-                    source_iface: None,
-                    destination: AddressHash::new_empty(),
-                });
+            if self.current.insert(hash) {
                 restored += 1;
             }
         }
         restored
-    }
-
-    pub fn remove(&mut self, hash: &Hash) {
-        if self.map.remove(hash).is_some() {
-            self.by_proof_destination.remove(&AddressHash::new_from_hash(hash));
-        }
     }
 
     pub fn note_source(&mut self, packet: &Packet, iface: AddressHash) {
@@ -155,6 +178,6 @@ impl PacketCache {
     }
 
     pub fn hashes(&self) -> Vec<Hash> {
-        self.map.keys().copied().collect()
+        self.current.iter().copied().collect()
     }
 }

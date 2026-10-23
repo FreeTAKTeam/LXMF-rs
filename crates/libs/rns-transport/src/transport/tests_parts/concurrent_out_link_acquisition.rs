@@ -35,7 +35,8 @@ async fn concurrent_link_acquisition(replace_closed: bool) {
         assert!(first.as_mut().poll(cx).is_pending());
         assert!(second.as_mut().poll(cx).is_pending());
         std::task::Poll::Ready(())
-    }).await;
+    })
+    .await;
     drop(blocked);
     let (first, second) = tokio::join!(first, second);
     assert!(Arc::ptr_eq(&first, &second), "concurrent callers must share one published Link");
@@ -44,7 +45,10 @@ async fn concurrent_link_acquisition(replace_closed: bool) {
     }
     let handler = transport.handler.lock().await;
     assert_eq!(handler.out_links.len(), 1);
-    assert!(Arc::ptr_eq(handler.out_links.get(&destination.address_hash).expect("published"), &first));
+    assert!(Arc::ptr_eq(
+        handler.out_links.get(&destination.address_hash).expect("published"),
+        &first
+    ));
     let request = channel.tx_channel.try_recv().expect("winner sends request");
     assert_eq!(request.packet.header.packet_type, PacketType::LinkRequest);
     assert!(channel.tx_channel.try_recv().is_err(), "losing candidates must not dispatch");
@@ -72,7 +76,8 @@ async fn concurrent_link_acquisition_preserves_restart_during_preparation() {
     std::future::poll_fn(|cx| {
         assert!(acquire.as_mut().poll(cx).is_pending());
         std::task::Poll::Ready(())
-    }).await;
+    })
+    .await;
     original.lock().await.restart();
     drop(blocked);
     let acquired = acquire.await;
@@ -81,7 +86,7 @@ async fn concurrent_link_acquisition_preserves_restart_during_preparation() {
 }
 
 #[tokio::test]
-async fn concurrent_link_acquisition_does_not_reuse_removed_entry() {
+async fn concurrent_reset_closes_atomically_and_can_invalidate_an_already_waiting_acquisition() {
     let (transport, destination, mut channel) = acquisition_fixture().await;
     let original = transport.link(destination).await;
     channel.tx_channel.try_recv().expect("original request");
@@ -92,13 +97,42 @@ async fn concurrent_link_acquisition_does_not_reuse_removed_entry() {
         assert!(acquire.as_mut().poll(cx).is_pending());
         assert!(reset.as_mut().poll(cx).is_pending());
         std::task::Poll::Ready(())
-    }).await;
-    assert!(!transport.handler.lock().await.out_links.contains_key(&destination.address_hash));
+    })
+    .await;
+    assert!(Arc::ptr_eq(
+        transport
+            .handler
+            .lock()
+            .await
+            .out_links
+            .get(&destination.address_hash)
+            .expect("reset waits to close and remove atomically"),
+        &original
+    ));
     drop(blocked);
     let (acquired, ()) = tokio::join!(biased; acquire, reset);
-    assert!(!Arc::ptr_eq(&original, &acquired), "removed entry must not be reused");
-    assert_eq!(original.lock().await.status(), LinkStatus::Closed);
-    assert!(Arc::ptr_eq(transport.handler.lock().await.out_links.get(&destination.address_hash).expect("replacement"), &acquired));
+    assert!(
+        Arc::ptr_eq(&original, &acquired),
+        "the earlier Link-lock waiter can reuse the still-current Arc"
+    );
+    assert_eq!(
+        original.lock().await.status(),
+        LinkStatus::Closed,
+        "reset invalidates that returned handle"
+    );
+    assert!(!transport.handler.lock().await.out_links.contains_key(&destination.address_hash));
+    let replacement = transport.link(destination).await;
+    assert!(!Arc::ptr_eq(&original, &replacement), "acquisition after removal publishes a new Arc");
+    assert!(Arc::ptr_eq(
+        transport
+            .handler
+            .lock()
+            .await
+            .out_links
+            .get(&destination.address_hash)
+            .expect("replacement"),
+        &replacement
+    ));
     channel.tx_channel.try_recv().expect("replacement request");
     assert!(channel.tx_channel.try_recv().is_err());
 }
@@ -115,14 +149,19 @@ async fn concurrent_link_acquisition_waits_for_restart_without_holding_handler()
     std::future::poll_fn(|cx| {
         assert!(acquire.as_mut().poll(cx).is_pending());
         std::task::Poll::Ready(())
-    }).await;
+    })
+    .await;
     let mut restarting = original.lock().await;
     drop(blocked);
     std::future::poll_fn(|cx| {
         assert!(acquire.as_mut().poll(cx).is_pending());
         std::task::Poll::Ready(())
-    }).await;
-    assert!(transport.handler.try_lock().is_ok(), "a busy Link must not block unrelated handler work");
+    })
+    .await;
+    assert!(
+        transport.handler.try_lock().is_ok(),
+        "a busy Link must not block unrelated handler work"
+    );
     restarting.restart();
     drop(restarting);
     let acquired = acquire.await;

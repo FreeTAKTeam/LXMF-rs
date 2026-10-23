@@ -6,6 +6,7 @@ impl Link {
             && matches!(packet.context, PacketContext::None | PacketContext::LinkProof)
         {
             if let Ok(hash) = self.validate_packet_proof(packet) {
+                self.requests.packet_acknowledged(self.id, hash);
                 self.note_inbound(packet.context);
                 if let Some(pending) = self.channel_pending.remove(&hash) {
                     self.channel_states.insert(pending.sequence, ChannelMessageState::Delivered);
@@ -15,6 +16,16 @@ impl Link {
             }
         }
         if self.status != LinkStatus::Pending || packet.context != PacketContext::LinkRequestProof {
+            return LinkHandleResult::None;
+        }
+        if !self.is_initiator || !self.proof_generation_ready {
+            return LinkHandleResult::None;
+        }
+        if self.expected_proof_hops.is_some_and(|hops| hops != packet.header.hops) {
+            return LinkHandleResult::None;
+        }
+        if !link_proof_mode_matches(packet) {
+            log::warn!("link({}): proof cipher mode does not match request", self.id);
             return LinkHandleResult::None;
         }
         let Ok(identity) = validate_link_request_proof_packet(&self.destination, &self.id, packet)

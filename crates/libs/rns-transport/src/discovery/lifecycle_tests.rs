@@ -1,6 +1,8 @@
 use super::*;
 use crate::discovery::{DiscoveredInterface, DiscoveryStatus};
 
+include!("tests/autoconnect_reference.rs");
+
 fn discovered(name: &str, host: &str, port: u16) -> DiscoveredInterface {
     DiscoveredInterface {
         discovery_hash: vec![1; 32],
@@ -52,6 +54,67 @@ fn initial_autoconnect_obeys_maximum_and_duplicate_endpoint_rules() {
         down_since: None,
     }];
     assert!(plan_autoconnect(&rows[0], &existing).is_none());
+}
+
+#[test]
+fn autoconnect_endpoint_exclusions_apply_even_with_unverified_override() {
+    for allow_unverified in [false, true] {
+        let policy = AutoconnectInterfacePolicy { allow_unverified, ..Default::default() };
+        for endpoint in ["127.0.0.1", "0.0.0.0", "relay.ONION", "200::1", "3ff::1"] {
+            assert!(
+                plan_autoconnect_with_policy(&discovered("relay", endpoint, 4242), &[], policy)
+                    .is_none(),
+                "excluded {endpoint}"
+            );
+        }
+        for endpoint in ["127.0.0.2", "::1", "400::1", "relay.example"] {
+            assert!(
+                plan_autoconnect_with_policy(&discovered("relay", endpoint, 4242), &[], policy)
+                    .is_some(),
+                "eligible {endpoint}"
+            );
+        }
+    }
+}
+
+#[test]
+fn autoconnect_allocates_names_against_existing_and_prior_planned_interfaces() {
+    let existing = ["relay", "relay (2)"].map(|name| RuntimeInterfaceState {
+        id: name.into(),
+        autoconnect_hash: None,
+        autoconnect_source: None,
+        target_host: None,
+        target_port: None,
+        i2p_b32: None,
+        bootstrap_only: false,
+        online: false,
+        down_since: None,
+    });
+    let rows = [discovered("relay", "one.example", 4242), discovered("relay", "two.example", 4242)];
+    let mut lifecycle = InterfaceDiscoveryLifecycle::default();
+    let plans = lifecycle.initial_autoconnect(&rows, &existing, 2);
+    assert_eq!(
+        plans.iter().map(|plan| plan.name.as_str()).collect::<Vec<_>>(),
+        ["relay (3)", "relay (4)"]
+    );
+}
+
+#[test]
+fn initial_autoconnect_override_is_explicit_and_does_not_widen_supported_types() {
+    let mut info = discovered("honest-rust", "relay.example", 4242);
+    info.impl_name = Some("reticulumd".into());
+    info.version = Some("0.14.0".into());
+    let mut lifecycle = InterfaceDiscoveryLifecycle::default();
+    assert!(lifecycle.initial_autoconnect(std::slice::from_ref(&info), &[], 1).is_empty());
+    let policy = AutoconnectInterfacePolicy { allow_unverified: true, ..Default::default() };
+    assert_eq!(
+        lifecycle
+            .initial_autoconnect_with_policy(std::slice::from_ref(&info), &[], 1, policy)
+            .len(),
+        1
+    );
+    info.interface_type = "TCPServerInterface".into();
+    assert!(lifecycle.initial_autoconnect_with_policy(&[info], &[], 1, policy).is_empty());
 }
 
 #[test]
@@ -120,10 +183,7 @@ fn announce_scheduler_selects_most_overdue_discoverable_interface() {
     ];
     assert!(scheduler.next_due(&candidates, 100.0).is_none());
     scheduler.start();
-    assert_eq!(
-        scheduler.next_due(&candidates, 100.0).map(|row| row.id.as_str()),
-        Some("oldest")
-    );
+    assert_eq!(scheduler.next_due(&candidates, 100.0).map(|row| row.id.as_str()), Some("oldest"));
     scheduler.stop();
     assert!(scheduler.next_due(&candidates, 100.0).is_none());
 }

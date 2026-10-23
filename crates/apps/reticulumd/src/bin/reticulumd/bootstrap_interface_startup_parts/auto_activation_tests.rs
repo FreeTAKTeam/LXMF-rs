@@ -7,6 +7,37 @@ use rns_transport::iface::auto::{
 use rns_transport::iface::auto_runtime::AutoRuntimePlan;
 use rns_transport::iface::InterfaceManager;
 
+include!("tests/configured_dispatch_order.rs");
+
+#[cfg(target_os = "linux")]
+mod family_composition {
+    include!("tests/configured_auto_family.rs");
+}
+
+// Other harness threads may fork Pipe children before exec closes their copied UDP
+// descriptors. Isolate lifetime assertions so only this case can own its sockets.
+fn auto_lifecycle_runs_in_child() -> bool {
+    const MARKER: &str = "RETICULUMD_AUTO_LIFECYCLE_TEST_CHILD";
+    let case = std::thread::current().name().expect("full test case name").to_owned();
+    if std::env::var_os(MARKER).as_deref() == Some(std::ffi::OsStr::new(&case)) {
+        return false;
+    }
+    let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args([&case, "--exact", "--nocapture", "--test-threads=1"])
+        .env(MARKER, &case)
+        .output()
+        .expect("run isolated Auto lifecycle test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success()
+            && stdout.contains("test result: ok. 1 passed; 0 failed; 0 ignored;"),
+        "isolated Auto case {case} failed or did not execute once: {}\n{stdout}\n{stderr}",
+        output.status,
+    );
+    true
+}
+
 fn startup_test_args() -> Args {
     Args {
         rpc: None,
@@ -129,6 +160,9 @@ async fn start_configured_auto_for_test(
 
 #[tokio::test]
 async fn configured_daemon_auto_shutdown_releases_sockets_and_allows_restart() {
+    if auto_lifecycle_runs_in_child() {
+        return;
+    }
     let discovery_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .expect("reserve configured discovery port");
     let data_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
@@ -187,6 +221,9 @@ async fn configured_daemon_auto_shutdown_releases_sockets_and_allows_restart() {
 
 #[tokio::test]
 async fn daemon_auto_activation_stops_adapter_and_restarts_on_owned_loopback_ports() {
+    if auto_lifecycle_runs_in_child() {
+        return;
+    }
     let plan = auto_loopback_plan();
     let discovery_port = plan.startup_plan.discovery_listeners[0].unicast_bind_port;
     let data_port = plan.startup_plan.data_listeners[0].bind_port;
@@ -223,6 +260,9 @@ async fn daemon_auto_activation_stops_adapter_and_restarts_on_owned_loopback_por
 
 #[tokio::test]
 async fn daemon_auto_competing_activation_preserves_owner_and_retries_after_stop() {
+    if auto_lifecycle_runs_in_child() {
+        return;
+    }
     let plan = auto_loopback_plan();
     let config =
         InterfaceConfig { kind: "AutoInterface".to_string(), ..InterfaceConfig::default() };
@@ -258,6 +298,9 @@ async fn daemon_auto_competing_activation_preserves_owner_and_retries_after_stop
 
 #[tokio::test]
 async fn daemon_auto_toml_ports_reach_production_adapter_and_are_reusable_after_restart() {
+    if auto_lifecycle_runs_in_child() {
+        return;
+    }
     let discovery_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .expect("reserve daemon AutoInterface discovery port");
     let data_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
@@ -326,6 +369,9 @@ interfaces = [
 
 #[tokio::test]
 async fn failed_daemon_auto_activation_unregisters_channel_and_releases_bound_sockets() {
+    if auto_lifecycle_runs_in_child() {
+        return;
+    }
     let mut plan = auto_loopback_plan();
     let discovery_port = plan.startup_plan.discovery_listeners[0].unicast_bind_port;
     plan.startup_plan.data_listeners[0].bind_address = "not-an-ip-address".to_string();
@@ -348,3 +394,5 @@ async fn failed_daemon_auto_activation_unregisters_channel_and_releases_bound_so
     std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, discovery_port))
         .expect("failed activation releases its already-bound discovery socket");
 }
+
+include!("tests/owned_auto_shutdown.rs");

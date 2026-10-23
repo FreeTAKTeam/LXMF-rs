@@ -92,11 +92,13 @@ fn shutdown_flush_attempts_path_table_when_packet_hashlist_persistence_fails() {
         let signer = PrivateIdentity::new_from_name("shutdown-path-table-after-hashlist-failure");
         let transport_identity =
             rns_transport::identity_bridge::to_transport_private_identity(&signer);
-        let transport = Arc::new(Transport::new(TransportConfig::new(
+        let mut config = TransportConfig::new(
             "shutdown-path-table-after-hashlist-failure",
             &transport_identity,
             true,
-        )));
+        );
+        config.set_transport_enabled(true);
+        let transport = Arc::new(Transport::new(config));
         let context = crate::announce_persistence::PathTablePersistenceContext::new(
             transport,
             temp.path().to_path_buf(),

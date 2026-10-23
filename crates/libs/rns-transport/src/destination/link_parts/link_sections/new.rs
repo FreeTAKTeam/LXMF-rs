@@ -9,6 +9,9 @@ impl Link {
             close_reason: None,
             destination,
             ingress_iface: None,
+            proof_generation_ready: false,
+            expected_proof_hops: None,
+            proof_hops_rebalanced: false,
             priv_identity: PrivateIdentity::new_from_rand(OsRng),
             peer_identity: Identity::default(),
             identified_peer_identity: None,
@@ -37,7 +40,7 @@ impl Link {
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
             channel_rx_ring: HashMap::new(),
-            pending_response_limits: HashMap::new(),
+            requests: request_receipt::RequestBook::default(),
             channel_window: CHANNEL_WINDOW_INIT,
             channel_window_max: CHANNEL_WINDOW_MAX_SLOW,
             channel_window_min: CHANNEL_WINDOW_MIN,
@@ -65,6 +68,8 @@ impl Link {
             self.data_signal = None;
             self.refresh_local_identity();
             self.start_establishment();
+            self.expected_proof_hops = None;
+            self.proof_hops_rebalanced = false;
         }
 
         let mut packet_data = PacketDataBuffer::new();
@@ -101,7 +106,12 @@ impl Link {
         };
         self.status = LinkStatus::Pending;
         self.close_reason = None;
-        self.id = LinkId::from(&packet);
+        let request_id = LinkId::from(&packet);
+        if self.id != request_id {
+            self.requests.reset(RequestFailure::LinkClosed);
+        }
+        self.id = request_id;
+        self.proof_generation_ready = true;
         self.derived_key = DerivedKey::new_empty();
         self.session_cipher = None;
         self.request_time = Instant::now();
@@ -121,7 +131,6 @@ impl Link {
         self.channel_pending.clear();
         self.channel_states.clear();
         self.channel_rx_ring.clear();
-        self.pending_response_limits.clear();
         self.reset_channel_flow_control();
 
         packet
@@ -250,40 +259,44 @@ impl Link {
                 // fixed buffer made those decrypts fail silently.
                 let mut buffer = vec![0u8; packet.data.as_slice().len().max(PACKET_MDU)];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
-                    if packet.context == PacketContext::None && matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+                    if packet.context == PacketContext::None
+                        && matches!(self.status, LinkStatus::Active | LinkStatus::Stale)
+                    {
                         self.observe_data_signal(plain_text);
                     }
                     self.note_inbound(packet.context);
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
-                    let (request_id, response_accepted) = if packet.context == PacketContext::Request {
-                        let hash = packet.hash().to_bytes();
-                        let mut id = [0u8; ADDRESS_HASH_SIZE];
-                        id.copy_from_slice(&hash[..ADDRESS_HASH_SIZE]);
-                        (Some(id), true)
-                    } else if packet.context == PacketContext::Response {
-                        match response_envelope_metadata(plain_text) {
-                            Some((id, response_size)) => {
-                                let accepted = id.as_ref().is_none_or(|id| {
-                                    self.take_response_limit_if_allowed(id, response_size)
-                                });
-                                (id, accepted)
+                    let (request_id, response_accepted) =
+                        if packet.context == PacketContext::Request {
+                            let hash = packet.hash().to_bytes();
+                            let mut id = [0u8; ADDRESS_HASH_SIZE];
+                            id.copy_from_slice(&hash[..ADDRESS_HASH_SIZE]);
+                            (Some(id), true)
+                        } else if packet.context == PacketContext::Response {
+                            match response_envelope_metadata(plain_text) {
+                                Ok((id, response_size)) => {
+                                    let accepted = self.requests.packet_response(
+                                        self.id,
+                                        &id,
+                                        response_size,
+                                        plain_text,
+                                    );
+                                    (Some(id), accepted)
+                                }
+                                Err(error) => {
+                                    log::warn!(
+                                        "link({}): invalid response envelope: {}",
+                                        self.id,
+                                        error
+                                    );
+                                    return LinkHandleResult::None;
+                                }
                             }
-                            None => {
-                                log::warn!(
-                                    "link({}): response is not a valid request envelope",
-                                    self.id
-                                );
-                                (None, true)
-                            }
-                        }
-                    } else {
-                        (None, true)
-                    };
+                        } else {
+                            (None, true)
+                        };
                     if !response_accepted {
-                        log::warn!(
-                            "link({}): response exceeded the pending request size limit",
-                            self.id
-                        );
+                        log::warn!("link({}): response rejected by request policy", self.id);
                         return LinkHandleResult::None;
                     };
                     self.post_event(LinkEvent::Data(Box::new(

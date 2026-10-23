@@ -1,6 +1,6 @@
 use super::announce::announce_retransmit_tick;
 use super::inbound_processing::{
-    preprocess_inbound_message, process_inbound_message, rollback_rejected_inbound,
+    enqueue_inbound_message, preprocess_inbound_message, process_inbound_message,
 };
 use super::*;
 use crate::destination::link::{LinkCloseReason, LinkWatchdogAction};
@@ -186,15 +186,7 @@ pub(super) async fn manage_transport(
                 else {
                     continue;
                 };
-                if let Err(full) = inbound_queues.enqueue(class, message) {
-                    rollback_rejected_inbound(&handler_arc, &full.item).await;
-                    log::warn!(
-                        "dropping inbound packet because {:?} queue is full iface={} hash={}",
-                        full.class,
-                        full.item.message.address,
-                        full.item.message.packet.hash()
-                    );
-                }
+                enqueue_inbound_message(&handler_arc, &inbound_queues, class, message).await;
             }
         });
     }
@@ -276,6 +268,26 @@ pub(super) async fn manage_transport(
     }
 
     {
+        let packet_cache = handler_arc.lock().await.packet_cache.clone();
+        let cancel = cancel.clone();
+        spawn_named_worker(
+            &mut workers,
+            &mut worker_names,
+            "packet-membership-maintenance",
+            async move {
+                loop {
+                    tokio::select! {
+                        _ = cancel.cancelled() => break,
+                        _ = time::sleep(INTERVAL_PACKET_MEMBERSHIP_MAINTENANCE) => {
+                            packet_cache.lock().await.maintain_duplicate_generations();
+                        }
+                    }
+                }
+            },
+        );
+    }
+
+    {
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
@@ -349,6 +361,7 @@ pub(super) async fn manage_transport(
                         let now = Instant::now();
                         let requests = handler.resource_manager.retry_requests(now);
                         let advertisements = handler.resource_manager.poll_outgoing(now);
+                        super::resource_wire::publish_resource_events(&mut handler).await;
                         for (link_id, request) in requests {
                             let link = handler
                                 .in_links
@@ -365,8 +378,6 @@ pub(super) async fn manage_transport(
                         for (_link_id, packet) in advertisements {
                             handler.send_packet(packet).await;
                         }
-                        let events = handler.resource_manager.drain_events();
-                        super::resource_wire::publish_resource_events(&handler, events);
                     }
                 }
             }
@@ -379,6 +390,7 @@ pub(super) async fn manage_transport(
     // is still running cancels the rest and is logged with its name and
     // failure.
     supervise_workers(&mut workers, &worker_names, &cancel).await;
+    super::requests::close_transport_requests(&handler_arc).await;
 }
 
 type WorkerSet = tokio::task::JoinSet<()>;
@@ -403,7 +415,20 @@ async fn supervise_workers(
     worker_names: &WorkerNames,
     cancel: &tokio_util::sync::CancellationToken,
 ) {
-    while let Some(result) = workers.join_next_with_id().await {
+    loop {
+        let result = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                // A worker can be blocked on carrier I/O inside its selected
+                // branch. Interrupt it before native shutdown needs its locks.
+                workers.abort_all();
+                workers.join_next_with_id().await
+            }
+            result = workers.join_next_with_id() => result,
+        };
+        let Some(result) = result else {
+            break;
+        };
         match result {
             Ok((id, ())) => {
                 if !cancel.is_cancelled() {
@@ -414,6 +439,7 @@ async fn supervise_workers(
                     cancel.cancel();
                 }
             }
+            Err(err) if err.is_cancelled() && cancel.is_cancelled() => {}
             Err(err) => {
                 // JoinError carries no return value, but it does carry
                 // the failed task id — look the worker name up so panics

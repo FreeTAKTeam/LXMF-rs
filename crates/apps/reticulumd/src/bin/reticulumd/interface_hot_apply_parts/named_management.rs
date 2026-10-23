@@ -4,7 +4,6 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 const MANAGEMENT_REPLY_TIMEOUT: Duration = Duration::from_secs(20);
-const WORKER_COMPLETION_TIMEOUT: Duration = Duration::from_secs(10);
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub(super) struct NamedInterfaceAction<'a> {
@@ -109,10 +108,9 @@ fn is_manageable(record: &InterfaceRecord) -> bool {
 }
 
 pub(super) async fn apply(
-    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
-    managed: &mut HashMap<String, ManagedHotApplyInterface>,
+    context: NativeInterfaceContext<'_>,
+    managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     action: NamedInterfaceAction<'_>,
-    transport: Option<&Arc<Transport>>,
     refreshes: &HotApplyRuntimeRefreshes,
     daemon: Option<&Weak<RpcDaemon>>,
 ) -> io::Result<Value> {
@@ -122,6 +120,14 @@ pub(super) async fn apply(
     })?;
     let current = daemon.interface_records();
     let index = named_record_index(&current, name)?;
+    if managed.values().any(|active| {
+        !active.origin.configuration_owned() && active.record.name.as_deref() == Some(name)
+    }) {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "internal interface requires its native owner",
+        ));
+    }
     if index.is_some_and(|index| !is_manageable(&current[index])) {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -130,7 +136,7 @@ pub(super) async fn apply(
     }
     match operation {
         "attach" => {
-            if managed.contains_key(name) {
+            if managed.get(&configured_key(name)).is_some_and(|entry| entry.native.is_some()) {
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
                     format!("interface {name:?} is already active"),
@@ -141,18 +147,18 @@ pub(super) async fn apply(
             })?;
             let next = with_named_record(&current, index, record);
             validate_hot_apply_uniqueness(&next)?;
-            apply_hot_apply_interface_records(
-                iface_manager,
+            let mut applied = apply_hot_apply_interface_records(
+                context,
                 managed,
                 next.clone(),
-                transport,
                 refreshes,
                 Some(&Arc::downgrade(&daemon)),
             )
             .await;
-            match wait_ready(managed.get(name)).await {
+            match wait_ready(managed.get(&configured_key(name))).await {
                 Ok(()) => {
-                    daemon.replace_interfaces(next);
+                    record_publication::committed_records(&mut applied, managed);
+                    daemon.replace_interfaces(applied);
                     Ok(
                         json!({ "name": name, "operation": operation, "complete": true, "state": "active" }),
                     )
@@ -162,23 +168,14 @@ pub(super) async fn apply(
                     if let Some(index) = index {
                         rollback[index].enabled = false;
                     }
-                    stop_named(
-                        iface_manager,
-                        managed,
-                        name,
-                        rollback.clone(),
-                        transport,
-                        refreshes,
-                        &daemon,
-                    )
-                    .await?;
-                    daemon.replace_interfaces(rollback);
+                    stop_named(context, managed, name, rollback.clone(), refreshes, &daemon)
+                        .await?;
                     Err(error)
                 }
             }
         }
         "detach" => {
-            let current_managed = managed.get(name).ok_or_else(|| {
+            let current_managed = managed.get(&configured_key(name)).ok_or_else(|| {
                 io::Error::new(io::ErrorKind::NotFound, format!("interface {name:?} is not active"))
             })?;
             if current_managed.record.name.as_deref() != Some(name) {
@@ -196,16 +193,14 @@ pub(super) async fn apply(
                     next.push(record);
                 }
             }
-            stop_named(iface_manager, managed, name, next.clone(), transport, refreshes, &daemon)
-                .await?;
-            daemon.replace_interfaces(next);
+            stop_named(context, managed, name, next.clone(), refreshes, &daemon).await?;
             Ok(
                 json!({ "name": name, "operation": operation, "complete": true, "state": "detached" }),
             )
         }
         "reload" => {
             let old = managed
-                .get(name)
+                .get(&configured_key(name))
                 .ok_or_else(|| {
                     io::Error::new(
                         io::ErrorKind::NotFound,
@@ -224,62 +219,50 @@ pub(super) async fn apply(
                 Some(index) => detached[index].enabled = false,
                 None => detached.push(InterfaceRecord { enabled: false, ..old.clone() }),
             }
-            stop_named(
-                iface_manager,
-                managed,
-                name,
-                detached.clone(),
-                transport,
-                refreshes,
-                &daemon,
-            )
-            .await?;
-            apply_hot_apply_interface_records(
-                iface_manager,
+            stop_named(context, managed, name, detached.clone(), refreshes, &daemon).await?;
+            let mut applied = apply_hot_apply_interface_records(
+                context,
                 managed,
                 next.clone(),
-                transport,
                 refreshes,
                 Some(&Arc::downgrade(&daemon)),
             )
             .await;
-            match wait_ready(managed.get(name)).await {
+            match wait_ready(managed.get(&configured_key(name))).await {
                 Ok(()) => {
-                    daemon.replace_interfaces(next);
+                    record_publication::committed_records(&mut applied, managed);
+                    daemon.replace_interfaces(applied);
                     Ok(
                         json!({ "name": name, "operation": operation, "complete": true, "state": "active" }),
                     )
                 }
                 Err(replacement_error) => {
-                    stop_named(
-                        iface_manager,
-                        managed,
-                        name,
-                        detached.clone(),
-                        transport,
-                        refreshes,
-                        &daemon,
-                    )
-                    .await?;
+                    stop_named(context, managed, name, detached.clone(), refreshes, &daemon)
+                        .await?;
                     let restored = with_named_record(&current, index, old);
-                    apply_hot_apply_interface_records(
-                        iface_manager,
+                    let mut restored_applied = apply_hot_apply_interface_records(
+                        context,
                         managed,
                         restored.clone(),
-                        transport,
                         refreshes,
                         Some(&Arc::downgrade(&daemon)),
                     )
                     .await;
-                    match wait_ready(managed.get(name)).await {
+                    match wait_ready(managed.get(&configured_key(name))).await {
                         Ok(()) => {
-                            daemon.replace_interfaces(restored);
+                            record_publication::committed_records(&mut restored_applied, managed);
+                            daemon.replace_interfaces(restored_applied);
                             Err(io::Error::other(format!(
                                 "reload of {name:?} failed: {replacement_error}; previous interface restored (state=active)"
                             )))
                         }
                         Err(rollback_error) => {
-                            daemon.replace_interfaces(detached);
+                            if let Err(error) =
+                                stop_named(context, managed, name, detached, refreshes, &daemon)
+                                    .await
+                            {
+                                log::warn!("[daemon] failed rollback cleanup name={name}: {error}");
+                            }
                             Err(io::Error::other(format!(
                                 "reload of {name:?} failed: {replacement_error}; rollback failed: {rollback_error} (state=detached)"
                             )))
@@ -319,40 +302,42 @@ fn with_named_record(
 }
 
 async fn stop_named(
-    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
-    managed: &mut HashMap<String, ManagedHotApplyInterface>,
+    context: NativeInterfaceContext<'_>,
+    managed: &mut HashMap<ManagedInterfaceKey, ManagedHotApplyInterface>,
     name: &str,
     desired: Vec<InterfaceRecord>,
-    transport: Option<&Arc<Transport>>,
     refreshes: &HotApplyRuntimeRefreshes,
     daemon: &Arc<RpcDaemon>,
 ) -> io::Result<()> {
-    let tasks = if let Some(active) = managed.get(name) {
-        iface_manager.lock().await.take_worker_tree(active.address)
-    } else {
-        Vec::new()
+    let NativeInterfaceContext { iface_manager, transport, .. } = context;
+    #[cfg(test)]
+    {
+        refreshes.tcp_listeners.lock().expect("tcp listener refresh mutex poisoned").remove(name);
+        refreshes.udp.lock().expect("udp refresh mutex poisoned").remove(name);
+        refreshes.pipe.lock().expect("pipe refresh mutex poisoned").remove(name);
+    }
+    let stopped = match managed.remove(&configured_key(name)).and_then(|entry| entry.native) {
+        Some(native) => {
+            discovery_runtime::stop_owned_native(iface_manager, transport, native).await
+        }
+        None => Ok(()),
     };
-    apply_hot_apply_interface_records(
-        iface_manager,
+    let applied = apply_hot_apply_interface_records(
+        context,
         managed,
         desired,
-        transport,
         refreshes,
         Some(&Arc::downgrade(daemon)),
     )
     .await;
-    for task in tasks {
-        tokio::time::timeout(WORKER_COMPLETION_TIMEOUT, task)
-            .await
-            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "interface worker did not stop"))?
-            .map_err(io::Error::other)?;
-    }
-    Ok(())
+    daemon.replace_interfaces(applied);
+    record_publication::publish_control_bindings(managed, daemon);
+    stopped
 }
 
 async fn wait_ready(active: Option<&ManagedHotApplyInterface>) -> io::Result<()> {
     let status = active
-        .and_then(|active| active.runtime_status.as_ref())
+        .and_then(|active| active.native.as_ref()?.status.as_ref())
         .ok_or_else(|| io::Error::other("interface worker was not created"))?;
     let deadline = tokio::time::Instant::now() + STARTUP_TIMEOUT;
     loop {
@@ -396,6 +381,12 @@ async fn wait_ready(active: Option<&ManagedHotApplyInterface>) -> io::Result<()>
                     matches!(state.as_str(), "respawning" | "stopped" | "closed"),
                     value["last_error"].as_str().map(ToOwned::to_owned),
                 )
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "interface requires its configured runtime owner",
+                ))
             }
         };
         if ready {

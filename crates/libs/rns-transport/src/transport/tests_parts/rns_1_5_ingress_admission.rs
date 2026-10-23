@@ -7,15 +7,11 @@ async fn rns_1_5_originated_link_request_signals_next_hop_interface_mtu() {
 
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let transport = Transport::new(TransportConfig::new("test", &local_identity, true));
-    let mut iface_channel = transport
-        .iface_manager()
-        .lock()
-        .await
-        .new_channel_with_role_mode_mtu(
-            8,
-            IfaceRole::Unicast,
-            crate::iface::InterfaceMode::Full,
-            NEXT_HOP_MTU,
+    let mut iface_channel = transport.iface_manager().lock().await.new_channel_with_role_mode_mtu(
+        8,
+        IfaceRole::Unicast,
+        crate::iface::InterfaceMode::Full,
+        NEXT_HOP_MTU,
     );
     let iface = *iface_channel.address();
     let remote_identity = PrivateIdentity::new_from_rand(OsRng);
@@ -41,21 +37,18 @@ async fn rns_1_5_originated_link_request_signals_next_hop_interface_mtu() {
         .expect("link request should be queued")
         .expect("interface channel open");
     let signalling = &request.packet.data.as_slice()[request.packet.data.len() - 3..];
-    let value = ((signalling[0] as u32) << 16)
-        | ((signalling[1] as u32) << 8)
-        | signalling[2] as u32;
+    let value =
+        ((signalling[0] as u32) << 16) | ((signalling[1] as u32) << 8) | signalling[2] as u32;
     assert_eq!((value & LINK_MTU_MASK) as usize, NEXT_HOP_MTU);
 
     let (event_tx, _) = tokio::sync::broadcast::channel(4);
-    let mut responder = Link::new_from_request(
-        &request.packet,
-        remote_signing_key,
-        destination_desc,
-        event_tx,
-    )
-    .expect("small-MTU link request should parse");
+    let mut responder =
+        Link::new_from_request(&request.packet, remote_signing_key, destination_desc, event_tx)
+            .expect("small-MTU link request should parse");
+    let mut proof = responder.prove();
+    proof.header.hops = 1; // Direct Link call receives the processed ingress count.
     assert!(matches!(
-        link.lock().await.handle_packet(&responder.prove(), iface),
+        link.lock().await.handle_packet(&proof, iface),
         crate::destination::link::LinkHandleResult::Activated
     ));
 }
@@ -72,13 +65,9 @@ fn rns_1_5_direct_link_channel_rejects_u16_length_overflow() {
     let (event_tx, _) = tokio::sync::broadcast::channel(4);
     let mut outbound = Link::new(destination, event_tx.clone());
     let request = outbound.request();
-    let mut responder = Link::new_from_request(
-        &request,
-        remote_identity.sign_key().clone(),
-        destination,
-        event_tx,
-    )
-    .expect("link request should parse");
+    let mut responder =
+        Link::new_from_request(&request, remote_identity.sign_key().clone(), destination, event_tx)
+            .expect("link request should parse");
     assert!(matches!(
         outbound.handle_packet(&responder.prove(), AddressHash::new_from_rand(OsRng)),
         crate::destination::link::LinkHandleResult::Activated
@@ -124,11 +113,9 @@ async fn rns_1_5_ingress_records_live_ifac_flag_policy_violations() {
         },
         source: Default::default(),
     };
-    assert!(
-        preprocess_inbound_message(&handler, &transport.iface_messages_tx, authenticated)
-            .await
-            .is_none()
-    );
+    assert!(preprocess_inbound_message(&handler, &transport.iface_messages_tx, authenticated)
+        .await
+        .is_none());
 
     assert!(transport.iface_manager().lock().await.set_shared_config(
         iface,
@@ -145,11 +132,9 @@ async fn rns_1_5_ingress_records_live_ifac_flag_policy_violations() {
         },
         source: Default::default(),
     };
-    assert!(
-        preprocess_inbound_message(&handler, &transport.iface_messages_tx, missing)
-            .await
-            .is_none()
-    );
+    assert!(preprocess_inbound_message(&handler, &transport.iface_messages_tx, missing)
+        .await
+        .is_none());
     let snapshot = transport
         .iface_manager()
         .lock()
@@ -178,7 +163,8 @@ async fn rns_1_5_virtual_ifac_child_enforces_inherited_authentication_policy() {
                 ..Default::default()
             },
         ));
-        manager.register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+        manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
             .expect("register authenticated virtual child")
     };
 
@@ -211,13 +197,9 @@ async fn rns_1_5_virtual_ifac_child_enforces_inherited_authentication_policy() {
         source: Default::default(),
     };
     assert!(
-        preprocess_inbound_message(
-            &handler,
-            &transport.iface_messages_tx,
-            authenticated_packet,
-        )
-        .await
-        .is_some(),
+        preprocess_inbound_message(&handler, &transport.iface_messages_tx, authenticated_packet,)
+            .await
+            .is_some(),
         "a virtual child must admit the authenticated packet form"
     );
 
@@ -280,19 +262,15 @@ async fn rns_1_5_parent_interface_reports_active_child_burst_counts() {
     }
 
     let snapshots = transport.interface_traffic_snapshots().await;
-    let parent = snapshots
-        .iter()
-        .find(|snapshot| snapshot.address == parent)
-        .expect("parent snapshot");
+    let parent =
+        snapshots.iter().find(|snapshot| snapshot.address == parent).expect("parent snapshot");
     assert_eq!(parent.ic_burst_count, Some(1));
     assert_eq!(parent.ic_pr_burst_count, Some(1));
     assert!(parent.announce_burst_active);
     assert!(parent.path_request_burst_active);
     assert_eq!(parent.rx_bytes, 96);
-    let child = snapshots
-        .iter()
-        .find(|snapshot| snapshot.address == child)
-        .expect("child snapshot");
+    let child =
+        snapshots.iter().find(|snapshot| snapshot.address == child).expect("child snapshot");
     assert!(child.announce_burst_active);
     assert!(child.path_request_burst_active);
 }
@@ -314,11 +292,9 @@ async fn rns_1_5_ingress_rejects_tagless_path_requests_before_queueing() {
         source: crate::iface::IfaceSource::None,
     };
 
-    assert!(
-        preprocess_inbound_message(&handler, &transport.iface_messages_tx, inbound)
-            .await
-            .is_none()
-    );
+    assert!(preprocess_inbound_message(&handler, &transport.iface_messages_tx, inbound)
+        .await
+        .is_none());
     let violations = transport
         .iface_manager()
         .lock()
@@ -460,19 +436,17 @@ async fn rns_1_5_invalid_transported_path_request_does_not_poison_valid_retry() 
     );
     request.header.hops = 2;
 
-    assert!(
-        preprocess_inbound_message(
-            &handler,
-            &transport.iface_messages_tx,
-            crate::iface::RxMessage {
-                address: iface,
-                packet: request.clone(),
-                source: Default::default(),
-            },
-        )
-        .await
-        .is_none()
-    );
+    assert!(preprocess_inbound_message(
+        &handler,
+        &transport.iface_messages_tx,
+        crate::iface::RxMessage {
+            address: iface,
+            packet: request.clone(),
+            source: Default::default(),
+        },
+    )
+    .await
+    .is_none());
 
     request.header.hops = 0;
     assert!(

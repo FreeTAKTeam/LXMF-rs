@@ -72,9 +72,11 @@ async fn prepared_single_preserves_conflicting_known_identity() {
 
 #[tokio::test]
 async fn prepared_single_proofs_remain_bound_to_tracked_packet_and_recipient() {
-    for explicit in [false, true] {
+    for (explicit, attached) in [(false, false), (true, false), (false, true), (true, true)] {
         let local = PrivateIdentity::new_from_rand(OsRng);
-        let transport = Transport::new(TransportConfig::new("prepared-proof", &local, true));
+        let mut config = TransportConfig::new("prepared-proof", &local, true);
+        config.set_connected_to_shared_instance(attached);
+        let transport = Transport::new(config);
         let mut channel = transport.iface_manager().lock().await.new_channel(16);
         let recipient = PrivateIdentity::new_from_rand(OsRng);
         let wrong_signer = PrivateIdentity::new_from_rand(OsRng);
@@ -99,6 +101,17 @@ async fn prepared_single_proofs_remain_bound_to_tracked_packet_and_recipient() {
             .await
             .expect("bound dispatch");
         assert_eq!(trace.outcome, SendPacketOutcome::SentBroadcast);
+        let cache = transport.get_handler().lock().await.packet_cache.clone();
+        let cache = cache.lock().await;
+        assert_eq!(cache.hashes().is_empty(), attached);
+        assert_eq!(
+            cache
+                .proof_context_for_destination(&AddressHash::new_from_hash(&hash))
+                .expect("pre-handoff proof binding")
+                .1,
+            destination
+        );
+        drop(cache);
         let sent = channel.tx_channel.recv().await.expect("broadcast");
         assert_eq!(sent.packet.hash(), hash);
         assert_eq!(sent.packet.data.as_slice(), packet.data.as_slice());
@@ -139,9 +152,11 @@ async fn prepared_single_proofs_remain_bound_to_tracked_packet_and_recipient() {
 }
 #[tokio::test]
 async fn prepared_single_guard_rechecks_after_cache_and_interface_locks() {
-    for block_cache in [true, false] {
+    for (block_cache, attached) in [(true, false), (false, false), (true, true), (false, true)] {
         let local = PrivateIdentity::new_from_rand(OsRng);
-        let transport = Transport::new(TransportConfig::new("guarded-prepared", &local, true));
+        let mut config = TransportConfig::new("guarded-prepared", &local, true);
+        config.set_connected_to_shared_instance(attached);
+        let transport = Transport::new(config);
         let interfaces = transport.iface_manager();
         let mut channel = interfaces.lock().await.new_channel(8);
         let cache = transport.get_handler().lock().await.packet_cache.clone();

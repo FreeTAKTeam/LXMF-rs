@@ -290,10 +290,9 @@ impl Packet {
     ///
     /// Cache invariant: two wire-distinct packets that differ only in the
     /// excluded header fields intentionally collide in the hash. The
-    /// dedup layer (`TransportHandler::filter_duplicate_packets`) owns
-    /// disambiguation using the *unhashed* fields — announces bypass
-    /// dedup, keepalive/resource/channel contexts are always allowed, and
-    /// link-request proofs are allowed while the link is inactive — so
+    /// ingress/routing filter owns disambiguation using the *unhashed*
+    /// fields. Single announces and the reference context exemptions bypass
+    /// membership; Link/proof remembering follows the current routing owner, so
     /// this function must never be "fixed" to include more header bits.
     pub fn hash(&self) -> Hash {
         Hash::new(

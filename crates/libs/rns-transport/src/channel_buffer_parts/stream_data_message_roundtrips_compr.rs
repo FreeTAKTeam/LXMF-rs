@@ -323,8 +323,13 @@ mod tests {
             Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
                 .expect("link request should parse");
         let iface = AddressHash::new_from_rand(OsRng);
+        // This synthetic Channel fixture calls Link directly after ingress;
+        // production receive-hop accounting and rebalancing have transport tests.
+        let mut proof = inbound.prove();
+        proof.header.hops =
+            outbound.lock().await.expected_proof_hops().expect("native request bound");
         assert!(matches!(
-            outbound.lock().await.handle_packet(&inbound.prove(), iface),
+            outbound.lock().await.handle_packet(&proof, iface),
             LinkHandleResult::Activated
         ));
 

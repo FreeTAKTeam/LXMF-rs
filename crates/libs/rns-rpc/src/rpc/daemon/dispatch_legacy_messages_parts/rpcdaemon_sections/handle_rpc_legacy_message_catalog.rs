@@ -303,48 +303,44 @@ impl RpcDaemon {
                 Self::validate_legacy_hot_apply_uniqueness(&parsed.interfaces)?;
                 let parsed_interfaces = parsed.interfaces;
 
-                let applied_interfaces = if let Some(bridge) = self
-                    .interface_mutation_bridge
-                    .lock()
-                    .expect("interface mutation bridge mutex poisoned")
-                    .clone()
-                {
-                    bridge.apply_interfaces(parsed_interfaces)?
-                } else {
-                    parsed_interfaces
-                };
-                {
-                    let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-                    *guard = applied_interfaces.clone();
-                }
-                self.update_daemon_status_snapshot(|snapshot| {
-                    snapshot.interfaces = applied_interfaces.clone();
-                });
+                let (applied_interfaces, queued) = self.apply_interface_mutation(parsed_interfaces, None)?;
                 let applied_interface_ids = applied_interfaces
                     .iter()
                     .enumerate()
                     .map(|(index, iface)| Self::interface_identifier(iface, index))
                     .collect::<Vec<_>>();
 
-                let event = RpcEvent {
-                    event_type: "interfaces_updated".into(),
-                    payload: json!({ "interfaces": applied_interfaces }),
-                };
-                self.publish_event(event);
+                if !queued {
+                    let event = RpcEvent {
+                        event_type: "interfaces_updated".into(),
+                        payload: json!({ "interfaces": applied_interfaces }),
+                    };
+                    self.publish_event(event);
+                }
+                let mut result = json!({
+                    "updated": true,
+                    "applied_interfaces": applied_interface_ids,
+                    "rejected_interfaces": Vec::<String>::new(),
+                });
+                if queued {
+                    result["updated"] = json!(false);
+                    result["queued"] = json!(true);
+                    result["complete"] = json!(false);
+                    result["queued_interfaces"] = result["applied_interfaces"].take();
+                    result["applied_interfaces"] = json!([]);
+                }
 
                 Ok(RpcResponse {
                     id: request.id,
-                    result: Some(json!({
-                        "updated": true,
-                        "applied_interfaces": applied_interface_ids,
-                        "rejected_interfaces": Vec::<String>::new(),
-                    })),
+                    result: Some(result),
                     error: None,
                 })
             }
             "reload_config" => {
+                let requested_timestamp = now_i64();
                 let mut hot_applied_legacy_tcp_only = false;
                 let mut hot_applied_interface_mutation = false;
+                let mut queued = false;
                 if let Some(params) = request.params.clone() {
                     let parsed: ReloadConfigParams =
                         serde_json::from_value(params).map_err(|err| {
@@ -413,43 +409,40 @@ impl RpcDaemon {
                         && parsed.interfaces.iter().all(|iface| iface.kind == "tcp_client");
                     let parsed_interfaces = parsed.interfaces;
 
-                    let applied_interfaces = if let Some(bridge) = self
-                        .interface_mutation_bridge
-                        .lock()
-                        .expect("interface mutation bridge mutex poisoned")
-                        .clone()
-                    {
-                        bridge.apply_interfaces(parsed_interfaces)?
-                    } else {
-                        parsed_interfaces
-                    };
-                    {
-                        let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-                        *guard = applied_interfaces.clone();
+                    let (applied_interfaces, mutation_queued) = self.apply_interface_mutation(parsed_interfaces, Some(requested_timestamp))?;
+                    queued = mutation_queued;
+                    if !queued {
+                        let update_event = RpcEvent {
+                            event_type: "interfaces_updated".into(),
+                            payload: json!({ "interfaces": applied_interfaces }),
+                        };
+                        self.publish_event(update_event);
                     }
-                    self.update_daemon_status_snapshot(|snapshot| {
-                        snapshot.interfaces = applied_interfaces.clone();
-                    });
-                    let update_event = RpcEvent {
-                        event_type: "interfaces_updated".into(),
-                        payload: json!({ "interfaces": applied_interfaces }),
-                    };
-                    self.publish_event(update_event);
                 }
-                let timestamp = now_i64();
+                let timestamp = if queued { requested_timestamp } else { now_i64() };
                 let event = RpcEvent {
                     event_type: "config_reloaded".into(),
                     payload: json!({ "timestamp": timestamp }),
                 };
-                self.publish_event(event);
+                if !queued {
+                    self.publish_event(event);
+                }
+                let mut result = json!({
+                    "reloaded": true,
+                    "timestamp": timestamp,
+                    "hot_applied_legacy_tcp_only": hot_applied_legacy_tcp_only,
+                    "hot_applied_interface_mutation": hot_applied_interface_mutation,
+                });
+                if queued {
+                    result["reloaded"] = json!(false);
+                    result["queued"] = json!(true);
+                    result["complete"] = json!(false);
+                    result["hot_applied_legacy_tcp_only"] = json!(false);
+                    result["hot_applied_interface_mutation"] = json!(false);
+                }
                 Ok(RpcResponse {
                     id: request.id,
-                    result: Some(json!({
-                        "reloaded": true,
-                        "timestamp": timestamp,
-                        "hot_applied_legacy_tcp_only": hot_applied_legacy_tcp_only,
-                        "hot_applied_interface_mutation": hot_applied_interface_mutation,
-                    })),
+                    result: Some(result),
                     error: None,
                 })
             }

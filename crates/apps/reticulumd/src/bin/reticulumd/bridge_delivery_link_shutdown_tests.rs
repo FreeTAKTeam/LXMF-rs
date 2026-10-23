@@ -44,13 +44,7 @@ async fn coordinated_shutdown_interrupts_another_native_operations_blocked_handl
     )
     .expect("native advertisement");
     let hashes = advertisement.hashmap.as_chunks::<4>().0.to_vec();
-    assert!(hashes.len() > 1, "several Resource responses must fill the queue");
-    let filler =
-        link.lock().await.data_packet(b"queue occupancy").expect("unrelated native packet");
-    assert_eq!(
-        transport.send_link_packet_on_bound_iface(&link, filler).await,
-        rns_transport::transport::SendPacketOutcome::SentDirect
-    );
+    assert!(hashes.len() > 2, "responses after the entry barrier must fill the queue");
     let request = rns_transport::resource::ResourceRequest {
         hashmap_exhausted: false,
         last_map_hash: None,
@@ -66,6 +60,12 @@ async fn coordinated_shutdown_interrupts_another_native_operations_blocked_handl
         })
         .await
         .expect("native RX Resource request");
+    // Observe native RX progress before probing its held handler under backpressure.
+    let first_part = tokio::time::timeout(Duration::from_secs(2), channel.tx_channel.recv())
+        .await
+        .expect("first native Resource response deadline")
+        .expect("first native Resource response");
+    assert_eq!(first_part.packet.context, PacketContext::Resource);
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
             if tokio::time::timeout(

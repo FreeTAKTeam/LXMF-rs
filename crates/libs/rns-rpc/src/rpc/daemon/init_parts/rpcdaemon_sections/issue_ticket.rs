@@ -261,6 +261,33 @@ impl RpcDaemon {
         });
     }
 
+    pub(crate) fn apply_interface_mutation(
+        &self,
+        interfaces: Vec<InterfaceRecord>,
+        reload_timestamp: Option<i64>,
+    ) -> std::io::Result<(Vec<InterfaceRecord>, bool)> {
+        let bridge = self
+            .interface_mutation_bridge
+            .lock()
+            .expect("interface mutation bridge mutex poisoned")
+            .clone();
+        let (records, queued) = match bridge {
+            Some(bridge) => {
+                let queued = bridge.publishes_interface_records();
+                let records = match reload_timestamp {
+                    Some(timestamp) => bridge.reload_interfaces(interfaces, timestamp)?,
+                    None => bridge.apply_interfaces(interfaces)?,
+                };
+                (records, queued)
+            }
+            None => (interfaces, false),
+        };
+        if !queued {
+            self.replace_interfaces(records.clone());
+        }
+        Ok((records, queued))
+    }
+
     pub fn update_interface_runtime_metadata_by_iface(
         &self,
         runtime_iface: &str,

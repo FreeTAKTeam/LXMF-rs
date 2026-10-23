@@ -4,7 +4,7 @@ use super::{
     refresh_hot_apply_udp_runtime_status_once, tcp_server_bind_addr_with_device_resolver,
     udp_bind_and_forward_addr_with_device_resolver, HotApplyPipeRefresh, HotApplyRuntimeRefreshes,
     HotApplyUdpRefresh, InterfaceHotApplyBridge, InterfaceManager, InterfaceMutationBridge,
-    InterfaceRecord, ManagedHotApplyInterface,
+    InterfaceRecord, ManagedHotApplyInterface, NativeInterfaceContext,
 };
 use rand_core::OsRng;
 use rns_rpc::{InterfaceMutationFailure, RpcDaemon, RpcRequest};
@@ -18,10 +18,19 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 
+#[path = "interface_hot_apply/ifac_types.rs"]
+mod ifac_types;
+#[cfg(feature = "zmq-pipeline-rpc")]
+#[path = "interface_hot_apply/issue_608_ifac_aliases.rs"]
+mod issue_608_ifac_aliases;
+#[path = "interface_hot_apply/issue_608_record_publication.rs"]
+mod issue_608_record_publication;
 #[path = "interface_hot_apply/issue_608_udp_bind_retry.rs"]
 mod issue_608_udp_bind_retry;
 #[path = "interface_hot_apply/named_management.rs"]
 mod named_management;
+#[path = "interface_hot_apply/tcp_runtime_settings.rs"]
+mod tcp_runtime_settings;
 
 fn tcp_record(name: &str, host: &str, port: u16) -> InterfaceRecord {
     InterfaceRecord {
@@ -112,6 +121,7 @@ fn test_bridge(
         tx,
         config_path: None,
         management_enabled: true,
+        record_publisher: None,
         tcp_listener_refreshes: tcp_listener_refreshes(),
         udp_refreshes: udp_refreshes(),
         pipe_refreshes: pipe_refreshes(),
@@ -307,16 +317,25 @@ async fn hot_apply_removes_tcp_server_when_disabled_closes_listener() {
     let refreshes = runtime_refreshes();
 
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![tcp_server_record("listener", "127.0.0.1", port)],
-        None,
         &refreshes,
         None,
     )
     .await;
 
-    let address = managed.get("listener").expect("managed tcp_server").address;
+    let address = managed
+        .get(&super::configured_key("listener"))
+        .expect("managed tcp_server")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     assert!(refreshes
         .tcp_listeners
         .lock()
@@ -328,10 +347,13 @@ async fn hot_apply_removes_tcp_server_when_disabled_closes_listener() {
     let mut disabled = tcp_server_record("listener", "127.0.0.1", port);
     disabled.enabled = false;
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![disabled],
-        None,
         &refreshes,
         None,
     )
@@ -350,126 +372,6 @@ async fn hot_apply_removes_tcp_server_when_disabled_closes_listener() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
-    let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
-    let mut managed = HashMap::new();
-    let mut record = tcp_record("loopback", "127.0.0.1", 1);
-    record.settings = Some(json!({
-        "interface_mode": "gateway",
-        "outgoing": false,
-        "bitrate": 1200,
-        "announce_cap": 5,
-        "announce_rate_target": 120,
-        "announce_rate_grace": 2,
-        "announce_rate_penalty": 30,
-        "discoverable": true,
-        "announce_interval": 21600
-    }));
-
-    let refreshes = runtime_refreshes();
-    apply_hot_apply_interface_records(
-        &iface_manager,
-        &mut managed,
-        vec![record],
-        None,
-        &refreshes,
-        None,
-    )
-    .await;
-
-    let address = managed.get("loopback").expect("managed tcp client").address;
-    let manager = iface_manager.lock().await;
-    let path_table_identity = manager
-        .tcp_client_path_table_metadata(&address)
-        .expect("hot-applied TCP client path-table identity");
-    assert_eq!(path_table_identity.name, "loopback");
-    assert_eq!(path_table_identity.target_host, "127.0.0.1");
-    assert_eq!(path_table_identity.target_port, 1);
-    assert_eq!(manager.display_name(&address), None);
-    assert_eq!(manager.mode(&address), Some(InterfaceMode::Gateway));
-    assert_eq!(manager.outgoing(&address), Some(false));
-    assert_eq!(manager.announce_pacing(&address), Some((1200, 5)));
-    assert_eq!(
-        manager.shared_config(&address),
-        Some(&InterfaceSharedConfig {
-            announce_rate_target: Some(120),
-            announce_rate_grace: Some(2),
-            announce_rate_penalty: Some(30),
-            discoverable: Some(true),
-            announce_interval: Some(21_600),
-            ..InterfaceSharedConfig::default()
-        })
-    );
-    drop(manager);
-
-    apply_hot_apply_interface_records(
-        &iface_manager,
-        &mut managed,
-        vec![tcp_record("loopback", "127.0.0.2", 2)],
-        None,
-        &refreshes,
-        None,
-    )
-    .await;
-
-    let updated_address = managed.get("loopback").expect("replaced TCP client").address;
-    assert_ne!(updated_address, address);
-    let manager = iface_manager.lock().await;
-    let updated_identity = manager
-        .tcp_client_path_table_metadata(&updated_address)
-        .expect("updated hot-applied TCP client path-table identity");
-    assert_eq!(updated_identity.name, "loopback");
-    assert_eq!(updated_identity.target_host, "127.0.0.2");
-    assert_eq!(updated_identity.target_port, 2);
-    assert_eq!(manager.display_name(&updated_address), None);
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
-    let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
-    let address = {
-        let mut manager = iface_manager.lock().await;
-        *manager.new_channel(8).address()
-    };
-    let mut managed = HashMap::from([(
-        "loopback".to_string(),
-        ManagedHotApplyInterface {
-            record: tcp_record("loopback", "127.0.0.1", 1),
-            address,
-            runtime_status: None,
-        },
-    )]);
-    let mut record = tcp_record("loopback", "127.0.0.1", 1);
-    record.settings = Some(json!({
-        "interface_mode": "access_point",
-        "outgoing": false,
-        "publish_ifac": false
-    }));
-
-    let refreshes = runtime_refreshes();
-    apply_hot_apply_interface_records(
-        &iface_manager,
-        &mut managed,
-        vec![record],
-        None,
-        &refreshes,
-        None,
-    )
-    .await;
-
-    let manager = iface_manager.lock().await;
-    assert_eq!(manager.mode(&address), Some(InterfaceMode::AccessPoint));
-    assert_eq!(manager.outgoing(&address), Some(false));
-    assert_eq!(
-        manager.shared_config(&address),
-        Some(&InterfaceSharedConfig {
-            publish_ifac: Some(false),
-            ..InterfaceSharedConfig::default()
-        })
-    );
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn hot_apply_spawns_udp_unicast_listener_with_runtime_metadata() {
     let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
     let bridge = InterfaceHotApplyBridge::spawn(iface_manager.clone(), Vec::new());
@@ -478,10 +380,13 @@ async fn hot_apply_spawns_udp_unicast_listener_with_runtime_metadata() {
 
     let refreshes = runtime_refreshes();
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![record.clone()],
-        None,
         &refreshes,
         None,
     )
@@ -502,7 +407,13 @@ async fn hot_apply_spawns_udp_unicast_listener_with_runtime_metadata() {
     assert!(udp_status.get("forward_addr").is_some_and(|value| value.is_null()));
     assert!(udp_status.get("iface").is_some_and(|value| value.is_null()));
 
-    let address = managed.get("udp-loopback").expect("managed udp").address;
+    let address = managed
+        .get(&super::configured_key("udp-loopback"))
+        .expect("managed udp")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     let manager = iface_manager.lock().await;
     assert_eq!(manager.role(&address), Some(IfaceRole::Unicast));
     assert_eq!(manager.mode(&address), Some(InterfaceMode::Full));
@@ -551,62 +462,7 @@ async fn hot_apply_udp_refresh_attaches_runtime_iface_and_live_status() {
     assert_eq!(status["last_error"].as_str(), Some("couldn't decode packet"));
 }
 
-async fn wait_for_hot_apply_udp_refresh(
-    bridge: &InterfaceHotApplyBridge,
-) -> (rns_transport::hash::AddressHash, HotApplyUdpRefresh) {
-    for _ in 0..20 {
-        if let Some(refresh) = bridge
-            .udp_refreshes
-            .lock()
-            .expect("udp refresh mutex poisoned")
-            .values()
-            .next()
-            .cloned()
-        {
-            return (refresh.runtime_iface, refresh);
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    panic!("hot-applied udp refresh was not registered");
-}
-
-async fn wait_for_hot_apply_pipe_refresh(
-    bridge: &InterfaceHotApplyBridge,
-) -> (rns_transport::hash::AddressHash, HotApplyPipeRefresh) {
-    for _ in 0..20 {
-        if let Some(refresh) = bridge
-            .pipe_refreshes
-            .lock()
-            .expect("pipe refresh mutex poisoned")
-            .values()
-            .next()
-            .cloned()
-        {
-            return (refresh.runtime_iface, refresh);
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    panic!("hot-applied pipe refresh was not registered");
-}
-
-async fn wait_for_hot_apply_tcp_listener_refresh(
-    bridge: &InterfaceHotApplyBridge,
-) -> (rns_transport::hash::AddressHash, super::HotApplyTcpListenerRefresh) {
-    for _ in 0..20 {
-        if let Some(refresh) = bridge
-            .tcp_listener_refreshes
-            .lock()
-            .expect("tcp listener refresh mutex poisoned")
-            .values()
-            .next()
-            .cloned()
-        {
-            return (refresh.runtime_iface, refresh);
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    panic!("hot-applied tcp listener refresh was not registered");
-}
+include!("interface_hot_apply/runtime_test_observers.rs");
 
 #[tokio::test(flavor = "current_thread")]
 async fn hot_apply_tcp_server_refresh_attaches_listener_status() {
@@ -757,26 +613,44 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
 
     let refreshes = runtime_refreshes();
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.1", 0)],
-        None,
         &refreshes,
         None,
     )
     .await;
-    let first = managed.get("udp-loopback").expect("first udp").address;
+    let first = managed
+        .get(&super::configured_key("udp-loopback"))
+        .expect("first udp")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.2", 0)],
-        None,
         &refreshes,
         None,
     )
     .await;
 
-    let second = managed.get("udp-loopback").expect("second udp").address;
+    let second = managed
+        .get(&super::configured_key("udp-loopback"))
+        .expect("second udp")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     assert_ne!(first, second);
     let manager = iface_manager.lock().await;
     assert_eq!(manager.role(&first), None);
@@ -793,26 +667,36 @@ async fn hot_apply_replaces_startup_seeded_udp_when_bind_changes() {
         channel.address
     };
     let mut managed = HashMap::from([(
-        "udp-loopback".to_string(),
-        ManagedHotApplyInterface {
-            record: udp_record("udp-loopback", "127.0.0.1", 4242),
-            address: first,
-            runtime_status: None,
-        },
+        "udp-loopback".to_string().into(),
+        ManagedHotApplyInterface::active(
+            udp_record("udp-loopback", "127.0.0.1", 4242),
+            first,
+            None,
+            super::ManagedInterfaceOrigin::Configured,
+        ),
     )]);
 
     let refreshes = runtime_refreshes();
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.2", 0)],
-        None,
         &refreshes,
         None,
     )
     .await;
 
-    let second = managed.get("udp-loopback").expect("replacement udp").address;
+    let second = managed
+        .get(&super::configured_key("udp-loopback"))
+        .expect("replacement udp")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     assert_ne!(first, second);
     let manager = iface_manager.lock().await;
     assert_eq!(manager.role(&first), None);
@@ -829,22 +713,26 @@ async fn hot_apply_removes_startup_seeded_udp_when_disabled() {
         channel.address
     };
     let mut managed = HashMap::from([(
-        "udp-loopback".to_string(),
-        ManagedHotApplyInterface {
-            record: udp_record("udp-loopback", "127.0.0.1", 4242),
+        "udp-loopback".to_string().into(),
+        ManagedHotApplyInterface::active(
+            udp_record("udp-loopback", "127.0.0.1", 4242),
             address,
-            runtime_status: None,
-        },
+            None,
+            super::ManagedInterfaceOrigin::Configured,
+        ),
     )]);
     let mut disabled = udp_record("udp-loopback", "127.0.0.1", 4242);
     disabled.enabled = false;
 
     let refreshes = runtime_refreshes();
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![disabled],
-        None,
         &refreshes,
         None,
     )
@@ -862,26 +750,44 @@ async fn hot_apply_replaces_pipe_when_command_changes() {
     let refreshes = runtime_refreshes();
 
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![pipe_record("pipe-cat", "cat")],
-        None,
         &refreshes,
         None,
     )
     .await;
-    let first = managed.get("pipe-cat").expect("first pipe").address;
+    let first = managed
+        .get(&super::configured_key("pipe-cat"))
+        .expect("first pipe")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     apply_hot_apply_interface_records(
-        &iface_manager,
+        NativeInterfaceContext {
+            iface_manager: &iface_manager,
+            transport: None,
+            reconnect_events: None,
+        },
         &mut managed,
         vec![pipe_record("pipe-cat", "cat -u")],
-        None,
         &refreshes,
         None,
     )
     .await;
 
-    let second = managed.get("pipe-cat").expect("replacement pipe").address;
+    let second = managed
+        .get(&super::configured_key("pipe-cat"))
+        .expect("replacement pipe")
+        .native
+        .as_ref()
+        .expect("active native root")
+        .address;
     assert_ne!(first, second);
     let manager = iface_manager.lock().await;
     assert_eq!(manager.role(&first), None);
@@ -1161,3 +1067,5 @@ fn hot_apply_queue_is_bounded_and_reports_pressure() {
     assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
     assert!(err.to_string().contains("interface mutation queue is full"));
 }
+#[path = "interface_hot_apply/tcp_listener_options.rs"]
+mod tcp_listener_options;

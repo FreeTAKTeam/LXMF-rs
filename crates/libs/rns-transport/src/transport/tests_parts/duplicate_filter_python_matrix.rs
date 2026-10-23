@@ -156,8 +156,9 @@ print(f"max={Transport.hashlist_maxsize};generations={first_generation[0]},{firs
         "max=4;generations=3,0|3,0;checks=0,0,1"
     );
 
-    // This assertion records the current Rust expiry contract separately: Rust
-    // has time-based release, not Python's two-generation size-based rotation.
+    // A small native cache stays below the production one-million threshold.
+    // Exact native threshold/displacement and independent proof TTL are covered
+    // by packet_cache::tests without weakening that production threshold.
     let mut rust_cache = super::packet_cache::PacketCache::new();
     let packets: Vec<_> = (0..6)
         .map(|index| crate::packet::Packet {

@@ -4,15 +4,11 @@ use reticulum_daemon::announce_names::{
     normalize_capabilities, normalize_display_name, PropagationNodeAnnounceConfig,
 };
 
-use reticulum_daemon::config::{DaemonConfig, InterfaceConfig, ReticulumRuntimePolicy};
+use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 
 use reticulum_daemon::identity_store::load_or_create_identity;
 
 use crate::bridge_path_lookup::DaemonPathLookupBridge;
-use crate::bridge_rnode_management::{
-    DaemonRNodeManagementBinding, DaemonRNodeManagementBridge,
-};
-use crate::bridge_weave_control::{DaemonWeaveControlBinding, DaemonWeaveDisplayControlBridge};
 
 use crate::announce_persistence::PathTablePersistenceContext;
 
@@ -50,56 +46,6 @@ use tokio::time::{timeout, Duration};
 
 use transport_startup::{start_transport_and_interfaces, TransportStartupInput};
 
-const INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
-
-fn rejected_ifac_interface_records(path: &std::path::Path) -> Vec<InterfaceRecord> {
-    let Ok(source) = std::fs::read_to_string(path) else { return Vec::new() };
-    let Ok(document) = source.parse::<toml::Value>() else { return Vec::new() };
-    let Some(interfaces) = document.get("interfaces") else { return Vec::new() };
-    let rows: Vec<(Option<&str>, &toml::Value)> = match interfaces {
-        toml::Value::Array(items) => items.iter().map(|item| (None, item)).collect(),
-        toml::Value::Table(items) => items.iter().map(|(name, item)| (Some(name.as_str()), item)).collect(),
-        _ => return Vec::new(),
-    };
-    rows.into_iter()
-        .enumerate()
-        .filter_map(|(index, (section_name, value))| {
-            let table = value.as_table()?;
-            let ifac_size = table.get("ifac_size")?;
-            let valid_ifac_size = ifac_size
-                .as_integer()
-                .and_then(|value| u64::try_from(value).ok())
-                .is_some_and(|bits| bits / 8 <= 64);
-            let credential_present = ["network_name", "networkname", "passphrase", "pass_phrase"]
-                .iter()
-                .filter_map(|key| table.get(*key).and_then(toml::Value::as_str))
-                .any(|credential| !credential.is_empty());
-            let name = table.get("name").and_then(toml::Value::as_str).or(section_name)
-                .map(str::to_owned).or_else(|| Some(format!("interfaces[{index}]")));
-            let kind = table.get("type").and_then(toml::Value::as_str).or(section_name)
-                .unwrap_or("unknown").to_owned();
-            let startup_error = if valid_ifac_size && credential_present {
-                "daemon configuration rejected before interface startup; inspect daemon log"
-            } else {
-                "IFAC configuration rejected: ifac_size must floor to 1..=64 bytes (or be below the one-byte minimum to use the carrier default) and requires a non-empty network_name or passphrase"
-            };
-            let settings = json!({"_runtime": {
-                "startup_status": "failed",
-                "startup_error": startup_error
-            }});
-            Some(InterfaceRecord {
-                kind,
-                enabled: table.get("enabled").and_then(toml::Value::as_bool)
-                    .or_else(|| table.get("interface_enabled").and_then(toml::Value::as_bool))
-                    .unwrap_or(false),
-                host: table.get("host").and_then(toml::Value::as_str).map(str::to_owned),
-                port: table.get("port").and_then(toml::Value::as_integer).and_then(|port| u16::try_from(port).ok()),
-                name,
-                settings: Some(settings),
-            })
-        })
-        .collect()
-}
 
 #[derive(Clone, Debug)]
 pub(super) struct RpcTlsConfig {
@@ -115,7 +61,7 @@ pub(super) struct BootstrapContext {
     pub(super) rpc_tls: Option<RpcTlsConfig>,
     pub(super) receipt_owner: Option<super::receipt_worker::ReceiptOwner>,
     pub(super) path_table_persistence: Option<PathTablePersistenceContext>,
-    pub(super) auto_runtime_shutdowns: Vec<transport_startup::AutoRuntimeShutdown>,
+    pub(super) interface_owner: Option<crate::interface_hot_apply::InterfaceMutationOwner>,
 }
 
 const RECEIPT_EVENT_QUEUE_CAPACITY: usize = 1024;
@@ -169,37 +115,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         args.db.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     let mut local_identity_hash = [0u8; 16];
     local_identity_hash.copy_from_slice(identity.address_hash().as_slice());
-    let mut rejected_ifac_interfaces = Vec::new();
-    let daemon_config = args.config.as_ref().and_then(|path| match DaemonConfig::from_path(path) {
-        Ok(config) => Some(config),
-        Err(err) => {
-            log::error!("[daemon] failed to load config {}: {}", path.display(), err);
-            rejected_ifac_interfaces = rejected_ifac_interface_records(path);
-            None
-        }
-    });
-    let reticulum_runtime_policy = match args.config.as_ref() {
-        Some(path) => match std::fs::read_to_string(path) {
-            Ok(input) => match ReticulumRuntimePolicy::from_toml(&input) {
-                Ok(policy) => policy,
-                Err(error) => {
-                    log::error!(
-                        "[daemon] failed to parse Reticulum runtime policy {}: {error}",
-                        path.display()
-                    );
-                    ReticulumRuntimePolicy::default()
-                }
-            },
-            Err(error) => {
-                log::error!(
-                    "[daemon] failed to read Reticulum runtime policy {}: {error}",
-                    path.display()
-                );
-                ReticulumRuntimePolicy::default()
-            }
-        },
-        None => ReticulumRuntimePolicy::default(),
-    };
+    let (daemon_config, parsed_runtime_policy, rejected_ifac_interfaces) =
+        configuration::load(args.config.as_deref());
+    let discovery_announce_defaults = parsed_runtime_policy.announce_defaults();
+    let (reticulum_runtime_policy, allow_unverified_discovery) = parsed_runtime_policy.into_parts();
     let network_identity = reticulum_runtime_policy
         .network_identity_path
         .as_ref()
@@ -261,10 +180,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         propagation_announce_config: propagation_node_config.announce_config,
         local_hops_delta: reticulum_runtime_policy.local_hops_delta(),
         inbound_queue_limits: reticulum_runtime_policy.inbound_queue_limits(),
+        discovery_enabled: reticulum_runtime_policy.discover_interfaces,
     })
     .await;
 
     let transport = startup.transport;
+    let configured_startup = startup.configured_startup;
     let peer_crypto = startup.peer_crypto;
     let announce_destination = startup.announce_destination;
     let propagation_destination = startup.propagation_destination;
@@ -275,27 +196,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let control_destination_hash_hex = startup.control_destination_hash_hex;
     let delivery_source_hash = startup.delivery_source_hash;
     configured_interfaces = startup.configured_interfaces;
-    let startup_successes = startup.startup_successes;
-    let startup_failures = startup.startup_failures;
-    let seeded_hot_apply_interfaces = startup.seeded_hot_apply_interfaces;
-    let auto_runtime_refreshes = startup.auto_runtime_refreshes;
-    let auto_runtime_shutdowns = startup.auto_runtime_shutdowns;
-    let pipe_runtime_refreshes = startup.pipe_runtime_refreshes;
-    let udp_runtime_refreshes = startup.udp_runtime_refreshes;
-    let serial_runtime_refreshes = startup.serial_runtime_refreshes;
-    let kiss_runtime_refreshes = startup.kiss_runtime_refreshes;
-    let ble_gatt_runtime_refreshes = startup.ble_gatt_runtime_refreshes;
-    let reticulum_ble_runtime_refreshes = startup.reticulum_ble_runtime_refreshes;
-    let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
-    let tcp_runtime_refreshes = startup.tcp_runtime_refreshes;
-    let weave_runtime_refreshes = startup.weave_runtime_refreshes;
-    let rnode_multi_runtime_refreshes = startup.rnode_multi_runtime_refreshes;
-    let lora_runtime_refreshes = startup.lora_runtime_refreshes;
-    let meshtastic_runtime_refreshes = startup.meshtastic_runtime_refreshes;
-    #[cfg(feature = "vrn76-kiss-ble")]
-    let vrn76_runtime_refreshes = startup.vrn76_runtime_refreshes;
-    let rnode_management_bindings = startup.rnode_management_bindings;
-    let weave_control_bindings = startup.weave_control_bindings;
+    let startup_successes = startup.interfaces.startup_successes;
+    let mut startup_interfaces = startup.interfaces;
+    let startup_failures = std::mem::take(&mut startup_interfaces.startup_failures);
+    let owned_configured_interfaces = startup_interfaces.into_owned_roots(&configured_interfaces);
     let selected_tcp_server = startup.selected_tcp_server;
     let restored_path_identities = startup.restored_path_identities;
     let strict_interface_startup = args.strict_interface_startup
@@ -412,41 +316,6 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 probe_receipts,
             ),
         ));
-        daemon.set_interface_mutation_bridge(Arc::new(
-            InterfaceHotApplyBridge::spawn_with_transport_and_daemon(
-                transport.clone(),
-                seeded_hot_apply_interfaces,
-                Arc::downgrade(&daemon),
-            )
-            .with_management_config(
-                args.config.clone(),
-                reticulum_runtime_policy.interface_management_enabled,
-            ),
-        ));
-    }
-    if !rnode_management_bindings.is_empty() {
-        let bindings = rnode_management_bindings
-            .into_iter()
-            .map(|binding| DaemonRNodeManagementBinding {
-                runtime_iface: binding.runtime_iface,
-                name: binding.name,
-                handle: binding.handle,
-            })
-            .collect();
-        daemon.set_rnode_management_bridge(Arc::new(DaemonRNodeManagementBridge::new(bindings)));
-    }
-    if !weave_control_bindings.is_empty() {
-        let bindings = weave_control_bindings
-            .into_iter()
-            .map(|binding| DaemonWeaveControlBinding {
-                runtime_iface: binding.runtime_iface,
-                name: binding.name,
-                handle: binding.handle,
-            })
-            .collect();
-        daemon.set_weave_display_control_bridge(Arc::new(DaemonWeaveDisplayControlBridge::new(
-            bindings,
-        )));
     }
     if let Some(bridge) = bridge.as_ref() {
         bridge.set_daemon(daemon.clone());
@@ -457,21 +326,25 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     daemon.set_propagation_destination_hash(propagation_destination_hash_hex.clone());
     let discovery_interfaces = configured_interfaces.clone();
     daemon.replace_interfaces(configured_interfaces);
-    spawn_auto_runtime_status_refresher(daemon.clone(), auto_runtime_refreshes);
-    spawn_pipe_runtime_status_refresher(daemon.clone(), pipe_runtime_refreshes);
-    spawn_udp_runtime_status_refresher(daemon.clone(), udp_runtime_refreshes);
-    spawn_serial_runtime_status_refresher(daemon.clone(), serial_runtime_refreshes);
-    spawn_kiss_runtime_status_refresher(daemon.clone(), kiss_runtime_refreshes);
-    spawn_ble_gatt_runtime_status_refresher(daemon.clone(), ble_gatt_runtime_refreshes);
-    spawn_reticulum_ble_runtime_status_refresher(daemon.clone(), reticulum_ble_runtime_refreshes);
-    spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
-    spawn_tcp_runtime_status_refresher(daemon.clone(), tcp_runtime_refreshes);
-    spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
-    spawn_rnode_multi_runtime_status_refresher(daemon.clone(), rnode_multi_runtime_refreshes);
-    spawn_lora_runtime_status_refresher(daemon.clone(), lora_runtime_refreshes);
-    spawn_meshtastic_runtime_status_refresher(daemon.clone(), meshtastic_runtime_refreshes);
-    #[cfg(feature = "vrn76-kiss-ble")]
-    spawn_vrn76_runtime_status_refresher(daemon.clone(), vrn76_runtime_refreshes);
+    let mut discovery_observations = None;
+    let mut interface_owner = None;
+    if let Some(transport) = transport.as_ref() {
+        let discovery = crate::interface_hot_apply::NativeDiscoveryConfig::new(
+            reticulum_storage_path.clone(),
+            &reticulum_runtime_policy,
+            allow_unverified_discovery,
+            daemon_config.as_ref().map_or(&[], |config| config.interfaces.as_slice()),
+            discovery_announce_defaults,
+        );
+        let discovery_enabled = discovery.is_some();
+        let mutation = InterfaceHotApplyBridge::spawn_with_configured_roots(
+            transport.clone(), owned_configured_interfaces, Arc::downgrade(&daemon), discovery,
+            configured_startup,
+        ).with_management_config(args.config.clone(), reticulum_runtime_policy.interface_management_enabled);
+        if discovery_enabled { discovery_observations = Some(mutation.discovery_observations()); }
+        daemon.set_interface_mutation_bridge(Arc::new(mutation.bridge.clone()));
+        interface_owner = Some(mutation);
+    }
     daemon.set_propagation_state(transport.is_some(), None, 0);
     daemon.configure_propagation_node(
         propagation_node_config.enabled,
@@ -655,6 +528,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 local_identity: discovery_identity,
                 network_identity: transport_network_identity,
                 outbound,
+                observations: discovery_observations,
             }
         });
         spawn_announce_worker(
@@ -673,10 +547,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         rpc_tls,
         receipt_owner,
         path_table_persistence,
-        auto_runtime_shutdowns,
+        interface_owner,
     }
 }
 
+#[cfg(test)]
 pub(super) async fn shutdown_auto_interfaces(
     shutdowns: Vec<transport_startup::AutoRuntimeShutdown>,
 ) {
@@ -772,23 +647,7 @@ fn record_restored_path_identities(
     }
 }
 
-fn spawn_auto_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::AutoRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_auto_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_auto_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::AutoRuntimeRefresh],
@@ -806,23 +665,7 @@ fn refresh_auto_runtime_status_once(
         .count()
 }
 
-fn spawn_pipe_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::PipeRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_pipe_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_pipe_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::PipeRuntimeRefresh],
@@ -840,23 +683,7 @@ fn refresh_pipe_runtime_status_once(
         .count()
 }
 
-fn spawn_udp_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::UdpRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_udp_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_udp_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::UdpRuntimeRefresh],
@@ -874,23 +701,7 @@ fn refresh_udp_runtime_status_once(
         .count()
 }
 
-fn spawn_serial_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::SerialRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_serial_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_serial_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::SerialRuntimeRefresh],
@@ -908,23 +719,7 @@ fn refresh_serial_runtime_status_once(
         .count()
 }
 
-fn spawn_kiss_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::KissRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_kiss_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_kiss_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::KissRuntimeRefresh],
@@ -942,23 +737,7 @@ fn refresh_kiss_runtime_status_once(
         .count()
 }
 
-fn spawn_ble_gatt_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::BleGattRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_ble_gatt_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_ble_gatt_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::BleGattRuntimeRefresh],
@@ -976,57 +755,7 @@ fn refresh_ble_gatt_runtime_status_once(
         .count()
 }
 
-fn spawn_reticulum_ble_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::ReticulumBleRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_reticulum_ble_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
-fn refresh_reticulum_ble_runtime_status_once(
-    daemon: &RpcDaemon,
-    refreshes: &[transport_startup::ReticulumBleRuntimeRefresh],
-) -> usize {
-    refreshes
-        .iter()
-        .filter(|refresh| {
-            daemon.update_interface_runtime_metadata_by_iface(
-                refresh.runtime_iface.to_string().as_str(),
-                "reticulum_ble",
-                "status",
-                refresh.status.to_json(),
-            )
-        })
-        .count()
-}
-
-fn spawn_i2p_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::I2pRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_i2p_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_i2p_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::I2pRuntimeRefresh],
@@ -1044,57 +773,7 @@ fn refresh_i2p_runtime_status_once(
         .count()
 }
 
-fn spawn_tcp_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::TcpRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_tcp_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
-fn spawn_meshtastic_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::MeshtasticRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_meshtastic_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
-fn refresh_meshtastic_runtime_status_once(
-    daemon: &RpcDaemon,
-    refreshes: &[transport_startup::MeshtasticRuntimeRefresh],
-) -> usize {
-    refreshes
-        .iter()
-        .filter(|refresh| {
-            daemon.update_interface_runtime_metadata_by_iface(
-                refresh.runtime_iface.to_string().as_str(),
-                "meshtastic",
-                "status",
-                refresh.status.to_json(),
-            )
-        })
-        .count()
-}
-
+#[cfg(test)]
 fn refresh_tcp_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::TcpRuntimeRefresh],
@@ -1112,23 +791,7 @@ fn refresh_tcp_runtime_status_once(
         .count()
 }
 
-fn spawn_weave_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::WeaveRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_weave_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_weave_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::WeaveRuntimeRefresh],
@@ -1146,23 +809,7 @@ fn refresh_weave_runtime_status_once(
         .count()
 }
 
-fn spawn_rnode_multi_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::RNodeMultiRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_rnode_multi_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_rnode_multi_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::RNodeMultiRuntimeRefresh],
@@ -1180,23 +827,7 @@ fn refresh_rnode_multi_runtime_status_once(
         .count()
 }
 
-fn spawn_lora_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::LoraRuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_lora_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
+#[cfg(test)]
 fn refresh_lora_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::LoraRuntimeRefresh],
@@ -1215,24 +846,7 @@ fn refresh_lora_runtime_status_once(
 }
 
 #[cfg(feature = "vrn76-kiss-ble")]
-fn spawn_vrn76_runtime_status_refresher(
-    daemon: Arc<RpcDaemon>,
-    refreshes: Vec<transport_startup::Vrn76RuntimeRefresh>,
-) {
-    if refreshes.is_empty() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            refresh_vrn76_runtime_status_once(&daemon, &refreshes);
-        }
-    });
-}
-
-#[cfg(feature = "vrn76-kiss-ble")]
+#[cfg(test)]
 fn refresh_vrn76_runtime_status_once(
     daemon: &RpcDaemon,
     refreshes: &[transport_startup::Vrn76RuntimeRefresh],

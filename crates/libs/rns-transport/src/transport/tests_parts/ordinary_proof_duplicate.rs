@@ -2,10 +2,7 @@ fn ordinary_proof_packet() -> crate::packet::Packet {
     use crate::packet::{Packet, PacketContext, PacketType};
 
     Packet {
-        header: crate::packet::Header {
-            packet_type: PacketType::Proof,
-            ..Default::default()
-        },
+        header: crate::packet::Header { packet_type: PacketType::Proof, ..Default::default() },
         context: PacketContext::None,
         destination: crate::hash::AddressHash::new_from_slice(&[0x91; 16]),
         data: crate::packet::PacketDataBuffer::new_from_slice(&[0x37; 32]),
@@ -31,6 +28,17 @@ async fn rns_1_5_ingress_suppresses_duplicate_ordinary_proof() {
     )
     .await;
     assert!(first.is_some(), "first ordinary proof should pass production ingress");
+    let (class, candidate) = first.expect("ordinary proof candidate");
+    let queues = InboundQueues::new(InboundQueueLimits::default());
+    assert!(
+        super::inbound_processing::enqueue_inbound_message(
+            &transport.handler,
+            &queues,
+            class,
+            candidate,
+        )
+        .await
+    );
 
     let duplicate = preprocess_inbound_message(
         &transport.get_handler(),
@@ -101,8 +109,20 @@ print(f"{int(first)},{int(duplicate)}")
                 source: Default::default(),
             },
         )
-        .await
-        .is_some();
+        .await;
+        let accepted = match accepted {
+            Some((class, candidate)) => {
+                let queues = InboundQueues::new(InboundQueueLimits::default());
+                super::inbound_processing::enqueue_inbound_message(
+                    &transport.handler,
+                    &queues,
+                    class,
+                    candidate,
+                )
+                .await
+            }
+            None => false,
+        };
         assert_eq!(accepted, expected, "Rust production ingress observation {index}");
     }
 }

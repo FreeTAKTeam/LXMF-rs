@@ -335,13 +335,16 @@ impl Harness {
         }
         self.wire.pump().await;
         if self.receipt_owner.is_some() {
-            for _ in 0..10000 {
-                if !self.messages.iter().any(|m| {
-                    self.publisher.terminal_pending(&m.id).expect("terminal fence")
-                        || (m.control.done.load(AtomicOrdering::Acquire) && !m.owner.is_finished())
-                }) {
-                    break;
-                }
+            // Keep the oracle clock paused while the real receipt worker commits.
+            let started = std::time::Instant::now();
+            while self.messages.iter().any(|m| {
+                self.publisher.terminal_pending(&m.id).expect("terminal fence")
+                    || (m.control.done.load(AtomicOrdering::Acquire) && !m.owner.is_finished())
+            }) {
+                assert!(
+                    started.elapsed() < Duration::from_secs(2),
+                    "native completion must commit and retire before its snapshot"
+                );
                 tokio::task::yield_now().await;
             }
         }
