@@ -258,8 +258,9 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
         Self { rng, keys: CachedFernet::new_from_slices(sign_key, enc_key) }
     }
 
-    pub fn new_rand(rng: R) -> Self {
-        Self { rng, keys: CachedFernet::new_rand(rng) }
+    pub fn new_rand(mut rng: R) -> Self {
+        let keys = CachedFernet::new_rand(&mut rng);
+        Self { rng, keys }
     }
 
     pub fn encrypt<'a>(
@@ -293,6 +294,38 @@ mod tests {
     use rand_core::OsRng;
 
     const KEY: [u8; AES_KEY_SIZE] = [7u8; AES_KEY_SIZE];
+
+    #[test]
+    fn new_rand_advances_rng_past_key_material_before_generating_iv() {
+        #[derive(Clone, Copy)]
+        struct CountingRng(u8);
+        impl rand_core::RngCore for CountingRng {
+            fn next_u32(&mut self) -> u32 {
+                rand_core::impls::next_u32_via_fill(self)
+            }
+            fn next_u64(&mut self) -> u64 {
+                rand_core::impls::next_u64_via_fill(self)
+            }
+            fn fill_bytes(&mut self, bytes: &mut [u8]) {
+                for byte in bytes {
+                    *byte = self.0;
+                    self.0 = self.0.wrapping_add(1);
+                }
+            }
+            fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), rand_core::Error> {
+                self.fill_bytes(bytes);
+                Ok(())
+            }
+        }
+        impl rand_core::CryptoRng for CountingRng {}
+
+        let sender = Fernet::new_rand(CountingRng(0));
+        let mut buffer = [0; 128];
+        let token = sender.encrypt("payload".into(), &mut buffer).expect("cipher token");
+        let expected_iv: [u8; super::IV_KEY_SIZE] =
+            core::array::from_fn(|index| (2 * AES_KEY_SIZE + index) as u8);
+        assert_eq!(&token.as_bytes()[..super::IV_KEY_SIZE], &expected_iv);
+    }
 
     #[test]
     fn encrypt_then_decrypt() {
