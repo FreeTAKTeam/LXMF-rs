@@ -16,7 +16,6 @@ struct FailedEndpoint {
     stop: CancellationToken,
     task: JoinHandle<()>,
     _root: tempfile::TempDir,
-    _reserved: Option<TcpSocket>,
 }
 
 impl FailedEndpoint {
@@ -60,18 +59,10 @@ impl FailedEndpoint {
         // Public contexts can supply independent global and interface stops.
         let cancel = CancellationToken::new();
         context.cancel = cancel.clone();
+        // A bound, unlistened socket can leave connects pending on macOS.
+        drop(reserved);
         let task = tokio::spawn(LoraInterface::spawn(context));
-        Self {
-            manager,
-            address,
-            endpoint,
-            status,
-            cancel,
-            stop,
-            task,
-            _root: root,
-            _reserved: reserved,
-        }
+        Self { manager, address, endpoint, status, cancel, stop, task, _root: root }
     }
 
     async fn failure(&self) -> serde_json::Value {

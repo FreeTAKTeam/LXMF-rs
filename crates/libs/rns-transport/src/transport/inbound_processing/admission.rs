@@ -44,8 +44,8 @@ pub(super) fn defers_duplicate_remember(packet: &Packet) -> bool {
 }
 
 pub(in crate::transport) enum AdmissionFailure {
-    Filtered(QueuedInbound),
-    Full(super::super::inbound_queues::InboundQueueFull<QueuedInbound>),
+    Filtered(Box<QueuedInbound>),
+    Full(Box<super::super::inbound_queues::InboundQueueFull<QueuedInbound>>),
 }
 
 /// Lock order is handler -> cache -> synchronous queue. No callback or I/O
@@ -64,13 +64,13 @@ pub(in crate::transport) async fn try_enqueue_inbound_message(
         handler.config.connected_to_shared_instance,
         *handler.config.identity.address_hash(),
     ) {
-        return Err(AdmissionFailure::Filtered(candidate));
+        return Err(AdmissionFailure::Filtered(Box::new(candidate)));
     }
     let remember = !handler.config.connected_to_shared_instance
         && candidate.path_request.is_none()
         && !defers_duplicate_remember(&candidate.message.packet);
     let hash = candidate.message.packet.hash();
-    queues.enqueue(class, candidate).map_err(AdmissionFailure::Full)?;
+    queues.enqueue(class, candidate).map_err(|full| AdmissionFailure::Full(Box::new(full)))?;
     if remember {
         cache.remember_hash(hash);
     }

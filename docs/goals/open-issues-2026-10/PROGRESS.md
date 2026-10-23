@@ -8,26 +8,40 @@ User scope: [PLAN.md](PLAN.md) items 1–6, one reviewed, CI-passing merged PR e
 | 1. Acceptance reconciliation | Merged | [#671](https://github.com/FreeTAKTeam/LXMF-rs/pull/671); head `5358bf7399c3921182580ef8a4bd8a01ea6ed665`; merge `a0a72d9b9f2d53d62b9e6d2b0f61614410dc8004` | Independent review passed; 15 hosted checks passed, 2 deliberately inapplicable jobs skipped. |
 | 2. Automatic CI and protection | Merged | [#672](https://github.com/FreeTAKTeam/LXMF-rs/pull/672); head `18816fa6f71c1e57e58465c8e8e6379a40767a20`; merge `23a96a4a13bba3237c93c66f8d45443cc3d119ad` | Independent review and native blocked/restored proof passed; 20 hosted checks passed, 1 deliberate skip. |
 | 3. LXMF 1.2.0 | Merged | [#673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673); final head `609edf12f738b1021eaaad963e828f0495544bee`; merge `9c27747753488ed950c52a2c7717ddec14478786` | Independent reviews/verifier approved; 20 hosted checks succeeded, one publication job deliberately skipped. Both local pin matrices and hosted baseline matrix pass 30/30; PR HIL passes 23/23 on first attempts. Known independent peer divergences and release-check package conflict remain explicit. |
-| 4. Transport and RNS 1.5.5 | Paused implementation; fourteen of twenty family rows locally qualified | Branch `corvo/open-issues-04-transport` from item-3 merge; draft checkpoint publication | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P, Auto, simulated Meshtastic, Weave and LoRa/RNode family traces qualify locally. Six other families and whole-item integration/hosted gates are open. The draft checkpoint is incomplete and unmerged. |
+| 4. Transport and RNS 1.5.5 | Partial checkpoint; fourteen of twenty family rows locally qualified | [#674](https://github.com/FreeTAKTeam/LXMF-rs/pull/674), branch `corvo/open-issues-04-transport` from item-3 merge | [TRANSPORT.md](TRANSPORT.md), [REQUESTS.md](REQUESTS.md) and [DISCOVERY.md](DISCOVERY.md) record ownership, finite cells and validation boundaries. IFAC/publication, configured root ownership/restoration, duplicate admission, native Link routing, request receipts, common live child policy, discovery runtime/process cases and the three-run deeper recovery matrix pass bounded reviews and local checks. TCP/Backbone, UDP, Pipe, Serial/KISS, I2P, Auto, simulated Meshtastic, Weave and LoRa/RNode family traces qualify locally. Six other families and whole-item release acceptance remain open. Checkpoint CI and merge status are recorded on the PR. |
 | 5. Maintenance fixes | Pending | — | — |
 | 6. Utilities and rngit | Pending | — | — |
 
-## Item 4 draft checkpoint
+## Item 4 checkpoint
 
-The implementation stops at `324ec551`, the independently reviewed RNodeMulti
-mechanical extraction. Publishing this checkpoint preserves the existing item-4
-branch while implementation remains paused. RNodeMulti behavior, RNode BLE,
-Generic BLE GATT, VR-N76 KISS BLE and both Local shared-instance family traces
-remain incomplete. Whole-item integration, release checks, hosted CI and merge
-remain open; this draft does not close #608, #609 or #649.
+The original implementation checkpoint ends at `324ec551`, the independently
+reviewed RNodeMulti mechanical extraction. On 2026-10-23 the user requested CI
+repairs and normal merge of the open PRs. Stabilizing and merging #674 preserves
+this bounded increment; it does not complete item 4 or close #608, #609 or #649.
+RNodeMulti behavior, RNode BLE, Generic BLE GATT, VR-N76 KISS BLE and both Local
+shared-instance family traces remain incomplete, as does whole-item release
+acceptance.
+
+The CI repairs box rejected inbound candidates without changing rollback,
+model native proof hops in the direct-delivery fixture, close the owned refusal
+socket before LoRa connection tests, and wait for the native interface owner's
+completion event in the IFAC rotation/rejection/restart test. Queue admission
+remains distinct from completed installation; rejected credentials must still
+leave authenticated traffic working and plaintext traffic rejected.
 
 The last structural checkpoint passes 21 native tests, 11 daemon binary controls,
 affected all-feature Clippy, architecture, boundaries, module size and explicit
 formatting. The expanded old/new module is identical after canonical formatting.
-Earlier broader validation and its limits remain recorded below. Publication
-changes this progress record only and makes no new runtime or acceptance claim.
-Progress-record links, diff whitespace, SDK documentation checks, performance
-documentation checks and locked workspace library documentation all pass.
+Earlier broader validation and its limits remain recorded below. The original
+documentation-only publication passed progress-record links, diff whitespace,
+SDK and performance documentation checks and locked workspace library docs.
+
+CI-repair validation on Linux with Rust 1.99 passes the direct-delivery test,
+1,089 all-feature transport unit tests (twelve existing ignores), the pinned
+Python IFAC credential rotation/rejection/restart test, diagnostics #369,
+workspace all-target/all-feature Clippy, workspace formatting, architecture,
+dependency boundaries and module size. Hosted platform and integration checks
+for the repaired checkpoint are tracked on #674.
 
 ## Item 1 evidence
 
