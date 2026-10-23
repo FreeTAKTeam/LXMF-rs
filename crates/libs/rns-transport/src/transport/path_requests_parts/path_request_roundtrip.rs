@@ -16,6 +16,22 @@ mod tests {
     }
 
     #[test]
+    fn transport_path_request_keeps_requester_in_payload_only() {
+        let transport = AddressHash::new_from_rand(OsRng);
+        let mut requests = PathRequests::new("", Some(transport), 16, 16, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let tag = vec![0xAA; ADDRESS_HASH_SIZE];
+        let packet = requests.generate(&destination, Some(tag.clone()));
+
+        assert_eq!(packet.header.header_type, HeaderType::Type1);
+        assert_eq!(packet.transport, None);
+        let decoded = PathRequest::decode(packet.data.as_slice(), "").expect("valid request");
+        assert_eq!(decoded.destination, destination);
+        assert_eq!(decoded.requesting_transport, Some(transport));
+        assert_eq!(decoded.tag_bytes, tag);
+    }
+
+    #[test]
     fn recursive_path_request_preserves_supplied_tag() {
         let mut testee = PathRequests::new("", None, 16, 16, 30);
         let destination = AddressHash::new_from_rand(OsRng);

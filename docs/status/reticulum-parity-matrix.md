@@ -18,6 +18,14 @@ Parity is recorded on two independent axes:
 Evidence labels describe validation scope independently of implementation status;
 they do not downgrade a complete software surface.
 
+The item 4 checkpoint stabilization keeps generated Type 1 path-request header
+state consistent with its wire representation: no transport header field, with
+the requesting transport identity retained in the payload. This matches pinned
+`RNS/Transport.py::request_path` and preserves the strict admission filter.
+The new packet-shape regression, all eight daemon transport-policy tests, and
+the full broad CI integration selection pass locally. Existing implementation
+statuses and hardware/release evidence boundaries remain unchanged.
+
 The issue 663 path-persistence increment keeps a bounded, single-storage-root
 fingerprint set for current route announces. Unchanged cache files skip encoding
 and filesystem access; initial and five-minute verification still repair

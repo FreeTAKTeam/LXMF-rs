@@ -491,7 +491,15 @@ restart trace above separately verifies path, link, and raw packet recovery;
 broader packet/proof duplicate handling and LXMF queue retry across daemon
 replacement remain open.
 
-## Multi-hop link-request-proof duplicate suppression
+## Historical multi-hop link-request-proof suppression (superseded)
+
+The suppression oracle below was superseded on 2026-10-23 by reconciliation
+with the frozen Python source and the approved transit contract. The current
+`python_to_python_transit_link_request_proof_replays_preserve_single_channel_delivery`
+case requires both validated proof copies to forward and exactly one Channel
+delivery. The full 66-case pinned-baseline channel selection passes with that
+oracle. The earlier command and result are retained below as historical evidence;
+see the [current execution record](../../open-issues-2026-10/PROGRESS.md).
 
 `python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport`
 starts two pinned Python nodes on separate TCP carriers owned by one forwarding

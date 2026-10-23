@@ -43,6 +43,34 @@ workspace all-target/all-feature Clippy, workspace formatting, architecture,
 dependency boundaries and module size. Hosted platform and integration checks
 for the repaired checkpoint are tracked on #674.
 
+The follow-up transport-policy integration regression exposed a generated Type 1
+path request carrying a phantom transport header field. The generator now keeps
+the requesting transport identity only in its payload, matching the pinned
+Python constructor. All eight transport-policy tests, 1,090 all-feature transport
+unit tests (twelve existing ignores), and the complete broad CI integration
+selection (98 targets across ten packages, retaining declared ignores) pass
+locally after the correction. No ordering, roaming, or admission assertion was
+relaxed.
+
+The legacy Python-channel LRPROOF case expected a relay to suppress the second
+valid proof, contradicting the frozen reference and the approved transit rule in
+[TRANSPORT.md](TRANSPORT.md). Its oracle now requires both validated transit
+copies to forward while preserving exactly one application delivery. The
+wrong-interface and invalid-signature native controls remain in force. The
+reference defers duplicate remembering for link-table packets and LRPROOF in
+[`Transport.py` at the frozen revision](https://github.com/markqvist/Reticulum/blob/ea98db4f53dcf0defc0e71a16e60d28b1229c4e6/RNS/Transport.py#L1942).
+The complete pinned-baseline Python-channel selection passes locally: 66 tests,
+with the same two exclusions reported by the CI selection. The virtual PR HIL
+profile also passes all twelve cases. These checks do not claim physical-device
+or whole-item release acceptance.
+
+A later nextest run hit the coordinated-shutdown fixture's setup deadline.
+The old fixture passed twenty local repeats; its setup now waits for an actual
+native Resource response before probing the handler held by remaining queued
+responses. Both the setup and coordinated-shutdown deadlines remain two seconds.
+The revised fixture passes fifty consecutive repeats, and the full workspace
+lib/bin nextest selection passes 3,436 tests with its existing 106 skips.
+
 ## Item 1 evidence
 
 - Live open issue query returned 22 issues; live open PR query returned none.

@@ -232,11 +232,11 @@ async fn python_to_python_channel_duplicate_through_rust_transport() {
     drop(transport);
 }
 
-/// A duplicate link-request proof must be suppressed by the forwarding
-/// transport before it reaches the originating Python node.
+/// The frozen reference forwards validated transit LRPROOF replays without
+/// generic duplicate remembering; endpoints still deliver Channel data once.
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
-async fn python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport() {
+async fn python_to_python_transit_link_request_proof_replays_preserve_single_channel_delivery() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
 
@@ -294,8 +294,8 @@ async fn python_to_python_duplicate_link_request_proof_is_filtered_by_rust_trans
     assert_eq!(proxy.matched_frame_count(), 1, "proxy did not duplicate a link-request proof");
     assert_eq!(
         client_proxy.matched_frame_count(),
-        1,
-        "Rust transport forwarded a duplicate link-request proof to the Python client"
+        2,
+        "validated transit link-request proof copies must both forward like the pinned reference"
     );
 
     sleep(Duration::from_millis(250)).await;
