@@ -12,6 +12,7 @@ description = "Reticulum daemon and interchange binaries for LXMF-rs deployments
 name = "reticulum_daemon"
 
 [dependencies]
+lxmf-propagation = { workspace = true, features = ["daemon"] }
 rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.14.0" }
 rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.14.0" }
 lxmf = { package = "lxmf-wire", path = "../../libs/lxmf-core", version = "0.14.0", default-features = false, features = ["std"] }

@@ -12,6 +12,7 @@ members = [
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
   "crates/libs/lxmf-runtime",
+  "crates/libs/lxmf-propagation",
   "crates/libs/meshchat-api",
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
@@ -34,6 +35,7 @@ default-members = [
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
   "crates/libs/lxmf-runtime",
+  "crates/libs/lxmf-propagation",
   "crates/libs/meshchat-api",
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
@@ -73,12 +75,16 @@ allowed_library_edges = [
   "lxmf-sdk->reticulum-rs-rpc",
   "lxmf-runtime->lxmf-sdk",
   "lxmf-runtime->lxmf-wire",
+  "lxmf-runtime->lxmf-propagation",
   "lxmf-runtime->reticulum-rs-transport",
   "meshchat-api->reticulum-rs-rpc",
   "reticulum-rs->reticulum-rs-core",
   "reticulum-rs->reticulum-rs-rpc",
   "reticulum-rs->reticulum-rs-transport",
   "reticulum-rs-rpc->lxmf-reference",
+  "reticulum-rs-rpc->lxmf-propagation",
+  "lxmf-propagation->lxmf-wire",
+  "lxmf-propagation->reticulum-rs-core",
   "lxmf-wire->reticulum-rs-core",
   "rns-embedded-ffi->rns-embedded-core",
   "rns-embedded-ffi->rns-embedded-runtime",
@@ -96,6 +102,7 @@ allowed_app_edges = [
   # Dev-only public SDK acceptance over the real canonical ZeroMQ service.
   "reticulumd->lxmf-sdk",
   "reticulumd->lxmf-wire",
+  "reticulumd->lxmf-propagation",
   "reticulumd->meshchat-api",
   "reticulumd->reticulum-rs-core",
   "reticulumd->reticulum-rs-rpc",
@@ -107,6 +114,7 @@ allowed_app_edges = [
 ]
 
 [workspace.dependencies]
+lxmf-propagation = { version = "0.14.0", path = "crates/libs/lxmf-propagation", default-features = false }
 lxmf-reference = { version = "0.14.0", path = "crates/libs/lxmf-reference" }
 rns-embedded-core = { version = "0.14.0", path = "crates/libs/rns-embedded-core" }
 rns-embedded-ffi = { version = "0.14.0", path = "crates/libs/rns-embedded-ffi" }
