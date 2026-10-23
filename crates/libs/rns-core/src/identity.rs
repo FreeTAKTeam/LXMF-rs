@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use x25519_dalek::{EphemeralSecret, PublicKey, SharedSecret, StaticSecret};
 
 use crate::{
-    crypt::fernet::{Fernet, PlainText, Token},
+    crypt::fernet::{CachedFernet, Fernet, PlainText, Token},
     error::RnsError,
     hash::{AddressHash, Hash},
 };
@@ -374,9 +374,12 @@ impl EncryptIdentity for PrivateIdentity {
 }
 
 impl DecryptIdentity for PrivateIdentity {
+    /// Decryption is deterministic: `_rng` is accepted only to keep the
+    /// `DecryptIdentity` signature symmetric with `EncryptIdentity` and is
+    /// never consumed.
     fn decrypt<'a, R: CryptoRngCore + Copy>(
         &self,
-        rng: R,
+        _rng: R,
         data: &[u8],
         derived_key: &DerivedKey,
         out_buf: &'a mut [u8],
@@ -385,10 +388,9 @@ impl DecryptIdentity for PrivateIdentity {
             return Err(RnsError::InvalidArgument);
         }
 
-        let fernet = Fernet::new_from_slices(
+        let fernet = CachedFernet::new_from_slices(
             &derived_key.as_bytes()[..DERIVED_KEY_LENGTH / 2],
             &derived_key.as_bytes()[DERIVED_KEY_LENGTH / 2..],
-            rng,
         );
 
         let token = Token::from(data);

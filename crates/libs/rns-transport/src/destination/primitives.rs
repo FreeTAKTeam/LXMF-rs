@@ -1,5 +1,5 @@
 use crate::{
-    crypt::fernet::{Fernet, PlainText, Token},
+    crypt::fernet::{CachedFernet, PlainText, Token},
     error::RnsError,
     packet::DestinationType,
 };
@@ -40,14 +40,14 @@ impl Type for Group {
 }
 
 pub fn group_encrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>, RnsError> {
-    let fernet = Fernet::new_from_slices(key, key, OsRng);
+    let fernet = CachedFernet::new_from_slices(key, key);
     let mut out_buf = vec![0u8; data.len() + 64];
-    let token = fernet.encrypt(PlainText::from(data), &mut out_buf)?;
+    let token = fernet.encrypt(OsRng, PlainText::from(data), &mut out_buf)?;
     Ok(token.as_bytes().to_vec())
 }
 
 pub fn group_decrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>, RnsError> {
-    let fernet = Fernet::new_from_slices(key, key, OsRng);
+    let fernet = CachedFernet::new_from_slices(key, key);
     let token = Token::from(data);
     let verified = fernet.verify(token)?;
     let mut out_buf = vec![0u8; data.len()];
