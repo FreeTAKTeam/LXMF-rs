@@ -266,6 +266,17 @@ including remaining production memory/swap and delivery acceptance, is in
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 This does not change the Python reference pin or certify a production plateau.
 
+Issue 663 was reopened on 2026-10-23 because production still shows rising
+`memory.events high`, doubled anonymous memory and intermittent poll errors
+after that increment. The follow-through runs from the
+[acceptance execution plan](../goals/issue-663-resource-acceptance/PLAN.md),
+one PR per item, with progress in its
+[progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). The
+first item adds a production-shaped fixture, an RCH-shaped poller and a
+cgroup-constrained sampler (`cargo xtask resource-soak-663`); its ten-minute
+baseline is recorded in the resource regression record and is a harness smoke
+check, not acceptance.
+
 The PR CI repair routes established Link data, RTT, packet delivery proofs and
 Resource proofs to the opposite recorded interface in either direction, only
 after Link validation. It preserves shared-owner handoff even without a

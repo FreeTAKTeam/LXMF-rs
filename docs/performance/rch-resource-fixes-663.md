@@ -95,6 +95,72 @@ cargo test --locked -p reticulum-rs-rpc -p reticulum-rs-transport \
   -p lxmf-sdk -p reticulumd --tests --no-fail-fast -- --test-threads=4
 ```
 
+## Local harness and 10-minute smoke baseline, 2026-10-24
+
+The issue 663 follow-through adds a repeatable, production-shaped harness
+(`tools/scripts/resource_soak_663.py`, wrapped by
+`cargo xtask resource-soak-663`). The fixture generator writes a
+durable-broker `reticulum.db` with bulk propagation inventory, mixed-case peer
+history and a deliberately grown WAL, plus a Python-compatible Reticulum
+storage root with cached announces. The runner starts `reticulumd` under
+`systemd-run --user --scope -p MemoryHigh=768M -p MemoryMax=1G` pinned to two
+CPUs, drives it with an RCH-shaped 100 ms ZeroMQ event poller, and samples
+`smaps_rollup`, `/proc/<pid>/io`, cgroup v2 memory and CPU files, WAL size and
+the daemon `/metrics` JSON.
+
+Reproduce:
+
+```sh
+cargo xtask resource-soak-663 -- fixture --root target/soak-663/fixture \
+  --entries 200000 --announces 100000 --wal-bytes 240000000
+cargo xtask resource-soak-663 -- run --root target/soak-663/fixture \
+  --out target/soak-663/baseline-idle --profile idle --duration-secs 600
+```
+
+Fixture: 200,000 propagation entries of 2 KiB (database 1,134 MiB, WAL
+551 MiB), 300 peers with 600,000 history rows, 100,000 cached announces.
+Host: Linux 7.0, 22 cores with the daemon pinned to two, rustc 1.96.0, release
+profile, baseline daemon `main` at `8f872639`. Ten-minute idle profile (100 ms
+SDK event polls, no network peer):
+
+| Measure | First minute | Last minute |
+| --- | ---: | ---: |
+| process RSS | 185.2 MiB | 220.2 MiB |
+| process anonymous | 165.1 MiB | 199.7 MiB |
+| process swap | 0 | 0 |
+| cgroup memory.current | 183.8 MiB | 215.1 MiB |
+| cgroup file cache | 16.3 MiB | 13.2 MiB |
+| WAL file | 550.9 MiB | 550.9 MiB |
+
+| Rate or delta over 596 s | Value |
+| --- | ---: |
+| time to `/readyz` (WAL replay plus 100,000 cached announces) | 206 s |
+| daemon CPU | 4.7 % of one core |
+| logical reads (`rchar`) | 8.1 MiB/s |
+| read syscalls | 2,080/s |
+| physical reads | 0 |
+| `memory.events` high / max / oom | 0 / 0 / 0 |
+| store write ops / read ops | 3 / 47,191 |
+| SDK polls / errors | 5,997 / 0 |
+| SDK poll p95 latency (median of 5 s windows / max) | 739 us / 1,024 us |
+
+Two observations from the idle baseline stand out and are not yet attributed:
+
+- Anonymous memory grew by about 35 MiB in ten idle minutes with no
+  announces and no messages. Item 4 of the plan owns the attribution.
+- The daemon performed 47,191 store read operations for 5,952 SDK polls, about
+  eight per empty poll, and about 2,080 read syscalls per second of roughly one
+  SQLite page each. The poll handler itself does not touch the store, so the
+  reads come from the request path around it. This is the "empty polls
+  repeatedly materialize persistent state" candidate from the original report;
+  it is recorded here for item 2 (per-operation counters) and item 3 to act on.
+
+The run is a harness smoke check of the baseline daemon (`main` at
+`8f872639`), not acceptance evidence: ten minutes on one host cannot show a
+multi-hour memory plateau, and the ingress profile drives real announces but no
+inbound, outbound or fanout messages. Those remain listed under item 6 of
+[the execution plan](../goals/issue-663-resource-acceptance/PLAN.md).
+
 ## Acceptance boundary
 
 Local SQL plans, regressions and socket tests do not establish a multi-hour

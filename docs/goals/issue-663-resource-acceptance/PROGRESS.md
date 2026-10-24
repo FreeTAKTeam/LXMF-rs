@@ -6,7 +6,7 @@ sequential branches. Items 4-6 remain open and are not claimed here.
 
 | Item | State | Branch / PR / head | Evidence |
 | --- | --- | --- | --- |
-| 1. Fixture and cgroup sampler | In progress | `corvo/issue-663-01-harness` | Harness code, Python unit tests, 10-minute idle smoke on the baseline daemon (see [performance record](../../performance/rch-resource-fixes-663.md)). |
+| 1. Fixture and cgroup sampler | PR open | `corvo/issue-663-01-harness` | Harness code, Python unit tests, 10-minute idle and ingress smoke runs on the baseline daemon (see [performance record](../../performance/rch-resource-fixes-663.md)). |
 | 2. Operation-level metrics | Pending | — | — |
 | 3. Refill coalescing, writer fairness, WAL maintenance | Pending | — | — |
 | 4. Anonymous-memory attribution and bounds | Not started | — | — |
@@ -30,3 +30,14 @@ sequential branches. Items 4-6 remain open and are not claimed here.
   minute medians, rates and the issue's acceptance checks.
 - Limits: the ingress profile drives real announces from a second daemon but no
   inbound/outbound/fanout messages; a 10-minute run is a harness smoke check.
+
+## Baseline findings to carry forward
+
+- Idle baseline: about eight store read operations per empty SDK poll and about
+  2,080 read syscalls per second with three writes in ten minutes. Attribute
+  the request path in item 2 and bound it in item 3.
+- Idle baseline: anonymous memory grew by about 35 MiB in ten minutes with no
+  traffic. Item 4 owns the attribution; item 2 adds the table gauges it needs.
+- Startup on the production-shaped fixture took 206 s to `/readyz` on two
+  CPUs (WAL replay plus 100,000 cached announces). Not an acceptance criterion,
+  but it bounds how fast a restart recovers.

@@ -398,7 +398,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         "daemon_command": command,
     }
     try:
-        wait_for_http(http_port, "/readyz", 120, daemon)
+        ready_started = time.monotonic()
+        wait_for_http(http_port, "/readyz", args.ready_timeout_secs, daemon)
+        run_meta["ready_after_secs"] = time.monotonic() - ready_started
+        log(f"daemon ready after {run_meta['ready_after_secs']:.1f} s")
         daemon_pid = resolve_daemon_pid(daemon, daemon_bin)
         cgroup_dir = cgroup_dir_for_pid(daemon_pid)
         run_meta["daemon_pid"] = daemon_pid
@@ -623,6 +626,7 @@ def render_report(out: Path) -> str:
         f"MemoryMax={run.get('memory_max')}, cpus={run.get('cpus')}).",
         f"- Fixture: {describe_fixture(run.get('fixture') or {})}",
         f"- Daemon metrics endpoint sampled: {summary.get('metrics_available')}.",
+        f"- Daemon time to /readyz: {fmt_num(run.get('ready_after_secs'))} s.",
         "",
     ]
     if "error" in summary:
@@ -750,6 +754,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--cpus", default="0,1")
     run.add_argument("--budget-bytes", type=int, default=6 * 1024**3)
     run.add_argument("--daemon-bin", default=None)
+    run.add_argument(
+        "--ready-timeout-secs",
+        type=int,
+        default=1800,
+        help="startup budget: a production-shaped WAL replay and announce restore take minutes on two CPUs",
+    )
     run.add_argument("--skip-build", action="store_true")
     run.set_defaults(func=cmd_run)
 
