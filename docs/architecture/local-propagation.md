@@ -58,3 +58,26 @@ Pinned Python baseline RNS `ea98db4f` and LXMF `727830ce` passed the existing
 `propagated_rust_to_python` and `propagation_remote_download_rust_to_python`
 smokes through the shared daemon store. These are host interop checks; REM bridge,
 UI and physical LoRa acceptance remain separate gates.
+
+The approved receiver-confirmed `/get` correction stops writing `transferred` or
+`transfer_limited` marks when a response is constructed. Authenticated receiver
+`haves` remain the retirement path. Existing historical marks are not rewritten;
+older Rust relays need the correction before safe capped retrieval is used.
+Schema, peering `/offer` and authenticated recipient filtering are unchanged.
+
+`InProcessBackend::fetch_propagated_messages` is the daemon-free recipient client.
+It uses native retained RequestReceipts, caps inventory and response Resources,
+fetches one correlated transient at a time, validates the destination and sender
+signature, and calls the host's durable importer. Failed or unproven imports
+cannot send `haves`. Missing signer keys use bounded native path resolution;
+otherwise the relay copy stays pending. The retained task holds host-supplied
+admission through native cleanup after caller drop. Python `[]` and Rust `true`
+confirmation responses are both supported. Existing REM response wrappers and
+legacy destination-salt compatibility now live in compiled library code.
+
+Current host validation includes 681 daemon tests, 50 shared/protocol/runtime
+tests and the core wire suite. The explicit pinned-Python native-client test
+proves failed import remains fetchable, a later durable save precedes `haves`,
+and the stock relay then retires that copy. This test runs in the existing HIL
+workflow. Source-size, feature isolation and strict workspace Clippy pass; none
+of these checks substitutes for physical radio acceptance.

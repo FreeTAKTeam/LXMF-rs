@@ -148,12 +148,7 @@ pub fn handle_get(
         &retryable_wants,
         transfer_limit_bytes,
     );
-    let transfer_limited = daemon.transfer_limited_propagation_payload_ids_for_destination(
-        &remote_delivery_hash,
-        &retryable_wants,
-        transfer_limit_bytes,
-    );
-    if (!preview.is_empty() || !transfer_limited.is_empty())
+    if !preview.is_empty()
         && daemon.record_propagation_offer_peer(remote_propagation_hash.as_str()).is_err()
     {
         return HandlerResponse::Code(error_no_access);
@@ -163,25 +158,7 @@ pub fn handle_get(
         &retryable_wants,
         transfer_limit_bytes,
     );
-    for (transient_id, _) in &fetched {
-        if daemon
-            .record_peer_transferred_propagation(remote_propagation_hash.as_str(), transient_id)
-            .is_err()
-        {
-            return HandlerResponse::Code(error_no_access);
-        }
-    }
-    for transient_id in &transfer_limited {
-        if daemon
-            .record_peer_transfer_limited_propagation(
-                remote_propagation_hash.as_str(),
-                transient_id.as_str(),
-            )
-            .is_err()
-        {
-            return HandlerResponse::Code(error_no_access);
-        }
-    }
+    // Only authenticated receiver haves complete custody; constructing a response cannot.
     HandlerResponse::Rmpv(rmpv::Value::Array(
         fetched.into_iter().map(|(_transient_id, payload)| rmpv::Value::Binary(payload)).collect(),
     ))

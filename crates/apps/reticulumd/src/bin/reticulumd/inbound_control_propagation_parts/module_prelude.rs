@@ -123,18 +123,6 @@ impl lxmf_propagation::handlers::GetBackend for SharedGetBackend<'_> {
             transfer_limit_bytes,
         )
     }
-    fn transfer_limited_propagation_payload_ids_for_destination(
-        &self,
-        destination: &[u8; 16],
-        wanted: &[Vec<u8>],
-        transfer_limit_bytes: Option<usize>,
-    ) -> Vec<String> {
-        self.daemon.transfer_limited_propagation_payload_ids_for_destination(
-            destination,
-            wanted,
-            transfer_limit_bytes,
-        )
-    }
     fn fetch_propagation_payloads_for_destination_with_ids(
         &self,
         destination: &[u8; 16],
@@ -146,20 +134,6 @@ impl lxmf_propagation::handlers::GetBackend for SharedGetBackend<'_> {
             wanted,
             transfer_limit_bytes,
         )
-    }
-    fn record_peer_transferred_propagation(
-        &self,
-        peer: &str,
-        transient_id: &str,
-    ) -> Result<(), std::io::Error> {
-        self.daemon.record_peer_transferred_propagation(peer, transient_id)
-    }
-    fn record_peer_transfer_limited_propagation(
-        &self,
-        peer: &str,
-        transient_id: &str,
-    ) -> Result<(), std::io::Error> {
-        self.daemon.record_peer_transfer_limited_propagation(peer, transient_id)
     }
 }
 

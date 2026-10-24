@@ -49,28 +49,12 @@ pub trait GetBackend {
         wanted: &[Vec<u8>],
         transfer_limit_bytes: Option<usize>,
     ) -> Vec<(String, Vec<u8>)>;
-    fn transfer_limited_propagation_payload_ids_for_destination(
-        &self,
-        destination: &[u8; 16],
-        wanted: &[Vec<u8>],
-        transfer_limit_bytes: Option<usize>,
-    ) -> Vec<String>;
     fn fetch_propagation_payloads_for_destination_with_ids(
         &self,
         destination: &[u8; 16],
         wanted: &[Vec<u8>],
         transfer_limit_bytes: Option<usize>,
     ) -> Vec<(String, Vec<u8>)>;
-    fn record_peer_transferred_propagation(
-        &self,
-        peer: &str,
-        transient_id: &str,
-    ) -> Result<(), Self::Error>;
-    fn record_peer_transfer_limited_propagation(
-        &self,
-        peer: &str,
-        transient_id: &str,
-    ) -> Result<(), Self::Error>;
 }
 
 pub trait OfferBackend {

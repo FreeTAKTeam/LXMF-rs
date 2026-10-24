@@ -13,6 +13,40 @@ fn address_hash_bytes(identity: &PrivateIdentity) -> [u8; 16] {
 }
 
 #[test]
+fn propagation_decrypt_preserves_original_wire_and_legacy_salt() {
+    use super::{DerivedKey, EphemeralSecret, Fernet, PlainText};
+    let sender = PrivateIdentity::new_from_name("fetch-sender");
+    let receiver = PrivateIdentity::new_from_name("fetch-recipient");
+    let destination = [0x61; 16];
+    let mut message = WireMessage::new(destination, address_hash_bytes(&sender),
+        Payload::new(1.0, Some(b"original".to_vec()), None, None, None));
+    message.sign(&sender).expect("signature");
+    let wire = message.pack().expect("wire");
+    let (transient, _) = message.pack_propagation_transient_with_rng(receiver.as_identity(), OsRng).expect("transient");
+    for stamped in [false, true] {
+        let mut transient = transient.clone();
+        if stamped { transient.extend_from_slice(&[0x51; 32]); }
+        assert_eq!(WireMessage::decrypt_propagation(&transient, &receiver, &destination).expect("decrypt"), wire);
+        assert!(WireMessage::decrypt_propagation(&transient, &receiver, &[0x62;16]).is_err());
+        assert!(WireMessage::decrypt_propagation(&transient, &sender, &destination).is_err());
+    }
+    let secret = EphemeralSecret::random_from_rng(OsRng);
+    let public = PublicKey::from(&secret);
+    let shared = secret.diffie_hellman(&receiver.as_identity().public_key);
+    let derived = DerivedKey::new(&shared, Some(&destination));
+    let key = derived.as_bytes();
+    let split = key.len()/2;
+    let fernet = Fernet::new_from_slices(&key[..split], &key[split..], OsRng);
+    let mut token = vec![0; wire.len()+128];
+    let encrypted = fernet.encrypt(PlainText::from(&wire[16..]), &mut token).expect("legacy encryption");
+    let mut legacy = destination.to_vec();
+    legacy.extend_from_slice(public.as_bytes());
+    legacy.extend_from_slice(encrypted.as_bytes());
+    assert_eq!(WireMessage::decrypt_propagation(&legacy, &receiver, &destination).expect("legacy decrypt"), wire);
+    assert!(WireMessage::decrypt_propagation(&[0; 16], &receiver, &[0;16]).is_err());
+}
+
+#[test]
 fn propagation_pack_derives_transient_id_from_lxm_data() {
     let sender = PrivateIdentity::new_from_name("propagation-pack-sender");
     let receiver = PrivateIdentity::new_from_name("propagation-pack-receiver");
