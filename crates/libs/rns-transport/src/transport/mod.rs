@@ -79,6 +79,8 @@ mod path_table;
 mod reticulum_announce_cache;
 mod reticulum_path_store;
 mod runtime_management;
+mod table_occupancy;
+pub use table_occupancy::TableOccupancy;
 mod tunnels;
 
 pub use announce_limits::AnnounceRateTableEntry;
@@ -90,7 +92,7 @@ pub use inbound_queues::{
 pub use packet_disk_cache::{CachedPacket, ReticulumPacketDiskCache};
 
 pub use reticulum_path_store::{
-    RestoredReticulumPathIdentity, ReticulumPathTableRestoreReport,
+    PathTableSaveReport, RestoredReticulumPathIdentity, ReticulumPathTableRestoreReport,
     ReticulumPathTableRestoreSkipped,
 };
 

@@ -11,6 +11,7 @@ use sdk_helpers::{
     python_reference_meta, software_parity_orientation, SDK_VERSION,
     STORE_FORWARD_MAX_MESSAGES_LIMIT,
 };
+mod cgroup_memory;
 mod dispatch;
 mod dispatch_legacy_clear;
 mod dispatch_legacy_messages;
@@ -22,6 +23,8 @@ mod events_redaction;
 mod events_sink;
 mod init;
 mod metrics;
+mod metrics_providers;
+pub use metrics_providers::MetricsProvider;
 mod resources;
 mod sdk_attachments;
 mod sdk_auth_http;

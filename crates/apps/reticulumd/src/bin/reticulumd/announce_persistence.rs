@@ -1,3 +1,4 @@
+use crate::persistence_metrics::PersistenceMetrics;
 use rns_transport::transport::Transport;
 use std::io;
 use std::path::PathBuf;
@@ -12,11 +13,16 @@ pub(super) type PathTableSaveSender = tokio::sync::mpsc::Sender<()>;
 pub(super) struct PathTablePersistenceContext {
     transport: Arc<Transport>,
     path: PathBuf,
+    metrics: Arc<PersistenceMetrics>,
 }
 
 impl PathTablePersistenceContext {
     pub(super) fn new(transport: Arc<Transport>, path: PathBuf) -> Self {
-        Self { transport, path }
+        Self { transport, path, metrics: Arc::new(PersistenceMetrics::default()) }
+    }
+
+    pub(super) fn metrics(&self) -> Arc<PersistenceMetrics> {
+        Arc::clone(&self.metrics)
     }
 }
 
@@ -24,7 +30,12 @@ pub(super) async fn flush_reticulum_path_table(
     context: &PathTablePersistenceContext,
 ) -> io::Result<usize> {
     let packet_hashlist_result = context.transport.save_packet_hashlist(&context.path).await;
-    let path_table_result = context.transport.save_reticulum_path_table(&context.path).await;
+    let path_table_result = context.transport.save_reticulum_path_table_report(&context.path).await;
+    match &path_table_result {
+        Ok(report) => context.metrics.record_report(report),
+        Err(_) => context.metrics.record_error(),
+    }
+    let path_table_result = path_table_result.map(|report| report.kept_entries);
 
     match (packet_hashlist_result, path_table_result) {
         (Ok(_), path_table_result) => path_table_result,
@@ -55,7 +66,11 @@ pub(super) fn spawn_path_table_persistence_worker(
     tokio::spawn(async move {
         while rx.recv().await.is_some() {
             sleep(RETICULUM_PATH_TABLE_SAVE_DEBOUNCE).await;
-            while rx.try_recv().is_ok() {}
+            let mut coalesced = 0u64;
+            while rx.try_recv().is_ok() {
+                coalesced += 1;
+            }
+            context.metrics.record_coalesced(coalesced);
             if let Err(err) = flush_reticulum_path_table(&context).await {
                 log::error!("[daemon] failed to persist Reticulum path table: {err}");
             }

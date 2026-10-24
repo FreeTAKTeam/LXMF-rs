@@ -83,6 +83,16 @@ impl PacketCache {
 
     /// Frozen RNS maintenance rotates only when the current generation exceeds
     /// half the one-million hash budget. Proof/source context has its own TTL.
+    /// Packet hashes held across both duplicate-filter generations.
+    pub fn hash_count(&self) -> usize {
+        self.current.len() + self.previous.len()
+    }
+
+    /// Packets tracked for receipts, proofs and retransmission bookkeeping.
+    pub fn tracked_count(&self) -> usize {
+        self.map.len() + self.by_proof_destination.len()
+    }
+
     pub(super) fn maintain_duplicate_generations(&mut self) -> bool {
         const HASHLIST_MAXSIZE: usize = 1_000_000;
         if self.current.len() <= HASHLIST_MAXSIZE / 2 {

@@ -233,6 +233,7 @@ impl MessagesStore {
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         };
 
+        let page_started = std::time::Instant::now();
         let mut inserted = 0u64;
         let mut scanned = 0usize;
         for (received_at, transient_id) in &candidate_ids {
@@ -296,6 +297,11 @@ impl MessagesStore {
             ],
         )?;
         tx.commit()?;
+        self.write_state.refill_metrics.record_page(
+            candidate_ids.len(),
+            inserted as usize,
+            page_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+        );
         Ok(PeerQueueRefillPage {
             inserted: inserted as usize,
             capacity_reached: false,
@@ -304,6 +310,9 @@ impl MessagesStore {
     }
 
     fn refill_recent_peer_propagation(&self, peer: &str, limit: u64) -> rusqlite::Result<usize> {
+        let metrics = &self.write_state.refill_metrics;
+        let started = std::time::Instant::now();
+        metrics.invocations_total.fetch_add(1, Ordering::Relaxed);
         let boundary = self.with_read_conn(Self::capture_peer_queue_refill_boundary)?;
         let mut inserted = 0usize;
         loop {
@@ -313,10 +322,17 @@ impl MessagesStore {
                 self.refill_recent_peer_propagation_on(conn, peer, limit, &boundary)
             })?;
             inserted = inserted.saturating_add(page.inserted);
+            if page.capacity_reached {
+                metrics.capacity_reached_total.fetch_add(1, Ordering::Relaxed);
+            }
             if page.capacity_reached || page.pass_finished {
                 break;
             }
         }
+        metrics.wall_ns_total.fetch_add(
+            started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+            Ordering::Relaxed,
+        );
         Ok(inserted)
     }
 }

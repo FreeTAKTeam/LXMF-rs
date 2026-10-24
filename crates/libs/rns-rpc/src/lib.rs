@@ -17,11 +17,11 @@ pub use lxmf_reference::{
 pub use rpc::http;
 pub use rpc::{
     AnnounceBridge, DeliveryPolicy, DeliveryTraceEntry, EventSinkBridge, InterfaceMutationBridge,
-    InterfaceMutationFailure, InterfaceRecord, OutboundBridge, OutboundDeliveryOptions,
-    PaperDecodeOutcome, PaperEncodeEnvelope, PathLookupBridge, PeerRecord, ProbeReceiptRegistry,
-    PropagationState, RNodeManagementBridge, RemoteControlBridge, RpcDaemon, RpcError, RpcEvent,
-    RpcEventSinkEnvelope, RpcRequest, RpcResponse, SdkCustomOperationSpec, ServiceIdentityBridge,
-    ServiceIdentityRecord, ServiceIdentitySpec, StampPolicy, TicketRecord,
+    InterfaceMutationFailure, InterfaceRecord, MetricsProvider, OutboundBridge,
+    OutboundDeliveryOptions, PaperDecodeOutcome, PaperEncodeEnvelope, PathLookupBridge, PeerRecord,
+    ProbeReceiptRegistry, PropagationState, RNodeManagementBridge, RemoteControlBridge, RpcDaemon,
+    RpcError, RpcEvent, RpcEventSinkEnvelope, RpcRequest, RpcResponse, SdkCustomOperationSpec,
+    ServiceIdentityBridge, ServiceIdentityRecord, ServiceIdentitySpec, StampPolicy, TicketRecord,
     WeaveDisplayControlBridge,
 };
 pub use storage::messages::{AnnounceRecord, MessageRecord, MessagesStore};

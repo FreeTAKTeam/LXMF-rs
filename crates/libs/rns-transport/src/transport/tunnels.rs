@@ -53,18 +53,18 @@ pub(super) fn synthesize_tunnel_packet(identity: &PrivateIdentity, interface_has
 
 #[derive(Default)]
 pub(super) struct TunnelTable {
-    tunnels: HashMap<Hash, TunnelEntry>,
+    pub(super) tunnels: HashMap<Hash, TunnelEntry>,
     iface_tunnels: HashMap<AddressHash, Hash>,
 }
 
-struct TunnelEntry {
+pub(super) struct TunnelEntry {
     iface: Option<AddressHash>,
     expires: Instant,
-    paths: HashMap<AddressHash, TunnelPathEntry>,
+    pub(super) paths: HashMap<AddressHash, TunnelPathEntry>,
 }
 
 #[derive(Clone)]
-struct TunnelPathEntry {
+pub(super) struct TunnelPathEntry {
     timestamp: Instant,
     received_from: AddressHash,
     hops: u8,
