@@ -34,7 +34,7 @@ pub(super) fn spawn_announce_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
-    reticulum_storage_path: Option<PathBuf>,
+    path_table_persistence: Option<PathTablePersistenceContext>,
     discovery: Option<DiscoveryWorkerConfig>,
 ) {
     if let Some(config) = discovery.as_ref() {
@@ -46,12 +46,8 @@ pub(super) fn spawn_announce_worker(
         );
     }
     let daemon_announce = daemon;
-    let persist_tx = reticulum_storage_path.as_ref().map(|path| {
-        spawn_path_table_persistence_worker(PathTablePersistenceContext::new(
-            transport.clone(),
-            path.clone(),
-        ))
-    });
+    let persist = path_table_persistence
+        .map(|context| (context.metrics(), spawn_path_table_persistence_worker(context)));
     tokio::spawn(async move {
         let mut rx = transport.recv_announces().await;
         loop {
@@ -60,9 +56,13 @@ pub(super) fn spawn_announce_worker(
                     ingest_discovery_announce(&event, config).await;
                 }
                 ingest_announce_event(&daemon_announce, event, peer_crypto.as_ref()).await;
-                if let Some(tx) = persist_tx.as_ref() {
+                if let Some((metrics, tx)) = persist.as_ref() {
+                    metrics.record_trigger();
                     if let Err(err) = tx.try_send(()) {
-                        log::warn!("[daemon] dropped path-table persistence trigger: {err}");
+                        // A full channel means a save is already pending; the
+                        // trigger is absorbed, counted, and logged at debug.
+                        metrics.record_dropped_trigger();
+                        log::debug!("[daemon] path-table persistence trigger absorbed: {err}");
                     }
                 }
             }

@@ -254,6 +254,7 @@ impl RpcDaemon {
             remote_control_bridge: Mutex::new(None),
             rnode_management_bridge: Mutex::new(None),
             weave_display_control_bridge: Mutex::new(None),
+            metrics_providers: Mutex::new(Vec::new()),
             started_at: std::time::Instant::now(),
         };
         if let Err(error) = daemon.restore_sdk_domain_snapshot() {

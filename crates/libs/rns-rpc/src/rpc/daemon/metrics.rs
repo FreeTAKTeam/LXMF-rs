@@ -244,6 +244,7 @@ impl RpcDaemon {
         let dropped_count =
             *self.sdk_dropped_event_count.lock().expect("sdk_dropped_event_count mutex poisoned");
         let store_contention = self.store.contention_snapshot();
+        let store_operations = self.store.operation_metrics_snapshot();
         let mut counters = JsonMap::new();
         counters.insert("http_requests_total".to_string(), json!(metrics.http_requests_total));
         counters.insert(
@@ -394,7 +395,11 @@ impl RpcDaemon {
                 "read_lock_wait_ns_total": store_contention.read_lock_wait_ns_total,
                 "write_ops_total": store_contention.write_ops_total,
                 "write_lock_wait_ns_total": store_contention.write_lock_wait_ns_total,
+                "refill": store_operations["refill"].clone(),
+                "wal": store_operations["wal"].clone(),
             },
+            "memory": super::cgroup_memory::memory_accounting_snapshot(),
+            "providers": self.metrics_provider_snapshots(),
             "meta": self.response_meta(),
         })
     }

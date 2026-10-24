@@ -1,6 +1,6 @@
 use super::*;
 use crate::transport::reticulum_announce_cache::{
-    CachedAnnounce, CachedAnnounceRestore, ReticulumAnnounceCache,
+    CacheWriteOutcome, CachedAnnounce, CachedAnnounceRestore, ReticulumAnnounceCache,
 };
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -36,6 +36,21 @@ impl AnnounceCacheState {
     fn retain_current_files(&mut self, current_hashes: &HashSet<Hash>) {
         self.files.retain(|hash, _| current_hashes.contains(hash));
     }
+}
+
+/// What one path-table save did. Issue 663 needs the examined/skipped/written
+/// split to show that unchanged snapshots no longer touch every cache file.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PathTableSaveReport {
+    pub kept_entries: usize,
+    pub tunnel_paths: usize,
+    pub records_examined: usize,
+    pub skipped_known: usize,
+    pub verified_unchanged: usize,
+    pub written: usize,
+    pub full_verification: bool,
+    pub duration_ns: u64,
+    pub fingerprint_map_len: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -74,6 +89,14 @@ impl Transport {
         &self,
         storage_path: P,
     ) -> io::Result<usize> {
+        Ok(self.save_reticulum_path_table_report(storage_path).await?.kept_entries)
+    }
+
+    pub async fn save_reticulum_path_table_report<P: AsRef<Path>>(
+        &self,
+        storage_path: P,
+    ) -> io::Result<PathTableSaveReport> {
+        let save_started = Instant::now();
         let _save_permit = self
             .path_table_persistence
             .save_gate
@@ -81,7 +104,7 @@ impl Transport {
             .await
             .map_err(|_| io::Error::other("Reticulum path-table persistence gate closed"))?;
         if self.handler.lock().await.config.connected_to_shared_instance {
-            return Ok(0);
+            return Ok(PathTableSaveReport::default());
         }
 
         let storage_path = storage_path.as_ref().to_path_buf();
@@ -146,13 +169,26 @@ impl Transport {
         let mut current_hashes = HashSet::with_capacity(packets.len());
         current_hashes.extend(packets.iter().map(|(packet_hash, _, _)| *packet_hash));
         cache_state.retain_current_files(&current_hashes);
+        let tunnel_paths = tunnel_entries.iter().map(|entry| entry.paths.len()).sum();
+        let mut report = PathTableSaveReport {
+            kept_entries: kept_entries.len(),
+            tunnel_paths,
+            records_examined: packets.len(),
+            full_verification: verify_existing,
+            ..PathTableSaveReport::default()
+        };
         let result = async {
             announce_cache.ensure_dir().await?;
             for (packet_hash, iface, packet) in packets {
                 let previous = cache_state.files.get(&packet_hash).copied();
-                let (fingerprint, _) = announce_cache
+                let (fingerprint, outcome) = announce_cache
                     .write_with_fingerprint(packet_hash, iface, packet, previous, verify_existing)
                     .await?;
+                match outcome {
+                    CacheWriteOutcome::SkippedKnownBytes => report.skipped_known += 1,
+                    CacheWriteOutcome::VerifiedUnchanged => report.verified_unchanged += 1,
+                    CacheWriteOutcome::Written => report.written += 1,
+                }
                 cache_state.files.insert(packet_hash, fingerprint);
             }
 
@@ -161,11 +197,13 @@ impl Transport {
             if verify_existing {
                 cache_state.last_full_verify = Some(Instant::now());
             }
-            Ok(kept_entries.len())
+            Ok(())
         }
         .await;
+        report.fingerprint_map_len = cache_state.files.len();
+        report.duration_ns = save_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         *self.path_table_persistence.state.lock().await = Some(cache_state);
-        result
+        result.map(|()| report)
     }
 
     pub async fn restore_reticulum_path_table<P: AsRef<Path>>(

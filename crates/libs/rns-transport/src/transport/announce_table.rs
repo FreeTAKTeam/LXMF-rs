@@ -321,7 +321,16 @@ impl AnnounceTable {
     /// one an announce lands in is the whole behaviour under test.
     #[cfg(test)]
     pub(crate) fn tier_sizes(&self) -> (usize, usize) {
+        self.occupancy()
+    }
+
+    /// `(retransmission queue, bounded cache)` sizes for metrics.
+    pub fn occupancy(&self) -> (usize, usize) {
         (self.map.len(), self.cache.len())
+    }
+
+    pub fn cache_capacity(&self) -> usize {
+        self.cache.capacity
     }
 
     #[cfg(test)]
