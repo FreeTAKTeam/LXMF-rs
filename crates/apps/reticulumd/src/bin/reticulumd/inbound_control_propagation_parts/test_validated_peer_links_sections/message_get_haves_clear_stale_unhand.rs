@@ -1,8 +1,7 @@
     #[test]
     fn message_get_haves_clear_stale_unhandled_peer_mark_like_python() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -11,9 +10,7 @@
         let have_hex = hex::encode(have);
         let mut have_payload = remote_delivery_hash.to_vec();
         have_payload.extend_from_slice(b" stale haves cleanup propagation");
-        daemon
-            .record_propagation_offer_peer(remote_propagation_hash.as_str())
-            .expect("activate peer");
+        daemon.record_propagation_offer_peer(remote_propagation_hash.as_str()).expect("activate peer");
         daemon
             .ingest_propagation_payload_bytes_with_aliases(
                 have_payload.as_slice(),
@@ -45,8 +42,7 @@
         );
 
         assert!(matches!(response, ControlResponse::Bool(true)));
-        assert!(list_peer_row(&daemon, remote_propagation_hash.as_str())["messages"]
-            ["unhandled_ids"]
+        assert!(list_peer_row(&daemon, remote_propagation_hash.as_str())["messages"]["unhandled_ids"]
             .as_array()
             .expect("unhandled ids")
             .is_empty());
@@ -76,10 +72,9 @@
     }
 
     #[test]
-    fn message_get_marks_served_wanted_payloads_transferred_for_peer() {
+    fn message_get_response_keeps_wanted_payloads_pending_for_peer() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -125,17 +120,16 @@
             .iter()
             .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
             .expect("peer row");
-        assert_eq!(row["messages"]["outgoing"].as_u64(), Some(1));
-        assert_eq!(row["messages"]["unhandled"].as_u64(), Some(0));
-        assert_eq!(row["messages"]["handled_ids"], json!([hex::encode(wanted)]));
-        assert_eq!(row["messages"]["unhandled_ids"], json!([]));
+        assert_eq!(row["messages"]["outgoing"].as_u64(), Some(0));
+        assert_eq!(row["messages"]["unhandled"].as_u64(), Some(1));
+        assert_eq!(row["messages"]["handled_ids"], json!([]));
+        assert_eq!(row["messages"]["unhandled_ids"], json!([hex::encode(wanted)]));
     }
 
     #[test]
-    fn message_get_admits_served_peer_for_transfer_accounting_like_python() {
+    fn message_get_admits_served_peer_without_completing_custody() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -179,17 +173,70 @@
             .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
             .expect("served peer row");
         assert_eq!(row["peer_type"].as_str(), Some("manual"));
-        assert_eq!(row["messages"]["outgoing"].as_u64(), Some(1));
-        assert_eq!(row["messages"]["unhandled"].as_u64(), Some(0));
-        assert_eq!(row["messages"]["handled_ids"], json!([hex::encode(wanted)]));
-        assert_eq!(row["messages"]["unhandled_ids"], json!([]));
+        assert_eq!(row["messages"]["outgoing"].as_u64(), Some(0));
+        assert_eq!(row["messages"]["unhandled"].as_u64(), Some(1));
+        assert_eq!(row["messages"]["handled_ids"], json!([]));
+        assert_eq!(row["messages"]["unhandled_ids"], json!([hex::encode(wanted)]));
+    }
+
+    #[test]
+    fn message_get_interrupted_response_retries_until_receiver_haves() {
+        let daemon = RpcDaemon::test_instance();
+        let recipient = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let identity = recipient.as_identity();
+        let destination = delivery_destination_hash_for_identity(identity);
+        let id = vec![0x28; 32];
+        let mut payload = destination.to_vec();
+        payload.extend_from_slice(b"retry me");
+        daemon
+            .ingest_propagation_payload_bytes_with_aliases(&payload, &hex::encode(&id), &[])
+            .expect("store payload");
+        let request = rmpv::Value::Array(vec![
+            rmpv::Value::Array(vec![rmpv::Value::Binary(id.clone())]),
+            rmpv::Value::Nil,
+        ]);
+        for _ in 0..2 {
+            let response =
+                handle_message_get_request(&daemon, identity, Some(request.clone()), 0xF1, 0xF4);
+            let ControlResponse::Rmpv(rmpv::Value::Array(messages)) = response else {
+                panic!("expected retryable response");
+            };
+            assert_eq!(messages, vec![rmpv::Value::Binary(payload.clone())]);
+            assert!(daemon.has_propagation_payload(&hex::encode(&id)));
+            let inventory = handle_message_get_request(
+                &daemon,
+                identity,
+                Some(rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Nil])),
+                0xF1,
+                0xF4,
+            );
+            let ControlResponse::Rmpv(rmpv::Value::Array(ids)) = inventory else {
+                panic!("expected pending inventory");
+            };
+            assert_eq!(ids, vec![rmpv::Value::Binary(id.clone())]);
+        }
+        let confirmed = handle_message_get_request(
+            &daemon,
+            identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Nil,
+                rmpv::Value::Array(vec![rmpv::Value::Binary(id.clone())]),
+            ])),
+            0xF1,
+            0xF4,
+        );
+        assert!(matches!(confirmed, ControlResponse::Bool(true)));
+        assert!(!daemon.has_propagation_payload(&hex::encode(&id)));
+        let retry = handle_message_get_request(&daemon, identity, Some(request), 0xF1, 0xF4);
+        assert!(
+            matches!(retry, ControlResponse::Rmpv(rmpv::Value::Array(messages)) if messages.is_empty())
+        );
     }
 
     #[test]
     fn message_get_rejected_peer_does_not_count_or_mark_served_payload() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -244,11 +291,7 @@
             "rejected message-get peer must not create a peer record"
         );
         let status = daemon
-            .handle_rpc(RpcRequest {
-                id: 12,
-                method: "propagation_status".to_string(),
-                params: None,
-            })
+            .handle_rpc(RpcRequest { id: 12, method: "propagation_status".to_string(), params: None })
             .expect("propagation status")
             .result
             .expect("propagation status result");
@@ -262,8 +305,7 @@
     #[test]
     fn message_get_rejected_peer_cannot_list_fetchable_payload_ids() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -318,8 +360,7 @@
     #[test]
     fn message_get_rejected_peer_cannot_purge_haves() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -381,8 +422,7 @@
     #[test]
     fn message_get_rejects_malformed_transient_ids_inside_lists() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let wanted = [0x5A; 32];

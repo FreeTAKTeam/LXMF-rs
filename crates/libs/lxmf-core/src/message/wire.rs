@@ -326,6 +326,34 @@ impl WireMessage {
         Self::unpack(&wire)
     }
 
+    /// Decrypt a recipient transient, preserving the exact original signed wire bytes.
+    pub fn decrypt_propagation(
+        transient: &[u8],
+        recipient: &PrivateIdentity,
+        destination: &[u8],
+    ) -> Result<Vec<u8>, LxmfError> {
+        if destination.len() != 16 || transient.get(..16) != Some(destination) {
+            return Err(LxmfError::Decode("propagation destination mismatch".into()));
+        }
+        for strip_stamp in [false, true] {
+            let end =
+                if strip_stamp { transient.len().saturating_sub(32) } else { transient.len() };
+            if end <= 16 + PUBLIC_KEY_LENGTH {
+                continue;
+            }
+            for salt in [recipient.address_hash().as_slice(), destination] {
+                if let Ok(plaintext) = decrypt_with_identity(recipient, salt, &transient[16..end]) {
+                    let mut wire = Vec::with_capacity(16 + plaintext.len());
+                    wire.extend_from_slice(destination);
+                    wire.extend_from_slice(&plaintext);
+                    Self::unpack(&wire)?;
+                    return Ok(wire);
+                }
+            }
+        }
+        Err(LxmfError::Decode("propagation transient decrypt failed".into()))
+    }
+
     pub fn unpack_paper_uri(uri: &str, recipient: &PrivateIdentity) -> Result<Self, LxmfError> {
         let paper_bytes = Self::decode_lxm_uri(uri)?;
         Self::unpack_paper(&paper_bytes, recipient)

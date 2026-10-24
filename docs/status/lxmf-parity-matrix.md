@@ -44,6 +44,14 @@ the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for
 named software scenarios, with hardware, public-network, and third-party-client
 evidence tracked independently.
 
+## Sender-only embedded propagation work in progress
+
+`lxmf-propagation` shares daemon storage, normalization, retention and control-value
+validation without importing the dispatcher or ZeroMQ. The existing Python relay
+upload and download smokes pass against the shared daemon store. The new bounded
+owned store and native adapter have local unit coverage; REM integration and
+physical LoRa behavior remain unverified. See [the architecture record](../architecture/local-propagation.md).
+
 ## LXMF 1.2.0 software qualification (issue 648)
 
 The module rows below retain the existing baseline. Additional target

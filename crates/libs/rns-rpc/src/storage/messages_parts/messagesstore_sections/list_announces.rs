@@ -298,26 +298,9 @@ impl MessagesStore {
                     destination TEXT PRIMARY KEY,
                     delivered_at INTEGER NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS propagation_entries (
-                    transient_id TEXT PRIMARY KEY,
-                    destination TEXT NOT NULL,
-                    payload_hex TEXT NOT NULL,
-                    received_at INTEGER NOT NULL,
-                    size_bytes INTEGER NOT NULL,
-                    stamp_value INTEGER
-                );
-                CREATE TABLE IF NOT EXISTS propagation_peer_entries (
-                    peer TEXT NOT NULL,
-                    transient_id TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    updated_at INTEGER NOT NULL,
-                    PRIMARY KEY(peer, transient_id)
-                );
-                CREATE TABLE IF NOT EXISTS propagation_local_entries (
-                    transient_id TEXT PRIMARY KEY,
-                    processed_at INTEGER NOT NULL
-                );",
+",
             )?;
+            lxmf_propagation::storage::initialize(&tx)?;
             Self::ensure_multi_ticket_schema(&tx)?;
             tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tickets_destination_expires
@@ -369,12 +352,7 @@ impl MessagesStore {
                     ON messages(receipt_status);
                 CREATE INDEX IF NOT EXISTS idx_announces_timestamp_id_desc
                     ON announces(timestamp DESC, id DESC);
-                CREATE INDEX IF NOT EXISTS idx_propagation_entries_destination_size
-                    ON propagation_entries(destination, size_bytes, transient_id);
-                CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_state
-                    ON propagation_peer_entries(peer, state, transient_id);
-                CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_folded_lookup
-                    ON propagation_peer_entries(LOWER(peer), transient_id, state);",
+",
             )?;
             Self::ensure_peer_queue_refill_schema(&tx)?;
             tx.commit()

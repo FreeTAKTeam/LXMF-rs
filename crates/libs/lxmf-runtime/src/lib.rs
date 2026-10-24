@@ -8,6 +8,12 @@ mod backend;
 mod config;
 mod delivery;
 mod link_delivery;
+mod owned_link_delivery;
+mod propagation;
+mod propagation_fetch;
+mod propagation_fetch_decode;
+#[cfg(test)]
+mod propagation_python_tests;
 mod state;
 #[cfg(test)]
 mod tests;
@@ -15,6 +21,12 @@ mod tests;
 pub use backend::InProcessBackend;
 pub use config::{InProcessBackendConfig, InProcessBackendLimits};
 pub use delivery::{DeliveryMethod, DeliveryOutcome, DeliveryRepresentation, InProcessSendReport};
+pub use lxmf_propagation as propagation_store;
+pub use propagation::{
+    LocalPropagation, PreparedOutgoing, PropagationRetrieval, PropagationRouteLimits,
+    PropagationUploadLimits,
+};
+pub use propagation_fetch::{PropagationFetchLimits, PropagationFetchReport};
 
 pub const EXT_ACCEPTED_RESULT_ACK: &str = "reticulum.accepted_result_ack";
 pub const EXT_DIRECT_PACKET_MAX_WIRE_BYTES: &str = "reticulum.direct_packet_max_wire_bytes";

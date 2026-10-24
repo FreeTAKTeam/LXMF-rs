@@ -84,6 +84,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libdbus-1-dev ffmpeg imagemagick graphicsmagick squashfs-tools
 
+      - name: Verify embedded receiver custody against pinned Python relay
+        run: |
+          PYTHONPATH="$RETICULUM_PY_REPO:$LXMF_PY_REPO${PYTHONPATH:+:$PYTHONPATH}" \
+            cargo test -p lxmf-runtime \
+              propagation_python_tests::native_recipient_retains_failed_import_then_confirms_stock_python_relay \
+              -- --ignored --exact --nocapture
+
       - name: Install pinned ImageMagick 7 AppImage with WebP support
         run: |
           asset=ImageMagick-7.1.2-31-gcc-x86_64.AppImage

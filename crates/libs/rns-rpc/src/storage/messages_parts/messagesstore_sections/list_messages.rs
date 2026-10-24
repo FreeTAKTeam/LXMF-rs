@@ -191,51 +191,14 @@ impl MessagesStore {
         &self,
         record: &PropagationEntryRecord,
     ) -> rusqlite::Result<()> {
-        self.with_write_conn(|conn| {
-            conn.execute(
-                "INSERT INTO propagation_entries (
-                    transient_id,
-                    destination,
-                    payload_hex,
-                    received_at,
-                    size_bytes,
-                    stamp_value
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                ON CONFLICT(transient_id) DO UPDATE SET
-                    destination = excluded.destination,
-                    payload_hex = excluded.payload_hex,
-                    received_at = excluded.received_at,
-                    size_bytes = excluded.size_bytes,
-                    stamp_value = excluded.stamp_value",
-                params![
-                    record.transient_id,
-                    record.destination,
-                    record.payload_hex,
-                    record.received_at,
-                    sql_u64(record.size_bytes)?,
-                    record.stamp_value,
-                ],
-            )?;
-            Ok(())
-        })
+        self.with_write_conn(|conn| lxmf_propagation::storage::upsert_propagation_entry(conn, record))
     }
 
     pub fn get_propagation_entry(
         &self,
         transient_id: &str,
     ) -> rusqlite::Result<Option<PropagationEntryRecord>> {
-        self.with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT transient_id, destination, payload_hex, received_at, size_bytes, stamp_value
-                 FROM propagation_entries
-                 WHERE transient_id = ?1
-                 LIMIT 1",
-                params![normalize_hex_key(transient_id)],
-                propagation_entry_from_row,
-            )
-            .optional()
-        })
+        self.with_read_conn(|conn| lxmf_propagation::storage::get_propagation_entry(conn, transient_id))
     }
 
     pub fn mark_local_propagation_processed(&self, transient_id: &str) -> rusqlite::Result<bool> {
@@ -261,17 +224,7 @@ impl MessagesStore {
     }
 
     pub fn propagation_entry_stats(&self) -> rusqlite::Result<PropagationEntryStats> {
-        self.with_read_conn(|conn| {
-            let (entries, bytes): (i64, Option<i64>) = conn.query_row(
-                "SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) FROM propagation_entries",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
-            Ok(PropagationEntryStats {
-                entries: entries.max(0) as u64,
-                bytes: bytes.unwrap_or(0).max(0) as u64,
-            })
-        })
+        self.with_read_conn(lxmf_propagation::storage::propagation_entry_stats)
     }
 
     pub fn mark_peer_unhandled_propagation(

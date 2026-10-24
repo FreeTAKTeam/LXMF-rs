@@ -134,7 +134,7 @@ pub(crate) fn opportunistic_packet_data<'a>(wire: &'a [u8], destination: &Addres
     rns_transport::delivery::strip_destination_prefix(wire, &destination_bytes)
 }
 
-async fn send_opportunistic(
+pub(crate) async fn send_opportunistic(
     transport: &Transport,
     destination: AddressHash,
     wire: &[u8],
@@ -228,7 +228,7 @@ async fn send_propagated(
     .await
 }
 
-fn encode_wire(
+pub(crate) fn encode_wire(
     identity: &PrivateIdentity,
     source: AddressHash,
     remote: &DestinationDesc,

@@ -163,7 +163,9 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: Architecture checks
-        run: cargo xtask ci --stage architecture-checks
+        run: |
+          cargo xtask ci --stage architecture-checks
+          tools/scripts/check-embedded-propagation.sh
 
 
   build-matrix:

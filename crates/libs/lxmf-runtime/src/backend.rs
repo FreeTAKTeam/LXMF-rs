@@ -36,6 +36,37 @@ impl InProcessBackend {
         }
     }
 
+    pub fn local_propagation(
+        &self,
+        path: impl AsRef<std::path::Path>,
+        limits: lxmf_propagation::StoreLimits,
+    ) -> Result<crate::LocalPropagation, lxmf_propagation::Error> {
+        crate::LocalPropagation::open(self.config.as_ref().clone(), path, limits)
+    }
+
+    /// Fetch standard recipient messages; `import` returns true only after durable saving.
+    /// The retained task holds admission through native cleanup if its waiter is dropped.
+    pub async fn fetch_propagated_messages<F, Fut>(
+        &self,
+        relay: AddressHash,
+        limits: crate::PropagationFetchLimits,
+        admission: Option<tokio::sync::OwnedSemaphorePermit>,
+        import: F,
+    ) -> Result<crate::PropagationFetchReport, SdkError>
+    where
+        F: FnMut(Vec<u8>) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = bool> + Send,
+    {
+        crate::propagation_fetch::fetch_retained(
+            self.config.clone(),
+            relay,
+            limits,
+            admission,
+            import,
+        )
+        .await
+    }
+
     pub fn send_report(
         &self,
         message_id: &MessageId,

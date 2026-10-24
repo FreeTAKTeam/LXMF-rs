@@ -250,6 +250,13 @@ Fourteen of twenty declared software family rows are locally qualified. Remainin
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
+## Embedded local propagation work in progress
+
+The shared propagation extraction and sender-only storage foundation is described
+in [the architecture record](../architecture/local-propagation.md). Local daemon
+and pinned Python upload/retrieval checks pass through shared SQL. Native REM
+integration and physical acceptance remain unqualified; this is not a release claim.
+
 ## RCH resource regressions: issues 663, 657 and 655
 
 The current increment bounds propagation-refill writer transactions, uses
