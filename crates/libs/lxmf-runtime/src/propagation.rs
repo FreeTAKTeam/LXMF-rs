@@ -391,9 +391,14 @@ struct LeaseGuard {
 }
 impl Drop for LeaseGuard {
     fn drop(&mut self) {
-        if let Ok(mut store) = self.store.lock() {
-            if let Err(error) = store.finish_recovery(&self.lease) {
-                log::error!("[local-propagation] recovery finalization deferred: {error}");
+        match self.store.lock() {
+            Ok(mut store) => {
+                if let Err(error) = store.finish_recovery(&self.lease) {
+                    log::error!("[local-propagation] recovery finalization deferred: {error}");
+                }
+            }
+            Err(error) => {
+                log::error!("[local-propagation] custody lock poisoned at finalization: {error}")
             }
         }
     }

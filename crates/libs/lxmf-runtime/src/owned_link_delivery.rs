@@ -46,7 +46,9 @@ pub(crate) async fn send_owned(request: OwnedSend) -> Result<InProcessSendReport
         }
         // This owner, rather than the caller's waiter, releases admission after cleanup.
         drop(request.admission);
-        let _ = result_tx.send(result);
+        if result_tx.send(result).is_err() {
+            log::debug!("[local-propagation] send waiter closed after native cleanup");
+        }
     });
     let _cancel = CancelOnDrop(Some(cancel_tx));
     result_rx.await.map_err(|_| transport_error("retained send owner stopped"))?
@@ -55,7 +57,9 @@ struct CancelOnDrop(Option<oneshot::Sender<()>>);
 impl Drop for CancelOnDrop {
     fn drop(&mut self) {
         if let Some(tx) = self.0.take() {
-            let _ = tx.send(());
+            if tx.send(()).is_err() {
+                log::debug!("[local-propagation] send owner already finished at cancellation");
+            }
         }
     }
 }

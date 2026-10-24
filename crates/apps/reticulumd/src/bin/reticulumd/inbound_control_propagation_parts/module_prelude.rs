@@ -220,9 +220,6 @@ impl lxmf_propagation::handlers::OfferBackend for SharedOfferBackend<'_> {
 }
 
 #[cfg(test)]
-use lxmf_propagation::protocol::{parse_transfer_limit_bytes, validated_binary_id_list};
-
-#[cfg(test)]
 fn delivery_destination_hash_for_identity(identity: &Identity) -> [u8; 16] {
     named_destination_hash_for_identity(identity, "delivery")
 }

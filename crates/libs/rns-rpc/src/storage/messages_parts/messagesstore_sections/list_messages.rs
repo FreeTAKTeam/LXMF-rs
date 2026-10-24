@@ -224,7 +224,7 @@ impl MessagesStore {
     }
 
     pub fn propagation_entry_stats(&self) -> rusqlite::Result<PropagationEntryStats> {
-        self.with_read_conn(|conn| lxmf_propagation::storage::propagation_entry_stats(conn))
+        self.with_read_conn(lxmf_propagation::storage::propagation_entry_stats)
     }
 
     pub fn mark_peer_unhandled_propagation(
