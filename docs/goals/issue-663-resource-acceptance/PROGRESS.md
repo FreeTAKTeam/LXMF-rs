@@ -8,7 +8,7 @@ sequential branches. Items 4-6 remain open and are not claimed here.
 | --- | --- | --- | --- |
 | 1. Fixture and cgroup sampler | Merged | [#682](https://github.com/FreeTAKTeam/LXMF-rs/pull/682) | Harness code, Python unit tests, 10-minute idle and ingress smoke runs on the baseline daemon (see [performance record](../../performance/rch-resource-fixes-663.md)). |
 | 2. Operation-level metrics | PR open | `corvo/issue-663-02-metrics`, [#683](https://github.com/FreeTAKTeam/LXMF-rs/pull/683) | `storage.refill`, `storage.wal`, `memory` and `providers` blocks in `/metrics`; four-package suite 3,293 passed, 0 failed. |
-| 3. Refill coalescing, writer fairness, WAL maintenance | PR open | `corvo/issue-663-03-refill-wal` (stacked on #683) | Read-only refill gate, rowid-floor incremental rescan, priority-writer yield, timer-driven WAL truncate, dispatch pump backoff; four-package suite 3,305 passed, 0 failed. Before/after smoke table in the resource regression record. |
+| 3. Refill coalescing, writer fairness, WAL maintenance | PR open | `corvo/issue-663-03-refill-wal`, [#685](https://github.com/FreeTAKTeam/LXMF-rs/pull/685) (stacked on #683) | Read-only refill gate, rowid-floor incremental rescan, priority-writer yield, timer-driven WAL truncate, dispatch pump backoff; four-package suite 3,305 passed, 0 failed. Before/after smoke table in the resource regression record. |
 | 4. Anonymous-memory attribution and bounds | Not started | — | — |
 | 5. Poll-failure stage correlation | Not started | — | — |
 | 6. Production-shaped soak and acceptance record | Not started | — | Depends on #678 or a bounded fixture; only 10-minute smoke runs exist. |
