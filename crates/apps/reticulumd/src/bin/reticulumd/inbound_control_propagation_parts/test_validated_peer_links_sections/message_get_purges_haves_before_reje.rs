@@ -1,8 +1,7 @@
     #[test]
     fn message_get_purges_haves_before_rejecting_invalid_wants_like_python() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let have = [0x5C; 32];
@@ -37,8 +36,7 @@
     #[test]
     fn message_get_zero_transfer_limit_skips_payload_like_python() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let wanted = [0x66; 32];
@@ -66,17 +64,13 @@
         let ControlResponse::Rmpv(rmpv::Value::Array(messages)) = fetch_response else {
             panic!("expected fetched message list");
         };
-        assert!(
-            messages.is_empty(),
-            "zero transfer limit should behave as a real zero-byte budget"
-        );
+        assert!(messages.is_empty(), "zero transfer limit should behave as a real zero-byte budget");
     }
 
     #[test]
-    fn message_get_transfer_limited_wanted_payload_marks_peer_completed_like_python() {
+    fn message_get_transfer_limited_wanted_payload_keeps_peer_work_retryable() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -112,13 +106,13 @@
         };
         assert!(messages.is_empty());
         assert!(
-            daemon
+            !daemon
                 .has_peer_completed_propagation_mark(
                     remote_propagation_hash.as_str(),
                     hex::encode(wanted).as_str(),
                 )
                 .expect("completed propagation mark lookup"),
-            "transfer-limited message-get wants should be completed for this peer"
+            "transfer-limited wants must remain retryable for this peer"
         );
         let peers = daemon
             .handle_rpc(RpcRequest { id: 12, method: "list_peers".to_string(), params: None })
@@ -131,15 +125,14 @@
             .iter()
             .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
             .expect("peer row");
-        assert_eq!(row["messages"]["handled_ids"], json!([hex::encode(wanted)]));
-        assert_eq!(row["messages"]["unhandled_ids"], json!([]));
+        assert_eq!(row["messages"]["handled_ids"], json!([]));
+        assert_eq!(row["messages"]["unhandled_ids"], json!([hex::encode(wanted)]));
     }
 
     #[test]
-    fn message_get_transfer_limited_retry_does_not_serve_completed_payload() {
+    fn message_get_transfer_limited_retry_with_larger_budget_serves_payload() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -189,10 +182,8 @@
         let ControlResponse::Rmpv(rmpv::Value::Array(retry_messages)) = retry_response else {
             panic!("expected retry fetched message list");
         };
-        assert!(
-            retry_messages.is_empty(),
-            "transfer-limited completed wants should not be served on a later retry"
-        );
+        assert_eq!(retry_messages.len(), 1);
+        assert!(retry_messages[0].as_slice().expect("payload").starts_with(&remote_delivery_hash));
         let peers = daemon
             .handle_rpc(RpcRequest { id: 12, method: "list_peers".to_string(), params: None })
             .expect("list peers")
@@ -204,15 +195,14 @@
             .iter()
             .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
             .expect("peer row");
-        assert_eq!(row["messages"]["handled_ids"], json!([hex::encode(wanted)]));
-        assert_eq!(row["messages"]["unhandled_ids"], json!([]));
+        assert_eq!(row["messages"]["handled_ids"], json!([]));
+        assert_eq!(row["messages"]["unhandled_ids"], json!([hex::encode(wanted)]));
     }
 
     #[test]
     fn message_get_cumulative_budget_skip_keeps_later_payload_retryable_like_python() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let remote_propagation_hash =
@@ -260,7 +250,7 @@
             panic!("expected fetched message list");
         };
         assert_eq!(messages.len(), 1);
-        assert!(daemon
+        assert!(!daemon
             .has_peer_completed_propagation_mark(
                 remote_propagation_hash.as_str(),
                 hex::encode(first).as_str(),
@@ -286,15 +276,14 @@
             .iter()
             .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
             .expect("peer row");
-        assert_eq!(row["messages"]["handled_ids"], json!([hex::encode(first)]));
-        assert_eq!(row["messages"]["unhandled_ids"], json!([hex::encode(second)]));
+        assert_eq!(row["messages"]["handled_ids"], json!([]));
+        assert_eq!(row["messages"]["unhandled_ids"], json!([hex::encode(first), hex::encode(second)]));
     }
 
     #[test]
     fn message_get_negative_transfer_limit_skips_payload_like_python() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let wanted = [0x77; 32];
@@ -331,8 +320,7 @@
     #[test]
     fn message_get_string_transfer_limit_parses_like_python() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let wanted = [0x88; 32];
@@ -369,8 +357,7 @@
     #[test]
     fn message_get_binary_string_transfer_limit_parses_like_python() {
         let daemon = RpcDaemon::test_instance();
-        let remote_private =
-            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_private = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
         let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
         let wanted = [0x99; 32];

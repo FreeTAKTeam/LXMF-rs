@@ -212,6 +212,13 @@ impl Transport {
         }
     }
 
+    /// Stop one offline-custody transfer locally without closing a shared Link.
+    pub async fn cancel_owned_resource(&self, link_id: AddressHash, resource_hash: Hash) {
+        let mut handler = self.handler.lock().await;
+        handler.resource_manager.abort_owned_outgoing(resource_hash, link_id);
+        super::resource_wire::publish_resource_events(&mut handler).await;
+    }
+
     pub async fn send_channel_message(
         &self,
         link_id: &AddressHash,

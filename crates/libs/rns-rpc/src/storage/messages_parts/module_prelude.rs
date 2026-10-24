@@ -161,58 +161,10 @@ pub struct PeerPropagationMessageStats {
     pub unhandled_bytes: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PropagationEntryRecord {
-    pub transient_id: String,
-    pub destination: String,
-    pub payload_hex: String,
-    pub received_at: i64,
-    pub size_bytes: u64,
-    pub stamp_value: Option<u32>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PropagationEntryStats {
-    pub entries: u64,
-    pub bytes: u64,
-}
+pub use lxmf_propagation::storage::{PropagationEntryRecord, PropagationEntryStats};
+use lxmf_propagation::storage::propagation_entry_from_row;
 
 pub const LXMF_LOCAL_TRANSIENT_CACHE_EXPIRY_SECS: i64 = 30 * 24 * 60 * 60 * 6;
-
-fn propagation_entry_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PropagationEntryRecord> {
-    let size_bytes: i64 = row.get(4)?;
-    let stamp_value: Option<u32> = row.get(5)?;
-    Ok(PropagationEntryRecord {
-        transient_id: row.get(0)?,
-        destination: row.get(1)?,
-        payload_hex: row.get(2)?,
-        received_at: row.get(3)?,
-        size_bytes: size_bytes.max(0) as u64,
-        stamp_value,
-    })
-}
-
-fn propagation_prune_weight(
-    destination: &str,
-    size_bytes: u64,
-    received_at: i64,
-    newest_received_at: Option<i64>,
-    prioritised_destinations: &[String],
-) -> f64 {
-    const FOUR_DAYS_SECS: f64 = 4.0 * 24.0 * 60.0 * 60.0;
-
-    let age_secs = newest_received_at.unwrap_or(received_at).saturating_sub(received_at) as f64;
-    let age_weight = (age_secs / FOUR_DAYS_SECS).max(1.0);
-    let priority_weight = if prioritised_destinations
-        .iter()
-        .any(|candidate| destination.eq_ignore_ascii_case(candidate.trim()))
-    {
-        0.1
-    } else {
-        1.0
-    };
-    priority_weight * age_weight * size_bytes as f64
-}
 
 fn normalize_hex_key(value: &str) -> String {
     value.trim().to_ascii_lowercase()
