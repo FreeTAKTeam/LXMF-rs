@@ -165,6 +165,18 @@ Observations the baseline attributes or leaves open:
 - A SIGINT during startup rewrites `destination_table` empty, discarding the
   cached routes; the harness now works on a per-run fixture copy because of it.
 
+## Operation-level metrics, 2026-10-24
+
+The daemon metrics snapshot (`GET /metrics`) now carries `storage.refill`
+(invocations, skips, pages, candidates examined, rows inserted, capacity stops,
+wall and max page time, priority yields), `storage.wal` (checkpoint attempts and
+outcomes, emergency reclaims, last WAL size), `memory` (process `smaps_rollup`
+and the daemon's own cgroup v2 memory files, or an explicit unavailable
+marker) and `providers.announce_persistence` / `providers.transport_tables`
+(path-table save costs and in-memory table occupancy). The soak sampler records
+all of them, so later runs attribute reads and memory per operation instead of
+per process. Counters carry no payloads, identities or SQL values.
+
 ## Acceptance boundary
 
 Local SQL plans, regressions and socket tests do not establish a multi-hour
