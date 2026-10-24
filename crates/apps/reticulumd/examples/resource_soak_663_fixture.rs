@@ -39,6 +39,9 @@ struct Args {
     /// Cached Reticulum announces to write under `cache/announces`.
     #[arg(long, default_value_t = 100_000)]
     announces: u64,
+    /// Approximate WAL file size to leave behind (production sat at about 521 MiB).
+    #[arg(long, default_value_t = 512 * 1024 * 1024)]
+    wal_bytes: u64,
     /// Durable broker budget recorded in the database (production uses 6 GiB).
     #[arg(long, default_value_t = 6 * 1024 * 1024 * 1024)]
     budget_bytes: i64,
@@ -108,17 +111,23 @@ fn build_database(
     let conn = Connection::open(db_path)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "synchronous", "NORMAL")?;
-    // A pinned reader on a second connection keeps SQLite from resetting the
-    // WAL, so the file grows the way the production WAL did.
+    // A reader pinned on a second connection keeps SQLite from resetting the
+    // WAL, so the tail of the bulk load grows the file the way production's did.
     let pin = Connection::open(db_path)?;
-    pin.execute_batch("BEGIN; SELECT COUNT(*) FROM propagation_entries;")?;
+    let row_bytes = (args.payload_bytes as u64) * 2 + 256;
+    let pin_from = args.entries.saturating_sub(args.wal_bytes / row_bytes.max(1));
+    let mut pinned = false;
 
     let now = 1_700_000_000i64;
-    let payload = vec![0u8; args.payload_bytes];
     let mut transient_ids = Vec::with_capacity(args.entries.min(args.peer_history * 4) as usize);
     let batch = 10_000u64;
     let mut inserted = 0u64;
+    let mut body = vec![0u8; args.payload_bytes];
     while inserted < args.entries {
+        if !pinned && inserted >= pin_from {
+            pin.execute_batch("BEGIN; SELECT COUNT(*) FROM propagation_entries;")?;
+            pinned = true;
+        }
         let tx = conn.unchecked_transaction()?;
         {
             let mut statement = tx.prepare_cached(
@@ -130,7 +139,6 @@ fn build_database(
             for index in inserted..end {
                 let transient_id = hex32(&mut rng);
                 let destination = hex32(&mut rng);
-                let mut body = payload.clone();
                 rng.fill_bytes(&mut body);
                 let received_at = now - (args.entries - index) as i64;
                 statement.execute(params![
@@ -153,12 +161,26 @@ fn build_database(
     // Peer history: handled and received marks outrank pending ones, and
     // mixed-case peer keys exercise the case-folded indexes.
     let history_rows = seed_peer_history(&conn, &peers, &transient_ids, args.peer_history, now)?;
-    pin.execute_batch("ROLLBACK;")?;
+
+    // Closing the last connection checkpoints and deletes the WAL. Production
+    // never closes, so keep a copy of the grown file and put it back afterwards:
+    // its frames are already in the main file, so replay on open is harmless.
+    let wal_path = PathBuf::from(format!("{}-wal", db_path.display()));
+    let wal_keep = PathBuf::from(format!("{}-wal.fixture", db_path.display()));
+    let wal_bytes_before_close = std::fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0);
+    if wal_bytes_before_close > 0 {
+        std::fs::copy(&wal_path, &wal_keep)?;
+    }
+    if pinned {
+        pin.execute_batch("ROLLBACK;")?;
+    }
     drop(pin);
     drop(conn);
+    if wal_keep.exists() {
+        std::fs::rename(&wal_keep, &wal_path)?;
+    }
 
     let db_bytes = std::fs::metadata(db_path)?.len();
-    let wal_path = PathBuf::from(format!("{}-wal", db_path.display()));
     let wal_bytes = std::fs::metadata(&wal_path).map(|meta| meta.len()).unwrap_or(0);
     Ok(json!({
         "path": db_path,
@@ -222,38 +244,61 @@ fn build_announce_root(args: &Args) -> Result<serde_json::Value, Box<dyn std::er
             let transport = Transport::new(config);
             let iface_channel = transport.iface_manager().lock().await.new_channel(1024);
             let iface = *iface_channel.address();
+            // Bulk seeding is not live ingress: disable the per-interface announce
+            // rate hold so every synthetic announce reaches the path table.
+            transport.iface_manager().lock().await.set_shared_config(
+                iface,
+                rns_transport::iface::InterfaceSharedConfig {
+                    ingress_control: Some(false),
+                    ..Default::default()
+                },
+            );
 
+            // The transport's announce queue holds 128 entries; wait for each batch
+            // to land before queuing the next so none are dropped.
+            const BATCH: u64 = 64;
             let mut learned = 0u64;
-            let mut last_destination = None;
-            for index in 0..total {
-                let identity = PrivateIdentity::new_from_rand(OsRng);
-                let mut destination =
-                    SingleInputDestination::new(identity, DestinationName::new("lxmf", "delivery"));
-                let announce = destination.announce(OsRng, None).map_err(|err| {
-                    std::io::Error::other(format!("announce packet {index}: {err:?}"))
-                })?;
-                last_destination = Some(announce.destination);
-                iface_channel
-                    .rx_channel
-                    .send(RxMessage { address: iface, packet: announce, source: IfaceSource::None })
-                    .await
-                    .map_err(|_| std::io::Error::other("transport rx channel closed"))?;
-                learned += 1;
-                if learned.is_multiple_of(10_000) {
-                    eprintln!("[fixture] announces queued {learned}/{total}");
+            while learned < total {
+                let mut last_destination = None;
+                let end = (learned + BATCH).min(total);
+                for index in learned..end {
+                    let identity = PrivateIdentity::new_from_rand(OsRng);
+                    let mut destination = SingleInputDestination::new(
+                        identity,
+                        DestinationName::new("lxmf", "delivery"),
+                    );
+                    let announce = destination.announce(OsRng, None).map_err(|err| {
+                        std::io::Error::other(format!("announce packet {index}: {err:?}"))
+                    })?;
+                    last_destination = Some(announce.destination);
+                    iface_channel
+                        .rx_channel
+                        .send(RxMessage {
+                            address: iface,
+                            packet: announce,
+                            source: IfaceSource::None,
+                        })
+                        .await
+                        .map_err(|_| std::io::Error::other("transport rx channel closed"))?;
                 }
-            }
-            if let Some(destination) = last_destination {
-                for _ in 0..4_000 {
-                    if transport.has_path(&destination).await {
-                        break;
+                if let Some(destination) = last_destination {
+                    let mut settled = false;
+                    for _ in 0..2_000 {
+                        if transport.has_path(&destination).await {
+                            settled = true;
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                    if !settled {
+                        return Err(std::io::Error::other(format!(
+                            "transport did not learn announce batch ending at {end}"
+                        )));
+                    }
                 }
-                if !transport.has_path(&destination).await {
-                    return Err(std::io::Error::other(
-                        "transport did not learn the final announce",
-                    ));
+                learned = end;
+                if learned.is_multiple_of(BATCH * 64) || learned == total {
+                    eprintln!("[fixture] announces learned {learned}/{total}");
                 }
             }
             let saved = transport.save_reticulum_path_table(&root).await?;
