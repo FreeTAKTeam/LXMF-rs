@@ -162,13 +162,17 @@ pub(super) fn physical_admission(
 
 /// Reclaim allocated WAL space only outside a write transaction. Pinned readers get Busy,
 /// leaving custody intact; retrying after they release can reclaim without a daemon restart.
-pub(crate) fn reclaim_wal(conn: &Connection) -> rusqlite::Result<()> {
+/// Returns the checkpoint outcome and the WAL size observed before the attempt.
+pub(crate) fn reclaim_wal(
+    conn: &Connection,
+) -> rusqlite::Result<(crate::storage::operation_metrics::WalCheckpointOutcome, u64)> {
+    use crate::storage::operation_metrics::WalCheckpointOutcome;
     if !conn.is_autocommit() || !enabled(conn)? {
-        return Ok(());
+        return Ok((WalCheckpointOutcome::BelowThreshold, 0));
     }
     let budget: i64 = conn.query_row("SELECT budget FROM broker_meta", [], |r| r.get(0))?;
     let Some(path) = conn.path() else {
-        return Ok(());
+        return Ok((WalCheckpointOutcome::BelowThreshold, 0));
     };
     let size = match std::fs::metadata(format!("{path}-wal")) {
         Ok(m) => m.len(),
@@ -176,11 +180,29 @@ pub(crate) fn reclaim_wal(conn: &Connection) -> rusqlite::Result<()> {
         Err(e) => return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e))),
     };
     if size <= budget.max(0) as u64 / 8 {
-        return Ok(());
+        return Ok((WalCheckpointOutcome::BelowThreshold, size));
     }
+    Ok((checkpoint_truncate_nonblocking(conn)?, size))
+}
+
+/// `PRAGMA wal_checkpoint(TRUNCATE)` without waiting on `busy_timeout`. Column 0 of the
+/// result is SQLite's busy flag; dropping it would hide a reader-pinned WAL (issue 369).
+pub(crate) fn checkpoint_truncate_nonblocking(
+    conn: &Connection,
+) -> rusqlite::Result<crate::storage::operation_metrics::WalCheckpointOutcome> {
+    use crate::storage::operation_metrics::WalCheckpointOutcome;
     let timeout: i64 = conn.query_row("PRAGMA busy_timeout", [], |r| r.get(0))?;
     conn.pragma_update(None, "busy_timeout", 0)?;
-    let result = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get::<_, i64>(0));
+    let result = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?))
+    });
     conn.pragma_update(None, "busy_timeout", timeout)?;
-    result.map(|_| ())
+    let (busy, log_frames, checkpointed_frames) = result?;
+    Ok(if busy != 0 {
+        WalCheckpointOutcome::Busy
+    } else if log_frames > checkpointed_frames {
+        WalCheckpointOutcome::PassiveIncomplete
+    } else {
+        WalCheckpointOutcome::Truncated
+    })
 }

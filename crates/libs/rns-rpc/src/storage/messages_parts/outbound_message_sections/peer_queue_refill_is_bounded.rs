@@ -46,6 +46,41 @@ fn refill_state(store: &MessagesStore, peer: &str) -> Option<RefillState> {
 }
 
 #[test]
+fn refill_operation_counters_follow_pages_candidates_and_inserts() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    let peer = "peer-refill-counters";
+    for index in 0..300 {
+        store.upsert_propagation_entry(&refill_entry(index, index as i64)).expect("insert");
+    }
+    let before = store.operation_metrics_snapshot();
+    assert_eq!(before["refill"]["invocations_total"], 0);
+    assert_eq!(before["wal"]["checkpoint_attempts_total"], 0);
+
+    let inserted =
+        store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).expect("refill");
+    assert_eq!(inserted, 300);
+    let after = store.operation_metrics_snapshot()["refill"].clone();
+    assert_eq!(after["invocations_total"], 1);
+    assert_eq!(after["rows_inserted_total"], 300);
+    // 300 candidates in 128-row pages: 128, 128, 44 -> three pages examined 300 rows.
+    assert_eq!(after["pages_total"], 3);
+    assert_eq!(after["candidates_examined_total"], 300);
+    assert_eq!(after["capacity_reached_total"], 0);
+    assert!(after["wall_ns_total"].as_u64().unwrap_or(0) > 0);
+    assert!(after["max_page_ns"].as_u64().unwrap_or(0) > 0);
+
+    // A smaller capacity stops at the limit and counts it.
+    let capped = "peer-refill-capped";
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10).expect("capped"), 10);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10).expect("full"), 0);
+    let capped_after = store.operation_metrics_snapshot()["refill"].clone();
+    // The first capped call fills ten rows and then observes the full queue on
+    // its next page; the second call observes it immediately.
+    assert_eq!(capped_after["capacity_reached_total"], 2);
+    assert_eq!(capped_after["invocations_total"], 3);
+}
+
+#[test]
 fn refill_scans_known_inventory_in_bounded_pages_and_coalesces_completed_announces() {
     let store = MessagesStore::in_memory().expect("in-memory store");
     let peer = "peer-bounded-refill";

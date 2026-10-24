@@ -2,6 +2,7 @@
 
 pub mod codec;
 mod daemon;
+pub use daemon::MetricsProvider;
 pub mod event_sink;
 pub mod http;
 pub mod replay;

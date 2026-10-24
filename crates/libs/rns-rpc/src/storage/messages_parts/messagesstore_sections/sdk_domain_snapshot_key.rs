@@ -25,6 +25,8 @@ impl MessagesStore {
             message_count_cache: AtomicU64::new(0),
             write_lock_wait_ns_total: AtomicU64::new(0),
             write_ops_total: AtomicU64::new(0),
+            refill_metrics: Default::default(),
+            wal_metrics: Default::default(),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
@@ -53,6 +55,8 @@ impl MessagesStore {
             message_count_cache: AtomicU64::new(0),
             write_lock_wait_ns_total: AtomicU64::new(0),
             write_ops_total: AtomicU64::new(0),
+            refill_metrics: Default::default(),
+            wal_metrics: Default::default(),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
@@ -90,8 +94,34 @@ impl MessagesStore {
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         self.write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
-        super::broker::reclaim_wal(&conn)?;
+        Self::reclaim_wal_recorded(&self.write_state, &conn)?;
         f(&conn).map_err(super::broker::map_commit_error)
+    }
+
+    fn reclaim_wal_recorded(write_state: &WriteState, conn: &Connection) -> rusqlite::Result<()> {
+        use super::operation_metrics::WalCheckpointOutcome;
+        match super::broker::reclaim_wal(conn) {
+            Ok((WalCheckpointOutcome::BelowThreshold, size)) => {
+                if size > 0 {
+                    write_state.wal_metrics.last_wal_bytes.store(size, Ordering::Relaxed);
+                }
+                Ok(())
+            }
+            Ok((outcome, _)) => {
+                write_state.wal_metrics.emergency_reclaim_total.fetch_add(1, Ordering::Relaxed);
+                let after = conn
+                    .path()
+                    .and_then(|path| std::fs::metadata(format!("{path}-wal")).ok())
+                    .map(|meta| meta.len())
+                    .unwrap_or(0);
+                write_state.wal_metrics.record_outcome(outcome, after);
+                Ok(())
+            }
+            Err(error) => {
+                write_state.wal_metrics.record_error();
+                Err(error)
+            }
+        }
     }
 
     fn with_read_conn<T>(
@@ -108,6 +138,14 @@ impl MessagesStore {
         } else {
             self.with_control_conn(f)
         }
+    }
+
+    /// Refill and WAL operation counters for the daemon metrics snapshot.
+    pub fn operation_metrics_snapshot(&self) -> serde_json::Value {
+        serde_json::json!({
+            "refill": self.write_state.refill_metrics.snapshot(),
+            "wal": self.write_state.wal_metrics.snapshot(),
+        })
     }
 
     pub fn contention_snapshot(&self) -> MessagesStoreContentionSnapshot {
@@ -137,7 +175,7 @@ impl MessagesStore {
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
-        super::broker::reclaim_wal(&conn)?;
+        Self::reclaim_wal_recorded(write_state, &conn)?;
         f(&conn).map_err(super::broker::map_commit_error)
     }
 

@@ -172,6 +172,7 @@ mod tests {
         assert!(mutation(&conn, true).is_err());
         reader.execute_batch("ROLLBACK").unwrap();
         super::super::reclaim_wal(&conn).unwrap();
+        // outcome is Truncated once the reader released; asserted by the following admission
         mutation(&conn, true).unwrap();
         conn.execute("UPDATE spill SET value=zeroblob(2000000)", []).unwrap();
     }

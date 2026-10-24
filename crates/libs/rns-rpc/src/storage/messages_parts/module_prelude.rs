@@ -54,6 +54,8 @@ struct WriteState {
     message_count_cache: AtomicU64,
     write_lock_wait_ns_total: AtomicU64,
     write_ops_total: AtomicU64,
+    refill_metrics: super::operation_metrics::RefillMetrics,
+    wal_metrics: super::operation_metrics::WalMetrics,
 }
 
 enum OutboundWriteCommand {

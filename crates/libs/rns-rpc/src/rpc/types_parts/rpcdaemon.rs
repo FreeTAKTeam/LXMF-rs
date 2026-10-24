@@ -76,6 +76,7 @@ pub struct RpcDaemon {
     remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
     rnode_management_bridge: Mutex<Option<Arc<dyn RNodeManagementBridge>>>,
     weave_display_control_bridge: Mutex<Option<Arc<dyn WeaveDisplayControlBridge>>>,
+    metrics_providers: Mutex<Vec<(&'static str, Arc<dyn crate::rpc::daemon::MetricsProvider>)>>,
     started_at: std::time::Instant,
 }
 
