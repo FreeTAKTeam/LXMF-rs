@@ -177,6 +177,59 @@ marker) and `providers.announce_persistence` / `providers.transport_tables`
 all of them, so later runs attribute reads and memory per operation instead of
 per process. Counters carry no payloads, identities or SQL values.
 
+## Item 3 before/after smoke, 2026-10-24
+
+Same harness and limits as above on a regenerated fixture (200,000 entries,
+database 1,134 MiB, WAL 973 MiB, 100,000 cached announces), ten minutes per
+run, daemon pinned to two CPUs. Baseline is `main` at `ac0eb429` (daemon code
+identical to `8f872639`); item 3 is `corvo/issue-663-03-refill-wal`. These are
+smoke comparisons, not acceptance.
+
+| Measure | Baseline idle | Item 3 idle | Baseline ingress | Item 3 ingress |
+| --- | ---: | ---: | ---: | ---: |
+| time to `/readyz` | 307.396 s | 261.554 s | 239.733 s | 287.428 s |
+| process RSS, first / last minute | 187.0 MiB / 223.0 MiB | 184.4 MiB / 218.5 MiB | 370.4 MiB / 433.9 MiB | 323.3 MiB / 417.0 MiB |
+| cgroup anonymous, first / last minute | 167.8 MiB / 203.7 MiB | 165.2 MiB / 199.2 MiB | 350.2 MiB / 413.7 MiB | 303.3 MiB / 396.9 MiB |
+| cgroup file cache, first / last minute | 42.5 MiB / 254.4 MiB | 323.1 MiB / 429.9 MiB | 38.2 MiB / 233.1 MiB | 188.6 MiB / 255.2 MiB |
+| WAL file, first / last minute (peak) | 0.5 MiB / 212.3 MiB (212.3 MiB) | 0.4 MiB / 96.0 MiB (212.3 MiB) | 0.5 MiB / 212.5 MiB (212.5 MiB) | 0.4 MiB / 96.0 MiB (177.7 MiB) |
+| `memory.events` high / max / oom | 0 / 0 / 0 | 276 / 0 / 0 | 205 / 0 / 0 | 464 / 0 / 0 |
+| daemon CPU, percent of one core | 6.056 | 5.197 | 11.229 | 11.891 |
+| read syscalls per second | 2084.712 | 2116.762 | 2709.508 | 2853.615 |
+| store read ops / write ops | 46881 / 3 | 4763 / 12 | 48096 / 1723 | 5909 / 2292 |
+| store write-lock wait, total | 0 ms | 0 ms | 6,907 ms | 8,937 ms |
+| refill invocations / skipped by gate / pages | n/a | 0 / 0 / 0 | n/a | 537 / 536 / 8 |
+| SDK poll p95 latency, median of windows / max | 1236.000 / 1371 | 1265.500 / 1901 | 742.000 / 3940 | 741.500 / 3527 |
+
+What changed and what did not:
+
+- Store reads on an idle daemon fell from about 78 to 8 per second: the durable
+  dispatch pump now backs off to 250 ms while its queue is empty. Process read
+  syscalls are unchanged at about 2,100 per second, so that churn is not the
+  SQLite store; it is attributed to the file-side announce cache work (item 4).
+- Both builds checkpoint the 973 MiB fixture WAL during startup. The
+  five-minute maintenance pass then writes about 212 MiB of WAL in one
+  transaction; the baseline keeps that file for the rest of the run (and, in
+  production, grows it on every pass), while item 3's `journal_size_limit`
+  truncates it to 96 MiB (`budget/64` for the 6 GiB fixture budget) at the next
+  checkpoint. The timer's own PASSIVE/TRUNCATE pass did not need to fire.
+- Under ingress, 536 of 537 refill invocations were turned away by the
+  read-only capacity gate; the one that ran took eight 128-row pages. Writer
+  wait per store write stayed at about 4 ms on both builds (6.9 s over 1,723
+  writes against 8.9 s over 2,292), consistent with `synchronous=FULL` commit
+  cost rather than refill occupancy. Item 3 therefore does not reduce the
+  per-write cost; it removes the extra writes and the whole-inventory rescans.
+- Anonymous memory grows the same amount on both builds (about 35 MiB idle,
+  about 65 to 95 MiB under ingress, in ten minutes) and the five-minute pass
+  still raises file cache by 150 to 300 MiB with `memory.events high` firing
+  on the 768 MiB limit. Both remain item 4 targets. The first-minute file-cache
+  difference between the builds (42 against 323 MiB idle) was not reproduced
+  deliberately and is recorded as run-to-run variance to investigate with the
+  item 2 counters, not as an effect of this change.
+- The announce persistence counters from item 2 show the cost that item 4 must
+  bound: under ingress, 228 path-table saves examined 22.8 million records in
+  ten minutes (100,000 per save, 44 s total) and 677 further triggers were
+  absorbed while a save was running.
+
 ## Acceptance boundary
 
 Local SQL plans, regressions and socket tests do not establish a multi-hour
