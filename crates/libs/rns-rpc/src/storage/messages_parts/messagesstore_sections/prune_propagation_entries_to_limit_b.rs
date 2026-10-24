@@ -8,85 +8,13 @@ impl MessagesStore {
     }
 
     pub fn prune_propagation_entries_to_limit_bytes_with_priorities(
-        &self,
-        limit_bytes: u64,
-        prioritised_destinations: &[String],
+        &self, limit_bytes: u64, prioritised_destinations: &[String],
     ) -> rusqlite::Result<Vec<String>> {
         self.with_write_conn(|conn| {
-            let tx = conn.unchecked_transaction()?;
-            let total: i64 = tx.query_row(
-                "SELECT COALESCE(SUM(size_bytes), 0) FROM propagation_entries",
-                [],
-                |row| row.get(0),
-            )?;
-            let mut total = total.max(0) as u64;
-            if total <= limit_bytes {
-                tx.commit()?;
-                return Ok(Vec::new());
-            }
-
-            let entries = {
-                let mut stmt = tx.prepare(
-                    "SELECT transient_id, destination, size_bytes, received_at
-                     FROM propagation_entries
-                     ORDER BY received_at ASC, transient_id ASC",
-                )?;
-                let rows = stmt.query_map([], |row| {
-                    let transient_id: String = row.get(0)?;
-                    let destination: String = row.get(1)?;
-                    let size_bytes: i64 = row.get(2)?;
-                    let received_at: i64 = row.get(3)?;
-                    Ok((transient_id, destination, size_bytes.max(0) as u64, received_at))
-                })?;
-                rows.collect::<rusqlite::Result<Vec<_>>>()?
-            };
-            let newest_received_at =
-                entries.iter().map(|(_id, _destination, _size, received_at)| *received_at).max();
-            let mut entries = entries;
-            entries.sort_by(|left, right| {
-                let left_weight = propagation_prune_weight(
-                    left.1.as_str(),
-                    left.2,
-                    left.3,
-                    newest_received_at,
-                    prioritised_destinations,
-                );
-                let right_weight = propagation_prune_weight(
-                    right.1.as_str(),
-                    right.2,
-                    right.3,
-                    newest_received_at,
-                    prioritised_destinations,
-                );
-                right_weight
-                    .partial_cmp(&left_weight)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| left.3.cmp(&right.3))
-                    .then_with(|| left.0.cmp(&right.0))
-            });
-
-            let mut pruned = Vec::new();
-            for (transient_id, _destination, size_bytes, _received_at) in entries {
-                if total <= limit_bytes {
-                    break;
-                }
-                let affected = tx.execute(
-                    "DELETE FROM propagation_entries WHERE transient_id = ?1",
-                    params![transient_id],
-                )?;
-                if affected > 0 {
-                    tx.execute(
-                        "DELETE FROM propagation_peer_entries
-                         WHERE transient_id = ?1
-                           AND state = 'unhandled'",
-                        params![transient_id],
-                    )?;
-                    total = total.saturating_sub(size_bytes);
-                    pruned.push(transient_id);
-                }
-            }
+            let tx=conn.unchecked_transaction()?;
+            let result=lxmf_propagation::storage::prune_propagation_entries_to_limit_bytes_with_priorities(&tx,limit_bytes,prioritised_destinations)?;
             tx.commit()?;
-            Ok(pruned)
+            Ok(result)
         })
     }
 

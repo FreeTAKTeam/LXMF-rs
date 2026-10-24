@@ -1804,6 +1804,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "lxmf-propagation"
+version = "0.14.0"
+dependencies = [
+ "hex",
+ "hkdf",
+ "log",
+ "lxmf-wire",
+ "rand_core 0.6.4",
+ "reticulum-rs-core",
+ "rmp-serde",
+ "rmpv",
+ "rusqlite",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "lxmf-reference"
 version = "0.14.0"
 dependencies = [
@@ -1816,13 +1834,17 @@ version = "0.14.0"
 dependencies = [
  "base64 0.22.1",
  "hex",
+ "log",
+ "lxmf-propagation",
  "lxmf-sdk",
  "lxmf-wire",
  "rand_core 0.6.4",
  "reticulum-rs-transport",
  "rmp-serde",
+ "rmpv",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
@@ -2540,6 +2562,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "log",
+ "lxmf-propagation",
  "lxmf-reference",
  "rand_core 0.6.4",
  "rmp-serde",
@@ -2632,6 +2655,7 @@ dependencies = [
  "hkdf",
  "if-addrs",
  "log",
+ "lxmf-propagation",
  "lxmf-wire",
  "meshchat-api",
  "rand_core 0.6.4",

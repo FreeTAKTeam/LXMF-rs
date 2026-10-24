@@ -12,6 +12,25 @@ pub struct ResourceManager {
 }
 
 impl ResourceManager {
+    /// Abort only the retained offline owner's transfer, including segmented sends.
+    pub fn abort_owned_outgoing(&mut self, resource_hash: Hash, link_id: AddressHash) {
+        let mut removed = false;
+        self.outgoing.retain(|_, sender| {
+            let owned = sender.original_hash == resource_hash && sender.link_id == link_id;
+            removed |= owned;
+            !owned
+        });
+        self.pending_outgoing.retain(|_, sender| {
+            let owned = sender.original_hash == resource_hash && sender.link_id == link_id;
+            removed |= owned;
+            !owned
+        });
+        if removed {
+            self.outgoing_segment_chains.remove(&resource_hash);
+            self.events.push(ResourceEvent { hash: resource_hash, link_id, kind: ResourceEventKind::OutboundCancelled });
+        }
+    }
+
     pub fn cancel_outgoing(
         &mut self,
         resource_hash: Hash,

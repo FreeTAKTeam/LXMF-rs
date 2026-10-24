@@ -14,10 +14,13 @@ categories = ["network-programming"]
 [dependencies]
 base64.workspace = true
 hex.workspace = true
+log.workspace = true
 lxmf-core.workspace = true
+lxmf-propagation = { workspace = true, features = ["embedded"] }
 lxmf-sdk = { version = "0.14.0", path = "../lxmf-sdk", default-features = false, features = ["std"] }
 rand_core = { workspace = true, features = ["getrandom"] }
 rmp-serde.workspace = true
+rmpv.workspace = true
 rns-transport.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -25,3 +28,6 @@ tokio.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
