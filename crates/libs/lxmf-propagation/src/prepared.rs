@@ -14,6 +14,7 @@ pub struct PreparedMessage {
     pub(crate) transient_id: String,
     pub(crate) payload: Vec<u8>,
     pub(crate) recovery: Vec<u8>,
+    pub(crate) application_key: Option<String>,
 }
 
 impl PreparedMessage {
@@ -41,7 +42,16 @@ impl PreparedMessage {
             transient_id: hex::encode(transient),
             payload,
             recovery,
+            application_key: None,
         })
+    }
+
+    pub fn with_application_key(mut self, key: Option<&str>) -> Result<Self, Error> {
+        if key.is_some_and(|key| key.is_empty() || key.len() > 128) {
+            return Err(Error::InvalidState("invalid application correlation key"));
+        }
+        self.application_key = key.map(ToOwned::to_owned);
+        Ok(self)
     }
 
     pub fn message_id(&self) -> &[u8; 32] {

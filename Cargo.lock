@@ -1917,6 +1917,7 @@ version = "0.14.0"
 dependencies = [
  "hex",
  "hkdf",
+ "log",
  "lxmf-wire",
  "rand_core 0.6.4",
  "reticulum-rs-core",
@@ -1941,6 +1942,7 @@ version = "0.14.0"
 dependencies = [
  "base64 0.22.1",
  "hex",
+ "log",
  "lxmf-propagation",
  "lxmf-sdk",
  "lxmf-wire",

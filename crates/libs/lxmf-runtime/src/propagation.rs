@@ -1,21 +1,20 @@
-use std::path::Path;
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
-
+use crate::delivery::{self, forced_representation, transport_error};
+use crate::owned_link_delivery::{send_owned, OwnedSend};
+use crate::{DeliveryMethod, DeliveryRepresentation, InProcessBackendConfig, InProcessSendReport};
 use lxmf_core::{decide_delivery, MessageMethod, TransportMethod, WireMessage};
 use lxmf_propagation::{
     Error, MessageKind, OwnedStore, PreparedMessage, RecoveryLease, Status, StoreLimits,
 };
 use lxmf_sdk::{MessageId, SdkError, SendRequest};
-use rns_transport::destination::DestinationDesc;
-use rns_transport::hash::AddressHash;
-use rns_transport::packet::LXMF_MAX_PAYLOAD;
+use rns_transport::{destination::DestinationDesc, hash::AddressHash, packet::LXMF_MAX_PAYLOAD};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex, MutexGuard},
+    time::Duration,
+};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-use crate::delivery::{self, forced_representation, transport_error};
-use crate::link_delivery::send_link_payload;
-use crate::{DeliveryMethod, InProcessBackendConfig, InProcessSendReport};
-
-/// One preparation is used throughout the bounded direct attempt and fallback.
+/// One signed wire and recipient transient throughout direct attempts and fallback.
 pub struct PreparedOutgoing {
     wire: WireMessage,
     remote: DestinationDesc,
@@ -30,13 +29,28 @@ impl PreparedOutgoing {
     }
 }
 
-/// Existing native transport and lifecycle, plus one serialized durable store.
-/// Recovery is event driven by the embedding runtime; no additional poller is started.
+/// Native bearer overrides, shared by direct and relay recovery.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PropagationRouteLimits {
+    pub max_packet_bytes: Option<usize>,
+    pub link_connect_timeout: Option<Duration>,
+}
+
+/// Native bearer limits for one immutable propagation upload.
+#[derive(Clone, Copy, Debug)]
+pub struct PropagationUploadLimits {
+    pub max_transfer_bytes: usize,
+    pub route: PropagationRouteLimits,
+}
+
+/// Existing native transport/lifecycle and a single serialized custody owner.
+/// The embedding runtime supplies events; this service starts no poller.
 #[derive(Clone)]
 pub struct LocalPropagation {
     config: Arc<InProcessBackendConfig>,
     store: Arc<Mutex<OwnedStore>>,
     owner: lxmf_core::identity::PrivateIdentity,
+    transfers: Arc<Semaphore>,
 }
 impl LocalPropagation {
     pub fn open(
@@ -49,9 +63,19 @@ impl LocalPropagation {
         )
         .map_err(|_| Error::InvalidState("invalid persisted identity"))?;
         let store = OwnedStore::open(path, owner.clone(), limits)?;
-        Ok(Self { config: Arc::new(config), store: Arc::new(Mutex::new(store)), owner })
+        Ok(Self {
+            config: Arc::new(config),
+            store: Arc::new(Mutex::new(store)),
+            owner,
+            transfers: Arc::new(Semaphore::new(1)),
+        })
     }
-
+    pub fn try_transfer(&self) -> Result<OwnedSemaphorePermit, SdkError> {
+        self.transfers
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| transport_error("propagation transfer already active"))
+    }
     pub async fn prepare(&self, request: &SendRequest) -> Result<PreparedOutgoing, SdkError> {
         let destination = AddressHash::new_from_hex_string(request.destination.trim())
             .map_err(|_| transport_error("invalid destination"))?;
@@ -74,57 +98,58 @@ impl LocalPropagation {
             remote.identity.public_key_bytes(),
             remote.identity.verifying_key_bytes(),
         );
-        let message =
-            PreparedMessage::new(&wire, &self.owner, Some(&recipient)).map_err(store_error)?;
+        let message = PreparedMessage::new(&wire, &self.owner, Some(&recipient))
+            .and_then(|message| message.with_application_key(request.correlation_id.as_deref()))
+            .map_err(store_error)?;
         Ok(PreparedOutgoing { wire, remote, message })
     }
-
     pub async fn send_direct(
         &self,
         prepared: &PreparedOutgoing,
         request: &SendRequest,
         timeout: Duration,
+        permit: impl FnOnce() -> bool + Send + Sync + 'static,
     ) -> Result<InProcessSendReport, SdkError> {
+        let admission = self.try_transfer()?;
         let wire = prepared.wire.pack().map_err(wire_error)?;
-        let method =
-            if self.config.transport.delivery_link_available(&prepared.remote.address_hash).await {
-                TransportMethod::Direct
-            } else {
-                TransportMethod::Opportunistic
-            };
+        // Establish a Link when necessary; no open Link does not imply an offline recipient.
         let decision = decide_delivery(
-            method,
+            TransportMethod::Direct,
             false,
             wire.len().saturating_sub(lxmf_core::constants::LXMF_OVERHEAD),
         )
         .map_err(wire_error)?;
-        let id = MessageId(prepared.message_id()?);
-        if decision.method == TransportMethod::Opportunistic {
-            return delivery::send_opportunistic(
-                &self.config.transport,
-                prepared.remote.address_hash,
-                &wire,
-                id,
-            )
-            .await;
-        }
         let representation =
             forced_representation(request, decision.method, decision.representation, wire.len());
-        send_link_payload(
-            &self.config.transport,
-            prepared.remote,
-            &wire,
-            id,
-            DeliveryMethod::Direct,
+        send_owned(OwnedSend {
+            starting: Some(Box::new(move || {
+                if permit() {
+                    Ok(())
+                } else {
+                    Err(transport_error("outgoing message permission revoked"))
+                }
+            })),
+            config: self.config.clone(),
+            destination: prepared.remote,
+            payload: wire,
+            message_id: MessageId(prepared.message_id()?),
+            method: DeliveryMethod::Direct,
             representation,
             timeout,
-            1,
-            self.config.resource_transfer_timeout,
-            None,
-        )
+            link_connect_timeout: delivery::request_link_timeout(
+                request,
+                self.config.link_connect_timeout,
+            ),
+            link_connect_attempts: delivery::request_link_attempts(
+                request,
+                self.config.link_connect_attempts,
+            ),
+            propagated_recipient: None,
+            admission: Box::new(admission),
+            completed: None,
+        })
         .await
     }
-
     pub fn deposit_own(
         &self,
         prepared: PreparedOutgoing,
@@ -133,6 +158,12 @@ impl LocalPropagation {
         earlier_expiry: Option<i64>,
     ) -> Result<Status, Error> {
         self.lock()?.deposit_own(prepared.message, kind, now, earlier_expiry)
+    }
+    pub fn application_messages(&self, key: &str) -> Result<Vec<Status>, Error> {
+        self.lock()?.application_messages(key)
+    }
+    pub fn message(&self, id: &str) -> Result<Option<Status>, Error> {
+        self.lock()?.message(id)
     }
     pub fn status(&self, now: i64) -> Result<Vec<Status>, Error> {
         self.lock()?.status(now)
@@ -150,6 +181,7 @@ impl LocalPropagation {
         self.lock()?.delivered(id, message_id, acknowledged, now)
     }
     pub fn stop(&self) -> Result<(), Error> {
+        self.transfers.close();
         self.lock()?.stop();
         Ok(())
     }
@@ -159,61 +191,88 @@ impl LocalPropagation {
         id: &str,
         now: i64,
         retry_at: i64,
-        mut permit: impl FnMut(&Status) -> bool,
+        limits: PropagationRouteLimits,
+        mut permit: impl FnMut(&Status, &[u8]) -> bool + Send + Sync + 'static,
     ) -> Result<Option<InProcessSendReport>, SdkError> {
+        let admission = self.try_transfer()?;
+        let started = std::time::Instant::now();
         let Some(recovery) = self
             .lock()
             .map_err(store_error)?
-            .recover(id, now, retry_at, |status| permit(status))
+            .recover(id, now, retry_at, |_| true)
             .map_err(store_error)?
         else {
             return Ok(None);
         };
-        let _lease = LeaseGuard { store: self.store.clone(), lease: recovery.lease };
+        let lease = LeaseGuard { store: self.store.clone(), lease: recovery.lease };
+        if !permit(&recovery.status, &recovery.direct_wire) {
+            return Ok(None);
+        }
         let hash = AddressHash::new_from_hex_string(&recovery.status.destination)
             .map_err(|_| transport_error("invalid stored destination"))?;
         let remote = delivery::resolve_destination(
             &self.config.transport,
             hash,
             "delivery",
-            self.config.link_connect_timeout,
+            limits.link_connect_timeout.unwrap_or(self.config.link_connect_timeout),
         )
         .await?;
-        let representation = if recovery.direct_wire.len() > LXMF_MAX_PAYLOAD {
-            MessageMethod::Resource
-        } else {
-            MessageMethod::Packet
-        };
-        if !permit(&recovery.status) {
-            return Ok(None);
-        }
-        let started = std::time::Instant::now();
-        let report = send_link_payload(
-            &self.config.transport,
-            remote,
-            &recovery.direct_wire,
-            MessageId(recovery.status.message_id),
-            DeliveryMethod::Direct,
+        let policy_status = recovery.status.clone();
+        let policy_wire = recovery.direct_wire.clone();
+        let starting = Box::new(move || {
+            if permit(&policy_status, &policy_wire) {
+                Ok(())
+            } else {
+                Err(transport_error("stored message permission revoked"))
+            }
+        });
+        let representation = representation(&recovery.direct_wire, limits.max_packet_bytes);
+        let store = self.store.clone();
+        let transient = id.to_owned();
+        let message = recovery.status.message_id.clone();
+        let completion_lease = lease.lease.clone();
+        let completed = Box::new(move |result: &Result<InProcessSendReport, SdkError>| {
+            if result
+                .as_ref()
+                .is_ok_and(|report| report.representation == DeliveryRepresentation::Resource)
+            {
+                store
+                    .lock()
+                    .map_err(|_| transport_error("custody lock poisoned"))?
+                    .delivered(
+                        &transient,
+                        &message,
+                        false,
+                        now.saturating_add(started.elapsed().as_secs().min(i64::MAX as u64) as i64),
+                    )
+                    .map_err(store_error)?;
+            }
+            store
+                .lock()
+                .map_err(|_| transport_error("custody lock poisoned"))?
+                .finish_recovery(&completion_lease)
+                .map_err(store_error)
+        });
+        send_owned(OwnedSend {
+            starting: Some(starting),
+            config: self.config.clone(),
+            destination: remote,
+            payload: recovery.direct_wire,
+            message_id: MessageId(recovery.status.message_id),
+            method: DeliveryMethod::Direct,
             representation,
-            self.config.link_connect_timeout,
-            1,
-            self.config.resource_transfer_timeout,
-            None,
-        )
-        .await?;
-        if report.representation == crate::DeliveryRepresentation::Resource {
-            self.lock()
-                .map_err(store_error)?
-                .delivered(
-                    id,
-                    &report.message_id.0,
-                    false,
-                    now.saturating_add(started.elapsed().as_secs().min(i64::MAX as u64) as i64),
-                )
-                .map_err(store_error)?;
-        }
-        // Packet dispatch still waits for the validated recipient receipt listener.
-        Ok(Some(report))
+            timeout: limits.link_connect_timeout.unwrap_or(self.config.link_connect_timeout)
+                + self.config.resource_transfer_timeout,
+            link_connect_timeout: limits
+                .link_connect_timeout
+                .unwrap_or(self.config.link_connect_timeout),
+            link_connect_attempts: self.config.link_connect_attempts,
+            propagated_recipient: None,
+            admission: Box::new((admission, lease)),
+            completed: Some(completed),
+        })
+        .await
+        .map(Some)
     }
 
     pub async fn recover_upload(
@@ -222,35 +281,41 @@ impl LocalPropagation {
         relay: AddressHash,
         now: i64,
         retry_at: i64,
-        max_transfer_bytes: usize,
-        mut permit: impl FnMut(&Status) -> bool,
+        limits: PropagationUploadLimits,
+        mut permit: impl FnMut(&Status, &[u8]) -> bool + Send + Sync + 'static,
     ) -> Result<Option<InProcessSendReport>, SdkError> {
+        let admission = self.try_transfer()?;
+        let started = std::time::Instant::now();
         let Some(recovery) = self
             .lock()
             .map_err(store_error)?
-            .recover(id, now, retry_at, |status| permit(status))
+            .recover(id, now, retry_at, |_| true)
             .map_err(store_error)?
         else {
             return Ok(None);
         };
-        let guard = LeaseGuard { store: self.store.clone(), lease: recovery.lease };
-        if recovery.status.uploaded {
+        let lease = LeaseGuard { store: self.store.clone(), lease: recovery.lease };
+        if recovery.status.uploaded || !permit(&recovery.status, &recovery.direct_wire) {
             return Ok(None);
+        }
+        // Budget check precedes path discovery and expensive proof-of-work.
+        if recovery.recipient_transient.len().saturating_add(64) > limits.max_transfer_bytes {
+            return Err(transport_error("propagation transfer budget exceeded"));
         }
         let remote = delivery::resolve_destination(
             &self.config.transport,
             relay,
             "propagation",
-            self.config.link_connect_timeout,
+            limits.route.link_connect_timeout.unwrap_or(self.config.link_connect_timeout),
         )
         .await?;
-        let transient_id = hex::decode(&recovery.status.transient_id)
+        let transient = hex::decode(&recovery.status.transient_id)
             .map_err(|_| transport_error("invalid transient id"))?;
-        let transient_id: [u8; 32] =
-            transient_id.try_into().map_err(|_| transport_error("invalid transient length"))?;
+        let transient: [u8; 32] =
+            transient.try_into().map_err(|_| transport_error("invalid transient length"))?;
         let stamp = tokio::task::spawn_blocking(move || {
             lxmf_core::stamp::generate_propagation_stamp(
-                &transient_id,
+                &transient,
                 lxmf_core::stamp::DEFAULT_PROPAGATION_STAMP_COST,
             )
         })
@@ -263,47 +328,63 @@ impl LocalPropagation {
             Some(&stamp),
         )
         .map_err(wire_error)?;
-        if envelope.len() > max_transfer_bytes {
+        if envelope.len() > limits.max_transfer_bytes {
             return Err(transport_error("propagation transfer budget exceeded"));
         }
-        if !permit(&recovery.status) {
-            return Ok(None);
-        }
-        self.lock()
-            .map_err(store_error)?
-            .begin_upload(&guard.lease, &relay.to_hex_string(), now)
-            .map_err(store_error)?;
-        let representation = if envelope.len() > LXMF_MAX_PAYLOAD {
-            MessageMethod::Resource
-        } else {
-            MessageMethod::Packet
-        };
-        let result = send_link_payload(
-            &self.config.transport,
-            remote,
-            &envelope,
-            MessageId(recovery.status.message_id),
-            DeliveryMethod::Propagated,
+        let policy_status = recovery.status.clone();
+        let policy_wire = recovery.direct_wire.clone();
+        let store = self.store.clone();
+        let upload_lease = lease.lease.clone();
+        let starting = Box::new(move || {
+            if !permit(&policy_status, &policy_wire) {
+                return Err(transport_error("stored message permission revoked"));
+            }
+            let actual_now =
+                now.saturating_add(started.elapsed().as_secs().min(i64::MAX as u64) as i64);
+            store
+                .lock()
+                .map_err(|_| transport_error("custody lock poisoned"))?
+                .begin_upload(&upload_lease, &relay.to_hex_string(), actual_now)
+                .map_err(store_error)
+        });
+        let representation = representation(&envelope, limits.route.max_packet_bytes);
+        let completion_store = self.store.clone();
+        let completion_lease = lease.lease.clone();
+        let completed = Box::new(move |_: &Result<InProcessSendReport, SdkError>| {
+            completion_store
+                .lock()
+                .map_err(|_| transport_error("custody lock poisoned"))?
+                .finish_recovery(&completion_lease)
+                .map_err(store_error)
+        });
+        // The retained owner normalizes Uploading to unverified before releasing its lease,
+        // including when its caller is cancelled after native dispatch.
+        send_owned(OwnedSend {
+            starting: Some(starting),
+            config: self.config.clone(),
+            destination: remote,
+            payload: envelope,
+            message_id: MessageId(recovery.status.message_id),
+            method: DeliveryMethod::Propagated,
             representation,
-            self.config.link_connect_timeout,
-            1,
-            self.config.resource_transfer_timeout,
-            Some(recovery.status.destination),
-        )
-        .await;
-        // Failure after dispatch is ambiguous too; retain custody without an upload loop.
-        self.lock()
-            .map_err(store_error)?
-            .uploaded_unverified(&guard.lease, now)
-            .map_err(store_error)?;
-        result.map(Some)
+            timeout: limits.route.link_connect_timeout.unwrap_or(self.config.link_connect_timeout)
+                + self.config.resource_transfer_timeout,
+            link_connect_timeout: limits
+                .route
+                .link_connect_timeout
+                .unwrap_or(self.config.link_connect_timeout),
+            link_connect_attempts: self.config.link_connect_attempts,
+            propagated_recipient: Some(recovery.status.destination),
+            admission: Box::new((admission, lease)),
+            completed: Some(completed),
+        })
+        .await
+        .map(Some)
     }
-
     fn lock(&self) -> Result<MutexGuard<'_, OwnedStore>, Error> {
         self.store.lock().map_err(|_| Error::InvalidState("propagation store lock poisoned"))
     }
 }
-
 struct LeaseGuard {
     store: Arc<Mutex<OwnedStore>>,
     lease: RecoveryLease,
@@ -311,8 +392,17 @@ struct LeaseGuard {
 impl Drop for LeaseGuard {
     fn drop(&mut self) {
         if let Ok(mut store) = self.store.lock() {
-            store.finish_recovery(&self.lease)
+            if let Err(error) = store.finish_recovery(&self.lease) {
+                log::error!("[local-propagation] recovery finalization deferred: {error}");
+            }
         }
+    }
+}
+fn representation(bytes: &[u8], max_packet_bytes: Option<usize>) -> MessageMethod {
+    if bytes.len() > max_packet_bytes.unwrap_or(LXMF_MAX_PAYLOAD) {
+        MessageMethod::Resource
+    } else {
+        MessageMethod::Packet
     }
 }
 fn wire_error(error: lxmf_core::LxmfError) -> SdkError {

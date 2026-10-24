@@ -81,12 +81,24 @@ impl OwnedStore {
             },
         )?;
         tx.execute("INSERT INTO propagation_owned(transient_id,message_id,destination,admitted_at,expires_at,
-            recovery,encrypted_bytes,kind,replacement_key,state,changed_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,0,?4)",
-            params![message.transient_id,message_id,message.destination,now,expires_at,message.recovery,bytes as i64,kind,key])?;
+            recovery,encrypted_bytes,kind,replacement_key,state,changed_at,application_key) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,0,?4,?10)",
+            params![message.transient_id,message_id,message.destination,now,expires_at,message.recovery,bytes as i64,kind,key,message.application_key])?;
         let status =
             find_message(&tx, &message_id)?.ok_or(Error::InvalidState("deposit missing"))?;
         tx.commit()?;
         Ok(status)
+    }
+
+    pub fn application_messages(&self, key: &str) -> Result<Vec<Status>, Error> {
+        if key.len() > 128 {
+            return Err(Error::InvalidState("invalid application key"));
+        }
+        let mut stmt=self.conn.prepare(&format!("SELECT {COLUMNS} FROM propagation_owned WHERE application_key=?1 ORDER BY admitted_at,transient_id LIMIT {}",crate::MAX_STATUS))?;
+        let rows = stmt.query_map([key], from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+    pub fn message(&self, message_id: &str) -> Result<Option<Status>, Error> {
+        Ok(find_message(&self.conn, message_id)?)
     }
 
     pub fn status(&mut self, now: i64) -> Result<Vec<Status>, Error> {
@@ -114,6 +126,8 @@ impl OwnedStore {
         if self.in_flight.is_some() {
             return Err(Error::InvalidState("recovery already active"));
         }
+        // A former owner may have observed transport cleanup while SQLite was unavailable.
+        self.conn.execute("UPDATE propagation_owned SET state=2, uploaded=1 WHERE state=1", [])?;
         let tx = self.conn.unchecked_transaction()?;
         owned_changes::expire(&tx, now)?;
         let status = find(&tx, id)?;
@@ -154,10 +168,13 @@ impl OwnedStore {
         Ok(Some(Recovery { lease, status, direct_wire: wire, recipient_transient: payload }))
     }
 
-    pub fn finish_recovery(&mut self, lease: &RecoveryLease) {
+    pub fn finish_recovery(&mut self, lease: &RecoveryLease) -> Result<(), Error> {
         if self.in_flight.as_ref() == Some(lease) {
+            let result = self.conn.execute("UPDATE propagation_owned SET state=2, uploaded=1 WHERE transient_id=?1 AND state=1",[lease.transient_id()]);
             self.in_flight = None;
+            result?;
         }
+        Ok(())
     }
     pub fn stop(&mut self) {
         self.stopped = true;
@@ -181,7 +198,7 @@ impl OwnedStore {
     }
 }
 
-pub(crate) const COLUMNS:&str="transient_id,message_id,destination,state,admitted_at,expires_at,encrypted_bytes,uploaded,relay,attempts,next_attempt_at,kind,replacement_key";
+pub(crate) const COLUMNS:&str="transient_id,message_id,destination,state,admitted_at,expires_at,encrypted_bytes,uploaded,relay,attempts,next_attempt_at,kind,replacement_key,application_key";
 pub(crate) fn find(conn: &Connection, id: &str) -> rusqlite::Result<Option<Status>> {
     conn.query_row(
         &format!("SELECT {COLUMNS} FROM propagation_owned WHERE transient_id=?1"),
@@ -202,6 +219,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Status> {
     Ok(Status {
         transient_id: row.get(0)?,
         message_id: row.get(1)?,
+        application_key: row.get(13)?,
         destination: row.get(2)?,
         state: State::from_sql(row.get(3)?)?,
         kind: match row.get::<_, i64>(11)? {

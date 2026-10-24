@@ -23,3 +23,5 @@ mod owned_recovery;
 pub use owned::OwnedStore;
 #[cfg(all(test, feature = "embedded"))]
 mod tests;
+
+pub mod handlers;

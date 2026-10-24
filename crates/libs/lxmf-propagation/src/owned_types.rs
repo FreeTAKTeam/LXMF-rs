@@ -71,6 +71,7 @@ impl MessageKind {
 pub struct Status {
     pub transient_id: String,
     pub message_id: String,
+    pub application_key: Option<String>,
     pub destination: String,
     pub state: State,
     pub kind: MessageKind,

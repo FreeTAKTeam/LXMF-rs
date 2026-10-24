@@ -82,7 +82,7 @@ pub(crate) async fn send_link_payload(
     })
 }
 
-async fn activate_link(
+pub(crate) async fn activate_link(
     transport: &Transport,
     destination: DestinationDesc,
     timeout: Duration,

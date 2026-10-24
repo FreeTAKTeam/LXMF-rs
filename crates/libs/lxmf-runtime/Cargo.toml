@@ -15,6 +15,7 @@ categories = ["network-programming"]
 [dependencies]
 base64.workspace = true
 hex.workspace = true
+log.workspace = true
 lxmf-core.workspace = true
 lxmf-propagation = { workspace = true, features = ["embedded"] }
 lxmf-sdk = { version = "0.14.0", path = "../lxmf-sdk", default-features = false, features = ["std"] }

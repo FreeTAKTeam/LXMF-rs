@@ -43,6 +43,7 @@ pub(crate) fn initialize(
         transient_id TEXT PRIMARY KEY CHECK(length(transient_id)=64),
         message_id TEXT NOT NULL UNIQUE CHECK(length(message_id)=64),
         destination TEXT NOT NULL CHECK(length(destination)=32),
+        application_key TEXT CHECK(application_key IS NULL OR length(application_key)<=128),
         admitted_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
         recovery BLOB, encrypted_bytes INTEGER NOT NULL CHECK(encrypted_bytes>=0),
         kind INTEGER NOT NULL, replacement_key TEXT CHECK(length(replacement_key)<=128),
