@@ -408,7 +408,10 @@ fn sdk_nostd_capability_table_has_required_rows() {
     let mut by_crate = HashMap::new();
     for row in rows {
         assert!(
-            matches!(row.status.as_str(), "std-first" | "alloc-ready" | "planned"),
+            matches!(
+                row.status.as_str(),
+                "std-first" | "alloc-ready" | "no_std-verified" | "planned"
+            ),
             "invalid no_std audit status '{}'",
             row.status
         );
@@ -418,6 +421,14 @@ fn sdk_nostd_capability_table_has_required_rows() {
     for required in ["lxmf-wire", "reticulum-rs-core"] {
         assert!(by_crate.contains_key(required), "no_std audit table missing crate '{required}'");
     }
+
+    // Issue #676: the core crate's bare-metal build is gated by
+    // `tools/scripts/check-no-std-core.sh`, so the audit must not regress it
+    // to a host-only or deferred status without changing that gate too.
+    assert_eq!(
+        by_crate["reticulum-rs-core"].status, "no_std-verified",
+        "reticulum-rs-core no_std audit status must stay no_std-verified"
+    );
 
     let lxmf_core_manifest =
         fs::read_to_string(workspace_root().join("crates/libs/lxmf-core/Cargo.toml"))

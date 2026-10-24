@@ -182,8 +182,8 @@ hardware-evidence axis.
 
 ## RNS 1.5.4-dev feature update and forward parity follow-ups
 
-Issue #605 updates the working 1.5.2-compatible system for features in the
-immutable development revision
+Closed issue #605 updated the working 1.5.2-compatible system for features in
+the immutable development revision
 `99de23c040d507e3fefca19e87b182302902725d`, recorded as `1.5.4-dev` in the
 canonical parity-target manifest. The identified HDLC, BLE, and rngit feature
 delta is integrated and tested, but does not replace the active 1.5.2 release
@@ -196,10 +196,9 @@ callable presence do not prove behavior.
 The generated Python surface artifact also carries the broader behavioral
 contract for child issues #607–#616. The contract remains `incomplete`; its
 scoped #615 software-acceptance requirement is verified, while the remaining
-forward behavior and operational rows remain separately tracked. It is the
-authoritative broad-parity status for this matrix, not #605's feature-update
-closure checklist. The baseline rows below remain historical/current-release
-claims. See
+forward behavior and operational rows remain separately tracked. This is the
+authoritative broad-parity status; it does not change #605's completed scope.
+The baseline rows below remain historical/current-release claims. See
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) for the exact target, measured delta,
 evidence fields, and acceptance boundary.
 
@@ -1327,6 +1326,11 @@ display/status payload, and operator-workflow combinations remains pending.
   backpressure evidence.
 - Nightly mesh, soak, and embedded HIL workflows provide additional operational
   evidence, but do not promote unsupported interface families to `done`.
+- `tools/scripts/check-no-std-core.sh` (run by `cargo xtask ci --stage
+  architecture-checks`) compiles `reticulum-rs-core` for `thumbv7em-none-eabi`
+  without `std` ([#676](https://github.com/FreeTAKTeam/LXMF-rs/issues/676)). It
+  is a bare-metal compile gate for the core primitives only, not device
+  evidence, and `lxmf-wire` remains `std`-only (#646).
 
 | Scope | Owner / evidence source | Status | Evidence type | Verified behavior | Remaining scope / limits |
 | --- | --- | --- | --- | --- | --- |

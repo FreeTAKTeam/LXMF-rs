@@ -13,8 +13,10 @@ notes and evidence describe their named immutable tags.
 
 - [Getting started](getting-started.md): install, build, run, and validate the
   project.
-- [Workspace and package guide](project-layout.md): active crates, binaries,
-  embedded surfaces, and dependency boundaries.
+- [Three main applications and their binaries](project-layout.md#applications-and-binaries):
+  canonical roles and binary names.
+- [Workspace and package guide](project-layout.md): active crates, embedded
+  surfaces, and dependency boundaries.
 - [Current roadmap](status/current-roadmap.md): repository-wide parity posture,
   release confidence, evidence boundaries, and execution order.
 - [SDK integration guide](sdk/README.md): supported application integration
@@ -73,9 +75,7 @@ Update these documents when their corresponding behavior changes:
   controlled cutover, stored acknowledgements, finite budgets, backup restore,
   and downgrade boundaries.
 - [Broker implementation evidence](goals/zmq-rch-durable-broker/PROGRESS.md):
-  tested behavior and remaining production/physical qualification.
-- [Original implementation plan](goals/zmq-rch-durable-broker/PLAN.md): design
-  rationale; use the operations and evidence pages for shipped behavior.
+  release implementation evidence and remaining production/physical qualification.
 
 ## Contracts and architecture
 
@@ -92,7 +92,6 @@ Update these documents when their corresponding behavior changes:
 ## Release and evidence
 
 - [Real-world interoperability evidence](status/real-world-interoperability.md)
-
 - [Latest GitHub release](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
 - [v0.14.0 release notes](release-notes-v0.14.0.md) and
   [published release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
@@ -101,18 +100,18 @@ Update these documents when their corresponding behavior changes:
   [Reticulum 1.5.5 delta](status/rns-1.5.5-delta.md)
 - [v0.12.0 release notes](release-notes-v0.12.0.md) and
   [historical candidate ledger](status/v0.12.0-release-candidate.md)
-- [v0.11.0 release notes](release-notes-v0.11.0.md)
+- [v0.11.0 release notes](release-notes-v0.11.0.md) and
+  [RNode migration guide](migrations/v0.11.0-rnode.md)
 - [v0.10.1 release notes](release-notes-v0.10.1.md) and
   [stable release evidence](status/v0.10.1-release.md)
-- [v0.9.9 release notes](release-notes-v0.9.9.md)
+- [v0.10.1 RNS 1.5.2 migration guide](migrations/v0.10.1-rns-1.5.2.md)
 - [v0.10.0 release notes](release-notes-v0.10.0.md)
 - [v0.10.0 release evidence](status/v0.10.0-release.md)
 - [v0.10.0 performance dataset](performance/v0.10.0.json) and
   [dashboard](performance/v0.10.0.html)
 - [v0.10.0 historical candidate evidence](status/v0.10.0-release-candidate.md)
 - [v0.10.0 RNS 1.5 migration guide](migrations/v0.10.0-rns-1.5.md)
-- [v0.10.1 RNS 1.5.2 migration guide](migrations/v0.10.1-rns-1.5.2.md)
-- [v0.11.0 RNode migration guide](migrations/v0.11.0-rnode.md)
+- [v0.9.9 release notes](release-notes-v0.9.9.md)
 - [Release readiness](runbooks/release-readiness.md)
 - [Release process](RELEASING.md)
 - [crates.io publication plan](runbooks/crates-io-publish-plan.md)

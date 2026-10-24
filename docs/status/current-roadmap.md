@@ -273,6 +273,17 @@ including remaining production memory/swap and delivery acceptance, is in
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 This does not change the Python reference pin or certify a production plateau.
 
+Issue 663 was reopened on 2026-10-23 because production still shows rising
+`memory.events high`, doubled anonymous memory and intermittent poll errors
+after that increment. The follow-through runs from the
+[acceptance execution plan](../goals/issue-663-resource-acceptance/PLAN.md),
+one PR per item, with progress in its
+[progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). The
+first item adds a production-shaped fixture, an RCH-shaped poller and a
+cgroup-constrained sampler (`cargo xtask resource-soak-663`); its ten-minute
+baseline is recorded in the resource regression record and is a harness smoke
+check, not acceptance.
+
 The PR CI repair routes established Link data, RTT, packet delivery proofs and
 Resource proofs to the opposite recorded interface in either direction, only
 after Link validation. It preserves shared-owner handoff even without a
@@ -280,7 +291,7 @@ destination path-table entry. Focused regressions cover absent paths, both
 proof contexts, unrelated ingress and pending Links;
 the pinned-Python two-relay restart regression retains sender delivery checks.
 
-## v0.14.0 release preparation
+## v0.14.0 release
 
 The published release consolidates the ZeroMQ SDK recovery, durable-custody,
 propagation resource-use, and reusable reply-connection increments merged since
@@ -334,6 +345,23 @@ is public with a tag peeled to that commit; crates.io
 and tag-level [performance verification](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37126480838)
 are tracked separately.
 See [the delta ledger](rns-1.5.5-delta.md) for the exact boundary.
+
+## `reticulum-rs-core` bare-metal build (#676, 2026-10-24)
+
+`reticulum-rs-core` now compiles for `thumbv7em-none-eabi` with
+`--no-default-features --features alloc`. The report was correct: the crate's own
+`std` use was already feature-gated, but `rmp-serde`, `hex`, `serde`,
+`serde_bytes`, `sha2`, `ed25519-dalek`, `x25519-dalek`, and `getrandom` entered
+through dependency defaults. `rmp-serde` is now `std`-only (it was used only by
+the filesystem key store and ratchet persistence), the other dependencies have
+their `std` defaults moved under the crate's `std` feature, ratchet rotation
+draws its secret from the RNG passed to `announce`, and `group_encrypt_with_rng`
+serves `no_std` callers while `group_encrypt` stays `std`-only. Default builds
+and wire behavior are unchanged; `cargo test -p reticulum-rs-core` and the
+workspace build pass. `tools/scripts/check-no-std-core.sh` is the regression
+gate and runs inside `cargo xtask ci --stage architecture-checks`. This is a
+compile gate for one target, not device evidence, and it does not change the
+`lxmf-wire` posture below.
 
 ## Core-library portability (#646, 2026-09-28)
 
@@ -1545,8 +1573,9 @@ release blockers.
 
 ## Issue #605 pinned 1.5.4-dev feature update
 
-The repository's current release posture remains anchored to the RNS 1.5.2
-baseline above. The #605 feature-update target is the immutable RNS 1.5.4-dev
+Issue #605 is closed. The repository's current release posture remains
+anchored to the RNS 1.5.2 baseline above. The #605 feature-update target was
+the immutable RNS 1.5.4-dev
 development revision `99de23c040d507e3fefca19e87b182302902725d`. The target is
 recorded in the canonical `[parity_target]` section of
 `tools/interop/independent-implementations.toml`; changing it requires a
@@ -1556,9 +1585,9 @@ The identified feature delta is integrated on the combined mainline: HDLC
 framing, RNode BLE lifecycle/Windows paired-device selection, and rngit media,
 page, permission-refresh, and work-transition changes. Focused Rust tests,
 pinned-Python interop, and normal CI provide software evidence. The short
-reconciliation in [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) is #605's update
-checklist; the inherited gaps below remain linked follow-ups, not automatic
-blockers. The 1.5.2 release baseline is unchanged.
+reconciliation in [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) records the
+completed #605 scope; inherited gaps below remain linked follow-ups, not grounds
+to reopen it. The 1.5.2 release baseline is unchanged.
 
 The callable inventory is now treated as historical navigation evidence for the
 active release, not as proof of forward behavioral parity. The generated
@@ -1570,7 +1599,7 @@ candidate inventory intentionally demotes inherited mappings to provisional
 `partial` until behavior is exercised.
 
 The forward ledger is [`docs/status/rns-1.5.4-delta.md`](rns-1.5.4-delta.md).
-Completing #605's feature update does not certify full Reticulum parity,
+Closing #605's feature update did not certify full Reticulum parity,
 promote a new release baseline, or close the inherited behavioral contract.
 Physical, platform, third-party-client, public-network, and soak evidence
 remain a separate operational axis under #616.
@@ -3275,7 +3304,7 @@ direction.
 
 Stable v0.14.0 is the current published release. Its package alignment, opt-in
 durable broker, migration requirements and qualification boundaries are
-summarized [above](#v0140-release-preparation) and in the
+summarized [above](#v0140-release) and in the
 [release notes](../release-notes-v0.14.0.md). The older records below retain
 their original version and evidence scope.
 

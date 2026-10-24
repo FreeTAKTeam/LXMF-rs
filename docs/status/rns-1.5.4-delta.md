@@ -1,10 +1,10 @@
 # Pinned RNS 1.5.4-dev feature delta and parity follow-ups
 
 The feature update scoped by [#605](https://github.com/FreeTAKTeam/LXMF-rs/issues/605)
-is implemented on the working RNS 1.5.2-compatible baseline. The broader
-behavioral-parity inventory below remains incomplete and belongs to its linked
-follow-ups; it is not the #605 closure checklist. The active release baseline in
-[`rns-1.5-delta.md`](rns-1.5-delta.md) is unchanged.
+is complete on the working RNS 1.5.2-compatible baseline, and #605 is closed.
+The broader behavioral-parity inventory below remains incomplete and belongs to
+its linked follow-ups; it was not part of #605's acceptance scope. The active
+release baseline in [`rns-1.5-delta.md`](rns-1.5-delta.md) is unchanged.
 
 ## Feature-update reconciliation
 
@@ -23,8 +23,8 @@ The remaining Python diff is a Link docstring correction, version metadata,
 and suppression of a debug log for packets attached to an interface; it does
 not add a wire or runtime feature. No remaining #605 feature item was identified
 in this pinned diff. The broader #608, #609, and #611–#614 gaps recorded below
-remain visible follow-ups, not automatic #605 blockers. #616
-physical, client, and public-network evidence is outside this goal.
+remain visible follow-ups, not grounds to reopen #605. Physical, client, and
+public-network evidence remains separately tracked under #616.
 
 At combined mainline commit `4ee750169caab755d52a6d3858746885b35d3bf0`,
 normal [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/36186540506)
@@ -44,8 +44,8 @@ cases. These are software checks, not #616 physical or public-network evidence.
 
 The forward RNS revision is an immutable development commit, not a release tag.
 Changing it requires a reviewed update to the canonical manifest and this
-ledger. Promoting the active release pin is a separate release decision, not
-part of closing #605.
+ledger. Promoting the active release pin is a separate release decision,
+outside the scope of the now-closed #605 issue.
 
 ## Callable inventory measurement
 
@@ -525,7 +525,7 @@ The final release check passed with 2,684 tests and one skip; hosted PR HIL
 passed `23/23`, the exact pinned matrix passed `30/30` with zero skips, and the
 Independent and CI workflows passed. This completes #615's scoped software
 acceptance gate. The remaining forward behavior rows keep their own statuses;
-they do not reopen #605's narrower feature-update checklist. Physical,
+they do not reopen #605's completed feature update. Physical,
 platform, client, and network-soak evidence remains separate under #616.
 
 The #623 wire-conformance increment adds
@@ -536,7 +536,7 @@ the committed byte corpus at
 decoder test and uploads the report. This bounded wire lane is one input to the
 completed #615 software gate. Broader live, fault, restart, multi-hop, and
 platform requirements remain open under their respective rows and #616, not
-as automatic blockers to #605's feature update.
+as automatic blockers to the completed #605 feature update.
 
 ## Merged base increment
 
@@ -550,11 +550,11 @@ outside local validation.
 
 ## Acceptance boundaries
 
-Close #605 when this identified feature delta, affected-path regressions,
-pinned-Python interoperability where behavior changed, and normal exact-head CI
-are integrated, with remaining gaps accurately documented. Do not require all
-inherited Python behavior, every linked child, or a new release solely for
-#605. The broader behavioral contract remains incomplete; its
+Issue #605 is closed after integration of this identified feature delta,
+affected-path regressions, pinned-Python interoperability where behavior
+changed, and normal exact-head CI, with remaining gaps accurately documented.
+The closure did not require all inherited Python behavior, every linked child,
+or a new release. The broader behavioral contract remains incomplete; its
 `--require-behavioral-complete` generator mode is expected to fail until those
 separately tracked parity rows are complete. Hardware and public-network
 evidence remain under #616 and cannot be inferred from software tests.
