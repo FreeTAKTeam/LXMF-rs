@@ -11,6 +11,46 @@ use rns_transport::{
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::runtime::Handle;
 
+#[tokio::test]
+async fn activation_budget_reaches_native_link_establishment_timer() {
+    let owner = PrivateIdentity::new_from_rand(OsRng);
+    let peer = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Arc::new(Transport::new(TransportConfig::new("slow-link", &owner, true)));
+    let destination =
+        SingleOutputDestination::new(*peer.as_identity(), DestinationName::new("lxmf", "delivery"))
+            .desc;
+    let task = {
+        let transport = transport.clone();
+        tokio::spawn(async move {
+            crate::link_delivery::activate_link(&transport, destination, Duration::from_secs(75), 1)
+                .await
+        })
+    };
+    let link = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if let Some(link) = transport.delivery_link(&destination.address_hash).await {
+                break link;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("pending link published");
+    let now = std::time::Instant::now();
+    let guard = link.lock().await;
+    assert!(
+        !guard.establishment_timed_out(now + Duration::from_secs(20)),
+        "a delayed LoRa proof must outlive the native default timer"
+    );
+    assert!(
+        guard.establishment_timed_out(now + Duration::from_secs(76)),
+        "the configured activation budget must still expire"
+    );
+    drop(guard);
+    task.abort();
+    let _ = task.await;
+}
+
 struct AdmissionProbe {
     events: tokio::sync::broadcast::Receiver<rns_transport::resource::ResourceEvent>,
     cleaned_before_release: Arc<AtomicBool>,

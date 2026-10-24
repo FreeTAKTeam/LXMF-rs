@@ -102,7 +102,11 @@ pub(crate) async fn activate_link(
 
     let mut last_error = None;
     for _ in 0..attempts.max(1) {
-        let link = transport.link(destination).await;
+        let link = transport
+            .link_observed(destination, |link| {
+                link.set_establishment_timeout(timeout);
+            })
+            .await;
         match await_link_activation(transport, &link, timeout).await {
             Ok(()) => return Ok(link),
             Err(error) => {
