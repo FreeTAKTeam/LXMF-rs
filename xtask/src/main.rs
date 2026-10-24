@@ -22,6 +22,7 @@ include!("main_parts/run_python_impl_bench_report.rs");
 include!("main_parts/run_public_benchmark.rs");
 
 include!("main_parts/run_independent_interop.rs");
+include!("main_parts/run_resource_soak_663.rs");
 
 include!("main_parts/run_wire_conformance.rs");
 
