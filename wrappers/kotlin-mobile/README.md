@@ -13,9 +13,10 @@ The wrapper keeps the default mobile API small:
 - `LxmfEasyClient.stop(...)` and `close()` provide lifecycle cleanup.
 
 The wrapper must match the shared SDK app v1 fixtures listed in
-`conformance-manifest.json`. The Kotlin test file mirrors those scenario IDs so
-the eventual Kotlin build can execute the same semantic cases used by the Rust
-conformance suite.
+`conformance-manifest.json`. The Kotlin test file mirrors those scenario IDs
+and checks the same semantic cases as the Rust conformance suite.
 
-Current status: source and conformance anchors are present in this repository.
-Executable Kotlin CI still needs to be wired by #32.
+Current status: source, conformance tests, and the conditional
+`kotlin-wrapper-conformance` job are present. The job in
+`.github/workflows/ci-full.yml` runs Gradle tests for full-CI dispatches and
+pull requests labeled `run-full-CI`.

@@ -79,7 +79,8 @@ the [v0.14.0 migration guide](docs/migrations/v0.14.0-zmq.md), and the
 | --- | --- |
 | Install, build, or run the tools | [Getting started](docs/getting-started.md) |
 | Integrate the Rust SDK | [SDK guide](docs/sdk/README.md) and [quickstart](docs/sdk/quickstart.md) |
-| Understand the crates and binaries | [Workspace and package guide](docs/project-layout.md) |
+| Find the three main applications and their binaries | [Application and binary table](docs/project-layout.md#applications-and-binaries) |
+| Understand the crates and dependency boundaries | [Workspace and package guide](docs/project-layout.md) |
 | Deploy a daemon | [`lxmd` systemd guide](docs/runbooks/lxmd-systemd.md) or [`reticulumd` operations](docs/runbooks/reticulumd-operational-deployment.md) |
 | Try the development MeshChat Rust POC | [MeshChat API runbook](docs/runbooks/meshchat-api.md) and [pinned application contract](docs/contracts/meshchat/README.md) |
 | Review compatibility claims | [Compatibility contract](docs/contracts/compatibility-contract.md) and [current roadmap](docs/status/current-roadmap.md) |
@@ -119,7 +120,7 @@ verification, component crates, and additional run commands.
 | --- | --- | --- |
 | `lxmf`, `lxmf-sdk`, `lxmf-wire` | LXMF wire types and high-level client APIs | [crates.io](https://crates.io/crates/lxmf), [docs.rs](https://docs.rs/lxmf), [SDK guide](docs/sdk/README.md) |
 | `reticulum-rs`, `reticulum-rs-core`, `reticulum-rs-transport`, `reticulum-rs-rpc` | Reticulum primitives, transport, interfaces, resources, and RPC | [crates.io](https://crates.io/crates/reticulum-rs), [docs.rs](https://docs.rs/reticulum-rs), [API overview](docs/lxmf-rs-api.md) |
-| `lxmf-cli`, `reticulumd`, `rns-tools` | LXMF, daemon, diagnostic, and operator binaries | [CLI reference](docs/lxmf-cli.md), [examples](docs/examples.md) |
+| Main applications | `lxmf-cli` for LXMF client and daemon workflows; `reticulumd` for the Reticulum daemon and interchange service; `rns-tools` for Reticulum utilities | [Application and binary table](docs/project-layout.md#applications-and-binaries), [CLI reference](docs/lxmf-cli.md), [examples](docs/examples.md) |
 | `meshchat-api` | Opt-in local MeshChat HTTP/WebSocket adapter for the development POC | [Runbook](docs/runbooks/meshchat-api.md) |
 | Embedded crates | Constrained-device, managed-runtime, mini-node, and C ABI integration | [Package guide](docs/project-layout.md#embedded-libraries), [FFI guide](crates/libs/rns-embedded-ffi/README.md) |
 
