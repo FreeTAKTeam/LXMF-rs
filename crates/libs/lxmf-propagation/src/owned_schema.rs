@@ -33,6 +33,19 @@ pub(crate) fn initialize(
     if known.as_deref().is_some_and(|bytes| bytes != owner_bytes) {
         return Err(Error::ForeignMessage);
     }
+    // A shorter reopen policy must not remove the original delivery deduplication window.
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS propagation_retention (singleton INTEGER PRIMARY KEY CHECK(singleton=1), seconds INTEGER NOT NULL);")?;
+    conn.execute(
+        "INSERT OR IGNORE INTO propagation_retention(singleton,seconds) VALUES(1,?1)",
+        [limits.retention_secs],
+    )?;
+    let retention: i64 =
+        conn.query_row("SELECT seconds FROM propagation_retention WHERE singleton=1", [], |row| {
+            row.get(0)
+        })?;
+    if retention != limits.retention_secs {
+        return Err(Error::InvalidState("persisted retention policy differs"));
+    }
     conn.execute(
         "INSERT OR IGNORE INTO propagation_owner(owner) VALUES(?1)",
         params![owner_bytes],

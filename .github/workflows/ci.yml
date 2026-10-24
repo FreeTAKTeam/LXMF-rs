@@ -309,6 +309,8 @@ jobs:
           tool: cargo-nextest
       - name: Unit tests (nextest)
         run: cargo xtask ci --stage test-nextest-unit
+      - name: Embedded propagation dependency and storage contracts
+        run: bash tools/scripts/check-embedded-propagation.sh
 
 
   peer-lifecycle-essential:
