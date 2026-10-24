@@ -117,3 +117,20 @@ fn recovery_respects_the_bearer_packet_limit() {
     assert_eq!(representation(&wire, None), MessageMethod::Packet);
     assert_eq!(representation(&wire, Some(212)), MessageMethod::Resource);
 }
+
+#[tokio::test]
+async fn library_retrieval_holds_shared_admission_without_starting_an_endpoint() {
+    let dir = tempfile::tempdir().expect("fixture");
+    let (outbox, prepared) = fixture(&dir.path().join("outbox.db"));
+    let recipient = prepared.remote.identity;
+    let status = outbox.deposit_own(prepared, MessageKind::Chat, 10, None).expect("deposit");
+    assert!(outbox.retrieve_for(&recipient, 11, 2048, |_, _| false).expect("denied").is_none());
+    assert!(outbox.try_transfer().is_ok());
+    let response =
+        outbox.retrieve_for(&recipient, 11, 2048, |_, _| true).expect("retrieve").expect("entry");
+    assert_eq!(response.message().status, status);
+    assert!(outbox.try_transfer().is_err());
+    assert_eq!(outbox.message(&status.message_id).expect("unchanged custody"), Some(status));
+    drop(response);
+    assert!(outbox.try_transfer().is_ok());
+}

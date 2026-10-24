@@ -102,3 +102,9 @@ pub struct Recovery {
     pub direct_wire: Vec<u8>,
     pub recipient_transient: Vec<u8>,
 }
+
+/// Original recipient ciphertext; reading it neither retires nor hands off custody.
+pub struct RetrievedMessage {
+    pub status: Status,
+    pub recipient_transient: Vec<u8>,
+}

@@ -475,3 +475,97 @@ fn storage_failure_during_finalization_does_not_wedge_or_repeat_upload() {
     assert!(store.begin_upload(&resumed.lease, &"11".repeat(16), 42).is_err());
     assert_eq!(resumed.direct_wire, wire(&a, &b, 1).pack().expect("wire"));
 }
+
+#[test]
+fn authenticated_retrieval_is_scoped_permission_checked_and_keeps_custody() {
+    let a = identity("a");
+    let b = identity("b");
+    let c = identity("c");
+    let dir = TempDir::new().expect("fixture");
+    let mut store = open(&dir, &a, 10000);
+    let first =
+        store.deposit_own(prepare(&a, &b, 1), MessageKind::Chat, 10, None).expect("B deposit");
+    store.deposit_own(prepare(&a, &c, 2), MessageKind::Chat, 10, Some(20)).expect("C deposit");
+    let before = store.status(11).expect("status");
+    assert!(store
+        .retrieve_for(a.as_identity(), 11, 10000, |_, _| true)
+        .expect("sender isolation")
+        .is_none());
+    assert!(store
+        .retrieve_for(b.as_identity(), 11, 10000, |_, _| false)
+        .expect("revoked permission")
+        .is_none());
+    let response = store
+        .retrieve_for(b.as_identity(), 11, 10000, |status, wire| {
+            assert_eq!(status.message_id, first.message_id);
+            assert_eq!(
+                WireMessage::unpack(wire).expect("original wire").destination,
+                delivery_address(b.as_identity())
+            );
+            true
+        })
+        .expect("retrieve")
+        .expect("B ciphertext");
+    assert_eq!(response.status, first);
+    assert_eq!(&response.recipient_transient[..16], delivery_address(b.as_identity()));
+    let repeated = store
+        .retrieve_for(b.as_identity(), 11, 10000, |_, _| true)
+        .expect("retry")
+        .expect("same entry");
+    assert_eq!(repeated.recipient_transient, response.recipient_transient);
+    assert_eq!(store.status(11).expect("status after reading"), before);
+    store.delivered(&first.transient_id, &first.message_id, true, 12).expect("validated proof");
+    assert!(store
+        .retrieve_for(b.as_identity(), 12, 10000, |_, _| true)
+        .expect("retired filter")
+        .is_none());
+    assert!(store
+        .retrieve_for(c.as_identity(), 21, 10000, |_, _| true)
+        .expect("expiry filter")
+        .is_none());
+    assert!(store.status(21).expect("expiry notice").iter().any(|s| s.state == State::Expired));
+    store.stop();
+    assert!(matches!(
+        store.retrieve_for(c.as_identity(), 21, 10000, |_, _| true),
+        Err(Error::Stopped)
+    ));
+}
+
+#[test]
+fn retrieval_budget_skips_large_payload_without_suppressing_a_later_retry() {
+    let a = identity("a");
+    let b = identity("b");
+    let dir = TempDir::new().expect("fixture");
+    let mut store = open(&dir, &a, 20000);
+    let mut large = WireMessage::new(
+        delivery_address(b.as_identity()),
+        delivery_address(a.as_identity()),
+        Payload::new(1.0, Some(vec![1; 4096]), None, None, None),
+    );
+    large.sign(&a).expect("sign");
+    let prepared = PreparedMessage::new(&large, &a, Some(b.as_identity())).expect("prepare");
+    let large = store.deposit_own(prepared, MessageKind::Chat, 10, None).expect("large deposit");
+    let small =
+        store.deposit_own(prepare(&a, &b, 2), MessageKind::Chat, 11, None).expect("small deposit");
+    assert!(store
+        .retrieve_for(b.as_identity(), 12, 0, |_, _| true)
+        .expect("zero budget")
+        .is_none());
+    let response = store
+        .retrieve_for(b.as_identity(), 12, 1024, |_, _| true)
+        .expect("bounded read")
+        .expect("small entry");
+    assert_eq!(response.status.message_id, small.message_id);
+    assert!(response.recipient_transient.len() <= 1024);
+    store.delivered(&small.transient_id, &small.message_id, false, 13).expect("small proof");
+    assert!(store
+        .retrieve_for(b.as_identity(), 14, 1024, |_, _| true)
+        .expect("small budget")
+        .is_none());
+    let response = store
+        .retrieve_for(b.as_identity(), 15, 10000, |_, _| true)
+        .expect("larger budget retry")
+        .expect("large entry");
+    assert_eq!(response.status, large);
+    assert!(response.recipient_transient.len() > 1024);
+}

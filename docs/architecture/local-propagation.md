@@ -14,6 +14,15 @@ through direct attempts and local admission. Direct recovery reconstructs that
 same signed wire from a sender-encrypted recovery blob using existing LXMF
 identity encryption. This internal recovery blob is never sent as a Paper message.
 
+The library-only `retrieve_for` API accepts an identity authenticated by the host's
+native Link, derives its recipient destination, and rechecks current permission
+against the original validated wire. It returns one recipient ciphertext within
+the supplied payload budget, excluding expired/terminal entries and retaining
+custody until proof. A runtime guard holds the shared transfer admission until
+the host observes response completion or cancellation. The API registers no
+endpoint, capability, announce or polling worker; optional phone-hosted retrieval
+remains a separate, field-gated integration.
+
 The 26,214,400-byte quota counts both recipient ciphertext and encrypted recovery
 material. The seven-day admission deadline never refreshes on retries, uploads or
 duplicate preparation; telemetry can expire earlier. Expiry precedes telemetry

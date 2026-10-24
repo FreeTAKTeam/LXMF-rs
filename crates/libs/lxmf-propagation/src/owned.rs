@@ -168,6 +168,63 @@ impl OwnedStore {
         Ok(Some(Recovery { lease, status, direct_wire: wire, recipient_transient: payload }))
     }
 
+    /// The host must authenticate this identity through its native Link, not request data.
+    /// Permission is checked against the original signed wire before ciphertext is exposed.
+    pub fn retrieve_for(
+        &mut self,
+        authenticated_identity: &rns_core::identity::Identity,
+        now: i64,
+        max_transfer_bytes: usize,
+        mut permit: impl FnMut(&Status, &[u8]) -> bool,
+    ) -> Result<Option<crate::RetrievedMessage>, Error> {
+        self.ensure_running()?;
+        if self.in_flight.is_some() {
+            return Err(Error::InvalidState("recovery already active"));
+        }
+        let destination = hex::encode(prepared::delivery_address(authenticated_identity));
+        let tx = self.conn.unchecked_transaction()?;
+        owned_changes::expire(&tx, now)?;
+        let statuses = {
+            let mut stmt = tx.prepare(&format!(
+                "SELECT {COLUMNS} FROM propagation_owned WHERE destination=?1 AND state<4
+                 AND transient_id IN (SELECT transient_id FROM propagation_entries WHERE destination=?1 AND size_bytes<=?2)
+                 ORDER BY admitted_at,transient_id LIMIT {}", crate::MAX_PENDING,
+            ))?;
+            let rows = stmt.query_map(
+                params![destination, i64::try_from(max_transfer_bytes).unwrap_or(i64::MAX)],
+                from_row,
+            )?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        for status in statuses {
+            let entry = crate::storage::get_propagation_entry(&tx, &status.transient_id)?
+                .ok_or(Error::InvalidState("custody payload missing"))?;
+            if entry.payload_hex.len() / 2 > max_transfer_bytes {
+                continue;
+            }
+            let recovery: Vec<u8> = tx.query_row(
+                "SELECT recovery FROM propagation_owned WHERE transient_id=?1",
+                [&status.transient_id],
+                |row| row.get(0),
+            )?;
+            let wire = prepared::recover_wire(
+                &recovery,
+                &self.identity,
+                &status.message_id,
+                &status.destination,
+            )?;
+            if !permit(&status, &wire) {
+                continue;
+            }
+            let recipient_transient = hex::decode(&entry.payload_hex)
+                .map_err(|_| Error::InvalidState("invalid stored ciphertext"))?;
+            tx.commit()?;
+            return Ok(Some(crate::RetrievedMessage { status, recipient_transient }));
+        }
+        tx.commit()?;
+        Ok(None)
+    }
+
     pub fn finish_recovery(&mut self, lease: &RecoveryLease) -> Result<(), Error> {
         if self.in_flight.as_ref() == Some(lease) {
             let result = self.conn.execute("UPDATE propagation_owned SET state=2, uploaded=1 WHERE transient_id=?1 AND state=1",[lease.transient_id()]);

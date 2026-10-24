@@ -43,6 +43,18 @@ pub struct PropagationUploadLimits {
     pub route: PropagationRouteLimits,
 }
 
+/// Keep this admission guard until a native response completes or cancellation is observed.
+/// This library API registers no retrieval endpoint or announce.
+pub struct PropagationRetrieval {
+    message: lxmf_propagation::RetrievedMessage,
+    _admission: OwnedSemaphorePermit,
+}
+impl PropagationRetrieval {
+    pub fn message(&self) -> &lxmf_propagation::RetrievedMessage {
+        &self.message
+    }
+}
+
 /// Existing native transport/lifecycle and a single serialized custody owner.
 /// The embedding runtime supplies events; this service starts no poller.
 #[derive(Clone)]
@@ -167,6 +179,26 @@ impl LocalPropagation {
     }
     pub fn status(&self, now: i64) -> Result<Vec<Status>, Error> {
         self.lock()?.status(now)
+    }
+    /// Pass only an identity authenticated by the native Link and current sharing policy.
+    pub fn retrieve_for(
+        &self,
+        authenticated_identity: &rns_transport::identity::Identity,
+        now: i64,
+        max_transfer_bytes: usize,
+        permit: impl FnMut(&Status, &[u8]) -> bool,
+    ) -> Result<Option<PropagationRetrieval>, SdkError> {
+        let admission = self.try_transfer()?;
+        let identity = lxmf_core::identity::Identity::new_from_slices(
+            authenticated_identity.public_key_bytes(),
+            authenticated_identity.verifying_key_bytes(),
+        );
+        let message = self
+            .lock()
+            .map_err(store_error)?
+            .retrieve_for(&identity, now, max_transfer_bytes, permit)
+            .map_err(store_error)?;
+        Ok(message.map(|message| PropagationRetrieval { message, _admission: admission }))
     }
     pub fn acknowledge_status(&self, id: &str) -> Result<(), Error> {
         self.lock()?.acknowledge_status(id)

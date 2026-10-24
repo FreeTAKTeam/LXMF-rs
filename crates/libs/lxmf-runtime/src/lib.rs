@@ -19,7 +19,8 @@ pub use config::{InProcessBackendConfig, InProcessBackendLimits};
 pub use delivery::{DeliveryMethod, DeliveryOutcome, DeliveryRepresentation, InProcessSendReport};
 pub use lxmf_propagation as propagation_store;
 pub use propagation::{
-    LocalPropagation, PreparedOutgoing, PropagationRouteLimits, PropagationUploadLimits,
+    LocalPropagation, PreparedOutgoing, PropagationRetrieval, PropagationRouteLimits,
+    PropagationUploadLimits,
 };
 
 pub const EXT_ACCEPTED_RESULT_ACK: &str = "reticulum.accepted_result_ack";
