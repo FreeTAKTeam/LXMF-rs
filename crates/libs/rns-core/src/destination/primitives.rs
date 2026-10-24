@@ -5,6 +5,7 @@ use crate::{
 };
 use alloc::vec;
 use alloc::vec::Vec;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
 
 pub trait Direction {}
@@ -41,10 +42,25 @@ impl Type for Group {
     }
 }
 
+/// Encrypts `data` for a group destination using the OS random source.
+///
+/// Requires the `std` feature; `no_std` callers use [`group_encrypt_with_rng`].
+#[cfg(feature = "std")]
 pub fn group_encrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>, RnsError> {
+    group_encrypt_with_rng(OsRng, key, data)
+}
+
+/// Encrypts `data` for a group destination with a caller-supplied RNG.
+///
+/// Available in both `std` and `no_std` builds; the RNG seeds the Fernet IV.
+pub fn group_encrypt_with_rng<R: rand_core::CryptoRngCore>(
+    rng: R,
+    key: &[u8; 16],
+    data: &[u8],
+) -> Result<Vec<u8>, RnsError> {
     let fernet = CachedFernet::new_from_slices(key, key);
     let mut out_buf = vec![0u8; data.len() + 64];
-    let token = fernet.encrypt(OsRng, PlainText::from(data), &mut out_buf)?;
+    let token = fernet.encrypt(rng, PlainText::from(data), &mut out_buf)?;
     Ok(token.as_bytes().to_vec())
 }
 

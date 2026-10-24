@@ -328,6 +328,23 @@ and tag-level [performance verification](https://github.com/FreeTAKTeam/LXMF-rs/
 are tracked separately.
 See [the delta ledger](rns-1.5.5-delta.md) for the exact boundary.
 
+## `reticulum-rs-core` bare-metal build (#676, 2026-10-24)
+
+`reticulum-rs-core` now compiles for `thumbv7em-none-eabi` with
+`--no-default-features --features alloc`. The report was correct: the crate's own
+`std` use was already feature-gated, but `rmp-serde`, `hex`, `serde`,
+`serde_bytes`, `sha2`, `ed25519-dalek`, `x25519-dalek`, and `getrandom` entered
+through dependency defaults. `rmp-serde` is now `std`-only (it was used only by
+the filesystem key store and ratchet persistence), the other dependencies have
+their `std` defaults moved under the crate's `std` feature, ratchet rotation
+draws its secret from the RNG passed to `announce`, and `group_encrypt_with_rng`
+serves `no_std` callers while `group_encrypt` stays `std`-only. Default builds
+and wire behavior are unchanged; `cargo test -p reticulum-rs-core` and the
+workspace build pass. `tools/scripts/check-no-std-core.sh` is the regression
+gate and runs inside `cargo xtask ci --stage architecture-checks`. This is a
+compile gate for one target, not device evidence, and it does not change the
+`lxmf-wire` posture below.
+
 ## Core-library portability (#646, 2026-09-28)
 
 `lxmf-wire` currently requires `std`, including when built with
