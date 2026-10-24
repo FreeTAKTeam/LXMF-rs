@@ -364,7 +364,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not args.skip_build:
         build_release(["--bin", "reticulumd", "--example", "resource_soak_663_client"])
     daemon_bin = Path(args.daemon_bin) if args.daemon_bin else release_binary("reticulumd", example=False)
-    client_bin = release_binary("resource_soak_663_client", example=True)
+    client_bin = (
+        Path(args.client_bin) if args.client_bin else release_binary("resource_soak_663_client", example=True)
+    )
+    # The daemon rewrites destination_table, tunnels and the WAL as it runs
+    # (and on shutdown), so every run works on its own copy of the fixture.
+    fixture_root = root
+    root = out / "work"
+    if root.exists():
+        shutil.rmtree(root)
+    log(f"copying fixture {fixture_root} -> {root}")
+    subprocess.run(["cp", "-a", "--reflink=auto", str(fixture_root), str(root)], check=True)
     (root / "reticulum.toml").touch()
 
     http_port, transport_port, zmq_port, reply_port = (free_port() for _ in range(4))
@@ -394,7 +404,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         "memory_high": args.memory_high if constrained else None,
         "memory_max": args.memory_max if constrained else None,
         "cpus": args.cpus if constrained else None,
-        "fixture": json.loads(read_text(root / "fixture.json") or "{}"),
+        "fixture": json.loads(read_text(fixture_root / "fixture.json") or "{}"),
+        "fixture_root": str(fixture_root),
         "daemon_command": command,
     }
     try:
@@ -437,6 +448,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         terminate(peer, "peer daemon", log)
         terminate(daemon, "daemon", log)
         (out / "run.json").write_text(json.dumps(run_meta, indent=2, sort_keys=True) + "\n")
+        if not args.keep_work and root.exists():
+            shutil.rmtree(root, ignore_errors=True)
     report = render_report(out)
     (out / "report.md").write_text(report)
     print(report)
@@ -754,6 +767,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--cpus", default="0,1")
     run.add_argument("--budget-bytes", type=int, default=6 * 1024**3)
     run.add_argument("--daemon-bin", default=None)
+    run.add_argument("--client-bin", default=None, help="poll client binary (default: release example)")
     run.add_argument(
         "--ready-timeout-secs",
         type=int,
@@ -761,6 +775,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="startup budget: a production-shaped WAL replay and announce restore take minutes on two CPUs",
     )
     run.add_argument("--skip-build", action="store_true")
+    run.add_argument("--keep-work", action="store_true", help="keep the per-run fixture copy")
     run.set_defaults(func=cmd_run)
 
     report = sub.add_parser("report", help="render report.md from a run directory")

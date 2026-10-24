@@ -33,11 +33,16 @@ sequential branches. Items 4-6 remain open and are not claimed here.
 
 ## Baseline findings to carry forward
 
-- Idle baseline: about eight store read operations per empty SDK poll and about
-  2,080 read syscalls per second with three writes in ten minutes. Attribute
-  the request path in item 2 and bound it in item 3.
-- Idle baseline: anonymous memory grew by about 35 MiB in ten minutes with no
-  traffic. Item 4 owns the attribution; item 2 adds the table gauges it needs.
-- Startup on the production-shaped fixture took 206 s to `/readyz` on two
-  CPUs (WAL replay plus 100,000 cached announces). Not an acceptance criterion,
-  but it bounds how fast a restart recovers.
+- Idle: about 80 store reads per second with three writes; half is the durable
+  dispatch pump polling its queue every 25 ms (item 3 adds a backoff), the rest
+  is unattributed. The SDK poll handler does no store reads.
+- Idle: cgroup file cache grows from 125 to 488 MiB with 1,906 MemoryHigh
+  events in ten minutes; the only file traffic of that size is reading the
+  100,000 cached announces (startup and five-minute verification). Item 2
+  counters measure it; item 4 owns the bound.
+- Ingress: anonymous memory grows about 60 MiB in ten minutes under announces
+  from one peer; writers waited 19 s in total across 1,903 writes. Item 3
+  targets the writer occupancy, item 4 the anonymous growth.
+- Startup on the production-shaped fixture takes 290 to 400 s to `/readyz` on
+  two CPUs. A SIGINT during that window rewrites `destination_table` empty and
+  loses the cached routes; not an acceptance criterion but worth a fix.

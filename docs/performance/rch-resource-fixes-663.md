@@ -102,11 +102,13 @@ The issue 663 follow-through adds a repeatable, production-shaped harness
 `cargo xtask resource-soak-663`). The fixture generator writes a
 durable-broker `reticulum.db` with bulk propagation inventory, mixed-case peer
 history and a deliberately grown WAL, plus a Python-compatible Reticulum
-storage root with cached announces. The runner starts `reticulumd` under
-`systemd-run --user --scope -p MemoryHigh=768M -p MemoryMax=1G` pinned to two
-CPUs, drives it with an RCH-shaped 100 ms ZeroMQ event poller, and samples
-`smaps_rollup`, `/proc/<pid>/io`, cgroup v2 memory and CPU files, WAL size and
-the daemon `/metrics` JSON.
+storage root with 100,000 signed cached announces under the interface hash the
+daemon's first interface receives. The runner copies the fixture per run,
+starts `reticulumd` under `systemd-run --user --scope -p MemoryHigh=768M
+-p MemoryMax=1G` pinned to two CPUs, drives it with an RCH-shaped 100 ms ZeroMQ
+event poller, and samples `smaps_rollup`, `/proc/<pid>/io`, cgroup v2 memory
+and CPU files, WAL size and the daemon `/metrics` JSON every five seconds. The
+ingress profile adds a second plain daemon announcing every second over TCP.
 
 Reproduce:
 
@@ -115,51 +117,53 @@ cargo xtask resource-soak-663 -- fixture --root target/soak-663/fixture \
   --entries 200000 --announces 100000 --wal-bytes 240000000
 cargo xtask resource-soak-663 -- run --root target/soak-663/fixture \
   --out target/soak-663/baseline-idle --profile idle --duration-secs 600
+cargo xtask resource-soak-663 -- run --root target/soak-663/fixture \
+  --out target/soak-663/baseline-ingress --profile ingress --duration-secs 600
 ```
 
 Fixture: 200,000 propagation entries of 2 KiB (database 1,134 MiB, WAL
-551 MiB), 300 peers with 600,000 history rows, 100,000 cached announces.
-Host: Linux 7.0, 22 cores with the daemon pinned to two, rustc 1.96.0, release
-profile, baseline daemon `main` at `8f872639`. Ten-minute idle profile (100 ms
-SDK event polls, no network peer):
+551 MiB), 300 peers with 600,000 history rows, 100,000 cached announces. Host:
+Linux 7.0, 22 cores with the daemon pinned to two, rustc 1.96.0, release
+profile, baseline daemon `main` at `8f872639`, ten minutes per run.
 
-| Measure | First minute | Last minute |
+| Measure | Idle, first minute | Idle, last minute | Ingress, first minute | Ingress, last minute |
+| --- | ---: | ---: | ---: | ---: |
+| process RSS | 82.4 MiB | 84.0 MiB | 487.3 MiB | 547.1 MiB |
+| process anonymous | 62.7 MiB | 64.1 MiB | 466.4 MiB | 526.3 MiB |
+| process swap | 102.5 MiB | 137.6 MiB | 0 | 0 |
+| cgroup memory.current | 195.3 MiB | 560.8 MiB | 495.2 MiB | 557.4 MiB |
+| cgroup file cache | 124.8 MiB | 487.9 MiB | 24.8 MiB | 26.9 MiB |
+| WAL file | 550.9 MiB | 550.9 MiB | 550.9 MiB | 550.9 MiB |
+
+| Rate or delta over the run | Idle | Ingress |
 | --- | ---: | ---: |
-| process RSS | 185.2 MiB | 220.2 MiB |
-| process anonymous | 165.1 MiB | 199.7 MiB |
-| process swap | 0 | 0 |
-| cgroup memory.current | 183.8 MiB | 215.1 MiB |
-| cgroup file cache | 16.3 MiB | 13.2 MiB |
-| WAL file | 550.9 MiB | 550.9 MiB |
+| time to `/readyz` (WAL replay plus 100,000 cached announces) | 404 s | 289 s |
+| daemon CPU, percent of one core | 5.7 | 13.0 |
+| logical reads (`rchar`) | 7.9 MiB/s | 8.0 MiB/s |
+| read syscalls per second | 2,031 | 2,691 |
+| `memory.events` high / max / oom | 1,906 / 0 / 0 | 0 / 0 / 0 |
+| store write ops / read ops | 3 / 47,191 | 1,903 / 48,052 |
+| store write-lock wait, total | 0.001 ms | 19,029 ms |
+| SDK polls / errors | 5,996 / 0 | 5,993 / 0 |
+| SDK poll p95 latency, median of windows / max | 819 us / 6.3 ms | 790 us / 27.9 ms |
 
-| Rate or delta over 596 s | Value |
-| --- | ---: |
-| time to `/readyz` (WAL replay plus 100,000 cached announces) | 206 s |
-| daemon CPU | 4.7 % of one core |
-| logical reads (`rchar`) | 8.1 MiB/s |
-| read syscalls | 2,080/s |
-| physical reads | 0 |
-| `memory.events` high / max / oom | 0 / 0 / 0 |
-| store write ops / read ops | 3 / 47,191 |
-| SDK polls / errors | 5,997 / 0 |
-| SDK poll p95 latency (median of 5 s windows / max) | 739 us / 1,024 us |
+Observations the baseline attributes or leaves open:
 
-Two observations from the idle baseline stand out and are not yet attributed:
-
-- Anonymous memory grew by about 35 MiB in ten idle minutes with no
-  announces and no messages. Item 4 of the plan owns the attribution.
-- The daemon performed 47,191 store read operations for 5,952 SDK polls, about
-  eight per empty poll, and about 2,080 read syscalls per second of roughly one
-  SQLite page each. The poll handler itself does not touch the store, so the
-  reads come from the request path around it. This is the "empty polls
-  repeatedly materialize persistent state" candidate from the original report;
-  it is recorded here for item 2 (per-operation counters) and item 3 to act on.
-
-The run is a harness smoke check of the baseline daemon (`main` at
-`8f872639`), not acceptance evidence: ten minutes on one host cannot show a
-multi-hour memory plateau, and the ingress profile drives real announces but no
-inbound, outbound or fanout messages. Those remain listed under item 6 of
-[the execution plan](../goals/issue-663-resource-acceptance/PLAN.md).
+- The idle profile reproduces the production picture: file cache grows by
+  about 360 MiB and `memory.events high` fires 1,906 times in ten minutes with
+  three writes. Reading 100,000 cached announce files back (startup, then the
+  five-minute verification) is the only file traffic of that size.
+- Idle store reads run at about 80 per second. Half are the durable dispatch
+  pump in `rpc/daemon/sdk_outbound.rs`, which re-ran `broker_pending_dispatch`
+  every 25 ms on an idle daemon; a probe through `handle_rpc` confirmed the SDK
+  poll path itself performs no store reads. The remaining idle reads are not
+  yet attributed.
+- Under announce ingress, anonymous memory grows about 60 MiB in ten minutes
+  (466 to 526 MiB) and writers wait 19 s in total across 1,903 writes while the
+  refill runs; the daemon logged 410 "dropped path-table persistence trigger"
+  warnings. These are the item 3 and item 4 targets.
+- A SIGINT during startup rewrites `destination_table` empty, discarding the
+  cached routes; the harness now works on a per-run fixture copy because of it.
 
 ## Acceptance boundary
 
