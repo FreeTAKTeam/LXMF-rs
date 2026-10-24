@@ -3,7 +3,9 @@ include!("messagesstore_sections/sdk_domain_snapshot_key.rs");
 include!("messagesstore_sections/outbound_write_worker.rs");
 include!("messagesstore_sections/schema_support.rs");
 include!("messagesstore_sections/list_messages.rs");
+include!("messagesstore_sections/peer_queue_refill_schema.rs");
 include!("messagesstore_sections/peer_queue_refill.rs");
+include!("messagesstore_sections/peer_queue_refill_incremental.rs");
 include!("messagesstore_sections/peer_queue_import.rs");
 include!("messagesstore_sections/meshchat_delete.rs");
 include!("messagesstore_sections/local_propagation_processed.rs");
@@ -13,3 +15,4 @@ include!("messagesstore_sections/prune_propagation_peer_entries_to_policy.rs");
 include!("messagesstore_sections/list_announces.rs");
 
 include!("messagesstore_sections/broker.rs");
+include!("messagesstore_sections/wal_maintenance.rs");

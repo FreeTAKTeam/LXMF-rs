@@ -2,6 +2,9 @@ use super::*;
 
 const OUTBOUND_DELIVERY_QUEUE_CAPACITY: usize = 1024;
 const OUTBOUND_DELIVERY_WORKER_LANES: usize = 16;
+/// Durable dispatch pump interval while work is flowing, and its idle ceiling.
+const DURABLE_PUMP_MIN_WAIT: std::time::Duration = std::time::Duration::from_millis(25);
+const DURABLE_PUMP_IDLE_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
 
 impl RpcDaemon {
     pub(super) fn spawn_outbound_delivery_worker(
@@ -34,29 +37,42 @@ impl RpcDaemon {
             workers.push(
                 std::thread::Builder::new()
                     .name(format!("rpc-outbound-delivery-worker-{lane}"))
-                    .spawn(move || loop {
-                        if stop.load(std::sync::atomic::Ordering::Acquire) {
-                            break;
+                    .spawn(move || {
+                        let mut pump_wait = DURABLE_PUMP_MIN_WAIT;
+                        loop {
+                            if stop.load(std::sync::atomic::Ordering::Acquire) {
+                                break;
+                            }
+                            if lane == 0 {
+                                // Back off while the durable queue is empty so an idle daemon
+                                // does not re-run the dispatch query forty times per second;
+                                // any pending work or inbound command restores the fast cadence.
+                                pump_wait = if Self::pump_durable_dispatch(&store, &bridge) {
+                                    DURABLE_PUMP_MIN_WAIT
+                                } else {
+                                    (pump_wait * 2).min(DURABLE_PUMP_IDLE_WAIT)
+                                };
+                            }
+                            // Each dedicated OS worker waits independently. In particular,
+                            // an idle receiver cannot lock lane 0 out of the durable pump.
+                            let command = rx.recv_timeout(pump_wait);
+                            let command = match command {
+                                Ok(command) => {
+                                    pump_wait = DURABLE_PUMP_MIN_WAIT;
+                                    command
+                                }
+                                Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
+                                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                            };
+                            Self::process_outbound_delivery_command(
+                                &bridge,
+                                &store,
+                                &delivery_traces,
+                                &delivery_status_lock,
+                                &outbound_delivery_handoffs,
+                                command,
+                            );
                         }
-                        if lane == 0 {
-                            Self::pump_durable_dispatch(&store, &bridge);
-                        }
-                        // Each dedicated OS worker waits independently. In particular,
-                        // an idle receiver cannot lock lane 0 out of the durable pump.
-                        let command = rx.recv_timeout(std::time::Duration::from_millis(25));
-                        let command = match command {
-                            Ok(command) => command,
-                            Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
-                            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
-                        };
-                        Self::process_outbound_delivery_command(
-                            &bridge,
-                            &store,
-                            &delivery_traces,
-                            &delivery_status_lock,
-                            &outbound_delivery_handoffs,
-                            command,
-                        );
                     })
                     .expect("spawn rpc outbound delivery worker"),
             );

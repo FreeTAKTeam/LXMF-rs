@@ -40,6 +40,7 @@ mod sdk_paper_command;
 mod sdk_runtime;
 mod sdk_topics;
 mod sdk_voice;
+mod storage_maintenance;
 
 include!("daemon/tests.rs");
 

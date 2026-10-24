@@ -75,8 +75,9 @@ fn refill_operation_counters_follow_pages_candidates_and_inserts() {
     assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10).expect("full"), 0);
     let capped_after = store.operation_metrics_snapshot()["refill"].clone();
     // The first capped call fills ten rows and then observes the full queue on
-    // its next page; the second call observes it immediately.
-    assert_eq!(capped_after["capacity_reached_total"], 2);
+    // its next page; the second call is turned away by the read-only gate.
+    assert_eq!(capped_after["capacity_reached_total"], 1);
+    assert_eq!(capped_after["skipped_capacity_total"], 1);
     assert_eq!(capped_after["invocations_total"], 3);
 }
 
@@ -241,4 +242,61 @@ fn refill_reaches_older_unseen_entry_after_more_than_8192_known_candidates() {
     let state = refill_state(&store, peer).expect("continued refill cursor");
     assert_eq!(state.cursor_received_at, Some(0));
     assert!(state.scan_complete, "the final bounded page completes the captured pass");
+}
+
+#[test]
+fn refill_defers_inventory_inserted_between_pages_until_next_invocation() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    let peer = "peer-refill-fixed-boundary";
+    for index in 0..260 {
+        let entry = PropagationEntryRecord {
+            transient_id: format!("{index:064x}"),
+            destination: "44".repeat(16),
+            payload_hex: String::new(),
+            received_at: index,
+            size_bytes: 0,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&entry).expect("insert inventory");
+        store.mark_peer_handled_propagation(peer, &entry.transient_id).expect("mark known");
+    }
+
+    let boundary = store
+        .with_read_conn(MessagesStore::capture_peer_queue_refill_boundary)
+        .expect("capture boundary");
+    let first_page = store
+        .with_write_conn(|conn| {
+            store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
+        })
+        .expect("scan first page");
+    assert!(!first_page.pass_finished);
+
+    let new_entry = PropagationEntryRecord {
+        transient_id: format!("{:064x}", 300),
+        destination: "44".repeat(16),
+        payload_hex: String::new(),
+        received_at: 300,
+        size_bytes: 0,
+        stamp_value: None,
+    };
+    store.upsert_propagation_entry(&new_entry).expect("insert after boundary capture");
+
+    loop {
+        let page = store
+            .with_write_conn(|conn| {
+                store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
+            })
+            .expect("continue captured pass");
+        assert_eq!(page.inserted, 0);
+        if page.pass_finished {
+            break;
+        }
+    }
+    assert!(store.list_peer_unhandled_propagation_ids(peer).unwrap().is_empty());
+
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 1);
+    assert_eq!(
+        store.list_peer_unhandled_propagation_ids(peer).unwrap(),
+        vec![new_entry.transient_id]
+    );
 }

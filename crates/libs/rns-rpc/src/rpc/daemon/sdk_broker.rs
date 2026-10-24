@@ -3,9 +3,16 @@ use crate::broker::{AckStoredRequest, FetchRequest, ResumeRequest, CAPABILITY};
 use crate::storage::broker::{BrokerCommand, BrokerError};
 
 impl RpcDaemon {
-    pub(super) fn pump_durable_dispatch(store: &MessagesStore, bridge: &Arc<dyn OutboundBridge>) {
+    /// Dispatch queued durable messages. Returns whether any were pending so the
+    /// caller can back off its polling while the queue is empty (issue 663: this
+    /// query ran forty times per second on an idle daemon).
+    pub(super) fn pump_durable_dispatch(
+        store: &MessagesStore,
+        bridge: &Arc<dyn OutboundBridge>,
+    ) -> bool {
         match store.broker_pending_dispatch() {
             Ok(pending) => {
+                let found_work = !pending.is_empty();
                 for (mut record, options) in pending {
                     let id = record.id.clone();
                     record.fields = match outbound_wire_fields(record.fields) {
@@ -43,8 +50,12 @@ impl RpcDaemon {
                         }
                     }
                 }
+                found_work
             }
-            Err(error) => log::error!("durable dispatch query failed: {error}"),
+            Err(error) => {
+                log::error!("durable dispatch query failed: {error}");
+                false
+            }
         }
     }
 

@@ -225,6 +225,11 @@ impl MessagesStore {
             conn.pragma_update(None, "journal_mode", "WAL")?;
             conn.pragma_update(None, "synchronous", "NORMAL")?;
             conn.pragma_update(None, "busy_timeout", 5_000i64)?;
+            conn.pragma_update(
+                None,
+                "journal_size_limit",
+                super::broker::truncate_limit_bytes(None) as i64,
+            )?;
             Ok(())
         })?;
         if self.read_conn.is_some() {
