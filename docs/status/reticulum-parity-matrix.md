@@ -1326,6 +1326,11 @@ display/status payload, and operator-workflow combinations remains pending.
   backpressure evidence.
 - Nightly mesh, soak, and embedded HIL workflows provide additional operational
   evidence, but do not promote unsupported interface families to `done`.
+- `tools/scripts/check-no-std-core.sh` (run by `cargo xtask ci --stage
+  architecture-checks`) compiles `reticulum-rs-core` for `thumbv7em-none-eabi`
+  without `std` ([#676](https://github.com/FreeTAKTeam/LXMF-rs/issues/676)). It
+  is a bare-metal compile gate for the core primitives only, not device
+  evidence, and `lxmf-wire` remains `std`-only (#646).
 
 | Scope | Owner / evidence source | Status | Evidence type | Verified behavior | Remaining scope / limits |
 | --- | --- | --- | --- | --- | --- |

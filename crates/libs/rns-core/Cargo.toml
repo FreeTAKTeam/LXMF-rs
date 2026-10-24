@@ -16,19 +16,24 @@ categories = ["network-programming", "cryptography"]
 name = "rns_core"
 
 [dependencies]
+# Dependencies below that pin `default-features = false` are declared directly
+# rather than through `workspace = true`: Cargo ignores a member-level
+# `default-features = false` when the workspace entry keeps defaults on, and
+# the workspace defaults pull `std` into every one of them. The `std` feature
+# re-enables those defaults, so default builds are unchanged.
 aes.workspace = true
 cbc.workspace = true
 crypto-common = { workspace = true, features = ["rand_core"] }
-ed25519-dalek = { workspace = true, features = ["rand_core"] }
-hex.workspace = true
+ed25519-dalek = { version = "2.1", default-features = false, features = ["rand_core", "zeroize", "fast"] }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
 hkdf.workspace = true
 hmac.workspace = true
-rand_core = { workspace = true, features = ["getrandom"] }
-rmp-serde.workspace = true
-serde = { workspace = true, features = ["derive"] }
-serde_bytes.workspace = true
-sha2.workspace = true
-x25519-dalek = { workspace = true, features = ["static_secrets"] }
+rand_core = { workspace = true }
+rmp-serde = { workspace = true, optional = true }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_bytes = { version = "0.11", default-features = false, features = ["alloc"] }
+sha2 = { version = "0.10", default-features = false }
+x25519-dalek = { version = "2.0.1", default-features = false, features = ["static_secrets", "zeroize"] }
 
 [target.'cfg(windows)'.dependencies]
 atomicwrites.workspace = true
@@ -40,7 +45,11 @@ tempfile = { workspace = true }
 
 [features]
 default = ["std"]
-std = []
+# `std` restores the dependency defaults disabled above, enables the OS RNG,
+# and compiles the filesystem key store and ratchet persistence paths.
+std = ["dep:rmp-serde", "hex/std", "serde/std", "serde_bytes/std", "sha2/std", "ed25519-dalek/std", "rand_core/std", "rand_core/getrandom"]
+# `alloc` is the no_std configuration. `tools/scripts/check-no-std-core.sh`
+# verifies it on a bare-metal target (issue #676).
 alloc = []
 fernet-aes128 = []
 

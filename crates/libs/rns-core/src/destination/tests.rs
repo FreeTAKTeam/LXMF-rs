@@ -15,6 +15,7 @@ use super::DestinationAnnounce;
 use super::DestinationName;
 use super::SingleInputDestination;
 use super::RATCHET_LENGTH;
+use super::{group_decrypt, group_encrypt, group_encrypt_with_rng};
 
 #[derive(Clone, Copy)]
 struct FixedRng {
@@ -279,4 +280,33 @@ fn announce_timestamp_uses_embedded_time_override() {
     let mut ts_bytes = [0u8; 8];
     ts_bytes[3..8].copy_from_slice(&blob[5..10]);
     assert_eq!(u64::from_be_bytes(ts_bytes), 1_700_000_000);
+}
+
+// Regression for issue #676: group encryption must not depend on an OS RNG so
+// that no_std builds can supply their own entropy. The caller-supplied RNG
+// path has to interoperate with the std helper and with `group_decrypt`.
+#[test]
+fn group_encrypt_with_rng_round_trips_with_group_decrypt() {
+    let key = [0x42u8; 16];
+    let plaintext = b"no_std group payload";
+
+    let token = group_encrypt_with_rng(FixedRng::new(0x5a), &key, plaintext)
+        .expect("group encrypt with injected rng");
+    assert_ne!(token.as_slice(), plaintext, "ciphertext must differ from plaintext");
+    assert_eq!(group_decrypt(&key, &token).expect("decrypt injected-rng token"), plaintext);
+
+    let repeat = group_encrypt_with_rng(FixedRng::new(0x5a), &key, plaintext)
+        .expect("group encrypt with the same injected rng");
+    assert_eq!(token, repeat, "the injected rng fully determines the Fernet IV");
+
+    let os_token = group_encrypt(&key, plaintext).expect("group encrypt with OS rng");
+    assert_ne!(os_token, token, "the OS rng produces a fresh IV");
+    assert_eq!(group_decrypt(&key, &os_token).expect("decrypt OS-rng token"), plaintext);
+}
+
+#[test]
+fn group_decrypt_rejects_token_from_other_key() {
+    let token =
+        group_encrypt_with_rng(FixedRng::new(1), &[1u8; 16], b"payload").expect("group encrypt");
+    assert!(group_decrypt(&[2u8; 16], &token).is_err());
 }

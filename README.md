@@ -124,11 +124,14 @@ verification, component crates, and additional run commands.
 | `meshchat-api` | Opt-in local MeshChat HTTP/WebSocket adapter for the development POC | [Runbook](docs/runbooks/meshchat-api.md) |
 | Embedded crates | Constrained-device, managed-runtime, mini-node, and C ABI integration | [Package guide](docs/project-layout.md#embedded-libraries), [FFI guide](crates/libs/rns-embedded-ffi/README.md) |
 
-Embedded portability varies by crate. `lxmf-wire` currently requires the Rust
-standard library, even with `--no-default-features --features alloc`; its `std`
-and `alloc` feature names do not guarantee bare-metal support. Full `no_std` +
-`alloc` support for this path is deferred pending maintainer capacity or
-contributor help ([#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646)). See the
+Embedded portability varies by crate. `reticulum-rs-core` builds for bare-metal
+`no_std` targets with `--no-default-features --features alloc`, verified in CI
+against `thumbv7em-none-eabi` ([#676](https://github.com/FreeTAKTeam/LXMF-rs/issues/676));
+the embedding application supplies its own RNG and clock. `lxmf-wire` still
+requires the Rust standard library, even with `--no-default-features --features
+alloc`; its `std` and `alloc` feature names do not guarantee bare-metal support.
+Full `no_std` + `alloc` support for that path is deferred pending maintainer
+capacity or contributor help ([#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646)). See the
 [capability audit](docs/contracts/sdk-v2-feature-matrix.md#no_std--alloc-capability-audit)
 for crate-specific limits.
 

@@ -29,7 +29,8 @@ fn run_migration_checks() -> Result<()> {
 
 fn run_architecture_checks() -> Result<()> {
     run_architecture_lint_check()?;
-    run_module_size_check()
+    run_module_size_check()?;
+    run_no_std_core_check()
 }
 
 fn run_forbidden_deps() -> Result<()> {
@@ -70,6 +71,12 @@ fn run_boundary_checks(enforce_legacy_imports: &str, enforce_legacy_shims: &str)
 
 fn run_module_size_check() -> Result<()> {
     run("bash", &["tools/scripts/check-module-size.sh"])
+}
+
+/// Bare-metal `no_std` gate for `reticulum-rs-core` (issue #676). Requires the
+/// `thumbv7em-none-eabi` target; the script explains how to install it.
+fn run_no_std_core_check() -> Result<()> {
+    run("bash", &["tools/scripts/check-no-std-core.sh"])
 }
 
 fn parse_cutover_rows(markdown: &str) -> Result<Vec<Vec<String>>> {
