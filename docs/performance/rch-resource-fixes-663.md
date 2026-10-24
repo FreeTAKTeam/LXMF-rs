@@ -114,7 +114,7 @@ Reproduce:
 
 ```sh
 cargo xtask resource-soak-663 -- fixture --root target/soak-663/fixture \
-  --entries 200000 --announces 100000 --wal-bytes 240000000
+  --entries 200000 --announces 100000
 cargo xtask resource-soak-663 -- run --root target/soak-663/fixture \
   --out target/soak-663/baseline-idle --profile idle --duration-secs 600
 cargo xtask resource-soak-663 -- run --root target/soak-663/fixture \
