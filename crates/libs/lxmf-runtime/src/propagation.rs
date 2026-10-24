@@ -1,3 +1,6 @@
+#[path = "propagation_identities.rs"]
+mod identities;
+
 use crate::delivery::{self, transport_error};
 use crate::owned_link_delivery::{send_owned, OwnedSend};
 use crate::{DeliveryMethod, DeliveryRepresentation, InProcessBackendConfig, InProcessSendReport};
@@ -91,14 +94,7 @@ impl LocalPropagation {
     pub async fn prepare(&self, request: &SendRequest) -> Result<PreparedOutgoing, SdkError> {
         let destination = AddressHash::new_from_hex_string(request.destination.trim())
             .map_err(|_| transport_error("invalid destination"))?;
-        let remote = delivery::resolve_destination(
-            &self.config.transport,
-            destination,
-            "delivery",
-            self.config.link_connect_timeout,
-        )
-        .await
-        .map_err(|error| error.with_cause_code("UnresolvedRecipient"))?;
+        let remote = self.offline_recipient(destination).await?;
         let wire = delivery::encode_wire(
             &self.config.identity,
             self.config.source_destination,

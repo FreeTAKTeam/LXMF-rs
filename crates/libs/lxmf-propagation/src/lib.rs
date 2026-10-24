@@ -1,6 +1,9 @@
 //! Propagation storage shared by the daemon and embedded runtimes.
 //! No transport, RPC dispatcher or process lifecycle is imported here.
 mod error;
+pub mod identities;
+#[cfg(feature = "embedded")]
+mod owned_identities;
 #[cfg(feature = "embedded")]
 mod owned_schema;
 mod owned_types;
