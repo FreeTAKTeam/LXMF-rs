@@ -51,6 +51,7 @@ pub(crate) fn initialize(
         params![owner_bytes],
     )?;
     crate::storage::initialize(conn)?;
+    crate::identities::initialize(conn)?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS propagation_owned (
         transient_id TEXT PRIMARY KEY CHECK(length(transient_id)=64),

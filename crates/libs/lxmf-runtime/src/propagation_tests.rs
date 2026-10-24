@@ -98,10 +98,15 @@ async fn cancelled_recovery_releases_the_shared_transfer_owner() {
 #[tokio::test]
 async fn unresolved_identity_is_typed_and_never_admitted() {
     let dir = tempfile::tempdir().expect("valid test fixture or operation");
-    let (outbox, _) = fixture(&dir.path().join("outbox.db"));
+    let (mut outbox, _) = fixture(&dir.path().join("outbox.db"));
+    Arc::make_mut(&mut outbox.config).link_connect_timeout = Duration::from_secs(75);
     let request =
         SendRequest::new("unused", "11".repeat(16), serde_json::json!({"content_base64":"aGk="}));
-    let error = outbox.prepare(&request).await.err().expect("valid test fixture or operation");
+    let error = tokio::time::timeout(Duration::from_millis(250), outbox.prepare(&request))
+        .await
+        .expect("no discovery deadline")
+        .err()
+        .expect("typed error");
     assert_eq!(error.cause_code.as_deref(), Some("UnresolvedRecipient"));
     assert!(outbox.status(10).expect("valid test fixture or operation").is_empty());
 }
@@ -128,4 +133,45 @@ async fn library_retrieval_holds_shared_admission_without_starting_an_endpoint()
     assert_eq!(outbox.message(&status.message_id).expect("unchanged custody"), Some(status));
     drop(response);
     assert!(outbox.try_transfer().is_ok());
+}
+
+#[tokio::test]
+async fn cached_recipient_prepares_after_restart_without_learning_a_route() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("outbox.db");
+    let (outbox, prepared) = fixture(&path);
+    let destination = prepared.remote.address_hash;
+    let recipient = lxmf_core::identity::Identity::try_new_from_slices(
+        prepared.remote.identity.public_key_bytes(),
+        prepared.remote.identity.verifying_key_bytes(),
+    )
+    .unwrap();
+    outbox
+        .lock()
+        .unwrap()
+        .remember_recipient(destination.as_slice().try_into().unwrap(), &recipient, 1)
+        .unwrap();
+    let config = (*outbox.config).clone();
+    drop(outbox);
+    let outbox = LocalPropagation::open(config, &path, StoreLimits::default()).unwrap();
+    assert!(outbox.config.transport.destination_identity(&destination).await.is_none());
+    let request = SendRequest::new(
+        "test",
+        destination.to_hex_string(),
+        serde_json::json!({"content_base64":"aGVsbG8gd29ybGQ="}),
+    );
+    let prepared = tokio::time::timeout(Duration::from_millis(250), outbox.prepare(&request))
+        .await
+        .unwrap()
+        .unwrap();
+    let id = prepared.message_id().unwrap();
+    let status = outbox.deposit_own(prepared, MessageKind::Chat, 2, None).unwrap();
+    assert_eq!(status.message_id, id);
+    assert!(status.encrypted_bytes > 0);
+    assert!(outbox.config.transport.destination_identity(&destination).await.is_none());
+    assert!(!outbox.config.transport.has_path(&destination).await);
+    assert!(matches!(
+        outbox.remember_recipient(destination, 3).await,
+        Err(Error::UnresolvedRecipient)
+    ));
 }

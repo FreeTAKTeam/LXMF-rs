@@ -34,17 +34,7 @@ impl MessagesStore {
         peer: &str,
     ) -> rusqlite::Result<Option<(String, String)>> {
         let peer = normalize_peer_key(peer);
-        self.with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT public_key_hex, verifying_key_hex
-                 FROM announce_identities
-                 WHERE peer = ?1
-                 LIMIT 1",
-                params![peer],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
-        })
+        self.with_read_conn(|conn| lxmf_propagation::identities::keys(conn, &peer))
     }
 
     pub fn latest_announce_stamp_cost_for(&self, peer: &str) -> rusqlite::Result<Option<u32>> {
@@ -273,12 +263,6 @@ impl MessagesStore {
                     stamp_cost_flexibility INTEGER,
                     peering_cost INTEGER
                 );
-                CREATE TABLE IF NOT EXISTS announce_identities (
-                    peer TEXT PRIMARY KEY,
-                    public_key_hex TEXT NOT NULL,
-                    verifying_key_hex TEXT NOT NULL,
-                    updated_at INTEGER NOT NULL
-                );
                 CREATE TABLE IF NOT EXISTS sdk_domain_state (
                     domain TEXT PRIMARY KEY,
                     state_json TEXT NOT NULL
@@ -301,6 +285,7 @@ impl MessagesStore {
 ",
             )?;
             lxmf_propagation::storage::initialize(&tx)?;
+            lxmf_propagation::identities::initialize(&tx)?;
             Self::ensure_multi_ticket_schema(&tx)?;
             tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tickets_destination_expires
