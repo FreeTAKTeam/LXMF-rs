@@ -1,5 +1,8 @@
 # Repository-Native HIL Controller
 
+Status: the repository-owned controller is implemented. Its first live
+hardware acceptance run with two provisioned RNodes remains outstanding.
+
 ## Outcome
 
 LXMF-rs has one repository-owned hardware-in-the-loop controller with three

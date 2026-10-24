@@ -273,7 +273,7 @@ destination path-table entry. Focused regressions cover absent paths, both
 proof contexts, unrelated ingress and pending Links;
 the pinned-Python two-relay restart regression retains sender delivery checks.
 
-## v0.14.0 release preparation
+## v0.14.0 release
 
 The published release consolidates the ZeroMQ SDK recovery, durable-custody,
 propagation resource-use, and reusable reply-connection increments merged since
@@ -1538,8 +1538,9 @@ release blockers.
 
 ## Issue #605 pinned 1.5.4-dev feature update
 
-The repository's current release posture remains anchored to the RNS 1.5.2
-baseline above. The #605 feature-update target is the immutable RNS 1.5.4-dev
+Issue #605 is closed. The repository's current release posture remains
+anchored to the RNS 1.5.2 baseline above. The #605 feature-update target was
+the immutable RNS 1.5.4-dev
 development revision `99de23c040d507e3fefca19e87b182302902725d`. The target is
 recorded in the canonical `[parity_target]` section of
 `tools/interop/independent-implementations.toml`; changing it requires a
@@ -1549,9 +1550,9 @@ The identified feature delta is integrated on the combined mainline: HDLC
 framing, RNode BLE lifecycle/Windows paired-device selection, and rngit media,
 page, permission-refresh, and work-transition changes. Focused Rust tests,
 pinned-Python interop, and normal CI provide software evidence. The short
-reconciliation in [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) is #605's update
-checklist; the inherited gaps below remain linked follow-ups, not automatic
-blockers. The 1.5.2 release baseline is unchanged.
+reconciliation in [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) records the
+completed #605 scope; inherited gaps below remain linked follow-ups, not grounds
+to reopen it. The 1.5.2 release baseline is unchanged.
 
 The callable inventory is now treated as historical navigation evidence for the
 active release, not as proof of forward behavioral parity. The generated
@@ -1563,7 +1564,7 @@ candidate inventory intentionally demotes inherited mappings to provisional
 `partial` until behavior is exercised.
 
 The forward ledger is [`docs/status/rns-1.5.4-delta.md`](rns-1.5.4-delta.md).
-Completing #605's feature update does not certify full Reticulum parity,
+Closing #605's feature update did not certify full Reticulum parity,
 promote a new release baseline, or close the inherited behavioral contract.
 Physical, platform, third-party-client, public-network, and soak evidence
 remain a separate operational axis under #616.
@@ -3268,7 +3269,7 @@ direction.
 
 Stable v0.14.0 is the current published release. Its package alignment, opt-in
 durable broker, migration requirements and qualification boundaries are
-summarized [above](#v0140-release-preparation) and in the
+summarized [above](#v0140-release) and in the
 [release notes](../release-notes-v0.14.0.md). The older records below retain
 their original version and evidence scope.
 
