@@ -145,6 +145,99 @@ fn incremental_pass_catches_out_of_order_received_at() {
 }
 
 #[test]
+fn refill_offers_reused_rowid_after_pruning_the_inventory_tail() {
+    let (_temp, store) = refill_store_on_disk();
+    let peer = "peer-reused-rowid";
+    seed_known_inventory(&store, peer, 3);
+    store.upsert_propagation_entry(&refill_entry(2, -100)).expect("make tail oldest");
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 100).unwrap(), 0);
+    assert_eq!(refill_floor(&store, peer).0, Some(3));
+
+    assert_eq!(store.prune_propagation_entries_to_limit_bytes(16).unwrap(), vec![format!("{:064x}", 2)]);
+    store.upsert_propagation_entry(&refill_entry(900, 900)).expect("reuse pruned rowid");
+
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 100).unwrap(), 1);
+    assert_eq!(store.list_peer_unhandled_propagation_ids(peer).unwrap(), vec![format!("{:064x}", 900)]);
+}
+
+#[test]
+fn refill_offers_rowid_reused_between_pages_on_the_next_invocation() {
+    for incremental in [false, true] {
+        let (_temp, store) = refill_store_on_disk();
+        let peer = "peer-reused-between-pages";
+        seed_known_inventory(&store, peer, 260);
+        if incremental {
+            assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 0);
+            for index in 260..520 {
+                let entry = refill_entry(index, index as i64);
+                store.upsert_propagation_entry(&entry).unwrap();
+                store.mark_peer_handled_propagation(peer, &entry.transient_id).unwrap();
+            }
+        }
+        let boundary = store.with_read_conn(MessagesStore::capture_peer_queue_refill_boundary).unwrap();
+        let page = store.with_write_conn(|conn| {
+            store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
+        }).unwrap();
+        assert!(!page.pass_finished);
+        store.with_write_conn(|conn| {
+            conn.execute("DELETE FROM propagation_entries WHERE rowid = ?1", params![boundary.max_rowid])
+        }).unwrap();
+        store.upsert_propagation_entry(&refill_entry(900, 900)).unwrap();
+        loop {
+            let page = store.with_write_conn(|conn| {
+                store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
+            }).unwrap();
+            assert_eq!(page.inserted, 0);
+            if page.pass_finished {
+                break;
+            }
+        }
+
+        assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 1,
+            "rowid reused during incremental={incremental} pass was skipped");
+        assert_eq!(store.list_peer_unhandled_propagation_ids(peer).unwrap(), vec![format!("{:064x}", 900)]);
+    }
+}
+
+#[test]
+fn refill_offers_inventory_reordered_between_pages_on_the_next_invocation() {
+    for incremental in [false, true] {
+        let (_temp, store) = refill_store_on_disk();
+        let peer = "peer-reordered-between-pages";
+        seed_known_inventory(&store, peer, 260);
+        if incremental {
+            assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 0);
+        }
+        store.upsert_propagation_entry(&refill_entry(900, -100)).unwrap();
+        if incremental {
+            for index in 260..520 {
+                let entry = refill_entry(index, index as i64);
+                store.upsert_propagation_entry(&entry).unwrap();
+                store.mark_peer_handled_propagation(peer, &entry.transient_id).unwrap();
+            }
+        }
+        let boundary = store.with_read_conn(MessagesStore::capture_peer_queue_refill_boundary).unwrap();
+        let page = store.with_write_conn(|conn| {
+            store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
+        }).unwrap();
+        assert!(!page.pass_finished);
+        store.upsert_propagation_entry(&refill_entry(900, 900)).unwrap();
+        loop {
+            let page = store.with_write_conn(|conn| {
+                store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
+            }).unwrap();
+            assert_eq!(page.inserted, 0);
+            if page.pass_finished {
+                break;
+            }
+        }
+
+        assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 1,
+            "inventory reordered during incremental={incremental} pass was skipped");
+    }
+}
+
+#[test]
 fn received_at_update_forces_full_rescan() {
     let (_temp, store) = refill_store_on_disk();
     let peer = "peer-reorder";

@@ -42,9 +42,8 @@ impl MessagesStore {
 
         let exhausted = scanned == candidates.len() && candidates.len() < PEER_QUEUE_REFILL_SCAN_BATCH;
         if exhausted {
-            state.scan_complete = true;
+            Self::complete_peer_queue_refill(tx, boundary, state)?;
             state.cursor_rowid = None;
-            state.floor_rowid = boundary.max_rowid.or(state.floor_rowid);
         }
         self.write_state.refill_metrics.record_page(
             candidates.len(),

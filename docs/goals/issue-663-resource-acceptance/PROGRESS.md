@@ -53,6 +53,10 @@ sequential branches. Items 4-6 remain open and are not claimed here.
   full-queue peers never take the write mutex.
 - Incremental rescan above a persisted rowid floor; `received_at` updates and
   freed capacity force a full rescan; legacy rows migrate on first pass.
+  Review regressions also cover pruning the largest rowid (SQLite can reuse it)
+  and reordering inventory between full or incremental pages. A persisted rescan
+  epoch invalidates the floor across these mutations without penalizing ordinary
+  arrivals during a scan.
 - Priority waiter count on the writer; refill pages park on a condition variable in 5 ms slices, bounded to 50 ms.
 - WAL: cached budget makes the per-write emergency check SQL-free;
   `journal_size_limit = max(64 MiB, budget/64)`; a 60 s daemon timer

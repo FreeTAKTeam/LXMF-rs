@@ -169,11 +169,7 @@ impl MessagesStore {
         let exhausted_page =
             scanned == candidate_ids.len() && candidate_ids.len() < PEER_QUEUE_REFILL_SCAN_BATCH;
         if exhausted_page {
-            // Every row at or below the boundary head has been offered; rows arriving
-            // later carry a larger rowid and are picked up incrementally.
-            // The cursor stays where the pass ended; a changed inventory resets it.
-            state.scan_complete = true;
-            state.floor_rowid = boundary.max_rowid;
+            Self::complete_peer_queue_refill(tx, boundary, state)?;
         }
         self.write_state.refill_metrics.record_page(
             candidate_ids.len(),

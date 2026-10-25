@@ -1,10 +1,10 @@
 // Propagation refill scan state: schema, boundary capture, the saved per-peer
 // row and the read-only gate that decides whether a refill needs the writer.
 //
-// Invariant for the rowid floor (issue 663): `propagation_entries` is a rowid
-// table and the live database is never VACUUMed, so a row inserted after a
-// completed pass always has a rowid above the pass's `floor_rowid`. A
-// `received_at` update can reorder rows, so it forces a full rescan instead.
+// The live database is never VACUUMed. Deleting the largest rowid can still
+// allow rowid reuse, so it invalidates peer scans and advances `rescan_epoch`.
+// A pass spanning that deletion cannot establish a safe incremental floor.
+// Reordering `received_at` also advances the epoch and forces a full rescan.
 
 const PEER_QUEUE_REFILL_SCAN_BATCH: usize = 128;
 
@@ -19,6 +19,7 @@ struct PeerQueueRefillBoundary {
     generation: i64,
     head: Option<(i64, String)>,
     max_rowid: Option<i64>,
+    rescan_epoch: i64,
 }
 
 /// One `propagation_peer_refill_state` row.
@@ -51,7 +52,7 @@ impl MessagesStore {
     ) -> rusqlite::Result<PeerQueueRefillBoundary> {
         conn.query_row(
             "SELECT inventory.generation, entry.received_at, entry.transient_id,
-                    (SELECT MAX(rowid) FROM propagation_entries)
+                    (SELECT MAX(rowid) FROM propagation_entries), inventory.rescan_epoch
              FROM propagation_inventory_generation AS inventory
              LEFT JOIN propagation_entries AS entry ON entry.transient_id = (
                  SELECT transient_id FROM propagation_entries
@@ -68,6 +69,7 @@ impl MessagesStore {
                     generation,
                     head: received_at.zip(transient_id),
                     max_rowid,
+                    rescan_epoch: row.get(4)?,
                 })
             },
         )
@@ -133,7 +135,45 @@ impl MessagesStore {
             "propagation_peer_refill_state",
             "cursor_rowid",
             "cursor_rowid INTEGER",
+        )?;
+        Self::ensure_schema_column(
+            conn,
+            "propagation_inventory_generation",
+            "rescan_epoch",
+            "rescan_epoch INTEGER NOT NULL DEFAULT 0",
+        )?;
+        conn.execute_batch(
+            "CREATE TRIGGER IF NOT EXISTS propagation_refill_inventory_reorder_epoch
+                AFTER UPDATE OF received_at ON propagation_entries
+                WHEN OLD.received_at <> NEW.received_at
+                BEGIN
+                    UPDATE propagation_inventory_generation SET rescan_epoch = rescan_epoch + 1
+                    WHERE singleton = 1;
+                END;
+            CREATE TRIGGER IF NOT EXISTS propagation_refill_inventory_tail_delete
+                AFTER DELETE ON propagation_entries
+                WHEN NOT EXISTS (SELECT 1 FROM propagation_entries WHERE rowid > OLD.rowid)
+                BEGIN
+                    UPDATE propagation_inventory_generation SET rescan_epoch = rescan_epoch + 1
+                    WHERE singleton = 1;
+                    UPDATE propagation_peer_refill_state SET rescan_required = 1;
+                END;",
         )
+    }
+
+    fn complete_peer_queue_refill(
+        conn: &Connection,
+        boundary: &PeerQueueRefillBoundary,
+        state: &mut PeerQueueRefillSavedState,
+    ) -> rusqlite::Result<()> {
+        let rescan_epoch: i64 = conn.query_row(
+            "SELECT rescan_epoch FROM propagation_inventory_generation WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        state.scan_complete = true;
+        state.floor_rowid = if rescan_epoch == boundary.rescan_epoch { boundary.max_rowid } else { None };
+        Ok(())
     }
 
     fn load_peer_queue_refill_state(
