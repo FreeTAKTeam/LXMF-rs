@@ -6,7 +6,7 @@ use rns_transport::{
     iface::IfaceRole,
     packet::PacketContext,
     resource::ResourceEventKind,
-    transport::{Transport, TransportConfig},
+    transport::{Transport, TransportConfig, PATHFINDER_M},
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::runtime::Handle;
@@ -48,7 +48,11 @@ async fn retained_owner_cancels_registered_resource_before_releasing_admission()
             let mut peer =
                 Link::new_from_request(&request, signer.sign_key().clone(), destination, events)
                     .expect("test request");
-            outbound.handle_packet(&peer.prove(), iface);
+            // Transport publication pins the proof hops to the unknown-route
+            // maximum when no path exists, so the proof must carry it.
+            let mut proof = peer.prove();
+            proof.header.hops = PATHFINDER_M as u8;
+            outbound.handle_packet(&proof, iface);
             outbound.set_ingress_iface(iface);
             peer.handle_packet(&outbound.create_rtt(), iface);
         }
