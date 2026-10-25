@@ -113,6 +113,11 @@ impl PathTable {
         Self { map: HashMap::new() }
     }
 
+    /// Number of known routes, for metrics.
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
     pub fn get(&self, destination: &AddressHash) -> Option<&PathEntry> {
         self.map.get(destination)
     }

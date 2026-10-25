@@ -6,8 +6,8 @@ sequential branches. Items 4-6 remain open and are not claimed here.
 
 | Item | State | Branch / PR / head | Evidence |
 | --- | --- | --- | --- |
-| 1. Fixture and cgroup sampler | PR open | `corvo/issue-663-01-harness` | Harness code, Python unit tests, 10-minute idle and ingress smoke runs on the baseline daemon (see [performance record](../../performance/rch-resource-fixes-663.md)). |
-| 2. Operation-level metrics | Pending | — | — |
+| 1. Fixture and cgroup sampler | PR open | `corvo/issue-663-01-harness`, [#682](https://github.com/FreeTAKTeam/LXMF-rs/pull/682) | Harness code, Python unit tests, 10-minute idle and ingress smoke runs on the baseline daemon (see [performance record](../../performance/rch-resource-fixes-663.md)). |
+| 2. Operation-level metrics | PR open | `corvo/issue-663-02-metrics` (stacked on #682) | `storage.refill`, `storage.wal`, `memory` and `providers` blocks in `/metrics`; four-package suite 3,293 passed, 0 failed. |
 | 3. Refill coalescing, writer fairness, WAL maintenance | Pending | — | — |
 | 4. Anonymous-memory attribution and bounds | Not started | — | — |
 | 5. Poll-failure stage correlation | Not started | — | — |
@@ -30,6 +30,22 @@ sequential branches. Items 4-6 remain open and are not claimed here.
   minute medians, rates and the issue's acceptance checks.
 - Limits: the ingress profile drives real announces from a second daemon but no
   inbound/outbound/fanout messages; a 10-minute run is a harness smoke check.
+
+## Item 2 notes
+
+- `storage.refill` and `storage.wal` in the daemon metrics snapshot
+  (`/metrics`), fed by `MessagesStore` atomics: refill invocations, pages,
+  candidates examined, rows inserted, capacity stops, wall and max page time,
+  skip and yield counters; WAL checkpoint attempts and outcomes, emergency
+  reclaims and last WAL size.
+- `memory`: process `smaps_rollup` plus the daemon's own cgroup v2
+  `memory.current`, `memory.stat`, `memory.swap.current`, `memory.events`,
+  `memory.high`, `memory.max`, reported as unavailable (not zero) elsewhere.
+- `providers.announce_persistence` and `providers.transport_tables` from the
+  daemon binary through a `MetricsProvider` registry; the path-table save now
+  returns a per-save report (examined, skipped known, verified, written).
+- No behavior change except that absorbed persistence triggers are counted and
+  logged at debug instead of a warning on every announce while a save runs.
 
 ## Baseline findings to carry forward
 

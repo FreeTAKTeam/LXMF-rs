@@ -488,10 +488,14 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         if let Some(network_identity) = transport_network_identity.as_ref() {
             let _ = transport.set_network_identity(network_identity.clone()).await;
         }
-        path_table_persistence = Some(PathTablePersistenceContext::new(
-            transport.clone(),
-            reticulum_storage_path.clone(),
-        ));
+        let persistence_context =
+            PathTablePersistenceContext::new(transport.clone(), reticulum_storage_path.clone());
+        daemon.register_metrics_provider("announce_persistence", persistence_context.metrics());
+        daemon.register_metrics_provider(
+            "transport_tables",
+            Arc::new(crate::persistence_metrics::TransportTablesProvider::new(transport.clone())),
+        );
+        path_table_persistence = Some(persistence_context.clone());
         spawn_inbound_worker_with_resource_events(
             daemon.clone(),
             transport.clone(),
@@ -535,7 +539,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             daemon.clone(),
             transport,
             peer_crypto,
-            Some(reticulum_storage_path),
+            Some(persistence_context),
             discovery,
         );
     }

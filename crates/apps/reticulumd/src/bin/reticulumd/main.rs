@@ -17,6 +17,7 @@ mod inbound_worker;
 mod interface_hot_apply;
 mod interfaces;
 mod outbound_resources;
+mod persistence_metrics;
 mod receipt_events;
 mod receipt_worker;
 mod rpc_loop;
