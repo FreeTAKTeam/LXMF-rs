@@ -393,17 +393,7 @@ impl MessagesStore {
         updated_at: i64,
     ) -> rusqlite::Result<()> {
         Self::write_lock_and_run(write_state, |conn| {
-            conn.execute(
-                "INSERT INTO announce_identities
-                    (peer, public_key_hex, verifying_key_hex, updated_at)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(peer) DO UPDATE SET
-                    public_key_hex = excluded.public_key_hex,
-                    verifying_key_hex = excluded.verifying_key_hex,
-                    updated_at = excluded.updated_at",
-                params![peer, public_key_hex, verifying_key_hex, updated_at],
-            )?;
-            Ok(())
+            lxmf_propagation::identities::upsert(conn, peer, public_key_hex, verifying_key_hex, updated_at)
         })
     }
 

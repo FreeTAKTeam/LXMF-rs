@@ -78,6 +78,7 @@ pub(crate) async fn send(
     )
     .await?;
     let wire = encode_wire(context.identity, context.source_destination, &remote, request)?;
+    crate::outgoing_capture::record(&wire, remote);
     let message_id = MessageId(hex::encode(
         WireMessage::unpack(&wire)
             .map_err(|err| internal(format!("failed to decode encoded LXMF message: {err}")))?
@@ -228,7 +229,7 @@ async fn send_propagated(
     .await
 }
 
-fn encode_wire(
+pub(crate) fn encode_wire(
     identity: &PrivateIdentity,
     source: AddressHash,
     remote: &DestinationDesc,
@@ -419,6 +420,10 @@ fn ensure_sent(outcome: SendPacketOutcome, action: &str) -> Result<DeliveryOutco
     match outcome {
         SendPacketOutcome::SentDirect => Ok(DeliveryOutcome::SentDirect),
         SendPacketOutcome::SentBroadcast => Ok(DeliveryOutcome::SentBroadcast),
+        SendPacketOutcome::DroppedNoRoute => {
+            Err(transport_error(format!("{action} failed: {outcome:?}"))
+                .with_cause_code("OfflineRouteUnavailable"))
+        }
         _ => Err(transport_error(format!("{action} failed: {outcome:?}"))),
     }
 }

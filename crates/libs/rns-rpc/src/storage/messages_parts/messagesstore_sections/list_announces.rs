@@ -34,17 +34,7 @@ impl MessagesStore {
         peer: &str,
     ) -> rusqlite::Result<Option<(String, String)>> {
         let peer = normalize_peer_key(peer);
-        self.with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT public_key_hex, verifying_key_hex
-                 FROM announce_identities
-                 WHERE peer = ?1
-                 LIMIT 1",
-                params![peer],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
-        })
+        self.with_read_conn(|conn| lxmf_propagation::identities::keys(conn, &peer))
     }
 
     pub fn latest_announce_stamp_cost_for(&self, peer: &str) -> rusqlite::Result<Option<u32>> {
@@ -278,12 +268,6 @@ impl MessagesStore {
                     stamp_cost_flexibility INTEGER,
                     peering_cost INTEGER
                 );
-                CREATE TABLE IF NOT EXISTS announce_identities (
-                    peer TEXT PRIMARY KEY,
-                    public_key_hex TEXT NOT NULL,
-                    verifying_key_hex TEXT NOT NULL,
-                    updated_at INTEGER NOT NULL
-                );
                 CREATE TABLE IF NOT EXISTS sdk_domain_state (
                     domain TEXT PRIMARY KEY,
                     state_json TEXT NOT NULL
@@ -303,26 +287,10 @@ impl MessagesStore {
                     destination TEXT PRIMARY KEY,
                     delivered_at INTEGER NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS propagation_entries (
-                    transient_id TEXT PRIMARY KEY,
-                    destination TEXT NOT NULL,
-                    payload_hex TEXT NOT NULL,
-                    received_at INTEGER NOT NULL,
-                    size_bytes INTEGER NOT NULL,
-                    stamp_value INTEGER
-                );
-                CREATE TABLE IF NOT EXISTS propagation_peer_entries (
-                    peer TEXT NOT NULL,
-                    transient_id TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    updated_at INTEGER NOT NULL,
-                    PRIMARY KEY(peer, transient_id)
-                );
-                CREATE TABLE IF NOT EXISTS propagation_local_entries (
-                    transient_id TEXT PRIMARY KEY,
-                    processed_at INTEGER NOT NULL
-                );",
+",
             )?;
+            lxmf_propagation::storage::initialize(&tx)?;
+            lxmf_propagation::identities::initialize(&tx)?;
             Self::ensure_multi_ticket_schema(&tx)?;
             tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tickets_destination_expires
@@ -374,12 +342,7 @@ impl MessagesStore {
                     ON messages(receipt_status);
                 CREATE INDEX IF NOT EXISTS idx_announces_timestamp_id_desc
                     ON announces(timestamp DESC, id DESC);
-                CREATE INDEX IF NOT EXISTS idx_propagation_entries_destination_size
-                    ON propagation_entries(destination, size_bytes, transient_id);
-                CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_state
-                    ON propagation_peer_entries(peer, state, transient_id);
-                CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_folded_lookup
-                    ON propagation_peer_entries(LOWER(peer), transient_id, state);",
+",
             )?;
             Self::ensure_peer_queue_refill_schema(&tx)?;
             tx.commit()
