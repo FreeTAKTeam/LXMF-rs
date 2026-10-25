@@ -82,7 +82,7 @@ fn recovery_survives_restart_and_preserves_original_signed_wire() {
     let dir = TempDir::new().expect("valid test fixture or operation");
     let mut store = open(&dir, &a, 10000);
     let first = store
-        .deposit_own(prepare(&a, &b, 1), MessageKind::Mission, 10, None)
+        .deposit_own(prepare(&a, &b, 1), MessageKind::Application, 10, None)
         .expect("valid test fixture or operation");
     let original = wire(&a, &b, 1).pack().expect("valid test fixture or operation");
     drop(store);
@@ -219,7 +219,7 @@ fn overflow_prefers_telemetry_and_dominant_recipient_before_old_chat() {
         .deposit_own(prepare(&a, &d, 5), MessageKind::Telemetry { key: "fix".into() }, 14, None)
         .expect("valid test fixture or operation");
     let chat = store
-        .deposit_own(prepare(&a, &d, 6), MessageKind::Mission, 15, None)
+        .deposit_own(prepare(&a, &d, 6), MessageKind::Application, 15, None)
         .expect("valid test fixture or operation");
     let statuses = store.status(15).expect("valid test fixture or operation");
     assert!(statuses.iter().any(|s| s.admitted_at == 14 && s.state == State::Evicted));

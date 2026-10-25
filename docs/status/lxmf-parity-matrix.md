@@ -353,6 +353,12 @@ unchanged. See the [MeshChat API runbook](../runbooks/meshchat-api.md) and
 
 ### Peers and propagation
 
+Embedded custody treats application payloads as generic `MessageKind::Application`.
+R3AKT's mission classification is owned by its shared mesh-delivery crate and
+translated by the product adapter. Persisted kind `1`, retention and signed-wire
+recovery remain unchanged; a raw stored-record restart regression covers this
+boundary. This adds no protocol or operational parity claim.
+
 - Peer behavior includes static/discovered admission, peering cost/timebase,
   queue accounting, sync/transfer limits, stamp policy, throttling, candidate
   selection, unreachable culling, low-acceptance rotation, and prioritized
