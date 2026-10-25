@@ -32,6 +32,7 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
       checkout_ref: ${{ steps.release.outputs.checkout_ref }}
+      source_commit: ${{ steps.release.outputs.source_commit }}
       prerelease: ${{ steps.release.outputs.prerelease }}
       publish: ${{ steps.release.outputs.publish }}
     steps:
@@ -59,7 +60,7 @@ jobs:
             echo "Invalid release tag: ${tag}" >&2
             exit 1
           }
-          git rev-parse --verify "refs/tags/${tag}^{commit}" >/dev/null || {
+          source_commit="$(git rev-parse --verify "refs/tags/${tag}^{commit}")" || {
             echo "The release tag must already exist: ${tag}" >&2
             exit 1
           }
@@ -74,6 +75,7 @@ jobs:
             echo "tag=${tag}"
             echo "version=${version}"
             echo "checkout_ref=${tag}"
+            echo "source_commit=${source_commit}"
             echo "prerelease=${prerelease}"
             echo "publish=${publish}"
           } >> "${GITHUB_OUTPUT}"
@@ -464,6 +466,8 @@ jobs:
     name: Build OCI container
     needs: [prepare, build]
     runs-on: ubuntu-latest
+    outputs:
+      image_digest: ${{ steps.build-image.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -488,6 +492,15 @@ jobs:
           mkdir -p docker/context/amd64 docker/context/arm64
           cp artifacts/linux-x86_64/bin/* docker/context/amd64/
           cp artifacts/linux-aarch64/bin/* docker/context/arm64/
+          # Artifact downloads reset plain-file modes to 0644.
+          chmod 0755 docker/context/amd64/* docker/context/arm64/*
+      - name: Verify container delivery before publication
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --build-arg TARGETARCH=amd64 \
+            --tag lxmf-rs-release-smoke --file docker/Dockerfile .
+          docker run --rm --network none --entrypoint /usr/local/bin/rnx \
+            lxmf-rs-release-smoke e2e --timeout-secs 20
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
@@ -522,6 +535,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ needs.prepare.outputs.publish == 'true' }}
           tags: ${{ steps.container-tags.outputs.tags }}
+          labels: org.opencontainers.image.revision=${{ needs.prepare.outputs.source_commit }}
       - name: Install cosign
         if: needs.prepare.outputs.publish == 'true'
         uses: sigstore/cosign-installer@v3
@@ -565,6 +579,8 @@ jobs:
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+      OCI_IMAGE_DIGEST: ${{ needs.container.outputs.image_digest }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -581,6 +597,19 @@ jobs:
             -name '*.rpm' -o -name '*.msi' -o -name '*.json' \
           \) -exec cp {} release-assets/ \;
           test "$(find release-assets -type f | wc -l)" -gt 0
+      - name: Record product source and packaging workflow
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg tag "${RELEASE_TAG}" \
+            --arg product "${RELEASE_SOURCE_COMMIT}" \
+            --arg workflow "${GITHUB_SHA}" \
+            --arg ref "${GITHUB_REF}" \
+            --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --arg image "${OCI_IMAGE_DIGEST}" \
+            '{release_tag:$tag, product_commit:$product, workflow_commit:$workflow,
+              workflow_ref:$ref, workflow_run:$run, oci_image_digest:$image}' \
+            > release-assets/release-build-source.json
       - name: Generate checksums
         shell: bash
         run: |
