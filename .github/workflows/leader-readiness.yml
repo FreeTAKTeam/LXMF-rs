@@ -21,14 +21,19 @@ jobs:
           sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly
-          components: miri
+          components: rustfmt, clippy
           targets: thumbv7em-none-eabi
+      - name: Install Miri toolchain
+        run: rustup toolchain install nightly --profile minimal --component miri
       - name: Install pinned API comparison toolchain
         run: rustup toolchain install nightly-2026-02-15 --profile minimal
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny,cargo-audit,cargo-nextest,cargo-public-api@0.50.2
+      - name: Verify active workspace bare-metal target
+        run: |
+          rustup show active-toolchain
+          rustup target list --installed | grep -Fx thumbv7em-none-eabi
       - name: Leader-grade readiness certification
         run: cargo xtask ci --stage leader-readiness-check
       - uses: actions/upload-artifact@v4
