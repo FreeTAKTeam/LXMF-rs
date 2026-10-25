@@ -1,7 +1,8 @@
 impl MessagesStore {
     /// Must be called at startup before accepting traffic. Reopening preserves the profile.
     pub fn enable_durable_broker(&self, budget_bytes: i64) -> rusqlite::Result<()> {
-        self.with_control_conn(|conn| super::broker::enable(conn, budget_bytes))
+        self.with_control_conn(|conn| super::broker::enable(conn, budget_bytes))?;
+        self.refresh_broker_budget_cache()
     }
     pub fn durable_broker_enabled(&self) -> rusqlite::Result<bool> {
         self.with_read_conn(super::broker::enabled)

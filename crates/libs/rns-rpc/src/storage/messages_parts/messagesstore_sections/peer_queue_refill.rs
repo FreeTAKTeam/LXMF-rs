@@ -1,81 +1,13 @@
-const PEER_QUEUE_REFILL_SCAN_BATCH: usize = 128;
-
-struct PeerQueueRefillPage {
-    inserted: usize,
-    capacity_reached: bool,
-    pass_finished: bool,
-}
-
-#[derive(Clone)]
-struct PeerQueueRefillBoundary {
-    generation: i64,
-    head: Option<(i64, String)>,
-}
+// Propagation refill: offer unseen inventory to a peer in bounded pages.
+//
+// Two scan modes share one persisted state row:
+// - a full pass walks the newest-first `(received_at, transient_id)` index from
+//   the boundary head down, 128 candidates per writer transaction;
+// - an incremental pass, taken when a completed peer sees new inventory, walks
+//   only rows whose rowid lies above the last completed `floor_rowid`.
+// `rescan_required` (freed capacity or a reordered row) forces the full pass.
 
 impl MessagesStore {
-    fn capture_peer_queue_refill_boundary(
-        conn: &Connection,
-    ) -> rusqlite::Result<PeerQueueRefillBoundary> {
-        conn.query_row(
-            "SELECT inventory.generation, entry.received_at, entry.transient_id
-             FROM propagation_inventory_generation AS inventory
-             LEFT JOIN propagation_entries AS entry ON entry.transient_id = (
-                 SELECT transient_id FROM propagation_entries
-                 ORDER BY received_at DESC, transient_id DESC LIMIT 1
-             )
-             WHERE inventory.singleton = 1",
-            [],
-            |row| {
-                let generation = row.get(0)?;
-                let received_at = row.get::<_, Option<i64>>(1)?;
-                let transient_id = row.get::<_, Option<String>>(2)?;
-                Ok(PeerQueueRefillBoundary { generation, head: received_at.zip(transient_id) })
-            },
-        )
-    }
-
-    fn ensure_peer_queue_refill_schema(conn: &Connection) -> rusqlite::Result<()> {
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS propagation_peer_refill_state (
-                peer TEXT PRIMARY KEY,
-                head_received_at INTEGER NOT NULL,
-                head_transient_id TEXT NOT NULL,
-                cursor_received_at INTEGER,
-                cursor_transient_id TEXT,
-                observed_generation INTEGER NOT NULL,
-                scan_complete INTEGER NOT NULL DEFAULT 0,
-                rescan_required INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS propagation_inventory_generation (
-                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
-                generation INTEGER NOT NULL
-            );
-            INSERT OR IGNORE INTO propagation_inventory_generation(singleton, generation) VALUES (1, 0);
-            CREATE INDEX IF NOT EXISTS idx_propagation_entries_received_transient
-                ON propagation_entries(received_at DESC, transient_id DESC);
-            CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_unhandled_folded
-                ON propagation_peer_entries(LOWER(peer), transient_id) WHERE state = 'unhandled';
-            CREATE TRIGGER IF NOT EXISTS propagation_refill_inventory_insert
-                AFTER INSERT ON propagation_entries
-                BEGIN UPDATE propagation_inventory_generation SET generation = generation + 1 WHERE singleton = 1; END;
-            CREATE TRIGGER IF NOT EXISTS propagation_refill_inventory_update
-                AFTER UPDATE OF received_at ON propagation_entries
-                WHEN OLD.received_at <> NEW.received_at
-                BEGIN UPDATE propagation_inventory_generation SET generation = generation + 1 WHERE singleton = 1; END;
-            CREATE TRIGGER IF NOT EXISTS propagation_refill_inventory_delete
-                AFTER DELETE ON propagation_entries
-                BEGIN UPDATE propagation_inventory_generation SET generation = generation + 1 WHERE singleton = 1; END;
-            CREATE TRIGGER IF NOT EXISTS propagation_refill_peer_delete
-                AFTER DELETE ON propagation_peer_entries
-                BEGIN
-                    UPDATE propagation_peer_refill_state SET rescan_required = 1 WHERE peer = LOWER(OLD.peer);
-                    DELETE FROM propagation_peer_refill_state
-                    WHERE peer = LOWER(OLD.peer)
-                      AND NOT EXISTS (SELECT 1 FROM propagation_peer_entries WHERE LOWER(peer) = LOWER(OLD.peer));
-                END;",
-        )
-    }
-
     fn refill_recent_peer_propagation_on(
         &self,
         conn: &Connection,
@@ -95,27 +27,8 @@ impl MessagesStore {
                 pass_finished: true,
             });
         };
-        let pending_count: i64 = tx.query_row(
-            "SELECT COUNT(*) FROM (
-                SELECT transient_id
-                FROM propagation_peer_entries AS pending
-                    INDEXED BY idx_propagation_peer_entries_unhandled_folded
-                WHERE LOWER(peer) = LOWER(?1)
-                  AND state = 'unhandled'
-                  AND NOT EXISTS (
-                    SELECT 1 FROM propagation_peer_entries AS completed
-                    WHERE LOWER(completed.peer) = LOWER(?1)
-                      AND completed.transient_id = pending.transient_id
-                      AND completed.state <> 'unhandled'
-                  )
-                GROUP BY transient_id
-                LIMIT ?2
-            )",
-            params![peer, sql_u64(limit.max(1))?],
-            |row| row.get(0),
-        )?;
-        let remaining =
-            (sql_u64(limit.max(1))?.max(0) as u64).saturating_sub(pending_count.max(0) as u64);
+        let pending_count = Self::count_peer_queue_pending(&tx, &peer, limit)?;
+        let remaining = limit.max(1).saturating_sub(pending_count);
         if remaining == 0 {
             tx.commit()?;
             return Ok(PeerQueueRefillPage {
@@ -125,84 +38,87 @@ impl MessagesStore {
             });
         }
 
-        let saved_state = tx
-            .query_row(
-                "SELECT head_received_at, head_transient_id, cursor_received_at,
-                        cursor_transient_id, scan_complete, observed_generation, rescan_required
-                 FROM propagation_peer_refill_state WHERE peer = ?1",
-                params![peer],
-                |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, Option<i64>>(2)?,
-                        row.get::<_, Option<String>>(3)?,
-                        row.get::<_, bool>(4)?,
-                        row.get::<_, i64>(5)?,
-                        row.get::<_, bool>(6)?,
-                    ))
-                },
-            )
-            .optional()?;
-
-        let (
-            mut scan_head_received_at,
-            mut scan_head_id,
-            mut cursor,
-            mut observed_generation,
-            mut rescan_required,
-        ) = match saved_state {
-            Some((
-                saved_head_at,
-                saved_head_id,
-                cursor_at,
-                cursor_id,
-                complete,
-                saved_generation,
-                rescan,
-            )) => {
-                let mut cursor = cursor_at.zip(cursor_id);
-                let mut observed_generation = saved_generation;
-                let mut rescan_required = rescan;
-                let mut head_at = saved_head_at;
-                let mut head_id = saved_head_id;
-                let inventory_changed = saved_generation != boundary.generation;
-                if complete {
-                    if inventory_changed || rescan_required {
-                        head_at = *boundary_head_received_at;
-                        head_id.clone_from(boundary_head_id);
-                        cursor = None;
-                        observed_generation = boundary.generation;
-                        rescan_required = false;
-                    } else {
-                        tx.commit()?;
-                        return Ok(PeerQueueRefillPage {
-                            inserted: 0,
-                            capacity_reached: false,
-                            pass_finished: true,
-                        });
-                    }
-                } else if inventory_changed || rescan_required {
-                    // A pre-existing cursor must not let older candidates outrank
-                    // inventory already visible when this refill invocation began.
-                    head_at = *boundary_head_received_at;
-                    head_id.clone_from(boundary_head_id);
-                    cursor = None;
-                    observed_generation = boundary.generation;
-                    rescan_required = false;
+        let saved = Self::load_peer_queue_refill_state(&tx, &peer)?;
+        let fresh = || PeerQueueRefillSavedState {
+            head_received_at: *boundary_head_received_at,
+            head_transient_id: boundary_head_id.clone(),
+            cursor: None,
+            observed_generation: boundary.generation,
+            scan_complete: false,
+            rescan_required: false,
+            floor_rowid: None,
+            cursor_rowid: None,
+        };
+        let mut state = match saved {
+            None => fresh(),
+            Some(saved) => {
+                let inventory_changed = saved.observed_generation != boundary.generation;
+                if saved.scan_complete && !inventory_changed && !saved.rescan_required {
+                    tx.commit()?;
+                    return Ok(PeerQueueRefillPage {
+                        inserted: 0,
+                        capacity_reached: false,
+                        pass_finished: true,
+                    });
                 }
-                (head_at, head_id, cursor, observed_generation, rescan_required)
+                if saved.rescan_required {
+                    // Freed capacity or reordered rows: only a full pass is sound.
+                    fresh()
+                } else if saved.scan_complete {
+                    // New inventory above a completed pass: incremental from the newest rowid.
+                    PeerQueueRefillSavedState {
+                        cursor_rowid: saved
+                            .floor_rowid
+                            .map(|_| boundary.max_rowid.unwrap_or(0).saturating_add(1)),
+                        floor_rowid: saved.floor_rowid,
+                        ..fresh()
+                    }
+                } else if saved.cursor_rowid.is_some() {
+                    // Incremental pass in progress: restart from the new newest rowid when the
+                    // inventory moved, otherwise continue where the last page stopped.
+                    let cursor_rowid = if inventory_changed {
+                        boundary.max_rowid.unwrap_or(0).saturating_add(1)
+                    } else {
+                        saved.cursor_rowid.unwrap_or(0)
+                    };
+                    PeerQueueRefillSavedState {
+                        cursor_rowid: Some(cursor_rowid),
+                        floor_rowid: saved.floor_rowid,
+                        ..fresh()
+                    }
+                } else if inventory_changed {
+                    // A pre-existing cursor must not let older candidates outrank inventory
+                    // already visible when this refill invocation began.
+                    fresh()
+                } else {
+                    PeerQueueRefillSavedState { rescan_required: false, ..saved }
+                }
             }
-            None => (
-                *boundary_head_received_at,
-                boundary_head_id.clone(),
-                None,
-                boundary.generation,
-                false,
-            ),
         };
 
-        let candidate_ids = if let Some((cursor_received_at, cursor_id)) = &cursor {
+        let page = if state.cursor_rowid.is_some() {
+            self.refill_incremental_page(&tx, &peer, remaining, boundary, &mut state)?
+        } else {
+            self.refill_full_page(&tx, &peer, remaining, boundary, &mut state)?
+        };
+        Self::persist_peer_queue_refill_state(&tx, &peer, &state)?;
+        tx.commit()?;
+        Ok(page)
+    }
+
+    /// One 128-candidate page of the newest-first full pass.
+    fn refill_full_page(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        peer: &str,
+        remaining: u64,
+        boundary: &PeerQueueRefillBoundary,
+        state: &mut PeerQueueRefillSavedState,
+    ) -> rusqlite::Result<PeerQueueRefillPage> {
+        let page_started = std::time::Instant::now();
+        let candidate_ids: Vec<(i64, String)> = if let Some((cursor_received_at, cursor_id)) =
+            &state.cursor
+        {
             let mut statement = tx.prepare(
                 "SELECT received_at, transient_id FROM propagation_entries
                  WHERE (received_at, transient_id) <= (?1, ?2)
@@ -211,8 +127,8 @@ impl MessagesStore {
             )?;
             let rows = statement.query_map(
                 params![
-                    scan_head_received_at,
-                    scan_head_id,
+                    state.head_received_at,
+                    state.head_transient_id,
                     cursor_received_at,
                     cursor_id,
                     PEER_QUEUE_REFILL_SCAN_BATCH as i64
@@ -227,76 +143,34 @@ impl MessagesStore {
                  ORDER BY received_at DESC, transient_id DESC LIMIT ?3",
             )?;
             let rows = statement.query_map(
-                params![scan_head_received_at, scan_head_id, PEER_QUEUE_REFILL_SCAN_BATCH as i64],
+                params![
+                    state.head_received_at,
+                    state.head_transient_id,
+                    PEER_QUEUE_REFILL_SCAN_BATCH as i64
+                ],
                 |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
             )?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         };
 
-        let page_started = std::time::Instant::now();
         let mut inserted = 0u64;
         let mut scanned = 0usize;
         for (received_at, transient_id) in &candidate_ids {
             if inserted >= remaining {
                 break;
             }
-            tx.execute(
-                "INSERT OR IGNORE INTO propagation_peer_entries
-                    (peer, transient_id, state, updated_at)
-                 SELECT ?1, ?2, 'unhandled', ?3
-                 WHERE NOT EXISTS (
-                    SELECT 1 FROM propagation_peer_entries
-                    WHERE LOWER(peer) = LOWER(?1) AND transient_id = ?2
-                 )",
-                params![peer, transient_id, now_unix_secs()],
-            )?;
-            inserted += tx.changes();
-            cursor = Some((*received_at, transient_id.clone()));
+            if Self::offer_peer_queue_candidate(tx, peer, transient_id)? {
+                inserted += 1;
+            }
+            state.cursor = Some((*received_at, transient_id.clone()));
             scanned += 1;
         }
 
         let exhausted_page =
             scanned == candidate_ids.len() && candidate_ids.len() < PEER_QUEUE_REFILL_SCAN_BATCH;
-        let complete = if exhausted_page {
-            if observed_generation != boundary.generation || rescan_required {
-                scan_head_received_at = *boundary_head_received_at;
-                scan_head_id.clone_from(boundary_head_id);
-                observed_generation = boundary.generation;
-                cursor = None;
-                rescan_required = false;
-                false
-            } else {
-                true
-            }
-        } else {
-            false
-        };
-
-        tx.execute(
-            "INSERT INTO propagation_peer_refill_state
-                (peer, head_received_at, head_transient_id, cursor_received_at,
-                 cursor_transient_id, observed_generation, scan_complete, rescan_required)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(peer) DO UPDATE SET
-                head_received_at = excluded.head_received_at,
-                head_transient_id = excluded.head_transient_id,
-                cursor_received_at = excluded.cursor_received_at,
-                cursor_transient_id = excluded.cursor_transient_id,
-                observed_generation = excluded.observed_generation,
-                scan_complete = excluded.scan_complete,
-                rescan_required = excluded.rescan_required",
-            params![
-                peer,
-                scan_head_received_at,
-                scan_head_id,
-                cursor.as_ref().map(|(received_at, _)| *received_at),
-                cursor.as_ref().map(|(_, id)| id.as_str()),
-                observed_generation,
-                complete,
-                rescan_required
-            ],
-        )?;
-        tx.commit()?;
+        if exhausted_page {
+            Self::complete_peer_queue_refill(tx, boundary, state)?;
+        }
         self.write_state.refill_metrics.record_page(
             candidate_ids.len(),
             inserted as usize,
@@ -305,7 +179,7 @@ impl MessagesStore {
         Ok(PeerQueueRefillPage {
             inserted: inserted as usize,
             capacity_reached: false,
-            pass_finished: exhausted_page && complete,
+            pass_finished: exhausted_page,
         })
     }
 
@@ -313,7 +187,23 @@ impl MessagesStore {
         let metrics = &self.write_state.refill_metrics;
         let started = std::time::Instant::now();
         metrics.invocations_total.fetch_add(1, Ordering::Relaxed);
-        let boundary = self.with_read_conn(Self::capture_peer_queue_refill_boundary)?;
+        let normalized = normalize_peer_key(peer);
+        let (boundary, skip) = self.with_read_conn(|conn| {
+            let boundary = Self::capture_peer_queue_refill_boundary(conn)?;
+            let skip = Self::peer_queue_refill_gate(conn, &normalized, limit, &boundary)?;
+            Ok((boundary, skip))
+        })?;
+        if let Some(skip) = skip {
+            match skip {
+                PeerQueueRefillSkip::Complete | PeerQueueRefillSkip::EmptyInventory => {
+                    metrics.skipped_complete_total.fetch_add(1, Ordering::Relaxed);
+                }
+                PeerQueueRefillSkip::Capacity => {
+                    metrics.skipped_capacity_total.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            return Ok(0);
+        }
         let mut inserted = 0usize;
         loop {
             // Each page owns and commits its own transaction so a large mostly-known
@@ -328,73 +218,13 @@ impl MessagesStore {
             if page.capacity_reached || page.pass_finished {
                 break;
             }
+            // Broker/control commands share this mutex; let a waiting one run first.
+            self.yield_to_priority_writers();
         }
         metrics.wall_ns_total.fetch_add(
             started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
             Ordering::Relaxed,
         );
         Ok(inserted)
-    }
-}
-
-#[cfg(test)]
-mod invocation_boundary_tests {
-    use super::*;
-
-    #[test]
-    fn refill_defers_inventory_inserted_between_pages_until_next_invocation() {
-        let store = MessagesStore::in_memory().expect("in-memory store");
-        let peer = "peer-refill-fixed-boundary";
-        for index in 0..260 {
-            let entry = PropagationEntryRecord {
-                transient_id: format!("{index:064x}"),
-                destination: "44".repeat(16),
-                payload_hex: String::new(),
-                received_at: index,
-                size_bytes: 0,
-                stamp_value: None,
-            };
-            store.upsert_propagation_entry(&entry).expect("insert inventory");
-            store.mark_peer_handled_propagation(peer, &entry.transient_id).expect("mark known");
-        }
-
-        let boundary = store
-            .with_read_conn(MessagesStore::capture_peer_queue_refill_boundary)
-            .expect("capture boundary");
-        let first_page = store
-            .with_write_conn(|conn| {
-                store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
-            })
-            .expect("scan first page");
-        assert!(!first_page.pass_finished);
-
-        let new_entry = PropagationEntryRecord {
-            transient_id: format!("{:064x}", 300),
-            destination: "44".repeat(16),
-            payload_hex: String::new(),
-            received_at: 300,
-            size_bytes: 0,
-            stamp_value: None,
-        };
-        store.upsert_propagation_entry(&new_entry).expect("insert after boundary capture");
-
-        loop {
-            let page = store
-                .with_write_conn(|conn| {
-                    store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
-                })
-                .expect("continue captured pass");
-            assert_eq!(page.inserted, 0);
-            if page.pass_finished {
-                break;
-            }
-        }
-        assert!(store.list_peer_unhandled_propagation_ids(peer).unwrap().is_empty());
-
-        assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 1);
-        assert_eq!(
-            store.list_peer_unhandled_propagation_ids(peer).unwrap(),
-            vec![new_entry.transient_id]
-        );
     }
 }

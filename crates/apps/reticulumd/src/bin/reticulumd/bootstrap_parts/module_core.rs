@@ -366,7 +366,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         propagation_node_config.max_propagation_peers,
         propagation_node_config.storage_maintenance_interval_secs,
     );
-    spawn_propagation_storage_maintenance(daemon.clone());
+    spawn_storage_maintenance(daemon.clone());
     if propagation_node_config.enabled {
         if let Some(peer) = propagation_destination_hash_hex.as_deref() {
             match daemon.handle_rpc(RpcRequest {

@@ -276,7 +276,9 @@ first item adds a production-shaped fixture, an RCH-shaped poller and a
 cgroup-constrained sampler (`cargo xtask resource-soak-663`); its ten-minute
 baseline is recorded in the resource regression record and is a harness smoke
 check, not acceptance. The second item adds refill, WAL, cgroup memory and
-announce-persistence counters to the daemon metrics snapshot.
+announce-persistence counters to the daemon metrics snapshot. The third item
+bounds the refill scan, yields the SQLite writer to broker commands and moves
+WAL truncation to a daemon timer.
 
 The PR CI repair routes established Link data, RTT, packet delivery proofs and
 Resource proofs to the opposite recorded interface in either direction, only

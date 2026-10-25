@@ -400,8 +400,11 @@ pub(crate) use physical_guard::{
     map_commit_error, mutation as mutation_admission, single_transaction,
 };
 mod profile;
+mod wal_maintenance;
 pub use execution::execute;
 use profile::physical_admission;
 pub use profile::{enable, enabled, restore_profile};
-
-pub(crate) use profile::reclaim_wal;
+pub(crate) use wal_maintenance::{
+    checkpoint_truncate_nonblocking, maintain as wal_maintenance_run, wal_file_size,
+};
+pub use wal_maintenance::{truncate_limit_bytes, WalMaintenanceOutcome};

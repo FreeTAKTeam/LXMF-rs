@@ -6,9 +6,9 @@ sequential branches. Items 4-6 remain open and are not claimed here.
 
 | Item | State | Branch / PR / head | Evidence |
 | --- | --- | --- | --- |
-| 1. Fixture and cgroup sampler | PR open | `corvo/issue-663-01-harness`, [#682](https://github.com/FreeTAKTeam/LXMF-rs/pull/682) | Harness code, Python unit tests, 10-minute idle and ingress smoke runs on the baseline daemon (see [performance record](../../performance/rch-resource-fixes-663.md)). |
-| 2. Operation-level metrics | PR open | `corvo/issue-663-02-metrics` (stacked on #682) | `storage.refill`, `storage.wal`, `memory` and `providers` blocks in `/metrics`; four-package suite 3,293 passed, 0 failed. |
-| 3. Refill coalescing, writer fairness, WAL maintenance | Pending | — | — |
+| 1. Fixture and cgroup sampler | Merged | [#682](https://github.com/FreeTAKTeam/LXMF-rs/pull/682) | Harness code, Python unit tests, 10-minute idle and ingress smoke runs on the baseline daemon (see [performance record](../../performance/rch-resource-fixes-663.md)). |
+| 2. Operation-level metrics | Merged | `corvo/issue-663-02-metrics`, [#683](https://github.com/FreeTAKTeam/LXMF-rs/pull/683) | `storage.refill`, `storage.wal`, `memory` and `providers` blocks in `/metrics`; four-package suite 3,293 passed, 0 failed. |
+| 3. Refill coalescing, writer fairness, WAL maintenance | PR open | `corvo/issue-663-03-refill-wal`, [#685](https://github.com/FreeTAKTeam/LXMF-rs/pull/685) | Read-only refill gate, rowid-floor incremental rescan, priority-writer yield, timer-driven WAL truncate, dispatch pump backoff; four-package suite 3,305 passed, 0 failed. Before/after smoke table in the resource regression record. |
 | 4. Anonymous-memory attribution and bounds | Not started | — | — |
 | 5. Poll-failure stage correlation | Not started | — | — |
 | 6. Production-shaped soak and acceptance record | Not started | — | Depends on #678 or a bounded fixture; only 10-minute smoke runs exist. |
@@ -46,6 +46,27 @@ sequential branches. Items 4-6 remain open and are not claimed here.
   returns a per-save report (examined, skipped known, verified, written).
 - No behavior change except that absorbed persistence triggers are counted and
   logged at debug instead of a warning on every announce while a save runs.
+
+## Item 3 notes
+
+- Read-only refill gate on the read connection; completed-and-unchanged or
+  full-queue peers never take the write mutex.
+- Incremental rescan above a persisted rowid floor; `received_at` updates and
+  freed capacity force a full rescan; legacy rows migrate on first pass.
+  Review regressions also cover pruning the largest rowid (SQLite can reuse it)
+  and reordering inventory between full or incremental pages. A persisted rescan
+  epoch invalidates the floor across these mutations without penalizing ordinary
+  arrivals during a scan.
+- Priority waiter count on the writer; refill pages park on a condition variable in 5 ms slices, bounded to 50 ms.
+- WAL: cached budget makes the per-write emergency check SQL-free;
+  `journal_size_limit = max(64 MiB, budget/64)`; a 60 s daemon timer
+  (`LXMD_STORAGE_WAL_MAINTENANCE_INTERVAL_SECS`) runs PASSIVE then TRUNCATE and
+  reports busy rather than blocking on readers.
+- Durable dispatch pump backs off from 25 ms to 250 ms while its queue is
+  empty, reset by any work or inbound command.
+- Deviation from PLAN.md: no per-peer minimum refill interval; the gate makes a
+  repeat refill two indexed point reads, and a timer could hide a real
+  inventory change.
 
 ## Baseline findings to carry forward
 

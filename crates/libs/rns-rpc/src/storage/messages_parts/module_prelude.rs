@@ -2,9 +2,9 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
 use serde_json::Value as JsonValue;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -56,6 +56,14 @@ struct WriteState {
     write_ops_total: AtomicU64,
     refill_metrics: super::operation_metrics::RefillMetrics,
     wal_metrics: super::operation_metrics::WalMetrics,
+    /// Broker/control writers currently waiting for `conn`; refill pages yield to them.
+    priority_waiters: AtomicUsize,
+    /// Signalled once a priority writer holds `conn`, so a yielding refill wakes
+    /// without polling.
+    priority_gate: (Mutex<()>, Condvar),
+    /// Cached `broker_meta.budget` (0 = broker disabled) so the per-write WAL
+    /// emergency check needs no SQL.
+    broker_budget_bytes: AtomicU64,
 }
 
 enum OutboundWriteCommand {

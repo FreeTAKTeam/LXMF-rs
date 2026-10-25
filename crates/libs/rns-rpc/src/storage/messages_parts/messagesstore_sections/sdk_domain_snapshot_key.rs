@@ -27,6 +27,9 @@ impl MessagesStore {
             write_ops_total: AtomicU64::new(0),
             refill_metrics: Default::default(),
             wal_metrics: Default::default(),
+            priority_waiters: AtomicUsize::new(0),
+            priority_gate: (Mutex::new(()), Condvar::new()),
+            broker_budget_bytes: AtomicU64::new(0),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
@@ -39,6 +42,7 @@ impl MessagesStore {
         };
         store.configure_connection()?;
         store.with_control_conn(super::broker::restore_profile)?;
+        store.refresh_broker_budget_cache()?;
         store.init_schema()?;
         store.refresh_message_count_cache()?;
         Ok(store)
@@ -57,6 +61,9 @@ impl MessagesStore {
             write_ops_total: AtomicU64::new(0),
             refill_metrics: Default::default(),
             wal_metrics: Default::default(),
+            priority_waiters: AtomicUsize::new(0),
+            priority_gate: (Mutex::new(()), Condvar::new()),
+            broker_budget_bytes: AtomicU64::new(0),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
@@ -69,6 +76,7 @@ impl MessagesStore {
         };
         store.configure_connection()?;
         store.with_control_conn(super::broker::restore_profile)?;
+        store.refresh_broker_budget_cache()?;
         store.init_schema()?;
         store.refresh_message_count_cache()?;
         Ok(store)
@@ -98,22 +106,26 @@ impl MessagesStore {
         f(&conn).map_err(super::broker::map_commit_error)
     }
 
+    /// Per-acquisition WAL guard without SQL: the cached budget decides whether the
+    /// file is even checked, and only a WAL past budget/8 triggers a non-blocking
+    /// TRUNCATE. Routine shrinking belongs to `maintain_wal`; this path exists so
+    /// broker-full recovery after a pinned reader still works on the next write.
     fn reclaim_wal_recorded(write_state: &WriteState, conn: &Connection) -> rusqlite::Result<()> {
-        use super::operation_metrics::WalCheckpointOutcome;
-        match super::broker::reclaim_wal(conn) {
-            Ok((WalCheckpointOutcome::BelowThreshold, size)) => {
-                if size > 0 {
-                    write_state.wal_metrics.last_wal_bytes.store(size, Ordering::Relaxed);
-                }
-                Ok(())
+        let budget = write_state.broker_budget_bytes.load(Ordering::Relaxed);
+        if budget == 0 || !conn.is_autocommit() {
+            return Ok(());
+        }
+        let size = super::broker::wal_file_size(conn)?;
+        if size <= budget / 8 {
+            if size > 0 {
+                write_state.wal_metrics.last_wal_bytes.store(size, Ordering::Relaxed);
             }
-            Ok((outcome, _)) => {
-                write_state.wal_metrics.emergency_reclaim_total.fetch_add(1, Ordering::Relaxed);
-                let after = conn
-                    .path()
-                    .and_then(|path| std::fs::metadata(format!("{path}-wal")).ok())
-                    .map(|meta| meta.len())
-                    .unwrap_or(0);
+            return Ok(());
+        }
+        write_state.wal_metrics.emergency_reclaim_total.fetch_add(1, Ordering::Relaxed);
+        match super::broker::checkpoint_truncate_nonblocking(conn) {
+            Ok(outcome) => {
+                let after = super::broker::wal_file_size(conn)?;
                 write_state.wal_metrics.record_outcome(outcome, after);
                 Ok(())
             }
@@ -122,6 +134,50 @@ impl MessagesStore {
                 Err(error)
             }
         }
+    }
+
+    /// Counts a broker/control writer while it waits for the connection so refill
+    /// pages can yield instead of racing it for the unfair mutex.
+    fn write_lock_priority<'a>(
+        write_state: &'a WriteState,
+    ) -> std::sync::MutexGuard<'a, Connection> {
+        write_state.priority_waiters.fetch_add(1, Ordering::AcqRel);
+        let guard = write_state.conn.lock().expect("messages sqlite write mutex poisoned");
+        write_state.priority_waiters.fetch_sub(1, Ordering::AcqRel);
+        // Wake any refill parked in `yield_to_priority_writers`; the gate mutex is
+        // taken so the notification cannot slip between its check and its wait.
+        let _gate = write_state.priority_gate.0.lock().expect("priority gate mutex poisoned");
+        write_state.priority_gate.1.notify_all();
+        guard
+    }
+
+    /// Called between refill pages: while a priority writer waits, park on the
+    /// gate condvar (a bare yield lets this thread win the futex straight back)
+    /// until that writer holds the connection, in 5 ms slices for at most ~50 ms.
+    /// Returns how many waits were taken.
+    pub(super) fn yield_to_priority_writers(&self) -> u32 {
+        let (gate, signal) = &self.write_state.priority_gate;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(50);
+        let mut steps = 0u32;
+        loop {
+            let guard = gate.lock().expect("priority gate mutex poisoned");
+            if self.write_state.priority_waiters.load(Ordering::Acquire) == 0
+                || std::time::Instant::now() >= deadline
+            {
+                break;
+            }
+            let (_guard, _) = signal
+                .wait_timeout(guard, std::time::Duration::from_millis(5))
+                .expect("priority gate mutex poisoned");
+            steps += 1;
+        }
+        if steps > 0 {
+            self.write_state
+                .refill_metrics
+                .priority_yields_total
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        steps
     }
 
     fn with_read_conn<T>(
@@ -171,7 +227,7 @@ impl MessagesStore {
         f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
     ) -> rusqlite::Result<T> {
         let started = std::time::Instant::now();
-        let conn = write_state.conn.lock().expect("messages sqlite write mutex poisoned");
+        let conn = Self::write_lock_priority(write_state);
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);

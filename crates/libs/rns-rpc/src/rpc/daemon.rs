@@ -29,6 +29,7 @@ mod resources;
 mod sdk_attachments;
 mod sdk_auth_http;
 mod sdk_capabilities;
+mod sdk_capability_list;
 mod sdk_identity;
 mod sdk_markers;
 mod sdk_negotiate_poll;
@@ -40,6 +41,7 @@ mod sdk_paper_command;
 mod sdk_runtime;
 mod sdk_topics;
 mod sdk_voice;
+mod storage_maintenance;
 
 include!("daemon/tests.rs");
 
