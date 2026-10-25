@@ -23,6 +23,7 @@ jobs:
         with:
           toolchain: nightly
           components: miri
+          targets: thumbv7em-none-eabi
       - name: Install pinned API comparison toolchain
         run: rustup toolchain install nightly-2026-02-15 --profile minimal
       - uses: taiki-e/install-action@v2
