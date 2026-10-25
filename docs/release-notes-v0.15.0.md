@@ -29,6 +29,8 @@ embedded offline custody merged since v0.14.0.
 - Publication includes both new crates in dependency order. The Python
   reference-pin validator accepts the paired Reticulum/LXMF README wording
   while continuing to reject a changed reference revision.
+- The `rnx` direct-delivery smoke check recognizes proof-confirmed `delivered`
+  from the retained Link owner, while rejecting another mode's nonterminal handoff.
 
 ## Upgrade
 
