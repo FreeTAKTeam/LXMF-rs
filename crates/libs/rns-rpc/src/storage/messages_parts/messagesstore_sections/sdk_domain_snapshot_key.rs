@@ -28,6 +28,7 @@ impl MessagesStore {
             refill_metrics: Default::default(),
             wal_metrics: Default::default(),
             priority_waiters: AtomicUsize::new(0),
+            priority_gate: (Mutex::new(()), Condvar::new()),
             broker_budget_bytes: AtomicU64::new(0),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
@@ -61,6 +62,7 @@ impl MessagesStore {
             refill_metrics: Default::default(),
             wal_metrics: Default::default(),
             priority_waiters: AtomicUsize::new(0),
+            priority_gate: (Mutex::new(()), Condvar::new()),
             broker_budget_bytes: AtomicU64::new(0),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
@@ -142,16 +144,31 @@ impl MessagesStore {
         write_state.priority_waiters.fetch_add(1, Ordering::AcqRel);
         let guard = write_state.conn.lock().expect("messages sqlite write mutex poisoned");
         write_state.priority_waiters.fetch_sub(1, Ordering::AcqRel);
+        // Wake any refill parked in `yield_to_priority_writers`; the gate mutex is
+        // taken so the notification cannot slip between its check and its wait.
+        let _gate = write_state.priority_gate.0.lock().expect("priority gate mutex poisoned");
+        write_state.priority_gate.1.notify_all();
         guard
     }
 
-    /// Called between refill pages: while a priority writer waits, sleep in 1 ms
-    /// steps (a bare yield lets this thread win the futex straight back) for at
-    /// most ~50 ms. Returns how many steps were taken.
+    /// Called between refill pages: while a priority writer waits, park on the
+    /// gate condvar (a bare yield lets this thread win the futex straight back)
+    /// until that writer holds the connection, in 5 ms slices for at most ~50 ms.
+    /// Returns how many waits were taken.
     pub(super) fn yield_to_priority_writers(&self) -> u32 {
+        let (gate, signal) = &self.write_state.priority_gate;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(50);
         let mut steps = 0u32;
-        while self.write_state.priority_waiters.load(Ordering::Acquire) > 0 && steps < 50 {
-            std::thread::sleep(std::time::Duration::from_millis(1));
+        loop {
+            let guard = gate.lock().expect("priority gate mutex poisoned");
+            if self.write_state.priority_waiters.load(Ordering::Acquire) == 0
+                || std::time::Instant::now() >= deadline
+            {
+                break;
+            }
+            let (_guard, _) = signal
+                .wait_timeout(guard, std::time::Duration::from_millis(5))
+                .expect("priority gate mutex poisoned");
             steps += 1;
         }
         if steps > 0 {

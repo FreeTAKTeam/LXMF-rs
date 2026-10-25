@@ -29,6 +29,7 @@ mod resources;
 mod sdk_attachments;
 mod sdk_auth_http;
 mod sdk_capabilities;
+mod sdk_capability_list;
 mod sdk_identity;
 mod sdk_markers;
 mod sdk_negotiate_poll;
