@@ -3298,6 +3298,13 @@ direction.
 
 ## Current Release State
 
+The unpublished embedded custody API keeps application-domain classification
+outside LXMF-rs. Generic `MessageKind::Application` retains persisted kind `1`;
+R3AKT's mission classification lives in its shared mesh-delivery crate, with
+translation owned by the embedding application. Protocol storage and handlers
+stay shared by the daemon and embedded runtime. See the
+[API migration note](../migrations/propagation-application-kind.md).
+
 Stable v0.14.0 is the current published release. Its package alignment, opt-in
 durable broker, migration requirements and qualification boundaries are
 summarized [above](#v0140-release) and in the

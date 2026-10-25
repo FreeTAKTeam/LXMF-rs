@@ -52,15 +52,18 @@ impl State {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MessageKind {
     Chat,
-    Mission,
-    Telemetry { key: String },
+    /// Opaque application data; its domain meaning belongs to the embedding application.
+    Application,
+    Telemetry {
+        key: String,
+    },
 }
 impl MessageKind {
     #[cfg(feature = "embedded")]
     pub(crate) fn sql(&self) -> Result<(i64, Option<&str>), Error> {
         match self {
             Self::Chat => Ok((0, None)),
-            Self::Mission => Ok((1, None)),
+            Self::Application => Ok((1, None)),
             Self::Telemetry { key } if !key.is_empty() && key.len() <= 128 => Ok((2, Some(key))),
             _ => Err(Error::InvalidState("invalid telemetry key")),
         }

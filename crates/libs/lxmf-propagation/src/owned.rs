@@ -281,7 +281,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Status> {
         state: State::from_sql(row.get(3)?)?,
         kind: match row.get::<_, i64>(11)? {
             0 => MessageKind::Chat,
-            1 => MessageKind::Mission,
+            1 => MessageKind::Application,
             2 => MessageKind::Telemetry { key: row.get(12)? },
             value => return Err(rusqlite::Error::IntegralValueOutOfRange(11, value)),
         },
