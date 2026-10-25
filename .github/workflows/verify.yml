@@ -23,8 +23,12 @@ env:
   PYTHON_LXMF_FEATURE_REF: c3ff2d6dc2f256daab896dadc044dd5a913ecbb7
 
 jobs:
-  hil-pr:
-    name: HIL PR level
+  python-compat:
+    name: Python compatibility (${{ matrix.suite }})
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [controller, compatibility, interfaces, tools]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -74,6 +78,13 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: verify-${{ matrix.suite }}
+          cache-targets: true
+          cache-on-failure: false
 
       - uses: taiki-e/install-action@v2
         with:
@@ -151,6 +162,7 @@ jobs:
           path: Reticulum-feature
 
       - name: Verify Python 1.5.5 Link converted Markdown download
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-feature
           LXMF_PYTHON_BIN: python
@@ -168,6 +180,7 @@ jobs:
           path: LXMF-feature
 
       - name: Verify native discovery against Python 1.5.5
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-feature
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF-feature
@@ -176,6 +189,7 @@ jobs:
             -- --ignored --nocapture --test-threads=1
 
       - name: Verify three-relay middle replacement matrix
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF-feature
@@ -184,6 +198,7 @@ jobs:
             -- --ignored --nocapture --test-threads=1
 
       - name: Verify pinned Python executable rngit permission resolver
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -233,6 +248,7 @@ jobs:
             -- --ignored --exact --nocapture
 
       - name: Run pinned Python rngit concurrency, CLI, and malformed-request interoperability
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -241,6 +257,7 @@ jobs:
           -- --ignored --nocapture
 
       - name: Verify pinned Python rngit optional-signature wire schema
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -250,6 +267,7 @@ jobs:
           -- --ignored --exact --nocapture
 
       - name: Verify Rust rngit fetch and push CLI against pinned Python
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -266,6 +284,7 @@ jobs:
           git -C LXMF rev-parse HEAD
 
       - name: Verify pinned-Python shared-interface teardown and restart
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
           LXMF_PYTHON_BIN: python
@@ -275,6 +294,7 @@ jobs:
         run: ./tools/scripts/local-interface-python-shared-smoke.sh
 
       - name: Verify Linux PipeInterface subprocess lifecycle
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           LOG_DIR: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}
           REPORT_PATH: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}/report.json
@@ -282,12 +302,14 @@ jobs:
         run: ./tools/scripts/pipe-fake-subprocess-smoke.sh
 
       - name: Verify I2P outbound reconnect backoff after stream expiry
+        if: ${{ matrix.suite == 'interfaces' }}
         run: >-
           cargo test -p reticulum-rs-transport --lib
           i2p_outbound_reconnect_waits_after_established_stream_expires
           -- --nocapture
 
       - name: Validate exact-target behavioral inventory
+        if: ${{ matrix.suite == 'interfaces' }}
         run: |
           python3 tools/scripts/python_surface_inventory.py --self-test
           python3 tools/scripts/python_surface_inventory.py \
@@ -298,6 +320,7 @@ jobs:
             --rust-out target/issue-605/python_software_parity-1.5.4.rs
 
       - name: Run byte-level Python and Rust wire conformance
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF
@@ -309,6 +332,7 @@ jobs:
           cargo test -p test-support --test wire_conformance -- --nocapture
 
       - name: Run Python and Rust IFAC UDP channel interoperability
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -318,6 +342,7 @@ jobs:
           --test-threads=1
 
       - name: Run Python and Rust IFAC daemon interoperability
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF
@@ -328,6 +353,7 @@ jobs:
           --test-threads=1
 
       - name: Run repository-native PR HIL controller
+        if: ${{ matrix.suite == 'controller' }}
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
 
       - name: Exclude auxiliary checkouts from candidate status
@@ -344,6 +370,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
 
       - name: Run exact-target Python compatibility matrix
+        if: ${{ matrix.suite == 'compatibility' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF
@@ -358,6 +385,7 @@ jobs:
             --timeout 420
 
       - name: Run pinned Python rngit pages and media interoperability
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -368,6 +396,7 @@ jobs:
             -- --ignored --nocapture
 
       - name: Verify forced unavailable WebP backend does not fall through over pinned Python Link
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -378,6 +407,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify real ImageMagick, ImageMagick 7, and GraphicsMagick WebP backends over pinned Python Links
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -390,6 +420,7 @@ jobs:
           done
 
       - name: Run pinned Python blocked anonymous no-ident page interoperability
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -400,6 +431,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Run pinned Python rngit media validation differential
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -410,6 +442,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python rngit media read-failure behavior
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -420,6 +453,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python rngit media filesystem-failure fallbacks
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -442,6 +476,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify raw media fallback when WebP backend is unavailable
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -452,6 +487,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python configured media conversion and Resource flag
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -462,6 +498,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python WebP helper backend selection
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -472,6 +509,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python rngit media CLI option forwarding
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -482,6 +520,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python avconv-selected production invocation
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -492,6 +531,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python rngit encoder failure fallback and cleanup
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -502,6 +542,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify multi-hop transit proof replay and single Channel delivery
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -511,6 +552,7 @@ jobs:
           -- --ignored --nocapture --test-threads=1
 
       - name: Verify multi-hop duplicate LinkRequest filtering
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -520,11 +562,13 @@ jobs:
           -- --ignored --nocapture --test-threads=1
 
       - name: Verify packet replay filtering across standalone daemon restart
+        if: ${{ matrix.suite == 'interfaces' }}
         run: >-
           cargo test -p reticulumd --test packet_replay_process_restart
           -- --nocapture --test-threads=1
 
       - name: Verify shared-instance peer recovery after daemon restart
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF
@@ -535,6 +579,7 @@ jobs:
           -- --ignored --nocapture --test-threads=1
 
       - name: Verify local-client classification against pinned Python
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -544,6 +589,7 @@ jobs:
           -- --ignored --nocapture
 
       - name: Verify local-client announce schedule against pinned Python
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -554,6 +600,7 @@ jobs:
             -- --ignored --nocapture
 
       - name: Run pinned Python rngit work-list differential regressions
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -566,6 +613,7 @@ jobs:
             -- --ignored --nocapture --test-threads=1
 
       - name: Run pinned Python rngit work-view numeric-ID differential
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -575,6 +623,7 @@ jobs:
             -- --ignored --nocapture --test-threads=1
 
       - name: Run pinned Python rngit create/propose validation differential
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -584,6 +633,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Run pinned Python rngit binary-comment differential
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -593,6 +643,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Run pinned Python rngit missing-comment-content differential
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -602,6 +653,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python rncp compression advertisements
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -611,6 +663,7 @@ jobs:
           -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify pinned Python rncp receiver disk-failure callback
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -620,6 +673,7 @@ jobs:
           -- --ignored --exact --nocapture
 
       - name: Verify pinned Python rncp fetch-client save-failure callback
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -629,6 +683,7 @@ jobs:
           -- --ignored --exact --nocapture
 
       - name: Verify rnsh mixed per-stream PTY and pipe modes
+        if: ${{ matrix.suite == 'tools' }}
         run: |
           cargo test -p rns-tools --test rnsh_process \
             rnsh_mixed_stdin_pty_and_stdout_stderr_pipes_preserve_streams_and_exit \
@@ -638,6 +693,7 @@ jobs:
             -- --exact --nocapture --test-threads=1
 
       - name: Verify rnpath, rnprobe, rncp and rnsd against pinned Python
+        if: ${{ matrix.suite == 'tools' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -681,16 +737,18 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Generate PR HIL support report
-        if: always()
+        if: ${{ always() && matrix.suite == 'controller' }}
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
 
       - name: Verify pinned Python quote_plus image-markup edge fixture
+        if: ${{ matrix.suite == 'tools' }}
         run: >-
           cargo test -p rns-tools --bin rngit --all-features
           tests::image_markup_matches_pinned_python_quote_plus_for_utf8_and_reserved_path_bytes
           -- --exact
 
       - name: Verify frozen 1.5.4 missing-part Resource retry exhaustion
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -706,6 +764,7 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify frozen 1.5.4 first-segment Resource metadata wire placement
+        if: ${{ matrix.suite == 'interfaces' }}
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -715,39 +774,51 @@ jobs:
           -- --ignored --exact --nocapture --test-threads=1
 
       - name: Upload PR HIL evidence
-        if: always()
+        if: ${{ always() && matrix.suite == 'controller' }}
         uses: actions/upload-artifact@v4
         with:
           name: hil-pr-${{ github.run_id }}
           path: target/hil/runs/pr-${{ github.run_id }}/**
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && matrix.suite == 'compatibility' }}
         with:
           name: python-compat-matrix-${{ github.run_id }}
           path: target/interop/python-compat-matrix/verify-${{ github.run_id }}/**
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && matrix.suite == 'interfaces' }}
         with:
           name: python-behavioral-inventory-${{ github.run_id }}
           path: target/issue-605/**
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && matrix.suite == 'interfaces' }}
         with:
           name: python-rust-wire-conformance-${{ github.run_id }}
           path: target/interop/python-rust-wire-conformance/verify-${{ github.run_id }}/**
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && matrix.suite == 'interfaces' }}
         with:
           name: local-interface-python-shared-${{ github.run_id }}
           path: target/interop/local-interface-python-shared/verify-${{ github.run_id }}/**
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && matrix.suite == 'interfaces' }}
         with:
           name: pipe-fake-subprocess-${{ github.run_id }}
           path: target/interop/pipe-fake-subprocess/verify-${{ github.run_id }}/**
           if-no-files-found: warn
+
+  hil-pr:
+    name: HIL PR level
+    if: ${{ always() }}
+    needs: python-compat
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every Python compatibility suite
+        env:
+          SUITES_RESULT: ${{ needs.python-compat.result }}
+        run: test "$SUITES_RESULT" = success
