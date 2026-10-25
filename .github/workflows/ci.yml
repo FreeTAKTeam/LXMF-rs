@@ -173,6 +173,8 @@ jobs:
     if: ${{ needs.selection.outputs['build-matrix'] == 'true' }}
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
     strategy:
       fail-fast: false
       matrix:
