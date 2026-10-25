@@ -1878,7 +1878,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "lxmf-sdk",
  "lxmf-wire",
@@ -1886,7 +1886,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-cli"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -1905,7 +1905,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-embedded-mini"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "heapless",
  "lxmf-wire",
@@ -1913,7 +1913,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-propagation"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "hex",
  "hkdf",
@@ -1931,14 +1931,14 @@ dependencies = [
 
 [[package]]
 name = "lxmf-reference"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "lxmf-runtime"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -1958,7 +1958,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-sdk"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "criterion",
  "hex",
@@ -1983,7 +1983,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-wire"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64 0.22.1",
  "criterion",
@@ -2048,7 +2048,7 @@ dependencies = [
 
 [[package]]
 name = "meshchat-api"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -2662,7 +2662,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reticulum-rs"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "reticulum-rs-core",
  "reticulum-rs-rpc",
@@ -2671,7 +2671,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-bluetooth"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "bluer",
  "futures-util",
@@ -2680,7 +2680,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-core"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "aes",
  "atomicwrites",
@@ -2703,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-rpc"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64 0.22.1",
  "ciborium",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-transport"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "aes",
  "base64 0.22.1",
@@ -2772,7 +2772,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-zeromq"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "async-trait",
  "asynchronous-codec",
@@ -2794,7 +2794,7 @@ dependencies = [
 
 [[package]]
 name = "reticulumd"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64 0.22.1",
  "btleplug",
@@ -2880,7 +2880,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-core"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "hex",
  "serde",
@@ -2890,7 +2890,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-ffi"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "critical-section",
  "embedded-alloc",
@@ -2901,7 +2901,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-mininode"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "hex",
  "lxmf-wire",
@@ -2913,14 +2913,14 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-runtime"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "rns-embedded-core",
 ]
 
 [[package]]
 name = "rns-tools"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64 0.22.1",
  "btleplug",

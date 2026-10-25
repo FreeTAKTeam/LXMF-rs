@@ -3298,6 +3298,12 @@ direction.
 
 ## Current Release State
 
+The v0.15.0 release train aligns 21 public packages and carries the delivery,
+interface lifecycle, Bluetooth, bare-metal and embedded custody changes since
+v0.14.0. Its software/artifact qualification does not close announce-cache disk
+exhaustion (#678) or production resource acceptance (#663). See the
+[release notes and operating limitations](../release-notes-v0.15.0.md).
+
 The unpublished embedded custody API keeps application-domain classification
 outside LXMF-rs. Generic `MessageKind::Application` retains persisted kind `1`;
 R3AKT's mission classification lives in its shared mesh-delivery crate, with
@@ -3305,7 +3311,7 @@ translation owned by the embedding application. Protocol storage and handlers
 stay shared by the daemon and embedded runtime. See the
 [API migration note](../migrations/propagation-application-kind.md).
 
-Stable v0.14.0 is the current published release. Its package alignment, opt-in
+Stable v0.14.0 is the preceding published release. Its package alignment, opt-in
 durable broker, migration requirements and qualification boundaries are
 summarized [above](#v0140-release) and in the
 [release notes](../release-notes-v0.14.0.md). The older records below retain

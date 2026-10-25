@@ -305,6 +305,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
                     manifest_path: "crates/libs/lxmf-core/Cargo.toml",
                 },
                 PublishedCrate {
+                    package: "lxmf-propagation",
+                    manifest_path: "crates/libs/lxmf-propagation/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "rns-embedded-core",
                     manifest_path: "crates/libs/rns-embedded-core/Cargo.toml",
                 },
@@ -315,6 +319,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
                 PublishedCrate {
                     package: "rns-embedded-ffi",
                     manifest_path: "crates/libs/rns-embedded-ffi/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "reticulum-rs-bluetooth",
+                    manifest_path: "crates/libs/rns-bluetooth/Cargo.toml",
                 },
                 PublishedCrate {
                     package: "reticulum-rs-transport",

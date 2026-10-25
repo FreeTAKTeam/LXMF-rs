@@ -1,6 +1,6 @@
 # Application custody classification
 
-The unpublished propagation custody API uses `MessageKind::Application` for
+The propagation custody API in v0.15.0 uses `MessageKind::Application` for
 opaque application data. R3AKT's `Mission` classification belongs to
 `r3akt-mesh-delivery::CustodyKind` in the R3AKTClient shared-crate workspace.
 Embedding applications translate that domain type at their LXMF boundary.
