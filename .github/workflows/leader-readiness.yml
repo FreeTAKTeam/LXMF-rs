@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  SDK_API_BREAK_TOOLCHAIN: nightly-2026-02-15
 
 jobs:
   leader-readiness-check:
@@ -22,6 +23,8 @@ jobs:
         with:
           toolchain: nightly
           components: miri
+      - name: Install pinned API comparison toolchain
+        run: rustup toolchain install nightly-2026-02-15 --profile minimal
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny,cargo-audit,cargo-nextest,cargo-public-api@0.50.2
