@@ -5,11 +5,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from python_compat_lxmf_evidence import merge_event_page, native_completion
+import python_compat_lxmd
 
 
 class NativeCompletionEvidenceTests(unittest.TestCase):
@@ -36,7 +39,7 @@ class NativeCompletionEvidenceTests(unittest.TestCase):
             script = "\n".join([
                 "set -euo pipefail", *functions,
                 "SCRIPT_DIR=" + shlex.quote(str(scripts)),
-                "RUST_EVIDENCE_DIR=" + shlex.quote(str(root)),
+                "RUST_EVIDENCE_DIR=" + shlex.quote(str(root)), "PY_DIR=" + shlex.quote(str(root)),
                 "ACTUAL_PYTHON=" + shlex.quote(sys.executable),
                 "PYTHON_BIN=qualification_python", "RUST_RPC_ADDR=stub", "TIMEOUT_SECS=1",
                 "rpc_call() { printf '%s\\n' " + shlex.quote(json.dumps(gap)) + "; }",
@@ -50,7 +53,7 @@ class NativeCompletionEvidenceTests(unittest.TestCase):
                     "import json,sys; from pathlib import Path; "
                     "sys.path.insert(0,str(Path(sys.argv[1]).parent)); "
                     "from python_compat_lxmf_evidence import native_completion; "
-                    "native_completion(json.load(open(sys.argv[2])),*sys.argv[3:8],431)"
+                    "native_completion(json.load(open(sys.argv[2])),*sys.argv[3:8],{'cd'*16:431})"
                 ) + ' "$@"',
                 "fi", "}",
                 "if wait_rust_native_completion outbound custody auto propagation node; then exit 27; fi",
@@ -85,13 +88,13 @@ class NativeCompletionEvidenceTests(unittest.TestCase):
             "message_id": "outbound", "updated": True,
             "status": "sent: propagated resource" if resource else "sent: propagated",
             "delivery_kind": "link-resource" if resource else "link-packet",
-            "method": "propagation", "peer": "node", "bytes": size,
+            "method": "propagation", "peer": "node", "bytes": size, "link_id": "cd" * 16,
             "resource_hash" if resource else "packet_hash": "ab" * 32,
         }}]}
 
     def check(self, evidence):
         return native_completion(evidence, "outbound", "custody", "auto",
-                                 "propagation", "node", 431)
+                                 "propagation", "node", {"cd" * 16: 431, "ab" * 32: 431})
 
     def test_native_packet_and_resource_custody_at_the_boundary(self):
         self.check(self.evidence(431))
@@ -104,12 +107,79 @@ class NativeCompletionEvidenceTests(unittest.TestCase):
     def test_wrong_or_missing_native_binding_is_rejected(self):
         for field, wrong in (("peer", "another-node"), ("method", "direct"),
                              ("delivery_kind", "local-propagation-store"),
-                             ("packet_hash", "ab"), ("bytes", 0), ("updated", False)):
+                             ("packet_hash", "ab"), ("bytes", 0), ("updated", False),
+                             ("link_id", "de" * 16)):
             with self.subTest(field=field):
                 evidence = self.evidence()
                 evidence["events"][0]["payload"][field] = wrong
                 with self.assertRaises(AssertionError):
                     self.check(evidence)
+
+    def test_negotiated_peer_mdu_controls_the_packet_resource_boundary(self):
+        limits = {"cd" * 16: 943, "ab" * 32: 943}
+        native_completion(self.evidence(558), "outbound", "custody", "auto",
+                          "propagation", "node", limits)
+        native_completion(self.evidence(944, True), "outbound", "custody", "auto",
+                          "propagation", "node", limits)
+        for evidence in (self.evidence(944), self.evidence(943, True)):
+            with self.assertRaises(AssertionError):
+                native_completion(evidence, "outbound", "custody", "auto",
+                                  "propagation", "node", limits)
+        with self.assertRaises(AssertionError):
+            native_completion(self.evidence(), "outbound", "custody", "auto",
+                              "propagation", "node", {})
+
+    def test_python_qualification_preserves_callbacks_and_records_actual_native_limits(self):
+        calls = []
+
+        class Router:
+            def propagation_link_established(self, link):
+                calls.append(("link", link))
+
+            def propagation_resource_concluded(self, resource):
+                calls.append(("resource", resource))
+                return "processed"
+
+        link = SimpleNamespace(link_id=bytes.fromhex("cd" * 16), mtu=1024, mdu=943)
+        resource = SimpleNamespace(link=link, get_hash=lambda: bytes.fromhex("ab" * 32))
+
+        def run(*args, **kwargs):
+            self.assertEqual(sys.argv[1:], ["--config", "configuration"])
+            router = Router()
+            router.propagation_link_established(link)
+            self.assertEqual(router.propagation_resource_concluded(resource), "processed")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "limits.jsonl"
+            with mock.patch.dict(sys.modules, {"LXMF": SimpleNamespace(LXMRouter=Router)}), \
+                 mock.patch.object(sys, "argv", ["qualification", str(path), "--config", "configuration"]), \
+                 mock.patch.object(python_compat_lxmd.runpy, "run_module", side_effect=run) as runner:
+                python_compat_lxmd.main()
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+        runner.assert_called_once_with("LXMF.Utilities.lxmd", run_name="__main__", alter_sys=True)
+        self.assertEqual(calls, [("link", link), ("resource", resource)])
+        self.assertEqual(rows, [{"link_id": "cd" * 16, "mtu": 1024, "mdu": 943},
+                                {"link_id": "cd" * 16, "mtu": 1024, "mdu": 943,
+                                 "resource_hash": "ab" * 32}])
+
+    def test_cli_uses_recorded_mdu_and_rejects_conflicting_link_evidence(self):
+        helper = Path(__file__).with_name("python_compat_lxmf_evidence.py")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            batch = root / "events.json"
+            batch.write_text(json.dumps(self.evidence(558)))
+            limits = root / "limits.jsonl"
+            observed = {"link_id": "cd" * 16, "mtu": 1024, "mdu": 943}
+            command = [sys.executable, str(helper), str(batch), "outbound", "custody",
+                       "auto", "propagation", "node", str(limits)]
+            limits.write_text(json.dumps(observed) + "\n")
+            valid = subprocess.run(command, text=True, capture_output=True, timeout=10)
+            self.assertEqual(valid.returncode, 0, valid.stderr)
+            self.assertEqual(json.loads(valid.stdout)["bytes"], 558)
+            with limits.open("a") as stream:
+                stream.write(json.dumps({**observed, "mdu": 431}) + "\n")
+            conflict = subprocess.run(command, text=True, capture_output=True, timeout=10)
+            self.assertNotEqual(conflict.returncode, 0)
 
     def test_duplicate_outcomes_are_not_accepted_as_custody(self):
         evidence = self.evidence()

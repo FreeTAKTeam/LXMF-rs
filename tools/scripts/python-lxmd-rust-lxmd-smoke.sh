@@ -372,7 +372,7 @@ wait_rust_native_completion() {
     capture_rust_message_evidence "${message_id}" || return 1
     if "${PYTHON_BIN}" "${SCRIPT_DIR}/python_compat_lxmf_evidence.py" \
         "${out_dir}/sdk_poll_events_v2.json" "${message_id}" "${status}" \
-        "${kind}" "${method}" "${peer}" >"${out_dir}/native-completion.json" 2>"${out_dir}/native-completion-error.log"; then
+        "${kind}" "${method}" "${peer}" "${PY_DIR}/link-limits.jsonl" >"${out_dir}/native-completion.json" 2>"${out_dir}/native-completion-error.log"; then
       return 0
     fi
     if (( "$(date +%s)" - start >= TIMEOUT_SECS )); then
@@ -769,12 +769,12 @@ PY
 start_python_lxmd() {
   local redirect="${1:->}"
   if [[ "${redirect}" == ">>" ]]; then
-    "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
+    "${PYTHON_BIN}" "${SCRIPT_DIR}/python_compat_lxmd.py" "${PY_DIR}/link-limits.jsonl" \
       --config "${PY_DIR}" \
       --rnsconfig "${PY_RNS_DIR}" \
       --propagation-node >>"${PY_LOG}" 2>&1 &
   else
-    "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
+    "${PYTHON_BIN}" "${SCRIPT_DIR}/python_compat_lxmd.py" "${PY_DIR}/link-limits.jsonl" \
       --config "${PY_DIR}" \
       --rnsconfig "${PY_RNS_DIR}" \
       --propagation-node >"${PY_LOG}" 2>&1 &

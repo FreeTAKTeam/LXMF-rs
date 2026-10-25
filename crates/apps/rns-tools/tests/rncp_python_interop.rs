@@ -428,7 +428,8 @@ fn spawn_python_listener(
             save_root: root,
             allowed_identities,
             no_compress,
-            announce_interval_seconds: 0,
+            // TCP readiness can precede application discovery; repeat a missed startup announce.
+            announce_interval_seconds: 1,
             verbose: false,
             capture_stdout: false,
         },
