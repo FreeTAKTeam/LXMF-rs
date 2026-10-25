@@ -18,7 +18,7 @@ def merge_event_page(page, retained):
     return page
 
 
-def native_completion(batch, message_id, status, kind, method, peer, link_mdu=None):
+def native_completion(batch, message_id, status, kind, method, peer, link_mdus=None):
     receipts = [row["payload"] for row in batch["events"]
                 if row["event_type"] == "receipt"
                 and row["payload"].get("message_id") == message_id
@@ -31,7 +31,13 @@ def native_completion(batch, message_id, status, kind, method, peer, link_mdu=No
     assert len(completed) == 1, receipts
     receipt = completed[0]
     if kind == "auto":
-        assert method == "propagation" and link_mdu is not None
+        assert method == "propagation" and link_mdus is not None
+        is_resource = receipt["delivery_kind"] == "link-resource"
+        binding = receipt.get("resource_hash" if is_resource else "link_id")
+        assert isinstance(binding, str) and len(bytes.fromhex(binding)) == (32 if is_resource else 16), receipt
+        assert binding in link_mdus, "native transfer has no observed peer MDU"
+        link_mdu = link_mdus[binding]
+        assert type(link_mdu) is int and link_mdu > 0, link_mdu
         resource = receipt["bytes"] > link_mdu
         kind = "link-resource" if resource else "link-packet"
         expected = "sent: propagated resource" if resource else "sent: propagated"
@@ -74,8 +80,15 @@ if __name__ == "__main__":
         aggregate_path.write_text(json.dumps(aggregate) + "\n")
         print(aggregate["next_cursor"], count)
     else:
-        import RNS
-
         path, message_id, status, kind, method, peer = sys.argv[1:7]
+        link_mdus = None
+        if kind == "auto":
+            link_mdus = {}
+            for line in Path(sys.argv[7]).read_text().splitlines():
+                row = json.loads(line)
+                for binding in (row["link_id"], row.get("resource_hash")):
+                    if binding is not None:
+                        assert binding not in link_mdus or link_mdus[binding] == row["mdu"]
+                        link_mdus[binding] = row["mdu"]
         print(json.dumps(native_completion(json.loads(Path(path).read_text()),
-                                           message_id, status, kind, method, peer, RNS.Link.MDU)))
+                                           message_id, status, kind, method, peer, link_mdus)))
