@@ -5,7 +5,7 @@ generated baselines, and historical release records. Use this page to choose
 the current source of truth instead of relying on similarly named historical
 documents.
 
-The current stable release is [v0.14.0](release-notes-v0.14.0.md), with Rust
+The current release train is [v0.15.0](release-notes-v0.15.0.md), with Rust
 1.88 as its minimum. Guides describe the maintained source; versioned release
 notes and evidence describe their named immutable tags.
 
@@ -93,6 +93,8 @@ Update these documents when their corresponding behavior changes:
 
 - [Real-world interoperability evidence](status/real-world-interoperability.md)
 - [Latest GitHub release](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
+- [v0.15.0 release notes and operating limitations](release-notes-v0.15.0.md)
+- [Application custody classification](migrations/propagation-application-kind.md)
 - [v0.14.0 release notes](release-notes-v0.14.0.md) and
   [published release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
 - [v0.14.0 ZeroMQ migration guide](migrations/v0.14.0-zmq.md)

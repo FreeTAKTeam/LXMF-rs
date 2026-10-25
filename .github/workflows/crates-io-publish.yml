@@ -66,6 +66,7 @@ jobs:
             "crates/libs/lxmf-reference/Cargo.toml"
             "crates/libs/rns-core/Cargo.toml"
             "crates/libs/lxmf-core/Cargo.toml"
+            "crates/libs/lxmf-propagation/Cargo.toml"
             "crates/libs/rns-embedded-core/Cargo.toml"
             "crates/libs/rns-embedded-runtime/Cargo.toml"
             "crates/libs/rns-embedded-ffi/Cargo.toml"

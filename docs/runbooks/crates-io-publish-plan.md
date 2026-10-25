@@ -34,10 +34,12 @@ Use a two-tier public model:
   - `reticulum-rs-zeromq` (the patched Tokio/TCP transport dependency)
   - `lxmf-reference`
   - `lxmf-wire`
+  - `lxmf-propagation`
   - `lxmf-sdk`
   - `lxmf-runtime`
   - `meshchat-api` (the opt-in partial application API)
   - `reticulum-rs-core`
+  - `reticulum-rs-bluetooth`
   - `reticulum-rs-transport`
   - `reticulum-rs-rpc`
   - `lxmf-embedded-mini`
@@ -75,9 +77,11 @@ not have to rewrite `use` paths just to complete the package rename.
 | `lxmf-reference` | `lxmf-reference` | `lxmf_reference` | GitHub release version | yes |
 | `vendor/zeromq` | `reticulum-rs-zeromq` | `zeromq` | GitHub release version | yes |
 | `lxmf-core` | `lxmf-wire` | `lxmf_core` | GitHub release version | yes |
+| `lxmf-propagation` | `lxmf-propagation` | `lxmf_propagation` | GitHub release version | yes |
 | `lxmf-sdk` | `lxmf-sdk` | `lxmf_sdk` | GitHub release version | yes |
 | `lxmf-runtime` | `lxmf-runtime` | `lxmf_runtime` | GitHub release version | yes |
 | `rns-core` | `reticulum-rs-core` | `rns_core` | GitHub release version | yes |
+| `rns-bluetooth` | `reticulum-rs-bluetooth` | `rns_bluetooth` | GitHub release version | yes |
 | `rns-transport` | `reticulum-rs-transport` | `rns_transport` | GitHub release version | yes |
 | `rns-rpc` | `reticulum-rs-rpc` | `rns_rpc` | GitHub release version | yes |
 | `meshchat-api` | `meshchat-api` | `meshchat_api` | GitHub release version | yes |
@@ -196,21 +200,23 @@ Recommended order:
 2. `lxmf-reference`
 3. `reticulum-rs-core`
 4. `lxmf-wire`
-5. `rns-embedded-core`
-6. `rns-embedded-runtime`
-7. `rns-embedded-ffi`
-8. `reticulum-rs-transport`
-9. `reticulum-rs-rpc`
-10. `meshchat-api`
-11. `lxmf-sdk`
-12. `lxmf-runtime`
-13. `rns-embedded-mininode`
-14. `lxmf-embedded-mini`
-15. `reticulum-rs`
-16. `lxmf`
-17. `lxmf-cli`
-18. `reticulumd`
-19. `rns-tools`
+5. `lxmf-propagation`
+6. `rns-embedded-core`
+7. `rns-embedded-runtime`
+8. `rns-embedded-ffi`
+9. `reticulum-rs-bluetooth`
+10. `reticulum-rs-transport`
+11. `reticulum-rs-rpc`
+12. `meshchat-api`
+13. `lxmf-sdk`
+14. `lxmf-runtime`
+15. `rns-embedded-mininode`
+16. `lxmf-embedded-mini`
+17. `reticulum-rs`
+18. `lxmf`
+19. `lxmf-cli`
+20. `reticulumd`
+21. `rns-tools`
 
 The fork retains upstream MIT attribution and the `zeromq` Rust import name.
 Its distinct package name is required: publishing a path dependency named
@@ -223,6 +229,8 @@ Reason:
 - `reticulum-rs-rpc` and `lxmf-sdk` share pinned compatibility metadata through
   `lxmf-reference`
 - `lxmf-wire` depends on `reticulum-rs-core`
+- `lxmf-propagation` depends on `lxmf-wire` and `reticulum-rs-core`
+- `reticulum-rs-bluetooth` precedes the SDK and transport consumers
 - `rns-embedded-runtime` depends on `rns-embedded-core`
 - `rns-embedded-ffi` depends on `rns-embedded-core` and `rns-embedded-runtime`
 - `reticulum-rs-transport` depends on `reticulum-rs-core`

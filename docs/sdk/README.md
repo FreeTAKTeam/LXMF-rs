@@ -3,7 +3,7 @@
 This guide is for teams embedding `lxmf-sdk` into services, desktop apps, and constrained hosts.
 It complements the formal contracts under `docs/contracts/` with integration-focused guidance.
 
-The current package release is 0.14.0 and requires Rust 1.88 or newer. Its core
+The current package release is 0.15.0 and requires Rust 1.88 or newer. Its core
 SDK contract is v2.6, with schema namespace `v2` and negotiated protocol version
 `2`; v2.5 requests remain accepted. Domain contracts that retain a v2.5 heading
 still define those domains. Package versions and contract versions are separate.

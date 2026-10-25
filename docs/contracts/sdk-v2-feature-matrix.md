@@ -93,8 +93,9 @@ Status legend:
 - `planned`: identified but not yet audited.
 
 For `lxmf-wire`, a passing host build with `--no-default-features --features
-alloc` is only a feature-configuration check, not evidence of a std-free or
-bare-metal build. The empty `lxmf-wire/alloc` feature is retained for
+alloc` is only a feature-configuration check,
+not evidence of a std-free or bare-metal build.
+The empty `lxmf-wire/alloc` feature is retained for
 compatibility. Full support is deferred because current maintainer time is
 limited; contributors who can implement, review, and maintain it are welcome in
 [#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646).

@@ -6,8 +6,8 @@ an application.
 
 ## Install a stable release
 
-The [`v0.14.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
-includes ZeroMQ reliability and opt-in durable custody while retaining the
+The [`v0.15.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.15.0)
+includes LXMF delivery, interface lifecycle and shared custody changes while retaining the
 tested RNS 1.5.2 / LXMF 0.9.6 reference baseline. It provides Linux, macOS,
 and Windows archives, Debian and RPM packages, a Windows MSI, SBOMs, and
 checksum files. Choose the asset for your platform and verify it against
@@ -18,12 +18,12 @@ the same directory:
 
 ```bash
 sha256sum --check --ignore-missing SHA256SUMS.txt
-tar -xzf lxmf-rs_0.14.0_linux-x86_64.tar.gz
+tar -xzf lxmf-rs_0.15.0_linux-x86_64.tar.gz
 ```
 
 The [latest release page](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
 is the durable entry point for future versions. Release claims and evidence
-boundaries are described in the [release notes](release-notes-v0.14.0.md) and
+boundaries are described in the [release notes](release-notes-v0.15.0.md) and
 [current roadmap](status/current-roadmap.md).
 
 ## Build from source
@@ -58,8 +58,8 @@ Build the user-facing host tools with:
 cargo build --locked --release -p lxmf-cli -p reticulumd -p rns-tools
 ```
 
-The commands above build the current checkout. To reproduce v0.14.0, select
-`git switch --detach v0.14.0` in a clean checkout before building. Do not
+The commands above build the current checkout. To reproduce v0.15.0, select
+`git switch --detach v0.15.0` in a clean checkout before building. Do not
 replace a checkout containing local work without preserving that work first.
 
 ## Run locally
@@ -126,19 +126,19 @@ The umbrella crates provide the simplest dependency surface:
 
 ```toml
 [dependencies]
-lxmf = "0.14.0"
-reticulum-rs = "0.14.0"
+lxmf = "0.15.0"
+reticulum-rs = "0.15.0"
 ```
 
 Applications that need narrower features can depend on component crates:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.14.0"
-lxmf-wire = "0.14.0"
-reticulum-rs-core = "0.14.0"
-reticulum-rs-transport = "0.14.0"
-reticulum-rs-rpc = "0.14.0"
+lxmf-sdk = "0.15.0"
+lxmf-wire = "0.15.0"
+reticulum-rs-core = "0.15.0"
+reticulum-rs-transport = "0.15.0"
+reticulum-rs-rpc = "0.15.0"
 ```
 
 Use the [SDK quickstart](sdk/quickstart.md) for a minimal client, the
