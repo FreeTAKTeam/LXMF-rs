@@ -69,12 +69,12 @@ pub(super) fn broker_handler_outcome(
         return ZmqStageOutcome::Succeeded;
     }
     #[derive(serde::Deserialize)]
-    struct ErrorCode {
-        code: String,
-    }
-    #[derive(serde::Deserialize)]
     struct Response {
-        error: Option<ErrorCode>,
+        #[serde(rename = "id")]
+        _id: serde::de::IgnoredAny,
+        #[serde(rename = "result")]
+        _result: serde::de::IgnoredAny,
+        error: Option<rns_rpc::RpcError>,
     }
     match rns_rpc::rpc::codec::decode_frame::<Response>(&envelope.payload) {
         Ok(response) => match response.error {

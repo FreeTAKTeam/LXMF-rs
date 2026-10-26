@@ -243,7 +243,7 @@ fn broker_deadline_reply_is_a_handler_timeout() {
         error: Some(rns_rpc::RpcError::new("SDK_STORAGE_BROKER_TIMEOUT", "writer deadline")),
     };
     let payload = rns_rpc::rpc::codec::encode_frame(&response).expect("response frame");
-    let envelope = ZmqRpcEnvelope::response("session", 1, payload);
+    let envelope = ZmqRpcEnvelope::response("session".into(), 1, payload);
     assert!(matches!(
         super::super::broker_handler_outcome("sdk_broker_resume_v1", &envelope),
         ZmqStageOutcome::TimedOut
@@ -268,13 +268,13 @@ fn broker_reply_classifier_handles_success_errors_and_malformed_frames() {
         let response =
             rns_rpc::RpcResponse { id: 1, result: Some(serde_json::json!({"ok":true})), error };
         let payload = rns_rpc::rpc::codec::encode_frame(&response).expect("frame");
-        let envelope = ZmqRpcEnvelope::response("session", 1, payload);
+        let envelope = ZmqRpcEnvelope::response("session".into(), 1, payload);
         assert!(matches!(
             super::super::broker_handler_outcome("sdk_broker_resume_v1", &envelope),
             ZmqStageOutcome::Succeeded
         ));
     }
-    let malformed = ZmqRpcEnvelope::response("session", 1, vec![]);
+    let malformed = ZmqRpcEnvelope::response("session".into(), 1, vec![]);
     assert!(matches!(
         super::super::broker_handler_outcome("sdk_broker_resume_v1", &malformed),
         ZmqStageOutcome::Failed
