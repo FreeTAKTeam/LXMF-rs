@@ -397,3 +397,76 @@ from reader-pinned physical backpressure can wait until that next pass.
 Regressions retain physical budget and custody/ACK guarantees and demonstrate
 checkpoint progress while both traffic connection mutexes are held.
 Production reader attribution and resource acceptance remain open.
+
+### 2026-10-26 preview.26 paired ingress and control evidence
+
+Daemon images were static `x86_64-unknown-linux-musl`, default daemon features.
+The published preview.26 image was `392fc1b9`; PR 1 was `cd7f616d` on
+`883e01b1`. Both ran against independent copies of the same 200k-entry,
+1.11 GiB database / 973 MiB fixture WAL and 100k signed routes, with
+MemoryHigh=768 MiB, MemoryMax=1 GiB, CPUs 2/3, and 600 seconds of ingress.
+Local evidence: `target/soak/preview26/{baseline-ingress,pr1-musl-ingress}`;
+`source-bindings.json` binds image hashes to commits. The sampler's
+`git_revision` identifies the active workspace, so it is not the image identity.
+The stopped glibc startup is excluded.
+
+| Sampled ingress metric | Preview.26 | PR 1 |
+| --- | ---: | ---: |
+| Path persistence runs | 210 | 1 |
+| Full announce-cache verifications | 2 | 0 |
+| Unchanged records skipped on the candidate's one save | — | 100,000 |
+| CPU, percent of one core | 14.330 | 7.831 |
+| MemoryHigh event delta after readiness | 2,013 | 205 |
+| Poll errors / polls | 0 / 5,990 | 0 / 5,974 |
+| Poll window p95 maximum, microseconds | 12,303 | 1,838 |
+| Logical read rate, MiB/s | 3.936 | 15.045 |
+| Read syscalls/second | 1,665 | 3,857 |
+| Aggregate writer wait delta, seconds | 5.776 | 14.468 |
+| Readiness startup, seconds | 209.310 | 259.095 |
+| Process swap, first/last minute medians, MiB | 0 / 21.2 | 248.1 / 74.2 |
+
+The snapshot amplification is removed, but resource acceptance **does not pass**.
+Around the 300-second retention pass the candidate's anonymous memory rose
+from about 24 MiB to 236 MiB, file cache from 23 to 521 MiB, and high events
+increased by 205; its observed tail then plateaued near 224 MiB anon / 522 MiB
+file. Startup swap was substantially higher and startup slower. The runs do not
+control host cache residency; these observed startup differences are not an
+allocator attribution. Logical reads and aggregate writer wait worsened.
+The candidate still pruned the fixture from 200k entries to 125k / 256 MB,
+which implicates retention work, while persistence did no full verification.
+The 14.468-second counter is aggregate wait across many operations, not a
+measurement of one writer hold or a particular retention phase.
+
+PR 4 remains deferred: one retention high-water step does not prove repeated
+allocator ratcheting, and cumulative wait does not establish the required
+multi-second quota/payload critical section. Per-phase/max-hold attribution or
+repeated-cycle allocation evidence is needed before changing those algorithms.
+No allocator, quota ordering, payload-prune policy or RCH timeout was changed.
+
+The combined daemon additionally passed a 90-second local control stress with
+100k restored routes, 2-second dirty-save and WAL timers, a bounded synthetic
+WAL workload, and a reader pinned then released. Propagation retention was
+disabled to isolate the save/checkpoint control boundary. There were 8,166
+broker negotiations, no errors, p99 1,087 microseconds and maximum 151,151
+microseconds, with 41 path saves and 23 checkpoint attempts. Evidence lives in
+`target/soak/preview26/control-stress-pinned`. An earlier probe had zero
+checkpoints and is excluded from proving checkpoint concurrency.
+A real occupied command endpoint kept `/readyz` at 503 while `/healthz` and
+`/livez` stayed 200 (`target/soak/preview26/failed-bind`).
+
+The standard four-package suite passed 3,329 tests (135 ignores), with the new
+SDK recovery and timeout-category regressions passing separately. A matching
+Fernet optional-feature profile passed all 687 daemon tests; the initial
+selected-package `--all-features` run enabled AES-128 transport with the other
+Fernet implementation still on its default, so that inconsistent mode failed
+propagation decryption. Final all-feature Clippy, formatting, boundaries,
+module size, architecture (including no_std), and 13 Python harness tests passed.
+`cargo xtask release-check` passed its runtime/check lanes through the publish
+dry-run, then failed packaged daemon verification against already published
+0.15.0 dependencies, which lack both #694 and current APIs. No crates are
+published or version-bumped by this daemon-only prerelease workflow.
+
+Preview.26 operator metrics, production reader attribution, fresh delivery,
+restart/lost-ACK recovery and multi-hour #663/#657 acceptance remain open.
+#678 cache file/inode retention over several GC cycles remains a separate
+acceptance lane; these resource/control runs do not close it.

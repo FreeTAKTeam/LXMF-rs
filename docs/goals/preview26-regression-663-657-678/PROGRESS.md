@@ -2,10 +2,10 @@
 
 | PR | State | Branch / head | Evidence |
 | --- | --- | --- | --- |
-| 1. Timer-driven dirty persistence | Implemented; ingress comparison pending | `corvo/preview26-01-persistence` | Delayed 30 s cleanup only; dirty saves every 300 s (configurable); canonical restore fingerprints; focused daemon/transport tests, module-size check and Luna review passed. |
-| 2. Truthful readiness and cheap control | Implemented; package checks running | `corvo/preview26-02-control` | Bind-lifetime readiness; atomic durable capability; 2.5 s replay-safe command wait; reserved control/rejection capacity and correlated deadline outcome. |
-| 3. WAL maintenance connection | Implemented; combined verification running | `corvo/preview26-03-wal` | Dedicated disk checkpoint connection, shared maintenance cadence, throttled emergency attempts, checkpoint frame gauges and traffic-mutex regression. |
-| 4. Conditional allocator/prune paging | Pending ingress evidence | | |
+| 1. Timer-driven dirty persistence | Implemented; resource acceptance open | [#695](https://github.com/FreeTAKTeam/LXMF-rs/pull/695), `cd7f616d` | Paired static-musl ingress: 210→1 saves, 2→0 verifications, CPU 14.33→7.83%, sampled high events 2,013→205. Retention memory/read/wait regressions remain. |
+| 2. Truthful readiness and cheap control | Implemented; production acceptance open | [#696](https://github.com/FreeTAKTeam/LXMF-rs/pull/696), `105a113f` | Actual failed bind: ready503/health200/live200. 8,166 negotiations: p99 1.087 ms, 0 errors during 41 saves and 23 checkpoints. SDK retry/reconcile and older-client timeout category regressions pass. |
+| 3. WAL maintenance connection | Implemented; production reader attribution open | [#697](https://github.com/FreeTAKTeam/LXMF-rs/pull/697) | Dedicated checkpoint connection, traffic-mutex and throttle regressions; 14 durability integration tests passed. Frame gauges cover normal/emergency attempts. |
+| 4. Conditional allocator/prune paging | Deferred: conditional attribution not established | No PR | One retention step with a flat observed tail does not demonstrate repeated ratcheting; cumulative wait does not prove a single multi-second critical section. |
 
 ## PR 1 decisions
 
@@ -32,3 +32,12 @@
 - Initial expanded all-features package tests exposed propagation-decrypt failures associated with the optional Fernet feature combination; the plan's standard feature package suite is being checked separately. This extra test mode is not reported as passing.
 - Local boundary and module-size checks passed. All-features Clippy passed before the final small response-shape/test corrections; final gates are running.
 - Paired musl baseline/candidate ingress runs use the same 200k-entry, 100k-route fixture, two CPUs and 768 MiB/1 GiB limits. A glibc candidate startup was stopped before sampling and is excluded from comparisons.
+
+## Final local evidence
+
+- See the [paired ingress and control record](../../performance/rch-resource-fixes-663.md#2026-10-26-preview26-paired-ingress-and-control-evidence) for exact improvements, regressions and limits.
+- Four-package suite: 3,329 passed / 0 failed / 135 ignored, plus SDK timeout recovery and RPC timeout metadata regressions. Consistent optional Fernet profile: 687 daemon tests passed. Final Clippy, fmt, architecture/no_std, boundaries, module size and 13 harness tests passed; issue #369 scanner is included in the package suite.
+- `release-check` is not green: the registry package dry-run resolves published 0.15.0 libraries without post-release APIs (#694 and this increment). Earlier runtime lanes passed. This does not prevent an explicitly labeled local static daemon test artifact, and no registry release is attempted.
+- POST plan review: aligned implementation; correctness review found and fixed SDK recovery/category compatibility. Maintainer review found no remaining actionable source issue. Production acceptance remains unproven.
+- Awaiting operator preview.26 metrics requested in this chat. No deployment, issue closure or production plateau claimed.
+- Daemon-only prerelease tag reserved for publication: `reticulumd-test-0.15.0-rch663-678.2`; exact final commit, hashes and fresh-download verification are recorded with its assets. Hosted draft-PR checks remain a separate lane.
