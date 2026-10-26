@@ -63,11 +63,18 @@ reference compatibility. It invokes `cargo xtask hil run --level pr --all`,
 which runs the virtual transport cases, the pinned Python conformance
 baseline, and live Rust/Python channel, paper, compatibility-matrix, and LXMD
 remote-relay cases. The resulting evidence bundle is retained with the run.
-The controller, exact-target compatibility matrix, interface/lifecycle checks,
-and command-line/media checks run in four independent jobs, each with its own
-Rust dependency build cache. Tests within each job retain their existing serial
-execution and Python reference revisions. The required `HIL PR level` check
-passes only when all four jobs succeed; failures do not cancel the other suites.
+The controller's channel, baseline compatibility, relay/paper, and
+reference/virtual groups run independently alongside the exact-target matrix,
+interface/lifecycle checks, and command-line/media checks. Each of these seven
+jobs has its own Rust dependency cache. Tests within each job retain their
+existing serial execution, timeouts, and Python reference revisions. Dependency
+setup skips installed packages, bounds apt requests and lock waits, and limits
+media installation to the tools job. Controller logs identify each case as it
+starts and report its result, duration, and attempts when it finishes.
+The required `HIL PR level` check passes only when every job succeeds and the
+combined same-commit evidence contains every configured PR case/profile pair
+exactly once. Per-job evidence and the combined support report are retained;
+failures do not cancel the other suites.
 - Independent implementation interoperability is a separate evidence axis,
   enforced by `.github/workflows/independent-interop.yml` and published through
   `tools/scripts/independent_evidence_publish.py`. Its readiness output reports
