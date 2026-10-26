@@ -365,3 +365,16 @@ two cores, 768 MiB MemoryHigh and 1 GiB MemoryMax; measures CPU, logical reads,
 anon/file/cache, swap and reclaim deltas; and verifies durable inbound,
 outbound/fanout, restart and lost-ACK recovery. Hardware, public-network and
 production deployment evidence are not claimed by this increment.
+
+## Preview.26 follow-up: timer-driven persistence
+
+The [regression package](../goals/preview26-regression-663-657-678/PLAN.md)
+replaces the two-second announce debounce with dirty saves no more frequently
+than 300 seconds (`LXMD_PATH_TABLE_SAVE_INTERVAL_SECS`, positive seconds).
+The delayed 30-second maintenance tick only continues bounded cache collection;
+it cannot write a route snapshot. Shutdown still flushes explicitly.
+Canonical validated cache records seed fingerprints during restore, removing
+the first-save reread; periodic full cache verification is removed under the
+single-owner assumption. Missing/invalid records on restart remain classified.
+Focused regressions cover burst timing, cleanup without snapshots and seeded
+restore. Production acceptance and paired ingress measurements remain pending.

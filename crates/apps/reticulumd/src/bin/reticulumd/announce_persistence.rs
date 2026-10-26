@@ -3,9 +3,9 @@ use rns_transport::transport::Transport;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, Instant};
 
-const RETICULUM_PATH_TABLE_SAVE_DEBOUNCE: Duration = Duration::from_secs(2);
+const RETICULUM_PATH_TABLE_SAVE_MIN_INTERVAL: Duration = Duration::from_secs(300);
 const RETICULUM_ANNOUNCE_CACHE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(30);
 
 pub(super) type PathTableSaveSender = tokio::sync::mpsc::Sender<()>;
@@ -75,11 +75,7 @@ pub(super) async fn maintain_announce_cache(context: &PathTablePersistenceContex
     let _flight = PersistenceFlight::start(&context.metrics);
     match context.transport.clean_reticulum_announce_cache_batch(&context.path).await {
         Ok(Some(report)) => context.metrics.record_cleanup(report),
-        Ok(None) => {
-            if let Err(error) = flush_reticulum_path_table(context).await {
-                log::error!("[daemon] failed to persist Reticulum path table: {error}");
-            }
-        }
+        Ok(None) => {}
         Err(error) => {
             context.metrics.record_error();
             context.metrics.record_cleanup_error();
@@ -101,28 +97,44 @@ pub(super) async fn flush_reticulum_path_table_if_configured(
 pub(super) fn spawn_path_table_persistence_worker(
     context: PathTablePersistenceContext,
 ) -> PathTableSaveSender {
+    let interval = std::env::var("LXMD_PATH_TABLE_SAVE_INTERVAL_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(RETICULUM_PATH_TABLE_SAVE_MIN_INTERVAL);
+    spawn_path_table_persistence_worker_with_interval(context, interval)
+}
+
+pub(super) fn spawn_path_table_persistence_worker_with_interval(
+    context: PathTablePersistenceContext,
+    interval: Duration,
+) -> PathTableSaveSender {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(1);
     tokio::spawn(async move {
-        let mut maintenance = tokio::time::interval(RETICULUM_ANNOUNCE_CACHE_MAINTENANCE_INTERVAL);
+        let mut maintenance = tokio::time::interval_at(
+            Instant::now() + RETICULUM_ANNOUNCE_CACHE_MAINTENANCE_INTERVAL,
+            RETICULUM_ANNOUNCE_CACHE_MAINTENANCE_INTERVAL,
+        );
         maintenance.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut dirty = false;
+        let mut next_save = Instant::now() + interval;
         loop {
             tokio::select! {
-                _ = maintenance.tick() => {
-                    maintain_announce_cache(&context).await;
-                }
+                _ = maintenance.tick() => maintain_announce_cache(&context).await,
                 received = rx.recv() => {
-                    if received.is_none() {
-                        break;
+                    if received.is_none() { break; }
+                    if dirty { context.metrics.record_coalesced(1); }
+                    dirty = true;
+                }
+                _ = tokio::time::sleep_until(next_save), if dirty => {
+                    // Include announces absorbed while the snapshot was pending.
+                    while rx.try_recv().is_ok() { context.metrics.record_coalesced(1); }
+                    match flush_reticulum_path_table(&context).await {
+                        Ok(_) => dirty = false,
+                        Err(err) => log::error!("[daemon] failed to persist Reticulum path table: {err}"),
                     }
-                    sleep(RETICULUM_PATH_TABLE_SAVE_DEBOUNCE).await;
-                    let mut coalesced = 0u64;
-                    while rx.try_recv().is_ok() {
-                        coalesced += 1;
-                    }
-                    context.metrics.record_coalesced(coalesced);
-                    if let Err(err) = flush_reticulum_path_table(&context).await {
-                        log::error!("[daemon] failed to persist Reticulum path table: {err}");
-                    }
+                    next_save = Instant::now() + interval;
                 }
             }
         }

@@ -9,9 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-const ANNOUNCE_CACHE_VERIFY_INTERVAL: Duration = Duration::from_secs(300);
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub(super) struct PathTablePersistence {
     save_gate: tokio::sync::Semaphore,
@@ -27,18 +25,12 @@ impl Default for PathTablePersistence {
 #[derive(Default)]
 struct AnnounceCacheState {
     storage_root: Option<PathBuf>,
-    last_full_verify: Option<Instant>,
     files: HashMap<Hash, [u8; 32]>,
     persisted_snapshot_matches_files: bool,
     cleanup_scan: Option<tokio::fs::ReadDir>,
 }
 
 impl AnnounceCacheState {
-    fn full_verification_due(&self, now: Instant) -> bool {
-        self.last_full_verify
-            .is_none_or(|last| now.duration_since(last) >= ANNOUNCE_CACHE_VERIFY_INTERVAL)
-    }
-
     fn retain_current_files(&mut self, current_hashes: &HashSet<Hash>) {
         self.files.retain(|hash, _| current_hashes.contains(hash));
     }
@@ -177,7 +169,7 @@ impl Transport {
 
         tokio::fs::create_dir_all(&storage_path).await?;
         let announce_cache = ReticulumAnnounceCache::new(&storage_path);
-        let verify_existing = cache_state.full_verification_due(Instant::now());
+        let verify_existing = cache_state.files.is_empty();
         let mut current_hashes = HashSet::with_capacity(packets.len());
         current_hashes.extend(packets.iter().map(|(packet_hash, _, _)| *packet_hash));
         cache_state.persisted_snapshot_matches_files = false;
@@ -214,9 +206,6 @@ impl Transport {
             tokio::fs::write(storage_path.join("destination_table"), payload).await?;
             tokio::fs::write(storage_path.join("tunnels"), tunnel_payload).await?;
             cache_state.persisted_snapshot_matches_files = true;
-            if verify_existing {
-                cache_state.last_full_verify = Some(Instant::now());
-            }
             let cleanup = clean_announce_cache_batch(
                 &storage_path,
                 &current_hashes,
@@ -256,6 +245,16 @@ impl Transport {
         }
 
         let storage_path = storage_path.as_ref().to_path_buf();
+        let _save_permit = self
+            .path_table_persistence
+            .save_gate
+            .acquire()
+            .await
+            .map_err(|_| io::Error::other("Reticulum path-table persistence gate closed"))?;
+        let mut cache_state = AnnounceCacheState {
+            storage_root: Some(storage_path.clone()),
+            ..AnnounceCacheState::default()
+        };
         let path = storage_path.join("destination_table");
         let announce_cache = ReticulumAnnounceCache::new(&storage_path);
         let now = std::time::Instant::now();
@@ -371,6 +370,9 @@ impl Transport {
                 report.skipped.active_blackholed_identity += 1;
                 continue;
             }
+            if let Some(fingerprint) = candidate.cached.fingerprint {
+                cache_state.files.insert(candidate.entry.packet_hash, fingerprint);
+            }
             let dest_hash = candidate.cached.destination.desc.address_hash;
             report.push_identity(&candidate.cached.destination);
             handler
@@ -397,6 +399,9 @@ impl Transport {
                 report.skipped.tunnel_identity_conflict += 1;
                 continue;
             }
+            if let Some(fingerprint) = cached.fingerprint {
+                cache_state.files.insert(packet_hash, fingerprint);
+            }
             let dest_hash = cached.destination.desc.address_hash;
             report.push_identity(&cached.destination);
             handler
@@ -417,6 +422,9 @@ impl Transport {
             handler.tunnel_table.restore_python_entries(tunnels, now, now_unix_secs);
         }
 
+        drop(handler);
+        // Cleanup waits for a successful save so rejected snapshot references remain protected.
+        *self.path_table_persistence.state.lock().await = Some(cache_state);
         Ok(report)
     }
 }

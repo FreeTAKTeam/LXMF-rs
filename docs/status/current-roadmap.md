@@ -3385,3 +3385,8 @@ broader #613 rendering and lifecycle acceptance remains partial.
 - A passing interop workflow does not promote unrelated matrix rows.
 - Update this file and the affected matrix in the same change.
 - Keep implementation history in Git and historical plans, not in this file.
+
+Preview.26 regression implementation now bounds dirty path-table saves to a
+300-second minimum (configurable), delays cleanup startup, and seeds validated
+canonical restore fingerprints. The regression package tracks the remaining
+readiness/control and WAL connection increments and paired ingress evidence.

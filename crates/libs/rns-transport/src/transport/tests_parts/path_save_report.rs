@@ -29,3 +29,25 @@ async fn path_save_report_splits_written_skipped_and_verified_records() {
     assert_eq!(tables.announce_cache_capacity, 100_000);
     assert_eq!(transport.table_occupancy_now().expect("tables idle"), tables);
 }
+
+#[tokio::test]
+async fn restore_seeds_canonical_cache_fingerprints() {
+    let temp = tempfile::tempdir().expect("storage");
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("restore-seed", &identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+    let _learned = learn_cached_path(&transport, iface, "seed").await;
+    transport.save_reticulum_path_table(temp.path()).await.expect("save");
+    let mut config = TransportConfig::new("restore-seed", &identity, true);
+    config.set_retransmit(true);
+    let restored = Transport::new(config);
+    assert_eq!(*restored.iface_manager().lock().await.new_channel(16).address(), iface);
+    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 1);
+    let report = restored.save_reticulum_path_table_report(temp.path()).await.expect("save restored");
+    assert_eq!(report.skipped_known, 1, "validated restore needs no file open on save: {report:?}");
+    assert_eq!(report.written, 0);
+    assert_eq!(report.verified_unchanged, 0);
+    assert!(!report.full_verification);
+}
