@@ -38,6 +38,26 @@ mod tests {
     }
 
     #[test]
+    fn readiness_requires_all_configured_zmq_binds_and_clears_on_exit() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.configure_zmq_readiness(2);
+        let request = b"GET /readyz HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let status = || {
+            let response = handle_http_request_with_peer(&daemon, request,
+                Some("127.0.0.1:1".parse().expect("socket"))).expect("ready response");
+            parse_status_line(&response).to_owned()
+        };
+        assert_eq!(status(), "HTTP/1.1 503 Service Unavailable");
+        let first = daemon.zmq_listener_bound();
+        assert_eq!(status(), "HTTP/1.1 503 Service Unavailable");
+        let second = daemon.zmq_listener_bound();
+        assert_eq!(status(), "HTTP/1.1 200 OK");
+        drop(second);
+        assert_eq!(status(), "HTTP/1.1 503 Service Unavailable");
+        drop(first);
+    }
+
+    #[test]
     fn health_endpoints_return_http_200_with_json_status() {
         let daemon = RpcDaemon::test_instance();
         for path in ["/healthz", "/readyz", "/livez"] {

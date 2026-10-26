@@ -1235,3 +1235,9 @@ boundary. This adds no protocol or operational parity claim.
   duplicate storage/upsert work.
 - `interop.python_live_gate` means the configured scenarios run successfully;
   it does not imply every partial row is complete.
+
+Preview.26 SDK control follow-up (#663/#657): replay-safe durable broker calls
+recover from typed writer deadlines; admission keeps operation-ID reconciliation.
+Timeout metadata also supports existing category-based clients. Local parked-writer,
+recovery and real ZMQ control stress passed; long-duration custody/delivery and
+production resource acceptance remain open in the regression package.

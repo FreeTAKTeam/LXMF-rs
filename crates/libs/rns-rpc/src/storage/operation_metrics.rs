@@ -72,6 +72,13 @@ pub enum WalCheckpointOutcome {
     PassiveIncomplete,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct WalCheckpointFrames {
+    pub busy: i64,
+    pub log_frames: i64,
+    pub checkpointed_frames: i64,
+}
+
 #[derive(Debug, Default)]
 pub struct WalMetrics {
     pub checkpoint_attempts_total: AtomicU64,
@@ -82,9 +89,14 @@ pub struct WalMetrics {
     pub emergency_reclaim_total: AtomicU64,
     pub last_wal_bytes: AtomicU64,
     pub last_checkpoint_unix_secs: AtomicU64,
+    last_checkpoint: std::sync::Mutex<Option<WalCheckpointFrames>>,
 }
 
 impl WalMetrics {
+    pub fn record_checkpoint(&self, frames: WalCheckpointFrames) {
+        *self.last_checkpoint.lock().expect("WAL checkpoint metrics poisoned") = Some(frames);
+    }
+
     pub fn record_outcome(&self, outcome: WalCheckpointOutcome, wal_bytes_after: u64) {
         self.last_wal_bytes.store(wal_bytes_after, Ordering::Relaxed);
         match outcome {
@@ -117,6 +129,7 @@ impl WalMetrics {
             "errors_total": self.errors_total.load(Ordering::Relaxed),
             "emergency_reclaim_total": self.emergency_reclaim_total.load(Ordering::Relaxed),
             "last_wal_bytes": self.last_wal_bytes.load(Ordering::Relaxed),
+            "last_checkpoint": *self.last_checkpoint.lock().expect("WAL checkpoint metrics poisoned"),
             "last_checkpoint_unix_secs": self.last_checkpoint_unix_secs.load(Ordering::Relaxed),
         })
     }

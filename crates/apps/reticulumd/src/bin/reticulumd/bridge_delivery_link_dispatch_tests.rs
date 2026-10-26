@@ -112,6 +112,12 @@ async fn assert_registration_race(status_failure: bool) {
             .expect("recovered handoff");
         assert!(matches!(resumed, Some(Transfer::Packet { .. })));
         assert_eq!(packets.len(), 1);
+        let attempt = &packets[0];
+        assert_eq!(
+            attempt.event.packet_hash,
+            Some(hex::encode(attempt.receipt.packet_hash().to_bytes()))
+        );
+        assert_eq!(attempt.event.link_id, Some(hex::encode(attempt.receipt.link_id().as_slice())));
         channel.tx_channel.recv().await.expect("single resumed packet");
         assert!(channel.tx_channel.try_recv().is_err());
     }

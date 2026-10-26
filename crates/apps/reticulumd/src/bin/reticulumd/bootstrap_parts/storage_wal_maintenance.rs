@@ -1,16 +1,6 @@
-const DEFAULT_STORAGE_WAL_MAINTENANCE_INTERVAL_SECS: u64 = 60;
-
-/// Interval for routine WAL maintenance, independent of propagation enablement.
+/// Shared with write-path checkpoint throttling in the storage owner.
 pub(super) fn storage_wal_maintenance_interval() -> Duration {
-    let secs = match env_u64("LXMD_STORAGE_WAL_MAINTENANCE_INTERVAL_SECS") {
-        Ok(Some(value)) => value.max(1),
-        Ok(None) => DEFAULT_STORAGE_WAL_MAINTENANCE_INTERVAL_SECS,
-        Err(err) => {
-            log::warn!("[daemon] invalid env var LXMD_STORAGE_WAL_MAINTENANCE_INTERVAL_SECS: {err}");
-            DEFAULT_STORAGE_WAL_MAINTENANCE_INTERVAL_SECS
-        }
-    };
-    Duration::from_secs(secs)
+    rns_rpc::wal_maintenance_interval()
 }
 
 /// Spawn both storage timers: propagation storage maintenance (existing) and the

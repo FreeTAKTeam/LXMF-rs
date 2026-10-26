@@ -5,13 +5,27 @@ impl MessagesStore {
         self.refresh_broker_budget_cache()
     }
     pub fn durable_broker_enabled(&self) -> rusqlite::Result<bool> {
-        self.with_read_conn(super::broker::enabled)
+        Ok(self.durable_broker_enabled.load(Ordering::Acquire))
     }
     pub fn broker_command(&self, command: super::broker::BrokerCommand) -> rusqlite::Result<JsonValue> {
+        // Internal dispatch claims must observe their result before scheduling delivery.
+        let replay_safe = matches!(command, super::broker::BrokerCommand::Resume {..}
+            | super::broker::BrokerCommand::Fetch {..} | super::broker::BrokerCommand::Ack {..}
+            | super::broker::BrokerCommand::Admit {..} | super::broker::BrokerCommand::Reconcile {..});
         let (reply, receive) = mpsc::channel();
         self.outbound_write_tx.send(OutboundWriteCommand::Broker { command: Box::new(command), reply })
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        receive.recv().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+        if replay_safe {
+            match receive.recv_timeout(std::time::Duration::from_millis(2500)) {
+                Ok(result) => result,
+                Err(mpsc::RecvTimeoutError::Timeout) => Err(super::broker::error(
+                    "SDK_STORAGE_BROKER_TIMEOUT", "broker writer deadline exceeded; queued operation may still commit; retry with the same request",
+                )),
+                Err(error) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(error))),
+            }
+        } else {
+            receive.recv().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+        }
     }
 }
 

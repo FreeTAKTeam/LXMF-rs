@@ -271,7 +271,9 @@ Issue 663 was reopened on 2026-10-23 because production still shows rising
 after that increment. The follow-through runs from the
 [acceptance execution plan](../goals/issue-663-resource-acceptance/PLAN.md),
 one PR per item, with progress in its
-[progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). The
+[progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). Preview.26 regression work follows the
+[ordered regression plan](../goals/preview26-regression-663-657-678/PLAN.md) and
+[regression progress](../goals/preview26-regression-663-657-678/PROGRESS.md). The
 first item adds a production-shaped fixture, an RCH-shaped poller and a
 cgroup-constrained sampler (`cargo xtask resource-soak-663`); its ten-minute
 baseline is recorded in the resource regression record and is a harness smoke
@@ -3383,3 +3385,37 @@ broader #613 rendering and lifecycle acceptance remains partial.
 - A passing interop workflow does not promote unrelated matrix rows.
 - Update this file and the affected matrix in the same change.
 - Keep implementation history in Git and historical plans, not in this file.
+
+Preview.26 regression implementation now bounds dirty path-table saves to a
+300-second minimum (configurable), delays cleanup startup, and seeds validated
+canonical restore fingerprints. The regression package tracks the remaining
+readiness/control and WAL connection increments and paired ingress evidence.
+
+Preview.26 control follow-up: `/readyz` returns 503 until every configured ZMQ
+listener has bound, and clears on loop exit. Durable capability reads use a
+startup/enable cache. Replay-safe broker RPC commands return a typed timeout
+after 2.5 seconds while queued work retains its commit semantics. Eight legal
+maximum control request/reply pairs and 32 bounded rejection replies have
+reserved admission capacity; power-of-two drop warnings bound log volume.
+Larger configured poll batches preclude a fixed 1 MiB reply reservation.
+Local readiness/deadline regressions passed; production p99 and pressure
+acceptance remain pending.
+
+Preview.26 WAL follow-up runs scheduled PASSIVE/TRUNCATE on a dedicated
+maintenance connection outside the traffic writer mutex. Emergency write-path
+checkpoint attempts are limited to the shared maintenance interval, so recovery
+from reader-pinned physical backpressure can wait until that next pass.
+`storage.wal.last_checkpoint` exposes SQLite busy/log/checkpointed frames.
+Regressions retain physical budget and custody/ACK guarantees and demonstrate
+checkpoint progress while both traffic connection mutexes are held.
+Production reader attribution and resource acceptance remain open.
+
+The preview.26 regression stack is available as PRs #695 (dirty persistence),
+#696 (readiness/control and SDK deadline recovery), and #697 (WAL connection).
+Paired 600-second musl ingress reduced persistence 210→1 runs and CPU
+14.33→7.83%, but retention still caused memory/reclaim pressure, and logical
+reads / aggregate writer wait worsened. Resource acceptance stays open.
+A separate control stress achieved negotiate p99 1.087 ms during saves and
+checkpoints; failed binds truthfully keep readiness at 503. Conditional PR 4
+is deferred until repeated-cycle or phase-specific evidence establishes its
+trigger. Details and prerelease evidence are in the regression package.

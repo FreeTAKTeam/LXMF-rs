@@ -22,9 +22,10 @@ pub(crate) async fn run_zmq_router_loop_until(
     let endpoint_requires_auth = require_auth_for_remote && !is_local_zmq_endpoint(&endpoint);
     let mut router = RouterSocket::new();
     router.bind(endpoint.as_str()).await.map_err(zmq_io_error)?;
+    let _readiness = daemon.zmq_listener_bound();
     let (response_socket, mut request_socket) = router.split();
     let admission = Admission::new();
-    let rejection_slots = Arc::new(tokio::sync::Semaphore::new(2));
+    let rejection_slots = Arc::new(tokio::sync::Semaphore::new(super::admission::REJECTION_COUNT));
     let mut workers = JoinSet::new();
     log::info!("reticulumd listening on canonical zmq {endpoint}");
 
@@ -56,8 +57,8 @@ pub(crate) async fn run_zmq_router_loop_until(
                     log::warn!("[daemon] zmq router rejected request frame count or size");
                     continue;
                 }
-                let lease = match admission.admit(&frames[1]) {
-                    Ok((Some(lease), _method)) => lease,
+                let (lease, method) = match admission.admit(&frames[1]) {
+                    Ok((Some(lease), method)) => (lease, method),
                     Ok((None, _method)) => {
                         // No task or handler has been admitted. Only this generic
                         // overload result is returned before authentication.
@@ -77,7 +78,7 @@ pub(crate) async fn run_zmq_router_loop_until(
                                 }
                             }
                             (Err(error),_)=>log::warn!("[daemon] overload reply header invalid: {error}"),
-                            (_,Err(_))=>log::debug!("[daemon] overload reply lane full"),
+                            (_,Err(_))=>admission.warn_rejection_drop(),
                         }
                         continue;
                     }
@@ -86,6 +87,7 @@ pub(crate) async fn run_zmq_router_loop_until(
                         continue;
                     }
                 };
+                let queue_depth = workers.len();
                 let identity = frames[0].clone();
                 let encoded = frames[1].to_vec();
                 let daemon = Arc::clone(&daemon);
@@ -95,8 +97,22 @@ pub(crate) async fn run_zmq_router_loop_until(
                     let _lease = lease;
                     let response = tokio::task::spawn_blocking(move || {
                         let envelope = zmq::decode_envelope(&encoded).map_err(io::Error::other)?;
-                        handle_zmq_request_envelope(daemon.as_ref(), envelope, endpoint_requires_auth, true)
-                            .map_err(io::Error::other)
+                        let metrics = daemon.zmq_pipeline_metrics();
+                        let mut handler = metrics.enter_correlated(
+                            rns_rpc::rpc::zmq_metrics::ZmqStage::Handler, encoded.len(),
+                            rns_rpc::rpc::zmq_metrics::ZmqFailureContext::new(method, queue_depth),
+                        );
+                        let result = handle_zmq_request_envelope(daemon.as_ref(), envelope, endpoint_requires_auth, true)
+                            .map_err(io::Error::other);
+                        let outcome = match &result {
+                            Ok(response) => super::broker_handler_outcome(method, response),
+                            Err(_) => rns_rpc::rpc::zmq_metrics::ZmqStageOutcome::Failed,
+                        };
+                        if handler.is_slow() || !matches!(outcome, rns_rpc::rpc::zmq_metrics::ZmqStageOutcome::Succeeded) {
+                            handler.attach_failure_context(daemon.zmq_failure_context(method, queue_depth));
+                        }
+                        handler.finish(outcome);
+                        result
                     }).await;
                     let response = match response {
                         Ok(Ok(response)) => response,

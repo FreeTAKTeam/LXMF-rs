@@ -6,7 +6,7 @@
 //! `maintain` runs a periodic PASSIVE-then-TRUNCATE pass that reports busy
 //! instead of blocking on readers.
 
-use crate::storage::operation_metrics::WalCheckpointOutcome;
+use crate::storage::operation_metrics::{WalCheckpointFrames, WalCheckpointOutcome};
 use rusqlite::Connection;
 
 pub const WAL_TRUNCATE_FLOOR_BYTES: u64 = 64 * 1024 * 1024;
@@ -16,6 +16,7 @@ pub struct WalMaintenanceOutcome {
     pub outcome: WalCheckpointOutcome,
     pub size_before: u64,
     pub size_after: u64,
+    pub checkpoint: Option<WalCheckpointFrames>,
 }
 
 /// WAL file size the routine maintenance tolerates before checkpointing:
@@ -37,7 +38,10 @@ pub(crate) fn wal_file_size(conn: &Connection) -> rusqlite::Result<u64> {
 
 /// `PRAGMA wal_checkpoint(mode)` with `busy_timeout` forced to zero for the call,
 /// so a pinned reader yields `Busy` at once instead of holding the write mutex.
-fn checkpoint_nonblocking(conn: &Connection, mode: &str) -> rusqlite::Result<WalCheckpointOutcome> {
+fn checkpoint_nonblocking(
+    conn: &Connection,
+    mode: &str,
+) -> rusqlite::Result<(WalCheckpointOutcome, WalCheckpointFrames)> {
     let timeout: i64 = conn.query_row("PRAGMA busy_timeout", [], |r| r.get(0))?;
     conn.pragma_update(None, "busy_timeout", 0)?;
     let result = conn.query_row(format!("PRAGMA wal_checkpoint({mode})").as_str(), [], |r| {
@@ -45,18 +49,19 @@ fn checkpoint_nonblocking(conn: &Connection, mode: &str) -> rusqlite::Result<Wal
     });
     conn.pragma_update(None, "busy_timeout", timeout)?;
     let (busy, log_frames, checkpointed_frames) = result?;
-    Ok(if busy != 0 {
+    let outcome = if busy != 0 {
         WalCheckpointOutcome::Busy
     } else if log_frames > checkpointed_frames {
         WalCheckpointOutcome::PassiveIncomplete
     } else {
         WalCheckpointOutcome::Truncated
-    })
+    };
+    Ok((outcome, WalCheckpointFrames { busy, log_frames, checkpointed_frames }))
 }
 
 pub(crate) fn checkpoint_truncate_nonblocking(
     conn: &Connection,
-) -> rusqlite::Result<WalCheckpointOutcome> {
+) -> rusqlite::Result<(WalCheckpointOutcome, WalCheckpointFrames)> {
     checkpoint_nonblocking(conn, "TRUNCATE")
 }
 
@@ -72,11 +77,32 @@ pub(crate) fn maintain(
             outcome: WalCheckpointOutcome::BelowThreshold,
             size_before,
             size_after: size_before,
+            checkpoint: None,
         });
     }
-    let outcome = match checkpoint_nonblocking(conn, "PASSIVE")? {
-        WalCheckpointOutcome::Truncated => checkpoint_nonblocking(conn, "TRUNCATE")?,
+    let (outcome, checkpoint) = match checkpoint_nonblocking(conn, "PASSIVE")? {
+        (WalCheckpointOutcome::Truncated, _) => checkpoint_nonblocking(conn, "TRUNCATE")?,
         other => other,
     };
-    Ok(WalMaintenanceOutcome { outcome, size_before, size_after: wal_file_size(conn)? })
+    Ok(WalMaintenanceOutcome {
+        outcome,
+        size_before,
+        size_after: wal_file_size(conn)?,
+        checkpoint: Some(checkpoint),
+    })
+}
+
+/// Shared cadence for the daemon timer and emergency write-path checkpoints.
+pub fn wal_maintenance_interval() -> std::time::Duration {
+    let seconds = match std::env::var("LXMD_STORAGE_WAL_MAINTENANCE_INTERVAL_SECS") {
+        Ok(value) => match value.parse::<u64>() {
+            Ok(seconds) => seconds.max(1),
+            Err(error) => {
+                log::warn!("invalid LXMD_STORAGE_WAL_MAINTENANCE_INTERVAL_SECS: {error}");
+                60
+            }
+        },
+        Err(_) => 60,
+    };
+    std::time::Duration::from_secs(seconds)
 }

@@ -28,4 +28,4 @@ pub use storage::messages::{AnnounceRecord, MessageRecord, MessagesStore};
 
 pub mod broker;
 
-pub use storage::broker::BrokerCommand;
+pub use storage::broker::{wal_maintenance_interval, BrokerCommand};

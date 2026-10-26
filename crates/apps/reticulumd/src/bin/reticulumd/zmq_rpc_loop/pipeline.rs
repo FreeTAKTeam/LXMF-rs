@@ -10,6 +10,7 @@ pub(crate) async fn run_zmq_rpc_loop_until(
         config.require_auth_for_remote && !is_local_zmq_endpoint(&config.command_endpoint);
     let mut commands = PullSocket::new();
     commands.bind(config.command_endpoint.as_str()).await.map_err(zmq_io_error)?;
+    let _readiness = daemon.zmq_listener_bound();
     let (response_tx, response_rx) =
         mpsc::channel::<ZmqOutboundResponse>(ZMQ_RPC_RESPONSE_QUEUE_CAPACITY);
     let (writer_shutdown_tx, writer_shutdown_rx) = watch::channel(false);
@@ -86,7 +87,7 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                                     Err(error)=>log::error!("[daemon] rejection authentication task failed: {error}"),
                                 }
                             });
-                        }
+                        } else { admission.warn_rejection_drop(); }
                         continue;
                     }
                     Err(error) => {
@@ -165,7 +166,11 @@ pub(super) fn dispatch_with_metrics(
             failure_context,
         ));
     }
-    if result.is_err() || handler.is_slow() {
+    let outcome = match &result {
+        Ok(response) => broker_handler_outcome(method, &response.envelope),
+        Err(_) => ZmqStageOutcome::Failed,
+    };
+    if !matches!(outcome, ZmqStageOutcome::Succeeded) || handler.is_slow() {
         failure_context = daemon.zmq_failure_context(method, queue_depth);
         handler.attach_failure_context(failure_context);
         if let Ok(response) = &mut result {
@@ -175,10 +180,6 @@ pub(super) fn dispatch_with_metrics(
             }
         }
     }
-    handler.finish(if result.is_ok() {
-        ZmqStageOutcome::Succeeded
-    } else {
-        ZmqStageOutcome::Failed
-    });
+    handler.finish(outcome);
     result
 }
