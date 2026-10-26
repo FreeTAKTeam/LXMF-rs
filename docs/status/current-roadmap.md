@@ -271,7 +271,9 @@ Issue 663 was reopened on 2026-10-23 because production still shows rising
 after that increment. The follow-through runs from the
 [acceptance execution plan](../goals/issue-663-resource-acceptance/PLAN.md),
 one PR per item, with progress in its
-[progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). The
+[progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). Preview.26 regression work follows the
+[ordered regression plan](../goals/preview26-regression-663-657-678/PLAN.md) and
+[regression progress](../goals/preview26-regression-663-657-678/PROGRESS.md). The
 first item adds a production-shaped fixture, an RCH-shaped poller and a
 cgroup-constrained sampler (`cargo xtask resource-soak-663`); its ten-minute
 baseline is recorded in the resource regression record and is a harness smoke
