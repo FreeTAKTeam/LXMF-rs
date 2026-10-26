@@ -26,7 +26,7 @@
 - `storage.wal.last_checkpoint` reports the last executed checkpoint's `busy`, `log_frames`, and `checkpointed_frames`, including emergency attempts. The final TRUNCATE result is zeroed after successful work; a pinned PASSIVE keeps incomplete frame counts.
 - Source inspection found no read statement escaping the inspected `with_read_conn` closures. Production pinned-reader identity remains unproven; no speculative reader-lifecycle change was made. [SQLite checkpoint semantics](https://sqlite.org/pragma.html#pragma_wal_checkpoint).
 
-## Validation record (in progress)
+## Earlier validation record
 
 - Luna exploration, correctness and maintainability reviews covered each increment. Findings corrected: exact canonical interface parsing for restore, maximum legal admission bytes, and actual handler timeout classification with tuple-encoded responses.
 - Initial expanded all-features package tests exposed propagation-decrypt failures associated with the optional Fernet feature combination; the plan's standard feature package suite is being checked separately. This extra test mode is not reported as passing.
@@ -39,8 +39,8 @@
 - Four-package suite: 3,329 passed / 0 failed / 135 ignored, plus SDK timeout recovery and RPC timeout metadata regressions. Consistent optional Fernet profile: 687 daemon tests passed. Final Clippy, fmt, architecture/no_std, boundaries, module size and 13 harness tests passed; issue #369 scanner is included in the package suite.
 - `release-check` is not green: the registry package dry-run resolves published 0.15.0 libraries without post-release APIs (#694 and this increment). Earlier runtime lanes passed. This does not prevent an explicitly labeled local static daemon test artifact, and no registry release is attempted.
 - POST plan review: aligned implementation; correctness review found and fixed SDK recovery/category compatibility. Maintainer review found no remaining actionable source issue. Production acceptance remains unproven.
-- Awaiting operator preview.26 metrics requested in this chat. No deployment, issue closure or production plateau claimed.
-- Daemon-only prerelease tag reserved for publication: `reticulumd-test-0.15.0-rch663-678.2`; exact final commit, hashes and fresh-download verification are recorded with its assets. Hosted draft-PR checks remain a separate lane.
+- Operator preview.26 metrics received on 2026-10-26 and preserved in [the exact excerpt](evidence/operator-preview26-2026-10-26.json). Persistence amplification is supported; the WAL is 96 MiB with zero explicit attempts, which is consistent with threshold equality under a 6 GiB budget. No deployment, issue closure or production plateau claimed.
+- Daemon-only prerelease `reticulumd-test-0.15.0-rch663-678.2` is published; exact source, hashes and fresh-download verification are recorded below and with its assets. Hosted draft-PR checks remain a separate lane.
 
 ## Published daemon-only test artifact
 
@@ -56,3 +56,18 @@ No crates, OCI images, deployment or hosted provenance were produced. The
 current review branch's later documentation commit records this verification;
 it does not replace the immutable prerelease source. Hosted PR checks were
 still in progress at this handoff, with no failed check observed.
+
+## Operator baseline received
+
+The [operator excerpt](evidence/operator-preview26-2026-10-26.json) records
+2,177 saves, 67.8 million records examined and 42.3 minutes of accumulated
+path-save wall time, with zero save errors. Cache collection removed about
+1.05 million files / 256.4 MiB with zero cleanup errors. These are cumulative
+counts; no uptime or population trend was supplied.
+
+The WAL is exactly 96 MiB, so with the plan's 6 GiB retained budget the deployed
+`<= threshold` check explains zero recorded explicit checkpoint attempts.
+This does not confirm a blocked reader or the earlier 546 MiB WAL observation.
+The [performance record](../../performance/rch-resource-fixes-663.md#operator-preview26-metrics-supplied-on-2026-10-26)
+details the verified metric semantics and limits. The production baseline
+request is fulfilled; post-deployment and resource/retention acceptance remain open.
