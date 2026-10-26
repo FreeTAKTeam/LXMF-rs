@@ -1373,3 +1373,18 @@ reserved admission capacity; power-of-two drop warnings bound log volume.
 Larger configured poll batches preclude a fixed 1 MiB reply reservation.
 Local readiness/deadline regressions passed; production p99 and pressure
 acceptance remain pending.
+
+Preview.26 WAL follow-up runs scheduled PASSIVE/TRUNCATE on a dedicated
+maintenance connection outside the traffic writer mutex. Emergency write-path
+checkpoint attempts are limited to the shared maintenance interval, so recovery
+from reader-pinned physical backpressure can wait until that next pass.
+`storage.wal.last_checkpoint` exposes SQLite busy/log/checkpointed frames.
+Regressions retain physical budget and custody/ACK guarantees and demonstrate
+checkpoint progress while both traffic connection mutexes are held.
+Production reader attribution and resource acceptance remain open.
+
+Preview.26 evidence: paired static-musl ingress reduced full saves 210→1 and
+verifications 2→0; control stress p99 was 1.087 ms during 41 saves / 23 WAL
+attempts. Retention memory/read/wait and production acceptance remain open;
+no parity row or issue is promoted to complete from these short runs. The
+conditional allocator/paging increment is deferred pending attribution.

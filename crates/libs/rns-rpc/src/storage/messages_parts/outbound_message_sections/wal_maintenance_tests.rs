@@ -108,3 +108,55 @@ fn journal_size_limit_follows_budget() {
     assert_eq!(limit, 128 * 1024 * 1024);
     assert_eq!(crate::storage::broker::truncate_limit_bytes(Some(1024)), 64 * 1024 * 1024);
 }
+
+#[test]
+fn wal_maintenance_uses_its_own_connection_while_writer_and_reader_are_held() {
+    let (_temp, _path, store) = wal_store_on_disk();
+    grow_wal(&store, 32, 32 * 1024);
+    let store = std::sync::Arc::new(store);
+    let before = store.contention_snapshot();
+    let writer = store.write_state.conn.lock().expect("writer");
+    let reader = store.read_conn.as_ref().expect("reader").lock().expect("read mutex");
+    let maintenance_store = std::sync::Arc::clone(&store);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || tx.send(maintenance_store.maintain_wal_with_threshold(0)));
+    let result = rx.recv_timeout(std::time::Duration::from_secs(1));
+    drop((writer, reader));
+    thread.join().expect("maintenance worker").expect("send outcome");
+    let outcome = result.expect("maintenance must not wait for either traffic connection").expect("checkpoint");
+    assert_eq!(outcome.outcome, crate::storage::operation_metrics::WalCheckpointOutcome::Truncated);
+    assert_eq!(store.contention_snapshot().write_ops_total, before.write_ops_total);
+    assert_eq!(store.contention_snapshot().read_ops_total, before.read_ops_total);
+    assert!(outcome.checkpoint.is_some());
+    assert!(wal_counters(&store)["last_checkpoint"]["log_frames"].is_i64());
+}
+
+#[test]
+fn emergency_checkpoint_is_throttled_even_when_a_reader_pins_the_wal() {
+    let (_temp, path, store) = wal_store_on_disk();
+    store.enable_durable_broker(32 * 1024 * 1024).expect("broker");
+    let reader = Connection::open(&path).expect("pin reader");
+    reader.execute_batch("BEGIN; SELECT COUNT(*) FROM propagation_entries;").expect("pin snapshot");
+    for index in 0..80 {
+        let mut entry = refill_entry(index, index as i64);
+        entry.payload_hex = "ab".repeat(64 * 1024);
+        entry.size_bytes = 64 * 1024;
+        store.upsert_propagation_entry(&entry).expect("grow pinned WAL");
+        if wal_bytes(&path) > 4 * 1024 * 1024 { break; }
+        assert!(index < 79, "fixture must exceed emergency threshold");
+    }
+    assert!(wal_bytes(&path) > 4 * 1024 * 1024);
+    for _ in 0..4 {
+        store.with_control_conn(|conn| conn.query_row("SELECT 1", [], |r| r.get::<_, i64>(0))).expect("write acquisition");
+    }
+    assert_eq!(wal_counters(&store)["emergency_reclaim_total"], 1);
+    *store.write_state.last_wal_reclaim.lock().expect("reclaim clock") =
+        Some(std::time::Instant::now() - store.write_state.wal_reclaim_interval);
+    store.with_control_conn(|_| Ok(())).expect("retry after interval");
+    assert_eq!(wal_counters(&store)["emergency_reclaim_total"], 2);
+    let outcome = store.maintain_wal_with_threshold(0).expect("pinned checkpoint");
+    let frames = outcome.checkpoint.expect("frame diagnostics");
+    assert!(frames.busy != 0 || frames.log_frames > frames.checkpointed_frames);
+    assert_eq!(wal_counters(&store)["last_checkpoint"]["log_frames"], frames.log_frames);
+    reader.execute_batch("ROLLBACK").expect("release reader");
+}

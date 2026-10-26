@@ -3400,3 +3400,22 @@ reserved admission capacity; power-of-two drop warnings bound log volume.
 Larger configured poll batches preclude a fixed 1 MiB reply reservation.
 Local readiness/deadline regressions passed; production p99 and pressure
 acceptance remain pending.
+
+Preview.26 WAL follow-up runs scheduled PASSIVE/TRUNCATE on a dedicated
+maintenance connection outside the traffic writer mutex. Emergency write-path
+checkpoint attempts are limited to the shared maintenance interval, so recovery
+from reader-pinned physical backpressure can wait until that next pass.
+`storage.wal.last_checkpoint` exposes SQLite busy/log/checkpointed frames.
+Regressions retain physical budget and custody/ACK guarantees and demonstrate
+checkpoint progress while both traffic connection mutexes are held.
+Production reader attribution and resource acceptance remain open.
+
+The preview.26 regression stack is available as PRs #695 (dirty persistence),
+#696 (readiness/control and SDK deadline recovery), and #697 (WAL connection).
+Paired 600-second musl ingress reduced persistence 210→1 runs and CPU
+14.33→7.83%, but retention still caused memory/reclaim pressure, and logical
+reads / aggregate writer wait worsened. Resource acceptance stays open.
+A separate control stress achieved negotiate p99 1.087 ms during saves and
+checkpoints; failed binds truthfully keep readiness at 503. Conditional PR 4
+is deferred until repeated-cycle or phase-specific evidence establishes its
+trigger. Details and prerelease evidence are in the regression package.
