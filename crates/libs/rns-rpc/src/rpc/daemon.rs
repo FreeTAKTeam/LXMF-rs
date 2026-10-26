@@ -25,6 +25,7 @@ mod init;
 mod metrics;
 mod metrics_providers;
 pub use metrics_providers::MetricsProvider;
+mod readiness;
 mod resources;
 mod sdk_attachments;
 mod sdk_auth_http;

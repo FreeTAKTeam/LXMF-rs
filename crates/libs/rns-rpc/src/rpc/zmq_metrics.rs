@@ -48,6 +48,7 @@ pub enum ZmqStageOutcome {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ZmqFailureContext {
     pub method: &'static str,
+    /// PUSH/PULL response queue occupancy, or canonical ROUTER active dispatch backlog.
     pub queue_depth: usize,
     pub write_lock_wait_ns_total: Option<u64>,
     pub refill_in_flight: Option<bool>,
@@ -230,7 +231,7 @@ impl ZmqPipelineMetrics {
         );
         result.insert(
             "coverage".into(),
-            json!("PUSH/PULL pipeline only; excludes canonical ROUTER/DEALER"),
+            json!("PUSH/PULL pipeline stages; handler outcomes also cover canonical ROUTER/DEALER"),
         );
         result.insert("accounting".into(), json!("Per-stage wire accounting: ingress lengths, queued/active response capacities and encoded send-frame capacity; overlapping stages are not additive. Excludes decoded JSON, encode buffers during connect, route string clones, idle sockets, allocator metadata and socket buffers"));
         result.insert("consistency".into(), json!("Approximate independent atomic samples"));

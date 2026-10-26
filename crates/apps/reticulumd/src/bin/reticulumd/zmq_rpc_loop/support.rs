@@ -58,3 +58,32 @@ pub(super) fn is_recoverable_zmq_transport_error(err: &zeromq::ZmqError) -> bool
         || text.contains("(os error 10053)")
         || text.contains("(os error 10054)")
 }
+
+/// Classify the typed timeout without decoding/allocating a broker result payload.
+pub(super) fn broker_handler_outcome(
+    method: &str,
+    envelope: &rns_rpc::rpc::zmq::ZmqRpcEnvelope,
+) -> rns_rpc::rpc::zmq_metrics::ZmqStageOutcome {
+    use rns_rpc::rpc::zmq_metrics::ZmqStageOutcome;
+    if !method.starts_with("sdk_broker_") {
+        return ZmqStageOutcome::Succeeded;
+    }
+    #[derive(serde::Deserialize)]
+    struct Response {
+        #[serde(rename = "id")]
+        _id: serde::de::IgnoredAny,
+        #[serde(rename = "result")]
+        _result: serde::de::IgnoredAny,
+        error: Option<rns_rpc::RpcError>,
+    }
+    match rns_rpc::rpc::codec::decode_frame::<Response>(&envelope.payload) {
+        Ok(response) => match response.error {
+            Some(error) if error.code == "SDK_STORAGE_BROKER_TIMEOUT" => ZmqStageOutcome::TimedOut,
+            _ => ZmqStageOutcome::Succeeded,
+        },
+        Err(error) => {
+            log::warn!("[daemon] broker reply classification failed method={method}: {error}");
+            ZmqStageOutcome::Failed
+        }
+    }
+}
