@@ -99,3 +99,46 @@ fn propagation_prune_weight(
     };
     priority_weight * age_weight * size_bytes as f64
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oldest_metadata_scan_is_covered_after_upgrading_the_legacy_index() {
+        let conn = Connection::open_in_memory().expect("open in-memory database");
+        crate::storage::initialize(&conn).expect("initialize propagation schema");
+        conn.execute_batch(
+            "DROP INDEX idx_propagation_entries_retention_cover;
+             CREATE INDEX idx_propagation_entries_received_transient
+                 ON propagation_entries(received_at DESC, transient_id DESC);",
+        )
+        .expect("install legacy received index");
+
+        crate::storage::initialize(&conn).expect("upgrade retention index");
+        let mut statement = conn
+            .prepare(
+                "EXPLAIN QUERY PLAN SELECT transient_id, destination, size_bytes, received_at
+                 FROM propagation_entries
+                 ORDER BY received_at ASC, transient_id ASC",
+            )
+            .expect("prepare retention query plan");
+        let plan = statement
+            .query_map([], |row| row.get::<_, String>(3))
+            .expect("explain retention query")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect query plan")
+            .join(" ");
+
+        assert!(plan.contains("COVERING INDEX idx_propagation_entries_retention_cover"), "{plan}");
+        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        let mut index_statement =
+            conn.prepare("PRAGMA index_list(propagation_entries)").expect("prepare index list");
+        let indexes = index_statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("read index list")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect index names");
+        assert!(!indexes.iter().any(|name| name == "idx_propagation_entries_received_transient"));
+    }
+}

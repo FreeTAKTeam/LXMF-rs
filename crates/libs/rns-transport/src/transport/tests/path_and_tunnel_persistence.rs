@@ -687,6 +687,81 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
 
     assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
     assert!(temp.path().join("tunnels").exists());
+    let packet_hash = announce.hash();
+    let packet_path =
+        temp.path().join("cache").join("announces").join(hex::encode(packet_hash.as_slice()));
+    assert!(packet_path.exists(), "active/tunnel snapshot packet is persisted");
+    let tunnel_entries = super::tunnels::TunnelTable::decode_python_entries(
+        &std::fs::read(temp.path().join("tunnels")).expect("read tunnel table"),
+    )
+    .expect("decode tunnel table");
+    assert!(
+        tunnel_entries
+            .iter()
+            .flat_map(|entry| &entry.paths)
+            .any(|path| path.packet_hash == packet_hash),
+        "the announce packet is referenced by the persisted tunnel snapshot"
+    );
+
+    let destination_table = temp.path().join("destination_table");
+    let destination_table_before =
+        std::fs::read(&destination_table).expect("read destination table");
+    let destination_table_modified = std::fs::metadata(&destination_table)
+        .expect("destination table metadata")
+        .modified()
+        .expect("destination table mtime");
+    let announce_dir = temp.path().join("cache").join("announces");
+    for index in 0..514u64 {
+        let mut bytes = [0; crate::hash::HASH_SIZE];
+        bytes[..8].copy_from_slice(&index.to_be_bytes());
+        let orphan = announce_dir.join(hex::encode(bytes));
+        std::fs::write(&orphan, b"obsolete cache entry").expect("write stale announce");
+        std::fs::File::options()
+            .write(true)
+            .open(&orphan)
+            .expect("open stale announce")
+            .set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(1)),
+            )
+            .expect("age stale announce");
+    }
+    let mut examined = 0;
+    let mut removed = 0;
+    let mut bytes_removed = 0;
+    let mut scan_complete = false;
+    for _ in 0..3 {
+        let cleanup = transport
+            .clean_reticulum_announce_cache_batch(temp.path())
+            .await
+            .expect("cleanup batch")
+            .expect("persisted references are available");
+        assert!(cleanup.examined <= 512, "one pass is bounded");
+        examined += cleanup.examined;
+        removed += cleanup.removed;
+        bytes_removed += cleanup.bytes_removed;
+        scan_complete = cleanup.scan_complete;
+        if scan_complete {
+            break;
+        }
+    }
+    assert!(scan_complete, "bounded batches eventually finish the directory pass");
+    assert_eq!(examined, 515, "the orphan set and referenced packet are scanned");
+    assert_eq!(removed, 514, "only unreferenced stale packets are deleted");
+    assert_eq!(bytes_removed, 514 * b"obsolete cache entry".len() as u64);
+    assert!(packet_path.exists(), "the tunnel-referenced packet survives cleanup");
+    assert_eq!(
+        std::fs::read(&destination_table).expect("destination table unchanged"),
+        destination_table_before
+    );
+    assert_eq!(
+        std::fs::metadata(&destination_table)
+            .expect("destination table metadata")
+            .modified()
+            .expect("destination table mtime"),
+        destination_table_modified,
+        "maintenance-only cleanup must not rewrite the path-table snapshot"
+    );
     std::fs::remove_file(temp.path().join("destination_table")).expect("remove active path table");
 
     let mut restored_config = TransportConfig::new("test", &local_identity, true);

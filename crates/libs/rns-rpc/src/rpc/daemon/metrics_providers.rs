@@ -58,5 +58,7 @@ mod tests {
         let snapshot = daemon.metrics_snapshot();
         assert_eq!(snapshot["providers"]["fixed"]["value"], 2);
         assert_eq!(snapshot["providers"].as_object().map(|m| m.len()), Some(1));
+        assert!(snapshot["zmq_pipeline"]["handler"]["latency"]["buckets_us"].is_object());
+        assert!(snapshot["zmq_pipeline"]["recent_failures"].is_array());
     }
 }

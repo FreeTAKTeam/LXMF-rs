@@ -45,6 +45,19 @@ impl<'a> ExchangeContext<'a> {
         let session = diagnostic_identifier(self.session);
         let method = diagnostic_identifier(self.method);
         let elapsed_ms = self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let error_class = match &error.category {
+            super::ErrorCategory::Timeout => "timeout",
+            super::ErrorCategory::Transport => "transport",
+            super::ErrorCategory::Storage => "storage",
+            super::ErrorCategory::Security => "security",
+            super::ErrorCategory::Validation => "validation",
+            super::ErrorCategory::Capability => "capability",
+            super::ErrorCategory::Config => "config",
+            super::ErrorCategory::Policy => "policy",
+            super::ErrorCategory::Crypto => "crypto",
+            super::ErrorCategory::Runtime => "runtime",
+            super::ErrorCategory::Internal => "internal",
+        };
         // Local send success is not daemon receipt, handler entry or delivery.
         let context = json!({
             "session_id": session,
@@ -52,6 +65,7 @@ impl<'a> ExchangeContext<'a> {
             "method": method,
             "stage": self.stage,
             "elapsed_ms": elapsed_ms,
+            "error_class": error_class,
             "send_completed": self.send_completed,
             "send_started": self.send_started,
             "execution_certainty": if !self.send_started {
@@ -127,7 +141,7 @@ mod tests {
         let context = ExchangeContext::new(&long, &long, 1, Instant::now());
         let error = context.annotate(context.timeout());
         let detail = &error.details["sdk_zmq_exchange"];
-        assert_eq!(detail.as_object().expect("context object").len(), 9);
+        assert_eq!(detail.as_object().expect("context object").len(), 10);
         for key in ["session_id", "method"] {
             let value = detail[key].as_str().expect("identifier");
             assert_eq!(value.len(), 128);
@@ -137,6 +151,7 @@ mod tests {
         assert!(!error.message.contains('\n'));
         assert!(!error.message.contains('雪'));
         assert_eq!(detail["send_completed"], false);
+        assert_eq!(detail["error_class"], "timeout");
         assert_eq!(detail["ignored_replies"], 0);
     }
 }

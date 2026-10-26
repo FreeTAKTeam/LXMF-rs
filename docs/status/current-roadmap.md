@@ -280,6 +280,16 @@ announce-persistence counters to the daemon metrics snapshot. The third item
 bounds the refill scan, yields the SQLite writer to broker commands and moves
 WAL truncation to a daemon timer.
 
+The next resource increment connects reference-aware announce-cache collection
+for #678 to successful route/tunnel persistence, with bounded idle maintenance
+that does not rewrite route snapshots. It also shares cached packet data during
+persistence and exposes ZeroMQ stage latency and bounded incident context in
+`/metrics`. A covering retention index and bounded peer-history deletion pages
+reduce periodic maintenance I/O and writer occupancy. Local software regressions
+and short before/after runs are recorded
+in the resource regression record; multi-hour memory/swap, delivery and recovery
+acceptance for #663 remains open.
+
 The PR CI repair routes established Link data, RTT, packet delivery proofs and
 Resource proofs to the opposite recorded interface in either direction, only
 after Link validation. It preserves shared-owner handoff even without a

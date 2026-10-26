@@ -92,8 +92,8 @@ pub use inbound_queues::{
 pub use packet_disk_cache::{CachedPacket, ReticulumPacketDiskCache};
 
 pub use reticulum_path_store::{
-    PathTableSaveReport, RestoredReticulumPathIdentity, ReticulumPathTableRestoreReport,
-    ReticulumPathTableRestoreSkipped,
+    AnnounceCacheCleanupReport, PathTableSaveReport, RestoredReticulumPathIdentity,
+    ReticulumPathTableRestoreReport, ReticulumPathTableRestoreSkipped,
 };
 
 #[cfg(feature = "storage")]
