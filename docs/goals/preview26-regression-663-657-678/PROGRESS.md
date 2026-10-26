@@ -41,3 +41,18 @@
 - POST plan review: aligned implementation; correctness review found and fixed SDK recovery/category compatibility. Maintainer review found no remaining actionable source issue. Production acceptance remains unproven.
 - Awaiting operator preview.26 metrics requested in this chat. No deployment, issue closure or production plateau claimed.
 - Daemon-only prerelease tag reserved for publication: `reticulumd-test-0.15.0-rch663-678.2`; exact final commit, hashes and fresh-download verification are recorded with its assets. Hosted draft-PR checks remain a separate lane.
+
+## Published daemon-only test artifact
+
+[reticulumd-test-0.15.0-rch663-678.2](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/reticulumd-test-0.15.0-rch663-678.2)
+is published as a prerelease from immutable source `84103b90f25fef3f93f63ecc6318dc1baed51a32`.
+Fresh public downloads passed SHA256SUMS, executable mode, static linking,
+source/tag binding and `--help`; a separate 60-second constrained ingress/poll
+smoke of the downloaded binary completed with zero poll errors. The local
+verification record is `target/release-records/reticulumd-test-0.15.0-rch663-678.2/verify-public/public-verification-result.json`.
+The archive SHA-256 is `56c785fa6fe1030e9019f27315908d4e4d98d060b1b4589a656db2508fd5fea3`;
+the daemon SHA-256 is `48ee4e199f11faa4a9eaa21af54f3e093be194166f51872b8c37060a91bb811a`.
+No crates, OCI images, deployment or hosted provenance were produced. The
+current review branch's later documentation commit records this verification;
+it does not replace the immutable prerelease source. Hosted PR checks were
+still in progress at this handoff, with no failed check observed.
