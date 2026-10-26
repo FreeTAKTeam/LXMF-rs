@@ -64,6 +64,7 @@ elif name == 'apt-get':
         result, calls = self.setup_run("tools", media)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[1][-4:], media)
+        self.assertIn("--no-install-recommends", calls[1])
 
     def test_failed_update_stops_setup(self):
         result, calls = self.setup_run("interfaces", ["libdbus-1-dev"], fail=True)
