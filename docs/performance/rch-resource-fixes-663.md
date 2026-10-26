@@ -388,3 +388,12 @@ reserved admission capacity; power-of-two drop warnings bound log volume.
 Larger configured poll batches preclude a fixed 1 MiB reply reservation.
 Local readiness/deadline regressions passed; production p99 and pressure
 acceptance remain pending.
+
+Preview.26 WAL follow-up runs scheduled PASSIVE/TRUNCATE on a dedicated
+maintenance connection outside the traffic writer mutex. Emergency write-path
+checkpoint attempts are limited to the shared maintenance interval, so recovery
+from reader-pinned physical backpressure can wait until that next pass.
+`storage.wal.last_checkpoint` exposes SQLite busy/log/checkpointed frames.
+Regressions retain physical budget and custody/ACK guarantees and demonstrate
+checkpoint progress while both traffic connection mutexes are held.
+Production reader attribution and resource acceptance remain open.
