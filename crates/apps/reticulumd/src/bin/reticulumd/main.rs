@@ -213,6 +213,9 @@ async fn run_daemon_loops(
         }
     });
 
+    daemon.configure_zmq_readiness(
+        usize::from(zmq_rpc_endpoint.is_some()) + usize::from(zmq_rpc_command.is_some()),
+    );
     let mut zmq_owners = Vec::new();
     if let Some(zmq_rpc_endpoint) = zmq_rpc_endpoint {
         let daemon = daemon.clone();

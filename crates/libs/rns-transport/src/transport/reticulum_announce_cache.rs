@@ -43,7 +43,7 @@ impl ReticulumAnnounceCache {
         }
         let payload = encode_cached_announce(iface, packet)?;
         let path = self.path(packet_hash);
-        // Periodic exact-byte checks repair files changed outside this process.
+        // Unknown fingerprints verify disk before taking the unchanged-file fast path.
         match tokio::fs::File::open(&path).await {
             Ok(file) => {
                 let mut existing = Vec::with_capacity(payload.len() + 1);
@@ -64,8 +64,8 @@ impl ReticulumAnnounceCache {
         &self,
         packet_hash: Hash,
     ) -> io::Result<CachedAnnounceRestore> {
-        let packet = match self.read_packet(packet_hash).await? {
-            CachedAnnouncePacketRestore::Restored(packet) => packet,
+        let (packet, fingerprint) = match self.read_packet(packet_hash).await? {
+            CachedAnnouncePacketRestore::Restored(packet, fingerprint) => (packet, fingerprint),
             CachedAnnouncePacketRestore::Missing => return Ok(CachedAnnounceRestore::Missing),
             CachedAnnouncePacketRestore::Invalid => return Ok(CachedAnnounceRestore::Invalid),
         };
@@ -76,7 +76,11 @@ impl ReticulumAnnounceCache {
             return Ok(CachedAnnounceRestore::Invalid);
         };
         let destination = announce.destination;
-        Ok(CachedAnnounceRestore::Restored(Box::new(CachedAnnounce { packet, destination })))
+        Ok(CachedAnnounceRestore::Restored(Box::new(CachedAnnounce {
+            packet,
+            destination,
+            fingerprint,
+        })))
     }
 
     async fn read_packet(&self, packet_hash: Hash) -> io::Result<CachedAnnouncePacketRestore> {
@@ -87,7 +91,7 @@ impl ReticulumAnnounceCache {
             }
             Err(err) => return Err(err),
         };
-        let value: RmpValue = match rmpv::decode::read_value(&mut std::io::Cursor::new(payload)) {
+        let value: RmpValue = match rmpv::decode::read_value(&mut std::io::Cursor::new(&payload)) {
             Ok(value) => value,
             Err(_) => return Ok(CachedAnnouncePacketRestore::Invalid),
         };
@@ -97,9 +101,22 @@ impl ReticulumAnnounceCache {
         let Some(raw) = fields.first().and_then(rmp_bytes) else {
             return Ok(CachedAnnouncePacketRestore::Invalid);
         };
-        Ok(Packet::from_bytes(raw)
-            .map(CachedAnnouncePacketRestore::Restored)
-            .unwrap_or(CachedAnnouncePacketRestore::Invalid))
+        let Ok(packet) = Packet::from_bytes(raw) else {
+            return Ok(CachedAnnouncePacketRestore::Invalid);
+        };
+        // Seed only canonical bytes, using the interface actually stored on disk.
+        let fingerprint = match fields
+            .get(1)
+            .and_then(RmpValue::as_str)
+            .and_then(|value| value.strip_prefix('/')?.strip_suffix('/'))
+            .and_then(|value| AddressHash::new_from_hex_string(value).ok())
+        {
+            Some(iface) if encode_cached_announce(iface, &packet)? == payload => {
+                Some(cached_announce_fingerprint(iface, &packet)?)
+            }
+            _ => None,
+        };
+        Ok(CachedAnnouncePacketRestore::Restored(packet, fingerprint))
     }
 
     fn path(&self, packet_hash: Hash) -> PathBuf {
@@ -116,6 +133,7 @@ pub(super) enum CacheWriteOutcome {
 
 pub(super) struct CachedAnnounce {
     pub(super) packet: Packet,
+    pub(super) fingerprint: Option<[u8; 32]>,
     pub(super) destination: SingleOutputDestination,
 }
 
@@ -126,7 +144,7 @@ pub(super) enum CachedAnnounceRestore {
 }
 
 enum CachedAnnouncePacketRestore {
-    Restored(Packet),
+    Restored(Packet, Option<[u8; 32]>),
     Missing,
     Invalid,
 }

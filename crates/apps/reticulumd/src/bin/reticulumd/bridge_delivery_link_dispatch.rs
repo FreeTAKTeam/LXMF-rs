@@ -213,7 +213,9 @@ pub(super) async fn dispatch(
                             .with_peer(&context.peer)
                             .with_method(context.method.name())
                             .with_delivery_kind("link-packet")
-                            .with_bytes(payload.len());
+                            .with_bytes(payload.len())
+                            .with_packet_hash(hex::encode(receipt.packet_hash().to_bytes()))
+                            .with_link_id(hex::encode(receipt.link_id().as_slice()));
                         match task.receipt_tx.track_link_packet(event.clone(), receipt.clone()) {
                             Ok(inserted) => {
                                 // A terminal commit can race the first check and

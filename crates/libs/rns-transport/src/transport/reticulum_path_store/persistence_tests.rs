@@ -14,16 +14,3 @@ fn removed_routes_are_pruned_from_the_persistence_cache() {
     assert!(state.files.contains_key(&retained));
     assert!(!state.files.contains_key(&removed));
 }
-
-#[test]
-fn full_verification_is_rate_limited_to_five_minutes() {
-    let now = Instant::now();
-    let mut state = AnnounceCacheState::default();
-    assert!(state.full_verification_due(now));
-
-    state.last_full_verify = Some(now - ANNOUNCE_CACHE_VERIFY_INTERVAL + Duration::from_secs(1));
-    assert!(!state.full_verification_due(now));
-
-    state.last_full_verify = Some(now - ANNOUNCE_CACHE_VERIFY_INTERVAL);
-    assert!(state.full_verification_due(now));
-}

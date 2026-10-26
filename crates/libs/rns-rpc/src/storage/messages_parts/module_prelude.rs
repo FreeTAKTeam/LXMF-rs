@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
 use serde_json::Value as JsonValue;
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -41,10 +41,12 @@ pub struct AnnounceRecord {
 }
 
 pub struct MessagesStore {
+    durable_broker_enabled: AtomicBool,
     write_state: Arc<WriteState>,
     outbound_write_tx: WriteSender,
     writer_thread: Option<JoinHandle<()>>,
     read_conn: Option<Mutex<Connection>>,
+    maintenance_conn: Option<Mutex<Connection>>,
     read_lock_wait_ns_total: AtomicU64,
     read_ops_total: AtomicU64,
 }
@@ -64,6 +66,8 @@ struct WriteState {
     /// Cached `broker_meta.budget` (0 = broker disabled) so the per-write WAL
     /// emergency check needs no SQL.
     broker_budget_bytes: AtomicU64,
+    last_wal_reclaim: Mutex<Option<std::time::Instant>>,
+    wal_reclaim_interval: std::time::Duration,
 }
 
 enum OutboundWriteCommand {

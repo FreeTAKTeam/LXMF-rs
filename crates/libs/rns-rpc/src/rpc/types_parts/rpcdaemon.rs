@@ -1,4 +1,6 @@
 pub struct RpcDaemon {
+    zmq_expected_listeners: std::sync::atomic::AtomicUsize,
+    zmq_bound_listeners: std::sync::atomic::AtomicUsize,
     store: Arc<MessagesStore>,
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,

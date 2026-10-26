@@ -69,13 +69,14 @@ pub fn handle_http_request_with_transport_auth(
                 Ok(build_json_response(StatusCode::Ok, &body))
             }
             ("GET", "/readyz") => {
+                let ready = daemon.is_ready();
                 let body = serde_json::to_vec(&json!({
-                    "ok": true,
+                    "ok": ready,
                     "service": "reticulumd-rpc",
-                    "status": "ready",
+                    "status": if ready { "ready" } else { "starting" },
                 }))
                 .map_err(io::Error::other)?;
-                Ok(build_json_response(StatusCode::Ok, &body))
+                Ok(build_json_response(if ready { StatusCode::Ok } else { StatusCode::ServiceUnavailable }, &body))
             }
             ("GET", "/livez") => {
                 let body = serde_json::to_vec(&json!({
@@ -338,6 +339,7 @@ fn decode_hex(input: u8) -> Option<u8> {
 enum StatusCode {
     Ok,
     NoContent,
+    ServiceUnavailable,
     BadRequest,
 }
 
@@ -356,6 +358,7 @@ fn build_response_with_content_type(
 ) -> Vec<u8> {
     let status_line = match status {
         StatusCode::Ok => "HTTP/1.1 200 OK",
+        StatusCode::ServiceUnavailable => "HTTP/1.1 503 Service Unavailable",
         StatusCode::NoContent => "HTTP/1.1 204 No Content",
         StatusCode::BadRequest => "HTTP/1.1 400 Bad Request",
     };
