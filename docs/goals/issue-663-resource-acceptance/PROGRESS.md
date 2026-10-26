@@ -2,16 +2,38 @@
 
 Started 2026-10-24 from main `8f872639` after the issue was reopened on
 2026-10-23. Scope for this pass: [PLAN.md](PLAN.md) items 1-3, one PR each,
-sequential branches. Items 4-6 remain open and are not claimed here.
+sequential branches. The 2026-10-26 continuation below records subsequent work.
 
 | Item | State | Branch / PR / head | Evidence |
 | --- | --- | --- | --- |
 | 1. Fixture and cgroup sampler | Merged | [#682](https://github.com/FreeTAKTeam/LXMF-rs/pull/682) | Harness code, Python unit tests, 10-minute idle and ingress smoke runs on the baseline daemon (see [performance record](../../performance/rch-resource-fixes-663.md)). |
 | 2. Operation-level metrics | Merged | `corvo/issue-663-02-metrics`, [#683](https://github.com/FreeTAKTeam/LXMF-rs/pull/683) | `storage.refill`, `storage.wal`, `memory` and `providers` blocks in `/metrics`; four-package suite 3,293 passed, 0 failed. |
-| 3. Refill coalescing, writer fairness, WAL maintenance | PR open | `corvo/issue-663-03-refill-wal`, [#685](https://github.com/FreeTAKTeam/LXMF-rs/pull/685) | Read-only refill gate, rowid-floor incremental rescan, priority-writer yield, timer-driven WAL truncate, dispatch pump backoff; four-package suite 3,305 passed, 0 failed. Before/after smoke table in the resource regression record. |
-| 4. Anonymous-memory attribution and bounds | Not started | — | — |
-| 5. Poll-failure stage correlation | Not started | — | — |
-| 6. Production-shaped soak and acceptance record | Not started | — | Depends on #678 or a bounded fixture; only 10-minute smoke runs exist. |
+| 3. Refill coalescing, writer fairness, WAL maintenance | Merged | `corvo/issue-663-03-refill-wal`, [#685](https://github.com/FreeTAKTeam/LXMF-rs/pull/685), `c6f834b9` | Read-only refill gate, rowid-floor incremental rescan, priority-writer yield, timer-driven WAL truncate, dispatch pump backoff; merged review regressions also cover SQLite rowid reuse and inventory reordering. Before/after smoke table in the resource regression record. |
+| 4. Anonymous-memory attribution and bounds | Software implemented; acceptance open | `corvo/fix-678-663` | Persistence shares immutable cached packets instead of deep-cloning every route's payload; focused COW regression and a 100k-route allocation estimate. Existing protocol population bounds remain in force. |
+| 5. Poll-failure stage correlation | Local regressions passed; production correlation open | `corvo/fix-678-663` | `/metrics` exports stage outcomes and latency buckets plus a 64-entry incident ring with bounded method labels, queue depth, cumulative writer wait, refill/persistence activity and cgroup high counter. Local SDK exchange failure details include a stable category label. |
+| 6. Production-shaped soak and acceptance record | Short comparison in progress; multi-hour acceptance open | `corvo/fix-678-663` | Paired idle/ingress profiles use 200k propagation entries, 100k signed route announces and the production memory/CPU limits. Multi-hour delivery/restart/lost-ACK soak remains outstanding. |
+
+## 2026-10-26 continuation: issues 678 and 663
+
+The user requested both fixes and explicitly asked for Luna agents. Three Luna
+lanes cover reference-aware cache collection, persistence allocation, and polling
+diagnostics; the combined branch integrates their shared persistence changes.
+This is a coordinated continuation of items 4-5 and #678, rather than repeating
+the already merged items 1-3. No production access, deployment, or issue closure
+is part of the local evidence.
+
+The harness also respects a shared `CARGO_TARGET_DIR`, gives parallel runs unique
+systemd unit names, rejects premature daemon/poller exit, and uses measured run
+duration when deciding whether the multi-hour requirement was met.
+
+The instrumented baseline identified another maintenance cost: a five-minute
+retention pass over the fixture's expired peer history and over-budget payload
+inventory. The continuation adds a covering retention index and 512-row
+peer-history deletion transactions, with identity and current-policy rechecks
+between pages. Candidate selection stays outside the writer; existing TTLs,
+priority weights and limits are retained. The combined five-package suite
+passed 3,346 tests (135 suite ignores), the explicit allocation probe passed,
+and the Python harness passed 12 tests.
 
 ## Item 1 notes
 
@@ -74,9 +96,9 @@ sequential branches. Items 4-6 remain open and are not claimed here.
   dispatch pump polling its queue every 25 ms (item 3 adds a backoff), the rest
   is unattributed. The SDK poll handler does no store reads.
 - Idle: cgroup file cache grows from 125 to 488 MiB with 1,906 MemoryHigh
-  events in ten minutes; the only file traffic of that size is reading the
-  100,000 cached announces (startup and five-minute verification). Item 2
-  counters measure it; item 4 owns the bound.
+  events in ten minutes. The initial announce-cache attribution was an inference;
+  the 2026-10-26 operation counters instead identify periodic propagation
+  retention with zero announce-persistence runs during the idle burst.
 - Ingress: anonymous memory grows about 60 MiB in ten minutes under announces
   from one peer; writers waited 19 s in total across 1,903 writes. Item 3
   targets the writer occupancy, item 4 the anonymous growth.

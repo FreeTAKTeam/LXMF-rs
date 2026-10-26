@@ -35,6 +35,13 @@ Full path/tunnel snapshots are still written, and production memory/swap and
 public-network acceptance remain separate. See
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 
+The #678 retention increment continues reference-aware cache sweeps in bounded
+batches using the last successful route/tunnel snapshot, protecting current
+references and recently written files. Idle maintenance avoids rewriting the
+snapshots. The #663 allocation increment shares immutable cached packets during
+saves and preserves copy-on-write response changes. These are software resource
+protections; they do not promote public-network or sustained memory acceptance.
+
 Durable-broker-only daemon bootstrap initializes the identity-capable transport
 without opening a Reticulum listener or creating network interfaces. A focused
 daemon regression imports an SDK identity and verifies its delivery destination

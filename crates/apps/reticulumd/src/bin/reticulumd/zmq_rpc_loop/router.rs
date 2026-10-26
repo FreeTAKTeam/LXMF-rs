@@ -57,8 +57,8 @@ pub(crate) async fn run_zmq_router_loop_until(
                     continue;
                 }
                 let lease = match admission.admit(&frames[1]) {
-                    Ok(Some(lease)) => lease,
-                    Ok(None) => {
+                    Ok((Some(lease), _method)) => lease,
+                    Ok((None, _method)) => {
                         // No task or handler has been admitted. Only this generic
                         // overload result is returned before authentication.
                         match (zmq::request_header(&frames[1]),Arc::clone(&rejection_slots).try_acquire_owned()) {

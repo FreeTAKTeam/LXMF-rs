@@ -1,4 +1,5 @@
 use rns_rpc::rpc::zmq;
+use rns_rpc::rpc::zmq_metrics::ZmqFailureContext;
 use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -54,10 +55,11 @@ impl Admission {
         self.rejection.admit_with_reply(8192, 4096)
     }
 
-    pub(super) fn admit(&self, encoded: &[u8]) -> std::io::Result<Option<Lease>> {
+    pub(super) fn admit(&self, encoded: &[u8]) -> std::io::Result<(Option<Lease>, &'static str)> {
         let (method, retained) = zmq::request_admission(encoded)?;
         let lane = if control_method(method) { &self.control } else { &self.bulk };
-        Ok(lane.admit_with_reply(retained, zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES))
+        let bounded_method = ZmqFailureContext::bounded_method(method);
+        Ok((lane.admit_with_reply(retained, zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES), bounded_method))
     }
 }
 

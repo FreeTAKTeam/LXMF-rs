@@ -398,6 +398,7 @@ impl RpcDaemon {
                 "refill": store_operations["refill"].clone(),
                 "wal": store_operations["wal"].clone(),
             },
+            "zmq_pipeline": self.zmq_pipeline_metrics.snapshot(),
             "memory": super::cgroup_memory::memory_accounting_snapshot(),
             "providers": self.metrics_provider_snapshots(),
             "meta": self.response_meta(),

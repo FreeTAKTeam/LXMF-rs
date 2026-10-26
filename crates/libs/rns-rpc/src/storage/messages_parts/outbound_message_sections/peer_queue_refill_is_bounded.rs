@@ -61,6 +61,7 @@ fn refill_operation_counters_follow_pages_candidates_and_inserts() {
     assert_eq!(inserted, 300);
     let after = store.operation_metrics_snapshot()["refill"].clone();
     assert_eq!(after["invocations_total"], 1);
+    assert_eq!(after["in_flight"], 0);
     assert_eq!(after["rows_inserted_total"], 300);
     // 300 candidates in 128-row pages: 128, 128, 44 -> three pages examined 300 rows.
     assert_eq!(after["pages_total"], 3);
@@ -138,7 +139,7 @@ fn refill_scans_known_inventory_in_bounded_pages_and_coalesces_completed_announc
             Ok((candidate_plan, count_plan))
         })
         .expect("explain refill query plans");
-    assert!(plans.0.contains("idx_propagation_entries_received_transient"), "{}", plans.0);
+    assert!(plans.0.contains("idx_propagation_entries_retention_cover"), "{}", plans.0);
     assert!(!plans.0.contains("TEMP B-TREE"), "{}", plans.0);
     assert!(plans.1.contains("idx_propagation_peer_entries_unhandled_folded"), "{}", plans.1);
     assert!(!plans.1.contains("TEMP B-TREE"), "{}", plans.1);

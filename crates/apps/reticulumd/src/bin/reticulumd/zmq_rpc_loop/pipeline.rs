@@ -18,6 +18,7 @@ pub(crate) async fn run_zmq_rpc_loop_until(
         response_rx,
         writer_shutdown_rx,
         Arc::clone(&metrics),
+        Arc::clone(&daemon),
     ));
     let rpc_permits = Arc::new(Semaphore::new(ZMQ_RPC_WORKER_CONCURRENCY));
     let admission = admission::Admission::new();
@@ -50,15 +51,17 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                     Err(err) => break Err(zmq_io_error(err)),
                 };
                 let input_bytes = message.iter().map(|frame| frame.len()).sum();
-                let dispatch_wait = metrics.enter(ZmqStage::DispatchWait, input_bytes);
+                let mut dispatch_wait = metrics.enter(ZmqStage::DispatchWait, input_bytes);
                 if message.len() != 1 || input_bytes > zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES {
                     log::warn!("[daemon] zmq rpc rejected request frame count or size");
                     dispatch_wait.finish(ZmqStageOutcome::Failed);
                     continue;
                 }
-                let lease = match admission.admit(message.get(0).expect("one frame")) {
-                    Ok(Some(lease)) => lease,
-                    Ok(None) => {
+                let queue_depth = response_tx.max_capacity().saturating_sub(response_tx.capacity());
+                let (lease, method) = match admission.admit(message.get(0).expect("one frame")) {
+                    Ok((Some(lease), method)) => (lease, method),
+                    Ok((None, _method)) => {
+                        dispatch_wait.attach_failure_context(ZmqFailureContext::new("other", queue_depth));
                         dispatch_wait.finish(ZmqStageOutcome::Failed);
                         if let Some(rejection)=admission.rejection() {
                             let route=match zmq::rejection_route(message.get(0).expect("one frame")) {
@@ -75,7 +78,7 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                                         Err(error) if local=>rpc_error_envelope(route.session_id,route.request_id,error),
                                         Err(_)=>return Err("remote rejection endpoint unauthorized"),
                                     };
-                                    Ok(ZmqOutboundResponse {endpoint,connection_id,envelope,queue_stage:None,admission:Some(rejection)})
+                                    Ok(ZmqOutboundResponse {endpoint,connection_id,envelope,failure_context:ZmqFailureContext::new("other", 0),queue_stage:None,admission:Some(rejection)})
                                 }).await;
                                 match response {
                                     Ok(Ok(response))=>{if response_tx.send(response).await.is_err() {log::warn!("[daemon] rejection response writer stopped");}}
@@ -92,6 +95,7 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                         continue;
                     }
                 };
+                dispatch_wait.attach_failure_context(ZmqFailureContext::new(&method, queue_depth));
                 let daemon = Arc::clone(&daemon);
                 let response_tx = response_tx.clone();
                 let rpc_permits = Arc::clone(&rpc_permits);
@@ -101,7 +105,7 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                     };
                     // Management requests can wait for the async interface worker.
                     let response = tokio::task::spawn_blocking(move || {
-                        dispatch_with_metrics(daemon.as_ref(), message, command_endpoint_requires_auth, input_bytes, dispatch_wait)
+                        dispatch_with_metrics(daemon.as_ref(), message, command_endpoint_requires_auth, input_bytes, dispatch_wait, method, queue_depth)
                     }).await;
                     if let Ok(Ok(mut response)) = response {
                         response.admission = Some(lease);
@@ -140,15 +144,36 @@ pub(super) fn dispatch_with_metrics(
     message: ZmqMessage,
     requires_auth: bool,
     input_bytes: usize,
-    dispatch_wait: ZmqStageGuard,
+    mut dispatch_wait: ZmqStageGuard,
+    method: &'static str,
+    queue_depth: usize,
 ) -> Result<ZmqOutboundResponse, &'static str> {
     let metrics = daemon.zmq_pipeline_metrics();
-    let handler = metrics.enter(ZmqStage::Handler, input_bytes);
+    let mut failure_context = ZmqFailureContext::new(method, queue_depth);
+    if dispatch_wait.is_slow() {
+        failure_context = daemon.zmq_failure_context(method, queue_depth);
+    }
+    dispatch_wait.attach_failure_context(failure_context);
+    let mut handler = metrics.enter_correlated(ZmqStage::Handler, input_bytes, failure_context);
     dispatch_wait.finish(ZmqStageOutcome::Succeeded);
     let mut result = handle_zmq_command_message(daemon, message, requires_auth);
     if let Ok(response) = &mut result {
-        response.queue_stage =
-            Some(metrics.enter(ZmqStage::ResponseQueue, response.owned_wire_bytes()));
+        response.failure_context = failure_context;
+        response.queue_stage = Some(metrics.enter_correlated(
+            ZmqStage::ResponseQueue,
+            response.owned_wire_bytes(),
+            failure_context,
+        ));
+    }
+    if result.is_err() || handler.is_slow() {
+        failure_context = daemon.zmq_failure_context(method, queue_depth);
+        handler.attach_failure_context(failure_context);
+        if let Ok(response) = &mut result {
+            response.failure_context = failure_context;
+            if let Some(queued) = &mut response.queue_stage {
+                queued.attach_failure_context(failure_context);
+            }
+        }
     }
     handler.finish(if result.is_ok() {
         ZmqStageOutcome::Succeeded

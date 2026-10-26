@@ -201,7 +201,7 @@ async fn process_announce<'a>(
         // Everything that is not queued is still cached rather than dropped.
         // Unlike the reference, this crate rebuilds a path entry's announce
         // packet out of the announce table when persisting the path table
-        // (`save_reticulum_path_table` -> `cached_packet_for_destination`),
+        // (`save_reticulum_path_table` -> `shared_cached_packet_for_destination`),
         // where the reference stores a packet hash and keeps the packet in its
         // own on-disk cache. Dropping it outright here would persist an empty
         // path table on exactly the nodes this guard is meant to help. The

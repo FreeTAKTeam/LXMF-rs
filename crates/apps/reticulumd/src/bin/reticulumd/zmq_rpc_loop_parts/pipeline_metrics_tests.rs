@@ -17,7 +17,15 @@ async fn completed_blocking_output_remains_accounted_until_join_handle_drop() {
     let input_bytes = bytes.len();
     let wait = metrics.enter(ZmqStage::DispatchWait, input_bytes);
     let task = tokio::task::spawn_blocking(move || {
-        pipeline::dispatch_with_metrics(&daemon, ZmqMessage::from(bytes), false, input_bytes, wait)
+        pipeline::dispatch_with_metrics(
+            &daemon,
+            ZmqMessage::from(bytes),
+            false,
+            input_bytes,
+            wait,
+            "status",
+            0,
+        )
     });
     tokio::time::timeout(Duration::from_secs(1), async {
         while !task.is_finished() {

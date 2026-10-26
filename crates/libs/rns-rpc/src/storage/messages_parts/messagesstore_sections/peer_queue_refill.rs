@@ -185,6 +185,7 @@ impl MessagesStore {
 
     fn refill_recent_peer_propagation(&self, peer: &str, limit: u64) -> rusqlite::Result<usize> {
         let metrics = &self.write_state.refill_metrics;
+        let _in_flight = metrics.track_in_flight();
         let started = std::time::Instant::now();
         metrics.invocations_total.fetch_add(1, Ordering::Relaxed);
         let normalized = normalize_peer_key(peer);

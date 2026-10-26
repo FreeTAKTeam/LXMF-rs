@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Default)]
 pub struct RefillMetrics {
+    pub in_flight: AtomicU64,
     pub invocations_total: AtomicU64,
     pub skipped_complete_total: AtomicU64,
     pub skipped_capacity_total: AtomicU64,
@@ -20,6 +21,11 @@ pub struct RefillMetrics {
 }
 
 impl RefillMetrics {
+    pub fn track_in_flight(&self) -> InFlightGuard<'_> {
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+        InFlightGuard(&self.in_flight)
+    }
+
     pub fn record_page(&self, candidates: usize, inserted: usize, page_ns: u64) {
         self.pages_total.fetch_add(1, Ordering::Relaxed);
         self.candidates_examined_total.fetch_add(candidates as u64, Ordering::Relaxed);
@@ -29,6 +35,7 @@ impl RefillMetrics {
 
     pub fn snapshot(&self) -> serde_json::Value {
         serde_json::json!({
+            "in_flight": self.in_flight.load(Ordering::Relaxed),
             "invocations_total": self.invocations_total.load(Ordering::Relaxed),
             "skipped_complete_total": self.skipped_complete_total.load(Ordering::Relaxed),
             "skipped_capacity_total": self.skipped_capacity_total.load(Ordering::Relaxed),
@@ -41,6 +48,14 @@ impl RefillMetrics {
             "max_page_ns": self.max_page_ns.load(Ordering::Relaxed),
             "priority_yields_total": self.priority_yields_total.load(Ordering::Relaxed),
         })
+    }
+}
+
+pub struct InFlightGuard<'a>(&'a AtomicU64);
+
+impl Drop for InFlightGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
     }
 }
 

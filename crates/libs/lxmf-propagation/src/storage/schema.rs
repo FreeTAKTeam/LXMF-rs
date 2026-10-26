@@ -22,6 +22,9 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
                     processed_at INTEGER NOT NULL
                 );                CREATE INDEX IF NOT EXISTS idx_propagation_entries_destination_size
                     ON propagation_entries(destination, size_bytes, transient_id);
+                CREATE INDEX IF NOT EXISTS idx_propagation_entries_retention_cover
+                    ON propagation_entries(received_at DESC, transient_id DESC, destination, size_bytes);
+                DROP INDEX IF EXISTS idx_propagation_entries_received_transient;
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_state
                     ON propagation_peer_entries(peer, state, transient_id);
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_folded_lookup

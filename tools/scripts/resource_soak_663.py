@@ -223,7 +223,8 @@ def wait_for_http(port: int, path: str, timeout: float, process: subprocess.Pope
 
 
 def release_binary(name: str, example: bool) -> Path:
-    directory = REPO / "target" / "release" / ("examples" if example else "")
+    target = Path(os.environ.get("CARGO_TARGET_DIR", "target"))
+    directory = REPO / target / "release" / ("examples" if example else "")
     return directory / name
 
 
@@ -378,7 +379,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     (root / "reticulum.toml").touch()
 
     http_port, transport_port, zmq_port, reply_port = (free_port() for _ in range(4))
-    unit = f"lxmf-soak-663-{int(time.time())}"
+    unit = f"lxmf-soak-663-{os.getpid()}-{time.time_ns()}"
     wrapper = systemd_wrapper(args.memory_high, args.memory_max, args.cpus, unit)
     constrained = wrapper is not None
     if not constrained:
@@ -407,7 +408,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         "fixture": json.loads(read_text(fixture_root / "fixture.json") or "{}"),
         "fixture_root": str(fixture_root),
         "daemon_command": command,
+        "completed": False,
     }
+    sample_started = None
     try:
         ready_started = time.monotonic()
         wait_for_http(http_port, "/readyz", args.ready_timeout_secs, daemon)
@@ -441,8 +444,12 @@ def cmd_run(args: argparse.Namespace) -> int:
             stdout=(out / "client.jsonl").open("a", encoding="utf-8"),
             stderr=(out / "client.log").open("a", encoding="utf-8"),
         )
-        sample_loop(out, daemon, daemon_pid, cgroup_dir, http_port, root, args, log)
+        sample_started = time.monotonic()
+        sample_loop(out, daemon, client, daemon_pid, cgroup_dir, http_port, root, args, log)
+        run_meta["completed"] = True
     finally:
+        if sample_started is not None:
+            run_meta["measured_duration_secs"] = time.monotonic() - sample_started
         run_meta["ended_unix"] = time.time()
         terminate(client, "client", log)
         terminate(peer, "peer daemon", log)
@@ -488,15 +495,15 @@ def start_peer(daemon_bin: Path, out: Path, target_transport_port: int, log) -> 
     return subprocess.Popen(command, cwd=REPO, env=daemon_env(), stdout=peer_log, stderr=peer_log)
 
 
-def sample_loop(out, daemon, daemon_pid, cgroup_dir, http_port, root, args, log) -> None:
+def sample_loop(out, daemon, client, daemon_pid, cgroup_dir, http_port, root, args, log) -> None:
     deadline = time.monotonic() + args.duration_secs
     wal = Path(str(root / "reticulum.db") + "-wal")
     with (out / "samples.jsonl").open("a", encoding="utf-8") as samples:
         index = 0
         while time.monotonic() < deadline:
-            if daemon.poll() is not None:
-                log(f"daemon exited with {daemon.returncode}; stopping sampler")
-                return
+            for process, name in ((daemon, "daemon"), (client, "poll client")):
+                if process.poll() is not None:
+                    raise RuntimeError(f"{name} exited early with {process.returncode}")
             sample = {
                 "schema": SAMPLE_SCHEMA,
                 "index": index,
@@ -697,7 +704,9 @@ def acceptance_rows(summary, client, run) -> list[str]:
     ratio = client.get("error_ratio")
     rows.append(row("SDK poll errors", "not measured" if ratio is None else ("pass (0)" if client["errors"] == 0 else f"{client['errors']} ({ratio:.4%})")))
     rows.append(row("fresh inbound/outbound/fanout delivery", "not driven by this harness (item 6)"))
-    rows.append(row("multi-hour duration", "pass" if run.get("duration_secs", 0) >= 4 * 3600 else f"not met ({run.get('duration_secs')} s)"))
+    measured = run.get("measured_duration_secs", summary["elapsed_secs"])
+    complete = run.get("completed", True)
+    rows.append(row("multi-hour duration", "pass" if complete and measured >= 4 * 3600 else f"not met ({measured:.0f} s measured)"))
     return rows
 
 

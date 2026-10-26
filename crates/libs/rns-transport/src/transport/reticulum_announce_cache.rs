@@ -26,18 +26,18 @@ impl ReticulumAnnounceCache {
         iface: AddressHash,
         packet: Packet,
     ) -> io::Result<()> {
-        self.write_with_fingerprint(packet_hash, iface, packet, None, true).await.map(|_| ())
+        self.write_with_fingerprint(packet_hash, iface, &packet, None, true).await.map(|_| ())
     }
 
     pub(super) async fn write_with_fingerprint(
         &self,
         packet_hash: Hash,
         iface: AddressHash,
-        packet: Packet,
+        packet: &Packet,
         previous_fingerprint: Option<[u8; 32]>,
         verify_existing: bool,
     ) -> io::Result<([u8; 32], CacheWriteOutcome)> {
-        let fingerprint = cached_announce_fingerprint(iface, &packet)?;
+        let fingerprint = cached_announce_fingerprint(iface, packet)?;
         if !verify_existing && previous_fingerprint == Some(fingerprint) {
             return Ok((fingerprint, CacheWriteOutcome::SkippedKnownBytes));
         }
@@ -131,7 +131,7 @@ enum CachedAnnouncePacketRestore {
     Invalid,
 }
 
-fn encode_cached_announce(iface: AddressHash, packet: Packet) -> io::Result<Vec<u8>> {
+fn encode_cached_announce(iface: AddressHash, packet: &Packet) -> io::Result<Vec<u8>> {
     let raw = packet
         .to_bytes()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode cached announce"))?;

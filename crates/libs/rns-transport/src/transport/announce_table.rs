@@ -1,4 +1,5 @@
 use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use rand_core::{OsRng, RngCore};
 use tokio::time::{Duration, Instant};
@@ -14,7 +15,7 @@ pub(super) const PATH_RESPONSE_ROAMING_GRACE: Duration = Duration::from_millis(1
 
 #[derive(Clone)]
 pub struct AnnounceEntry {
-    pub packet: Packet,
+    pub packet: Arc<Packet>,
     pub timeout: Instant,
     pub received_from: AddressHash,
     pub retries: u8,
@@ -117,6 +118,14 @@ impl AnnounceCache {
         None
     }
 
+    fn packet(&self, destination: &AddressHash) -> Option<&Arc<Packet>> {
+        self.newer
+            .as_ref()
+            .and_then(|newer| newer.get(destination))
+            .or_else(|| self.older.as_ref().and_then(|older| older.get(destination)))
+            .map(|entry| &entry.packet)
+    }
+
     pub fn len(&self) -> usize {
         let newer_len = self.newer.as_ref().map(|m| m.len()).unwrap_or(0);
         let older_len = self.older.as_ref().map(|m| m.len()).unwrap_or(0);
@@ -164,7 +173,7 @@ impl AnnounceTable {
         let hops = announce.header.hops;
 
         let entry = AnnounceEntry {
-            packet: announce.clone(),
+            packet: Arc::new(announce.clone()),
             timeout: now + retry_window(),
             received_from,
             retries: 0,
@@ -186,7 +195,7 @@ impl AnnounceTable {
         received_from: AddressHash,
     ) {
         let entry = AnnounceEntry {
-            packet: announce.clone(),
+            packet: Arc::new(announce.clone()),
             timeout: Instant::now(),
             received_from,
             retries: self.retry_limit,
@@ -213,15 +222,15 @@ impl AnnounceTable {
         // that refreshed it.
         if let Some(queued) = self.map.get_mut(&destination) {
             let context = queued.packet.context;
-            queued.packet = announce.clone();
-            queued.packet.context = context;
+            queued.packet = Arc::new(announce.clone());
+            Arc::make_mut(&mut queued.packet).context = context;
             queued.hops = announce.header.hops;
             queued.received_from = received_from;
             return;
         }
 
         let entry = AnnounceEntry {
-            packet: announce.clone(),
+            packet: Arc::new(announce.clone()),
             timeout: Instant::now(),
             received_from,
             retries: 0,
@@ -244,7 +253,7 @@ impl AnnounceTable {
         response.hops = hops;
         response.timeout = Instant::now() + PATH_RESPONSE_GRACE + extra_grace;
         response.response_to_iface = Some(to_iface);
-        response.packet.context = PacketContext::PathResponse;
+        Arc::make_mut(&mut response.packet).context = PacketContext::PathResponse;
 
         self.responses.insert(destination, response);
     }
@@ -282,16 +291,29 @@ impl AnnounceTable {
     pub fn packet_for_destination(&self, destination: &AddressHash) -> Option<Packet> {
         self.map
             .get(destination)
-            .map(|entry| entry.packet.clone())
-            .or_else(|| self.cache.get(destination).map(|entry| entry.packet))
-            .or_else(|| self.responses.get(destination).map(|entry| entry.packet.clone()))
+            .map(|entry| (*entry.packet).clone())
+            .or_else(|| self.cache.get(destination).map(|entry| (*entry.packet).clone()))
+            .or_else(|| self.responses.get(destination).map(|entry| (*entry.packet).clone()))
     }
 
+    #[cfg(test)]
     pub fn cached_packet_for_destination(&self, destination: &AddressHash) -> Option<Packet> {
         self.map
             .get(destination)
-            .map(|entry| entry.packet.clone())
-            .or_else(|| self.cache.get(destination).map(|entry| entry.packet))
+            .map(|entry| (*entry.packet).clone())
+            .or_else(|| self.cache.get(destination).map(|entry| (*entry.packet).clone()))
+    }
+
+    /// Shared cached packet handle for persistence batches that outlive the
+    /// table lock. Cloning the `Arc` avoids copying the packet payload.
+    pub(crate) fn shared_cached_packet_for_destination(
+        &self,
+        destination: &AddressHash,
+    ) -> Option<Arc<Packet>> {
+        self.map
+            .get(destination)
+            .map(|entry| Arc::clone(&entry.packet))
+            .or_else(|| self.cache.packet(destination).map(Arc::clone))
     }
 
     pub fn observe_passed_rebroadcast(
@@ -434,4 +456,5 @@ impl Default for AnnounceTable {
 #[cfg(test)]
 mod tests {
     include!("announce_table_tests.rs");
+    include!("announce_table_memory_tests.rs");
 }
