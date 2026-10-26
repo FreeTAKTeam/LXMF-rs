@@ -3,6 +3,8 @@ import json
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -10,6 +12,31 @@ import resource_soak_663 as soak  # noqa: E402
 
 
 class ParserTests(unittest.TestCase):
+    def test_release_binary_respects_shared_target(self):
+        with patch.dict(soak.os.environ, {"CARGO_TARGET_DIR": "/tmp/shared-target"}):
+            self.assertEqual(
+                soak.release_binary("client", example=True),
+                Path("/tmp/shared-target/release/examples/client"),
+            )
+
+    def test_daemon_socket_path_stays_short_for_nested_run_roots(self):
+        command = soak.daemon_command(
+            Path("/bin/reticulumd"), Path("/nested" + "/very-long-run-name" * 12),
+            1234, 1235, None, None, 0,
+        )
+        self.assertEqual(command[command.index("--rpc-unix") + 1], "rpc.sock")
+
+    def test_sampler_rejects_premature_process_exit(self):
+        for failed in ("daemon", "poll client"):
+            processes = [SimpleNamespace(poll=lambda: None), SimpleNamespace(poll=lambda: None)]
+            processes[0 if failed == "daemon" else 1] = SimpleNamespace(poll=lambda: 1, returncode=1)
+            with tempfile.TemporaryDirectory() as directory:
+                with self.assertRaisesRegex(RuntimeError, f"{failed} exited early"):
+                    soak.sample_loop(
+                        Path(directory), *processes, 0, None, 0, Path(directory),
+                        SimpleNamespace(duration_secs=5), lambda _: None,
+                    )
+
     def test_kv_file(self):
         self.assertEqual(soak.parse_kv_file("anon 10\nfile 20\njunk x\n"), {"anon": 10, "file": 20})
 
@@ -70,8 +97,15 @@ class ReportTests(unittest.TestCase):
             report = soak.render_report(out)
             self.assertIn("fail (+2)", report)
             self.assertIn("1 (10.0000%)", report)
-            self.assertIn("not met (150 s)", report)
+            self.assertIn("not met (145 s measured)", report)
             self.assertTrue((out / "summary.json").exists())
+
+    def test_requested_duration_cannot_certify_an_interrupted_soak(self):
+        summary = soak.summarize_samples([sample(i, 100, 0, 0, 0, 0) for i in range(3)], 5)
+        rows = soak.acceptance_rows(
+            summary, {}, {"duration_secs": 14400, "completed": False},
+        )
+        self.assertIn("| multi-hour duration | not met (10 s measured) |", rows)
 
     def test_report_with_too_few_samples(self):
         with tempfile.TemporaryDirectory() as directory:

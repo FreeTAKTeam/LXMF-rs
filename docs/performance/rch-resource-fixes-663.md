@@ -149,10 +149,12 @@ profile, baseline daemon `main` at `8f872639`, ten minutes per run.
 
 Observations the baseline attributes or leaves open:
 
-- The idle profile reproduces the production picture: file cache grows by
-  about 360 MiB and `memory.events high` fires 1,906 times in ten minutes with
-  three writes. Reading 100,000 cached announce files back (startup, then the
-  five-minute verification) is the only file traffic of that size.
+- The idle profile reproduces file-cache pressure: cache grows by about 360 MiB
+  and `memory.events high` fires 1,906 times in ten minutes with three writes.
+  The initial inference that this was announce-cache verification was not
+  established by these counters. The instrumented 2026-10-26 comparison below
+  instead identifies a five-minute propagation-retention pass, while announce
+  persistence has zero runs.
 - Idle store reads run at about 80 per second. Half are the durable dispatch
   pump in `rpc/daemon/sdk_outbound.rs`, which re-ran `broker_pending_dispatch`
   every 25 ms on an idle daemon; a probe through `handle_rpc` confirmed the SDK
@@ -229,6 +231,130 @@ What changed and what did not:
   bound: under ingress, 228 path-table saves examined 22.8 million records in
   ten minutes (100,000 per save, 44 s total) and 677 further triggers were
   absorbed while a save was running.
+
+## Announce retention and persistence allocation, 2026-10-26
+
+The follow-through for [#678](https://github.com/FreeTAKTeam/LXMF-rs/issues/678)
+reuses the existing Python-format announce cache. Successful path/tunnel saves
+collect one bounded batch of obsolete cache files under the same save gate;
+idle daemon maintenance continues the directory cursor every 30 seconds without
+rewriting route snapshots. Each batch examines at most 512 directory entries.
+Packets referenced by the last successful persisted active-route or tunnel
+snapshot remain protected, as do files modified within the preceding 24 hours.
+The grace period and incremental sweep bound obsolete history by age and scan
+progress; this is not a fixed disk-byte budget or cross-process exclusion.
+Cleanup errors and progress are visible in `providers.announce_persistence`.
+Its reclaimed-byte counter reports logical file bytes, not filesystem block
+allocation.
+No announce-cache migration, new storage engine, protocol hash change, or route eviction policy
+is introduced.
+
+Persistence previously collected owned `Packet` clones for every route before
+writing the snapshot. The cache now shares immutable packets through `Arc`;
+response-context mutation uses copy-on-write, and existing packet-returning
+getters retain their behavior. A deterministic 100,000-route probe with 256-byte
+payloads avoids copying 25,600,000 payload bytes and 15,200,000 bytes of inline
+packet storage into each snapshot, using 800,000 bytes of packet handles instead.
+This attributes avoidable allocation churn, not all retained process memory.
+Existing route/tunnel expiry, announce-cache capacity and packet-history rotation
+remain the population policies; capacity zero retains its existing unlimited
+meaning.
+
+The new comparison also corrects the idle read attribution. In the untouched
+`f7822310` idle run, announce persistence reports zero runs throughout. Logical
+reads are nearly zero between samples, then increase by about 5.05 GB during
+the five-minute propagation-maintenance pass. The fixture has 409,600,000 bytes
+of propagation payloads against the daemon's default 256 MiB limit, plus
+600,000 peer-history rows with old timestamps. Existing retention therefore
+performs a large legitimate cleanup; the run is not a continuously idle,
+unchanging database. Its roughly 8 MiB/s whole-run read average must not be
+described as sustained empty-poll scanning or announce-file verification.
+
+The retention metadata query now uses a covering ordered index, avoiding
+lookups into the large payload table for each candidate. Expired/orphan peer-history
+marks are selected outside the writer in rowid keyset pages of at most 512
+identities and deleted in 512-row transactions. A captured upper rowid bounds
+the pass; rows are rechecked for their identity and current expiry/orphan status
+before deletion, candidate memory is released between pages, and maintenance
+yields to priority broker writers. Per-peer and global quota
+enforcement retains its original SQL in one atomic writer transaction. TTLs,
+quota ordering, configured limits and priority weights are retained. Payload
+retention still materializes its candidate metadata and quota enforcement can
+still be a long writer operation; the entire retention algorithm is not bounded
+in memory or writer duration.
+
+A controlled query-only probe using Python SQLite 3.46.1 against the same
+200,000-row fixture measured 1,960,681,407 logical read bytes / 477,234 read
+syscalls before the covering index, versus 16,687,241 bytes / 4,076 syscalls
+afterwards. Both scans returned 200,000 rows. A Rust regression independently
+checks the upgraded query plan uses the covering index without a temporary
+sort. These numbers describe that metadata query, not total daemon CPU or
+memory usage.
+
+The five affected Rust packages (`lxmf-propagation`, `reticulum-rs-rpc`,
+`reticulum-rs-transport`, `lxmf-sdk`, `reticulumd`) passed 3,345 tests with
+four test threads; 135 tests were ignored by that suite. The final keyset paging
+change additionally passed 1,816 RPC and daemon tests (121 ignored), including
+its new upper-bound regression. The explicit allocation
+probe above passed separately, and all 13 Python harness tests passed. Workspace
+Clippy (all targets/features, warnings denied), formatting, module sizes,
+boundaries and architecture checks including the bare-metal core gate passed. Tests
+cover cleanup-only snapshot preservation, current route/tunnel recovery,
+cleanup failure/retry, bounded deletion pages, refreshed/reused row protection,
+stage correlation and index migration.
+
+The choice follows the standard library's
+[`Arc` shared ownership](https://doc.rust-lang.org/std/sync/struct.Arc.html)
+and Tokio's incremental
+[`ReadDir`](https://docs.rs/tokio/latest/tokio/fs/struct.ReadDir.html).
+It removes full packet copies and reuses the persistence owner without adding
+a separate cache authority.
+
+## Exploratory ten-minute comparison, 2026-10-26
+
+Four 600-second local runs used the same untouched synthetic fixture and separate
+copies for each daemon: 200k payload rows (1.1 GiB database), 600k old peer marks,
+a 973 MiB WAL and 100k signed announces. Each daemon had two pinned CPUs,
+768 MiB MemoryHigh and 1 GiB MemoryMax; the host and storage were shared.
+Baseline was `f7822310`; the immutable candidate binary was `e4cba817`
+(SHA256 `5a15747c9607d1a7356de77f6b1f34f756fe037f253289e8476ccf2680edae41`).
+The candidate predates the final expiry-selection memory bound and quota-SQL
+simplification. These are exploratory measurements of that candidate, not an
+exact-final-head benchmark or a production acceptance result.
+
+| Measurement | Baseline idle | Candidate idle | Baseline ingress | Candidate ingress |
+| --- | ---: | ---: | ---: | ---: |
+| Time to HTTP readiness (s) | 305.8 | 615.8 | 131.1 | 621.5 |
+| CPU (% of one core) | 4.30 | 5.62 | 14.32 | 12.56 |
+| Logical reads (MiB/s) | 8.08 | 3.49 | 8.49 | 3.57 |
+| Read syscalls/s | 2074.15 | 1226.72 | 2831.13 | 1569.94 |
+| RSS first → last minute (MiB) | 95.0 → 74.7 | 234.3 → 281.3 | 265.2 → 314.9 | 375.9 → 390.9 |
+| Process swap first → last minute (MiB) | 83.9 → 137.2 | 8.0 → 28.5 | 22.5 → 50.7 | 0.0 → 20.3 |
+| Cgroup RAM first → last minute (MiB) | 100.5 → 548.6 | 646.9 → 749.2 | 424.9 → 660.6 | 645.3 → 735.0 |
+| Cgroup swap first → last minute (MiB) | 94.4 → 148.2 | 8.0 → 46.7 | 77.4 → 176.1 | 0.0 → 96.3 |
+| MemoryHigh events added | 1834 | 301 | 4144 | 1767 |
+| Writer wait added (ms) | 0.00 | 0.08 | 19022.74 | 6526.10 |
+| SDK polls / errors | 5995 / 0 | 5992 / 0 | 5870 / 1 | 5984 / 0 |
+| Worst window poll p95 (µs) | 4452 | 1524 | 898240 | 32969 |
+
+The candidate reduces maintenance reads and ingress writer wait, and these
+short runs observed no SDK poll failures. Idle CPU and resident memory are
+higher, reclaim and swap still grow, and readiness is slower. The five-minute
+retention work still has costs beyond the covering metadata query. The index is
+created synchronously on first upgrade and adds about 21 MiB to this database;
+no migration timing isolates its contribution to startup latency.
+
+The original harness also let private Unix RPC staging paths exceed Linux's
+socket-name limit in both baseline runs and candidate ingress. HTTP and ZeroMQ
+continued, but these runs do not establish complete listener health. The harness
+now binds a short relative socket from each run root. A separate 30-second
+empty-fixture ingress smoke verified both private Unix sockets and no socket
+binding panic; it does not replace the large-fixture comparison.
+
+Raw local artifacts are under `target/soak-678-663/{baseline-idle-retry,head-idle,
+baseline-ingress,head-ingress}` (each contains `run.json`, `samples.jsonl`,
+`client.jsonl`, `summary.json` and `report.md`). The tracked record preserves
+these limitations instead of treating a short poll run as durable delivery.
 
 ## Acceptance boundary
 

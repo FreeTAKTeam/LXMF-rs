@@ -3,15 +3,17 @@
 //! destinations, packet bytes or file names.
 
 use rns_rpc::MetricsProvider;
-use rns_transport::transport::{PathTableSaveReport, Transport};
+use rns_transport::transport::{AnnounceCacheCleanupReport, PathTableSaveReport, Transport};
 use serde_json::{json, Value as JsonValue};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub(crate) struct PersistenceMetrics {
+    in_flight: AtomicU64,
     runs_total: AtomicU64,
     errors_total: AtomicU64,
+    cleanup_errors_total: AtomicU64,
     triggers_total: AtomicU64,
     coalesced_triggers_total: AtomicU64,
     dropped_triggers_total: AtomicU64,
@@ -20,6 +22,13 @@ pub(crate) struct PersistenceMetrics {
     verified_unchanged_total: AtomicU64,
     written_total: AtomicU64,
     full_verifications_total: AtomicU64,
+    cleanup_examined_total: AtomicU64,
+    cleanup_removed_total: AtomicU64,
+    cleanup_bytes_removed_total: AtomicU64,
+    cleanup_scans_completed_total: AtomicU64,
+    cleanup_duration_ns_total: AtomicU64,
+    cleanup_last_duration_ns: AtomicU64,
+    cleanup_last_success_unix_secs: AtomicU64,
     duration_ns_total: AtomicU64,
     last_duration_ns: AtomicU64,
     last_kept_entries: AtomicU64,
@@ -29,6 +38,14 @@ pub(crate) struct PersistenceMetrics {
 }
 
 impl PersistenceMetrics {
+    pub(crate) fn begin_in_flight(&self) {
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn end_in_flight(&self) {
+        self.in_flight.fetch_sub(1, Ordering::Relaxed);
+    }
+
     pub(crate) fn record_trigger(&self) {
         self.triggers_total.fetch_add(1, Ordering::Relaxed);
     }
@@ -46,6 +63,10 @@ impl PersistenceMetrics {
         self.errors_total.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub(crate) fn record_cleanup_error(&self) {
+        self.cleanup_errors_total.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub(crate) fn record_report(&self, report: &PathTableSaveReport) {
         let relaxed = Ordering::Relaxed;
         self.runs_total.fetch_add(1, relaxed);
@@ -53,6 +74,13 @@ impl PersistenceMetrics {
         self.skipped_known_total.fetch_add(report.skipped_known as u64, relaxed);
         self.verified_unchanged_total.fetch_add(report.verified_unchanged as u64, relaxed);
         self.written_total.fetch_add(report.written as u64, relaxed);
+        self.record_cleanup(AnnounceCacheCleanupReport {
+            examined: report.cleanup_examined,
+            removed: report.cleanup_removed,
+            bytes_removed: report.cleanup_bytes_removed,
+            scan_complete: report.cleanup_scan_complete,
+            duration_ns: report.cleanup_duration_ns,
+        });
         if report.full_verification {
             self.full_verifications_total.fetch_add(1, relaxed);
         }
@@ -63,14 +91,31 @@ impl PersistenceMetrics {
         self.last_fingerprint_map_len.store(report.fingerprint_map_len as u64, relaxed);
         self.last_run_unix_secs.store(unix_now_secs(), relaxed);
     }
+
+    pub(crate) fn record_cleanup(&self, report: AnnounceCacheCleanupReport) {
+        let relaxed = Ordering::Relaxed;
+        self.cleanup_examined_total.fetch_add(report.examined as u64, relaxed);
+        self.cleanup_removed_total.fetch_add(report.removed as u64, relaxed);
+        self.cleanup_bytes_removed_total.fetch_add(report.bytes_removed, relaxed);
+        if report.scan_complete {
+            self.cleanup_scans_completed_total.fetch_add(1, relaxed);
+        }
+        self.cleanup_duration_ns_total.fetch_add(report.duration_ns, relaxed);
+        self.cleanup_last_duration_ns.store(report.duration_ns, relaxed);
+        if report.examined > 0 || report.scan_complete {
+            self.cleanup_last_success_unix_secs.store(unix_now_secs(), relaxed);
+        }
+    }
 }
 
 impl MetricsProvider for PersistenceMetrics {
     fn snapshot(&self) -> JsonValue {
         let load = |value: &AtomicU64| value.load(Ordering::Relaxed);
         json!({
+            "in_flight": load(&self.in_flight) > 0,
             "runs_total": load(&self.runs_total),
             "errors_total": load(&self.errors_total),
+            "cleanup_errors_total": load(&self.cleanup_errors_total),
             "triggers_total": load(&self.triggers_total),
             "coalesced_triggers_total": load(&self.coalesced_triggers_total),
             "dropped_triggers_total": load(&self.dropped_triggers_total),
@@ -79,6 +124,13 @@ impl MetricsProvider for PersistenceMetrics {
             "verified_unchanged_total": load(&self.verified_unchanged_total),
             "written_total": load(&self.written_total),
             "full_verifications_total": load(&self.full_verifications_total),
+            "cleanup_examined_total": load(&self.cleanup_examined_total),
+            "cleanup_removed_total": load(&self.cleanup_removed_total),
+            "cleanup_bytes_removed_total": load(&self.cleanup_bytes_removed_total),
+            "cleanup_scans_completed_total": load(&self.cleanup_scans_completed_total),
+            "cleanup_duration_ns_total": load(&self.cleanup_duration_ns_total),
+            "cleanup_last_duration_ns": load(&self.cleanup_last_duration_ns),
+            "cleanup_last_success_unix_secs": load(&self.cleanup_last_success_unix_secs),
             "duration_ns_total": load(&self.duration_ns_total),
             "last_duration_ns": load(&self.last_duration_ns),
             "last_kept_entries": load(&self.last_kept_entries),

@@ -1,9 +1,10 @@
 use crate::hash::{AddressHash, Hash, HASH_SIZE};
 use crate::packet::Packet;
 use rmpv::Value;
-use std::collections::BTreeSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CachedPacket {
@@ -85,27 +86,139 @@ impl ReticulumPacketDiskCache {
         active_path_hashes: &[Hash],
         tunnel_path_hashes: &[Hash],
     ) -> io::Result<usize> {
-        let directory = self.root.join("announces");
-        let mut entries = match tokio::fs::read_dir(&directory).await {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(0),
-            Err(error) => return Err(error),
+        let mut scan = None;
+        let (_, removed, _, _) = self
+            .clean_announces_batch(
+                active_path_hashes,
+                tunnel_path_hashes,
+                &mut scan,
+                usize::MAX,
+                Duration::ZERO,
+            )
+            .await?;
+        Ok(removed)
+    }
+
+    /// Examine at most `max_entries` cache rows, retaining the directory cursor
+    /// between calls so maintenance work stays bounded across large caches.
+    pub async fn clean_announces_batch(
+        &self,
+        active_path_hashes: &[Hash],
+        tunnel_path_hashes: &[Hash],
+        scan: &mut Option<tokio::fs::ReadDir>,
+        max_entries: usize,
+        grace: Duration,
+    ) -> io::Result<(usize, usize, u64, bool)> {
+        let keep =
+            active_path_hashes.iter().chain(tunnel_path_hashes).copied().collect::<HashSet<_>>();
+        self.clean_announces_batch_for_hashes(&keep, scan, max_entries, grace).await
+    }
+
+    pub(crate) async fn clean_announces_batch_for_hashes(
+        &self,
+        keep: &HashSet<Hash>,
+        scan: &mut Option<tokio::fs::ReadDir>,
+        max_entries: usize,
+        grace: Duration,
+    ) -> io::Result<(usize, usize, u64, bool)> {
+        self.clean_announces_batch_matching(|hash| keep.contains(&hash), scan, max_entries, grace)
+            .await
+    }
+
+    pub(crate) async fn clean_announces_batch_for_fingerprints(
+        &self,
+        fingerprints: &HashMap<Hash, [u8; 32]>,
+        scan: &mut Option<tokio::fs::ReadDir>,
+        max_entries: usize,
+        grace: Duration,
+    ) -> io::Result<(usize, usize, u64, bool)> {
+        self.clean_announces_batch_matching(
+            |hash| fingerprints.contains_key(&hash),
+            scan,
+            max_entries,
+            grace,
+        )
+        .await
+    }
+
+    async fn clean_announces_batch_matching(
+        &self,
+        is_retained: impl Fn(Hash) -> bool,
+        scan: &mut Option<tokio::fs::ReadDir>,
+        max_entries: usize,
+        grace: Duration,
+    ) -> io::Result<(usize, usize, u64, bool)> {
+        if max_entries == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "announce cache cleanup batch must examine at least one entry",
+            ));
+        }
+        if scan.is_none() {
+            *scan = match tokio::fs::read_dir(self.root.join("announces")).await {
+                Ok(entries) => Some(entries),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    return Ok((0, 0, 0, true))
+                }
+                Err(error) => return Err(error),
+            };
+        }
+        let cutoff = match SystemTime::now().checked_sub(grace) {
+            Some(cutoff) => cutoff,
+            None => SystemTime::UNIX_EPOCH,
         };
-        let keep = active_path_hashes
-            .iter()
-            .chain(tunnel_path_hashes)
-            .map(|hash| hex::encode(hash.as_slice()))
-            .collect::<BTreeSet<_>>();
+        let mut examined = 0;
         let mut removed = 0;
-        while let Some(entry) = entries.next_entry().await? {
-            let file_type = entry.file_type().await?;
+        let mut bytes_removed = 0u64;
+        while examined < max_entries {
+            let Some(entries) = scan.as_mut() else {
+                return Err(io::Error::other("announce cache scan cursor was not initialized"));
+            };
+            let Some(entry) = entries.next_entry().await? else {
+                *scan = None;
+                return Ok((examined, removed, bytes_removed, true));
+            };
+            examined += 1;
             let name = entry.file_name().to_string_lossy().to_string();
-            if file_type.is_file() && (hex::decode(&name).is_err() || !keep.contains(&name)) {
-                tokio::fs::remove_file(entry.path()).await?;
-                removed += 1;
+            if hex::decode(&name)
+                .ok()
+                .and_then(|bytes| <[u8; HASH_SIZE]>::try_from(bytes).ok())
+                .is_some_and(|bytes| is_retained(Hash::new(bytes)))
+            {
+                continue;
+            }
+            let path = entry.path();
+            let metadata = match tokio::fs::symlink_metadata(&path).await {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            };
+            if !metadata.file_type().is_file() || metadata.modified()? > cutoff {
+                continue;
+            }
+            // Recheck after the first metadata read: a concurrent writer refreshes
+            // the mtime before replacing the cache entry.
+            let current = match tokio::fs::symlink_metadata(&path).await {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            };
+            let current_modified = current.modified()?;
+            if current.file_type().is_file()
+                && current_modified <= cutoff
+                && current_modified == metadata.modified()?
+            {
+                match tokio::fs::remove_file(path).await {
+                    Ok(()) => {
+                        removed += 1;
+                        bytes_removed = bytes_removed.saturating_add(current.len());
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
+                }
             }
         }
-        Ok(removed)
+        Ok((examined, removed, bytes_removed, false))
     }
 
     pub async fn save_packet_hashlist(
@@ -183,3 +296,6 @@ impl ReticulumPacketDiskCache {
         directory.join(hex::encode(hash.as_slice()))
     }
 }
+
+#[cfg(test)]
+mod tests;

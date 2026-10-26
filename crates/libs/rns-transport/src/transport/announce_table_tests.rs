@@ -85,7 +85,8 @@ fn path_response_entries_use_shorter_window_without_later_broadcast() {
     assert_eq!(table.responses.len(), 1);
     let response = table.responses.get(&destination).expect("response entry inserted");
     assert_eq!(response.packet.context, PacketContext::PathResponse);
-    let response_delay = response.timeout.checked_duration_since(Instant::now()).unwrap_or_default();
+    let response_delay =
+        response.timeout.checked_duration_since(Instant::now()).unwrap_or_default();
     assert!(
         response_delay <= PATH_RESPONSE_GRACE,
         "path responses should stay on the shorter direct-response grace window"
@@ -177,13 +178,15 @@ fn path_response_entries_can_apply_extra_roaming_grace() {
     ));
 
     let response = table.responses.get(&destination).expect("response entry inserted");
-    let response_delay = response.timeout.checked_duration_since(before_response).unwrap_or_default();
+    let response_delay =
+        response.timeout.checked_duration_since(before_response).unwrap_or_default();
     assert!(
         response_delay >= PATH_RESPONSE_GRACE + PATH_RESPONSE_ROAMING_GRACE,
         "roaming path responses should include Python's extra roaming grace"
     );
     assert!(
-        response_delay <= PATH_RESPONSE_GRACE + PATH_RESPONSE_ROAMING_GRACE + Duration::from_millis(250),
+        response_delay
+            <= PATH_RESPONSE_GRACE + PATH_RESPONSE_ROAMING_GRACE + Duration::from_millis(250),
         "roaming grace should not add extra delay beyond scheduling jitter"
     );
     assert!(

@@ -2,9 +2,13 @@ use super::*;
 use crate::transport::reticulum_announce_cache::{
     CacheWriteOutcome, CachedAnnounce, CachedAnnounceRestore, ReticulumAnnounceCache,
 };
+mod cleanup;
+use cleanup::clean_announce_cache_batch;
+pub use cleanup::AnnounceCacheCleanupReport;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const ANNOUNCE_CACHE_VERIFY_INTERVAL: Duration = Duration::from_secs(300);
@@ -25,6 +29,8 @@ struct AnnounceCacheState {
     storage_root: Option<PathBuf>,
     last_full_verify: Option<Instant>,
     files: HashMap<Hash, [u8; 32]>,
+    persisted_snapshot_matches_files: bool,
+    cleanup_scan: Option<tokio::fs::ReadDir>,
 }
 
 impl AnnounceCacheState {
@@ -49,6 +55,11 @@ pub struct PathTableSaveReport {
     pub verified_unchanged: usize,
     pub written: usize,
     pub full_verification: bool,
+    pub cleanup_examined: usize,
+    pub cleanup_removed: usize,
+    pub cleanup_bytes_removed: u64,
+    pub cleanup_scan_complete: bool,
+    pub cleanup_duration_ns: u64,
     pub duration_ns: u64,
     pub fingerprint_map_len: usize,
 }
@@ -129,7 +140,7 @@ impl Transport {
             let mut packets = Vec::new();
             for entry in entries {
                 if let Some(packet) =
-                    handler.announce_table.cached_packet_for_destination(&entry.destination)
+                    handler.announce_table.shared_cached_packet_for_destination(&entry.destination)
                 {
                     packets.push((entry.packet_hash, entry.iface, packet));
                     kept_entries.push(entry);
@@ -141,8 +152,9 @@ impl Transport {
                 });
             for tunnel in &mut tunnel_entries {
                 tunnel.paths.retain(|path| {
-                    let Some(packet) =
-                        handler.announce_table.cached_packet_for_destination(&path.destination)
+                    let Some(packet) = handler
+                        .announce_table
+                        .shared_cached_packet_for_destination(&path.destination)
                     else {
                         return false;
                     };
@@ -168,6 +180,7 @@ impl Transport {
         let verify_existing = cache_state.full_verification_due(Instant::now());
         let mut current_hashes = HashSet::with_capacity(packets.len());
         current_hashes.extend(packets.iter().map(|(packet_hash, _, _)| *packet_hash));
+        cache_state.persisted_snapshot_matches_files = false;
         cache_state.retain_current_files(&current_hashes);
         let tunnel_paths = tunnel_entries.iter().map(|entry| entry.paths.len()).sum();
         let mut report = PathTableSaveReport {
@@ -182,7 +195,13 @@ impl Transport {
             for (packet_hash, iface, packet) in packets {
                 let previous = cache_state.files.get(&packet_hash).copied();
                 let (fingerprint, outcome) = announce_cache
-                    .write_with_fingerprint(packet_hash, iface, packet, previous, verify_existing)
+                    .write_with_fingerprint(
+                        packet_hash,
+                        iface,
+                        packet.as_ref(),
+                        previous,
+                        verify_existing,
+                    )
                     .await?;
                 match outcome {
                     CacheWriteOutcome::SkippedKnownBytes => report.skipped_known += 1,
@@ -194,9 +213,24 @@ impl Transport {
 
             tokio::fs::write(storage_path.join("destination_table"), payload).await?;
             tokio::fs::write(storage_path.join("tunnels"), tunnel_payload).await?;
+            cache_state.persisted_snapshot_matches_files = true;
             if verify_existing {
                 cache_state.last_full_verify = Some(Instant::now());
             }
+            let cleanup = clean_announce_cache_batch(
+                &storage_path,
+                &current_hashes,
+                &mut cache_state.cleanup_scan,
+            )
+            .await
+            .map_err(|error| {
+                io::Error::new(error.kind(), format!("failed to clean announce cache: {error}"))
+            })?;
+            report.cleanup_examined = cleanup.examined;
+            report.cleanup_removed = cleanup.removed;
+            report.cleanup_bytes_removed = cleanup.bytes_removed;
+            report.cleanup_scan_complete = cleanup.scan_complete;
+            report.cleanup_duration_ns = cleanup.duration_ns;
             Ok(())
         }
         .await;
@@ -452,35 +486,4 @@ fn python_tunnel_path_entry_expired(
 }
 
 #[cfg(test)]
-mod persistence_tests {
-    use super::*;
-
-    #[test]
-    fn removed_routes_are_pruned_from_the_persistence_cache() {
-        let retained = Hash::new_from_slice(b"retained-route");
-        let removed = Hash::new_from_slice(b"removed-route");
-        let mut state = AnnounceCacheState::default();
-        state.files.insert(retained, [1; 32]);
-        state.files.insert(removed, [2; 32]);
-
-        state.retain_current_files(&HashSet::from([retained]));
-
-        assert_eq!(state.files.len(), 1);
-        assert!(state.files.contains_key(&retained));
-        assert!(!state.files.contains_key(&removed));
-    }
-
-    #[test]
-    fn full_verification_is_rate_limited_to_five_minutes() {
-        let now = Instant::now();
-        let mut state = AnnounceCacheState::default();
-        assert!(state.full_verification_due(now));
-
-        state.last_full_verify =
-            Some(now - ANNOUNCE_CACHE_VERIFY_INTERVAL + Duration::from_secs(1));
-        assert!(!state.full_verification_due(now));
-
-        state.last_full_verify = Some(now - ANNOUNCE_CACHE_VERIFY_INTERVAL);
-        assert!(state.full_verification_due(now));
-    }
-}
+mod persistence_tests;
