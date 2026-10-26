@@ -3390,3 +3390,13 @@ Preview.26 regression implementation now bounds dirty path-table saves to a
 300-second minimum (configurable), delays cleanup startup, and seeds validated
 canonical restore fingerprints. The regression package tracks the remaining
 readiness/control and WAL connection increments and paired ingress evidence.
+
+Preview.26 control follow-up: `/readyz` returns 503 until every configured ZMQ
+listener has bound, and clears on loop exit. Durable capability reads use a
+startup/enable cache. Replay-safe broker RPC commands return a typed timeout
+after 2.5 seconds while queued work retains its commit semantics. Eight legal
+maximum control request/reply pairs and 32 bounded rejection replies have
+reserved admission capacity; power-of-two drop warnings bound log volume.
+Larger configured poll batches preclude a fixed 1 MiB reply reservation.
+Local readiness/deadline regressions passed; production p99 and pressure
+acceptance remain pending.

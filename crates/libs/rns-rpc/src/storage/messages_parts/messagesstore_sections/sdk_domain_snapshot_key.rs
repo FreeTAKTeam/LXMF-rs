@@ -33,6 +33,7 @@ impl MessagesStore {
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
+            durable_broker_enabled: AtomicBool::new(false),
             write_state: write_state.clone(),
             outbound_write_tx,
             writer_thread: Some(Self::spawn_outbound_write_worker(write_state, outbound_write_rx)),
@@ -67,6 +68,7 @@ impl MessagesStore {
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
+            durable_broker_enabled: AtomicBool::new(false),
             write_state: write_state.clone(),
             outbound_write_tx,
             writer_thread: Some(Self::spawn_outbound_write_worker(write_state, outbound_write_rx)),

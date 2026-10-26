@@ -378,3 +378,13 @@ the first-save reread; periodic full cache verification is removed under the
 single-owner assumption. Missing/invalid records on restart remain classified.
 Focused regressions cover burst timing, cleanup without snapshots and seeded
 restore. Production acceptance and paired ingress measurements remain pending.
+
+Preview.26 control follow-up: `/readyz` returns 503 until every configured ZMQ
+listener has bound, and clears on loop exit. Durable capability reads use a
+startup/enable cache. Replay-safe broker RPC commands return a typed timeout
+after 2.5 seconds while queued work retains its commit semantics. Eight legal
+maximum control request/reply pairs and 32 bounded rejection replies have
+reserved admission capacity; power-of-two drop warnings bound log volume.
+Larger configured poll batches preclude a fixed 1 MiB reply reservation.
+Local readiness/deadline regressions passed; production p99 and pressure
+acceptance remain pending.

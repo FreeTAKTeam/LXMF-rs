@@ -233,3 +233,54 @@ async fn snapshot(endpoint: &str, request_id: u64) -> Result<serde_json::Value, 
     let rpc = parse_rpc_frame(&response.payload).map_err(|error| error.to_string())?;
     rpc.result.ok_or_else(|| format!("snapshot error: {:?}", rpc.error))
 }
+
+#[test]
+fn broker_deadline_reply_is_a_handler_timeout() {
+    use rns_rpc::rpc::zmq_metrics::ZmqStageOutcome;
+    let response = rns_rpc::RpcResponse {
+        id: 1,
+        result: None,
+        error: Some(rns_rpc::RpcError::new("SDK_STORAGE_BROKER_TIMEOUT", "writer deadline")),
+    };
+    let payload = rns_rpc::rpc::codec::encode_frame(&response).expect("response frame");
+    let envelope = ZmqRpcEnvelope::response("session", 1, payload);
+    assert!(matches!(
+        super::super::broker_handler_outcome("sdk_broker_resume_v1", &envelope),
+        ZmqStageOutcome::TimedOut
+    ));
+    let metrics = rns_rpc::rpc::zmq_metrics::ZmqPipelineMetrics::default();
+    metrics
+        .enter_correlated(
+            rns_rpc::rpc::zmq_metrics::ZmqStage::Handler,
+            0,
+            rns_rpc::rpc::zmq_metrics::ZmqFailureContext::new("sdk_broker_resume_v1", 3),
+        )
+        .finish(super::super::broker_handler_outcome("sdk_broker_resume_v1", &envelope));
+    let snapshot = metrics.snapshot();
+    assert_eq!(snapshot["handler"]["timed_out"], 1);
+    assert_eq!(snapshot["handler"]["succeeded"], 0);
+}
+
+#[test]
+fn broker_reply_classifier_handles_success_errors_and_malformed_frames() {
+    use rns_rpc::rpc::zmq_metrics::ZmqStageOutcome;
+    for error in [None, Some(rns_rpc::RpcError::new("SDK_STORAGE_BUSY", "busy"))] {
+        let response =
+            rns_rpc::RpcResponse { id: 1, result: Some(serde_json::json!({"ok":true})), error };
+        let payload = rns_rpc::rpc::codec::encode_frame(&response).expect("frame");
+        let envelope = ZmqRpcEnvelope::response("session", 1, payload);
+        assert!(matches!(
+            super::super::broker_handler_outcome("sdk_broker_resume_v1", &envelope),
+            ZmqStageOutcome::Succeeded
+        ));
+    }
+    let malformed = ZmqRpcEnvelope::response("session", 1, vec![]);
+    assert!(matches!(
+        super::super::broker_handler_outcome("sdk_broker_resume_v1", &malformed),
+        ZmqStageOutcome::Failed
+    ));
+    assert!(matches!(
+        super::super::broker_handler_outcome("sdk_status_v2", &malformed),
+        ZmqStageOutcome::Succeeded
+    ));
+}

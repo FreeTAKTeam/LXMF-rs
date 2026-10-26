@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
 use serde_json::Value as JsonValue;
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -41,6 +41,7 @@ pub struct AnnounceRecord {
 }
 
 pub struct MessagesStore {
+    durable_broker_enabled: AtomicBool,
     write_state: Arc<WriteState>,
     outbound_write_tx: WriteSender,
     writer_thread: Option<JoinHandle<()>>,

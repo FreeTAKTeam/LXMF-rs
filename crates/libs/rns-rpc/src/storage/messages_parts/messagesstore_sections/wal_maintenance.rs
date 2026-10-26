@@ -10,6 +10,7 @@ impl MessagesStore {
             }
         })?;
         self.write_state.broker_budget_bytes.store(budget.max(0) as u64, Ordering::Relaxed);
+        self.durable_broker_enabled.store(budget > 0, Ordering::Release);
         Ok(())
     }
 
