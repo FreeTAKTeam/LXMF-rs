@@ -95,7 +95,7 @@ pub(crate) async fn run_zmq_rpc_loop_until(
                         continue;
                     }
                 };
-                dispatch_wait.attach_failure_context(ZmqFailureContext::new(&method, queue_depth));
+                dispatch_wait.attach_failure_context(ZmqFailureContext::new(method, queue_depth));
                 let daemon = Arc::clone(&daemon);
                 let response_tx = response_tx.clone();
                 let rpc_permits = Arc::clone(&rpc_permits);

@@ -5,6 +5,7 @@ use std::io;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+// shortcut: retention is reference/age-based; add a byte budget if ingress outpaces sweeps.
 const ANNOUNCE_CACHE_CLEAN_BATCH: usize = 512;
 const ANNOUNCE_CACHE_CLEAN_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
 

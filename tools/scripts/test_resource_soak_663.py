@@ -19,6 +19,13 @@ class ParserTests(unittest.TestCase):
                 Path("/tmp/shared-target/release/examples/client"),
             )
 
+    def test_daemon_socket_path_stays_short_for_nested_run_roots(self):
+        command = soak.daemon_command(
+            Path("/bin/reticulumd"), Path("/nested" + "/very-long-run-name" * 12),
+            1234, 1235, None, None, 0,
+        )
+        self.assertEqual(command[command.index("--rpc-unix") + 1], "rpc.sock")
+
     def test_sampler_rejects_premature_process_exit(self):
         for failed in ("daemon", "poll client"):
             processes = [SimpleNamespace(poll=lambda: None), SimpleNamespace(poll=lambda: None)]

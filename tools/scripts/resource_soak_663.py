@@ -281,7 +281,7 @@ def daemon_command(
         "--rpc",
         f"127.0.0.1:{http_port}",
         "--rpc-unix",
-        str(root / "rpc.sock"),
+        "rpc.sock",  # Relative to the run root: private staging adds a socket-path suffix.
         "--transport",
         f"127.0.0.1:{transport_port}",
         "--announce-interval-secs",
@@ -364,9 +364,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if not args.skip_build:
         build_release(["--bin", "reticulumd", "--example", "resource_soak_663_client"])
-    daemon_bin = Path(args.daemon_bin) if args.daemon_bin else release_binary("reticulumd", example=False)
+    daemon_bin = Path(args.daemon_bin).resolve() if args.daemon_bin else release_binary("reticulumd", example=False)
     client_bin = (
-        Path(args.client_bin) if args.client_bin else release_binary("resource_soak_663_client", example=True)
+        Path(args.client_bin).resolve() if args.client_bin else release_binary("resource_soak_663_client", example=True)
     )
     # The daemon rewrites destination_table, tunnels and the WAL as it runs
     # (and on shutdown), so every run works on its own copy of the fixture.
@@ -390,7 +390,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     log("daemon: " + " ".join(command))
     daemon_log = (out / "daemon.log").open("a", encoding="utf-8")
-    daemon = subprocess.Popen(command, cwd=REPO, env=daemon_env(), stdout=daemon_log, stderr=daemon_log)
+    daemon = subprocess.Popen(command, cwd=root, env=daemon_env(), stdout=daemon_log, stderr=daemon_log)
     peer: subprocess.Popen | None = None
     client: subprocess.Popen | None = None
     run_meta: dict[str, Any] = {
@@ -492,7 +492,7 @@ def start_peer(daemon_bin: Path, out: Path, target_transport_port: int, log) -> 
     )
     log("peer: " + " ".join(command))
     peer_log = (out / "peer.log").open("a", encoding="utf-8")
-    return subprocess.Popen(command, cwd=REPO, env=daemon_env(), stdout=peer_log, stderr=peer_log)
+    return subprocess.Popen(command, cwd=peer_root, env=daemon_env(), stdout=peer_log, stderr=peer_log)
 
 
 def sample_loop(out, daemon, client, daemon_pid, cgroup_dir, http_port, root, args, log) -> None:

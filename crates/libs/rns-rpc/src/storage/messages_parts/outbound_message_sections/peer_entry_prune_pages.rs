@@ -10,10 +10,57 @@ fn peer_policy_prune_does_not_delete_a_reused_rowid() {
         Ok((rowid, 1, "old-peer".to_string(), "old-id".to_string()))
     }).expect("replace candidate row");
     let deleted = store
-        .delete_peer_entry_candidates(vec![candidate], "state = 'unhandled'", 0, 0, None)
+        .delete_expired_peer_entry_candidates(&[candidate], 0, 0)
         .expect("recheck reused rowid");
     assert_eq!(deleted, 0, "replacement rows must not match an earlier selection");
-    assert_eq!(store.peer_entry_count().expect("remaining marks"), 1);
+    let remaining: i64 = store
+        .with_read_conn(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM propagation_peer_entries", [], |row| row.get(0))
+        })
+        .expect("remaining marks");
+    assert_eq!(remaining, 1);
+}
+
+#[test]
+fn peer_policy_prune_keyset_page_respects_captured_upper_rowid() {
+    let (_temp, store) = refill_store_on_disk();
+    store
+        .with_write_conn(|conn| {
+            conn.execute(
+                "INSERT INTO propagation_peer_entries
+                    (rowid, peer, transient_id, state, updated_at)
+                 VALUES (100, 'page-peer', 'before-boundary', 'unhandled', 1)",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("seed initial row");
+    let upper_rowid = store
+        .with_read_conn(|conn| {
+            conn.query_row("SELECT MAX(rowid) FROM propagation_peer_entries", [], |row| {
+                row.get::<_, Option<i64>>(0)
+            })
+        })
+        .expect("capture rowid boundary")
+        .expect("row exists");
+    store
+        .with_write_conn(|conn| {
+            conn.execute(
+                "INSERT INTO propagation_peer_entries
+                    (rowid, peer, transient_id, state, updated_at)
+                 VALUES (101, 'page-peer', 'after-boundary', 'unhandled', 1)",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("insert row after captured boundary");
+
+    let page = store
+        .select_expired_peer_entry_page(i64::MIN, upper_rowid, 5, 5)
+        .expect("select bounded keyset page");
+
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].3, "before-boundary");
 }
 
 #[test]
@@ -128,13 +175,7 @@ fn peer_policy_prune_rechecks_candidates_after_a_refresh() {
         .expect("refresh candidate before page delete");
 
     let deleted = store
-        .delete_peer_entry_candidates(
-            vec![candidate],
-            "state = 'unhandled' AND updated_at < ?5",
-            5,
-            0,
-            None,
-        )
+        .delete_expired_peer_entry_candidates(&[candidate], 5, 5)
         .expect("delete selected candidates with recheck");
     let state: String = store
         .with_read_conn(|conn| {
@@ -148,75 +189,4 @@ fn peer_policy_prune_rechecks_candidates_after_a_refresh() {
 
     assert_eq!(deleted, 0);
     assert_eq!(state, "handled");
-}
-
-#[test]
-fn peer_policy_prune_keeps_candidate_when_newer_mark_completes() {
-    let (_temp, store) = refill_store_on_disk();
-    for index in [101usize, 102] {
-        let entry = refill_entry(index, index as i64);
-        store.upsert_propagation_entry(&entry).expect("seed inventory entry");
-        store
-            .with_write_conn(|conn| {
-                conn.execute(
-                    "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
-                     VALUES ('rank-peer', ?1, 'unhandled', ?2)",
-                    params![entry.transient_id, index as i64],
-                )?;
-                Ok(())
-            })
-            .expect("seed peer mark");
-    }
-
-    let candidate = store
-        .with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT rowid, updated_at, peer, transient_id
-                 FROM (
-                     SELECT rowid, updated_at, peer, transient_id,
-                            ROW_NUMBER() OVER (
-                                PARTITION BY peer ORDER BY updated_at DESC, transient_id DESC
-                            ) AS peer_rank
-                     FROM propagation_peer_entries WHERE state = 'unhandled'
-                 ) WHERE peer_rank > 1",
-                [],
-                |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
-                },
-            )
-        })
-        .expect("select peer overflow");
-    store
-        .with_write_conn(|conn| {
-            conn.execute(
-                "UPDATE propagation_peer_entries
-                 SET state = 'received', updated_at = 103
-                 WHERE peer = 'rank-peer' AND transient_id = ?1",
-                params![format!("{:064x}", 102)],
-            )?;
-            Ok(())
-        })
-        .expect("complete newest mark before deletion");
-
-    let deleted = store
-        .delete_peer_entry_candidates(vec![candidate], PER_PEER_EXCESS_RECHECK, 1, 0, None)
-        .expect("recheck per-peer rank");
-    let state: String = store
-        .with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT state FROM propagation_peer_entries
-                 WHERE peer = 'rank-peer' AND transient_id = ?1",
-                params![format!("{:064x}", 101)],
-                |row| row.get(0),
-            )
-        })
-        .expect("read formerly excess mark");
-
-    assert_eq!(deleted, 0);
-    assert_eq!(state, "unhandled");
 }

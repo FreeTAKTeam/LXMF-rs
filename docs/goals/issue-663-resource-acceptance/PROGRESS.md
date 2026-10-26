@@ -11,7 +11,7 @@ sequential branches. The 2026-10-26 continuation below records subsequent work.
 | 3. Refill coalescing, writer fairness, WAL maintenance | Merged | `corvo/issue-663-03-refill-wal`, [#685](https://github.com/FreeTAKTeam/LXMF-rs/pull/685), `c6f834b9` | Read-only refill gate, rowid-floor incremental rescan, priority-writer yield, timer-driven WAL truncate, dispatch pump backoff; merged review regressions also cover SQLite rowid reuse and inventory reordering. Before/after smoke table in the resource regression record. |
 | 4. Anonymous-memory attribution and bounds | Software implemented; acceptance open | `corvo/fix-678-663` | Persistence shares immutable cached packets instead of deep-cloning every route's payload; focused COW regression and a 100k-route allocation estimate. Existing protocol population bounds remain in force. |
 | 5. Poll-failure stage correlation | Local regressions passed; production correlation open | `corvo/fix-678-663` | `/metrics` exports stage outcomes and latency buckets plus a 64-entry incident ring with bounded method labels, queue depth, cumulative writer wait, refill/persistence activity and cgroup high counter. Local SDK exchange failure details include a stable category label. |
-| 6. Production-shaped soak and acceptance record | Short comparison in progress; multi-hour acceptance open | `corvo/fix-678-663` | Paired idle/ingress profiles use 200k propagation entries, 100k signed route announces and the production memory/CPU limits. Multi-hour delivery/restart/lost-ACK soak remains outstanding. |
+| 6. Production-shaped soak and acceptance record | Exploratory comparison recorded; multi-hour acceptance open | `corvo/fix-678-663` | Paired 10-minute idle/ingress profiles use 200k propagation entries, 100k signed route announces and the production memory/CPU limits. Reads and ingress writer wait fell, but memory/reclaim still grow and startup/listener limitations prevent acceptance. Multi-hour delivery/restart/lost-ACK soak remains outstanding. |
 
 ## 2026-10-26 continuation: issues 678 and 663
 
@@ -23,17 +23,23 @@ the already merged items 1-3. No production access, deployment, or issue closure
 is part of the local evidence.
 
 The harness also respects a shared `CARGO_TARGET_DIR`, gives parallel runs unique
-systemd unit names, rejects premature daemon/poller exit, and uses measured run
-duration when deciding whether the multi-hour requirement was met.
+systemd unit names, uses short Unix RPC socket paths from each run root, rejects
+premature daemon/poller exit, and uses measured run duration when deciding whether
+the multi-hour requirement was met.
 
 The instrumented baseline identified another maintenance cost: a five-minute
 retention pass over the fixture's expired peer history and over-budget payload
 inventory. The continuation adds a covering retention index and 512-row
-peer-history deletion transactions, with identity and current-policy rechecks
-between pages. Candidate selection stays outside the writer; existing TTLs,
-priority weights and limits are retained. The combined five-package suite
-passed 3,346 tests (135 suite ignores), the explicit allocation probe passed,
-and the Python harness passed 12 tests.
+expired/orphan peer-history deletion transactions, with identity and current
+expiry/orphan rechecks between pages. Candidate selection stays outside the
+writer and now streams 512-row keyset pages with a captured upper rowid, avoiding
+a temporary vector of the complete expired population. Per-peer and global quota
+enforcement keeps the original atomic SQL.
+Existing TTLs, priority weights and limits are retained. The combined five-package
+suite passed 3,345 tests (135 suite ignores), the explicit allocation probe passed,
+and the Python harness passed 13 tests. Final keyset paging passed a separate RPC
+and daemon rerun with 1,816 tests (121 ignored); its performance is not inferred from the earlier
+candidate binary.
 
 ## Item 1 notes
 
