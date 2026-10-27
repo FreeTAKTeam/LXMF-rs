@@ -84,3 +84,30 @@ async fn announce_cache_ticks_never_flush_and_dirty_triggers_are_rate_limited() 
     assert_eq!(context.metrics().snapshot()["runs_total"], 2);
     drop(tx);
 }
+
+#[tokio::test(start_paused = true)]
+async fn dropped_persistence_trigger_still_reaches_a_dirty_save() {
+    use rns_rpc::MetricsProvider;
+    let temp = TempDir::new().expect("temp dir");
+    let signer = PrivateIdentity::new_from_name("announce-dropped-trigger");
+    let identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
+    let transport = Arc::new(Transport::new(TransportConfig::new("dropped", &identity, true)));
+    let context = crate::announce_persistence::PathTablePersistenceContext::new(
+        transport, temp.path().to_path_buf(),
+    );
+    let tx = crate::announce_persistence::spawn_path_table_persistence_worker_with_interval(
+        context.clone(), std::time::Duration::from_secs(300),
+    );
+    // Capacity is one: the second trigger is what `announce_worker` counts as
+    // dropped. The queued one already guarantees the next dirty save.
+    tx.try_send(()).expect("first trigger queues");
+    assert!(tx.try_send(()).is_err(), "second trigger is dropped while one is queued");
+    tokio::task::yield_now().await;
+    tokio::time::advance(std::time::Duration::from_secs(300)).await;
+    for _ in 0..100_000 {
+        if context.metrics().snapshot()["runs_total"] == 1 { break; }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(context.metrics().snapshot()["runs_total"], 1);
+    drop(tx);
+}
