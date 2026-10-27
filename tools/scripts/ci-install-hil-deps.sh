@@ -2,11 +2,8 @@
 set -euo pipefail
 
 packages=(pkg-config libdbus-1-dev)
-install_timeout=120s
 if [[ "${1:-}" == tools ]]; then
   packages+=(ffmpeg imagemagick graphicsmagick squashfs-tools)
-  # Media codecs need more download time on slow, progressing mirrors.
-  install_timeout=480s
 fi
 
 missing=()
@@ -21,8 +18,13 @@ if (( ${#missing[@]} == 0 )); then
 fi
 
 echo "Installing missing HIL dependencies: ${missing[*]}"
+# The runner's Azure mirror can throttle the large media dependency download.
+if [[ "${1:-}" == tools && "${GITHUB_ACTIONS:-}" == true && -f /etc/apt/apt-mirrors.txt ]]; then
+  echo 'Using the official Ubuntu HTTPS archive for media dependencies'
+  sudo sed -i 's|http://azure\.archive\.ubuntu\.com|https://archive.ubuntu.com|g' /etc/apt/apt-mirrors.txt
+fi
 apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20
   -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=30
   -o APT::Update::Error-Mode=any)
 sudo timeout --kill-after=10s 120s apt-get "${apt_options[@]}" update
-sudo timeout --kill-after=10s "$install_timeout" apt-get "${apt_options[@]}" install -y --no-install-recommends "${missing[@]}"
+sudo timeout --kill-after=10s 120s apt-get "${apt_options[@]}" install -y --no-install-recommends "${missing[@]}"
