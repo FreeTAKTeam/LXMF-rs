@@ -35,6 +35,13 @@ impl ZmqRecoveryDecision {
             | "SDK_STORAGE_BROKER_FULL"
             | "SDK_STORAGE_WRITE_BUSY"
             | "SDK_TRANSPORT_ZMQ_BUSY" => Self::StorageBackpressure,
+            "SDK_STORAGE_BROKER_TIMEOUT" => {
+                if replay_safe {
+                    Self::RetryWithinBudget
+                } else {
+                    Self::ReconcileOperation
+                }
+            }
             _ if matches!(error.category, ErrorCategory::Transport | ErrorCategory::Timeout) => {
                 if replay_safe {
                     Self::RetryWithinBudget
@@ -82,6 +89,25 @@ pub(super) fn explicitly_rejected(error: &SdkError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queued_broker_timeout_retries_only_replay_safe_operations() {
+        let timeout =
+            SdkError::new("SDK_STORAGE_BROKER_TIMEOUT", ErrorCategory::Storage, "writer deadline");
+        assert_eq!(
+            ZmqRecoveryDecision::for_error(&timeout, true),
+            ZmqRecoveryDecision::RetryWithinBudget
+        );
+        assert_eq!(
+            ZmqRecoveryDecision::for_error(&timeout, false),
+            ZmqRecoveryDecision::ReconcileOperation
+        );
+        assert!(!explicitly_rejected(&timeout), "the queued operation may already have committed");
+        assert!(!replay_safe("sdk_broker_admit_v1"), "admission reconciles by operation ID");
+        for method in ["sdk_broker_resume_v1", "sdk_broker_fetch_v1", "sdk_broker_ack_stored_v1"] {
+            assert!(replay_safe(method));
+        }
+    }
 
     #[test]
     fn transient_and_permission_errors_never_restore_identity() {

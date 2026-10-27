@@ -407,4 +407,4 @@ pub use profile::{enable, enabled, restore_profile};
 pub(crate) use wal_maintenance::{
     checkpoint_truncate_nonblocking, maintain as wal_maintenance_run, wal_file_size,
 };
-pub use wal_maintenance::{truncate_limit_bytes, WalMaintenanceOutcome};
+pub use wal_maintenance::{truncate_limit_bytes, wal_maintenance_interval, WalMaintenanceOutcome};

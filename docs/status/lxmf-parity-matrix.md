@@ -39,6 +39,14 @@ extends resource evidence for issues 657/655 without promoting production
 memory/swap acceptance. See
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 
+The subsequent #663 diagnostics increment exports ZeroMQ stage outcomes and
+latency buckets through `/metrics`, with a bounded recent incident ring and
+stable SDK exchange error categories. Existing durability and acknowledgement
+semantics remain unchanged. The combined cache-retention and persistence-memory
+work still requires multi-hour delivery/recovery and memory/swap acceptance.
+Periodic retention now uses a covering metadata index and bounded peer-history
+writer transactions, preserving TTLs, priority ordering and configured limits.
+
 The historical v0.9.8 record retains its release boundary. Current `main` and
 the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for their
 named software scenarios, with hardware, public-network, and third-party-client
@@ -1227,3 +1235,9 @@ boundary. This adds no protocol or operational parity claim.
   duplicate storage/upsert work.
 - `interop.python_live_gate` means the configured scenarios run successfully;
   it does not imply every partial row is complete.
+
+Preview.26 SDK control follow-up (#663/#657): replay-safe durable broker calls
+recover from typed writer deadlines; admission keeps operation-ID reconciliation.
+Timeout metadata also supports existing category-based clients. Local parked-writer,
+recovery and real ZMQ control stress passed; long-duration custody/delivery and
+production resource acceptance remain open in the regression package.

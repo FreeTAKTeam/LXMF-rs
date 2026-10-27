@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Default)]
 pub struct RefillMetrics {
+    pub in_flight: AtomicU64,
     pub invocations_total: AtomicU64,
     pub skipped_complete_total: AtomicU64,
     pub skipped_capacity_total: AtomicU64,
@@ -20,6 +21,11 @@ pub struct RefillMetrics {
 }
 
 impl RefillMetrics {
+    pub fn track_in_flight(&self) -> InFlightGuard<'_> {
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+        InFlightGuard(&self.in_flight)
+    }
+
     pub fn record_page(&self, candidates: usize, inserted: usize, page_ns: u64) {
         self.pages_total.fetch_add(1, Ordering::Relaxed);
         self.candidates_examined_total.fetch_add(candidates as u64, Ordering::Relaxed);
@@ -29,6 +35,7 @@ impl RefillMetrics {
 
     pub fn snapshot(&self) -> serde_json::Value {
         serde_json::json!({
+            "in_flight": self.in_flight.load(Ordering::Relaxed),
             "invocations_total": self.invocations_total.load(Ordering::Relaxed),
             "skipped_complete_total": self.skipped_complete_total.load(Ordering::Relaxed),
             "skipped_capacity_total": self.skipped_capacity_total.load(Ordering::Relaxed),
@@ -41,6 +48,14 @@ impl RefillMetrics {
             "max_page_ns": self.max_page_ns.load(Ordering::Relaxed),
             "priority_yields_total": self.priority_yields_total.load(Ordering::Relaxed),
         })
+    }
+}
+
+pub struct InFlightGuard<'a>(&'a AtomicU64);
+
+impl Drop for InFlightGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
@@ -57,6 +72,13 @@ pub enum WalCheckpointOutcome {
     PassiveIncomplete,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct WalCheckpointFrames {
+    pub busy: i64,
+    pub log_frames: i64,
+    pub checkpointed_frames: i64,
+}
+
 #[derive(Debug, Default)]
 pub struct WalMetrics {
     pub checkpoint_attempts_total: AtomicU64,
@@ -67,9 +89,14 @@ pub struct WalMetrics {
     pub emergency_reclaim_total: AtomicU64,
     pub last_wal_bytes: AtomicU64,
     pub last_checkpoint_unix_secs: AtomicU64,
+    last_checkpoint: std::sync::Mutex<Option<WalCheckpointFrames>>,
 }
 
 impl WalMetrics {
+    pub fn record_checkpoint(&self, frames: WalCheckpointFrames) {
+        *self.last_checkpoint.lock().expect("WAL checkpoint metrics poisoned") = Some(frames);
+    }
+
     pub fn record_outcome(&self, outcome: WalCheckpointOutcome, wal_bytes_after: u64) {
         self.last_wal_bytes.store(wal_bytes_after, Ordering::Relaxed);
         match outcome {
@@ -102,6 +129,7 @@ impl WalMetrics {
             "errors_total": self.errors_total.load(Ordering::Relaxed),
             "emergency_reclaim_total": self.emergency_reclaim_total.load(Ordering::Relaxed),
             "last_wal_bytes": self.last_wal_bytes.load(Ordering::Relaxed),
+            "last_checkpoint": *self.last_checkpoint.lock().expect("WAL checkpoint metrics poisoned"),
             "last_checkpoint_unix_secs": self.last_checkpoint_unix_secs.load(Ordering::Relaxed),
         })
     }

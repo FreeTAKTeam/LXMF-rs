@@ -177,6 +177,8 @@ impl RpcDaemon {
             },
         );
         let daemon = Self {
+            zmq_expected_listeners: std::sync::atomic::AtomicUsize::new(0),
+            zmq_bound_listeners: std::sync::atomic::AtomicUsize::new(0),
             store,
             identity_hash,
             delivery_destination_hash: Mutex::new(None),

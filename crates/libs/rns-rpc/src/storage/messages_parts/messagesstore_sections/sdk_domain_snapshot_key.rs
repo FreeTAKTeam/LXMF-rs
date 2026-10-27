@@ -30,13 +30,17 @@ impl MessagesStore {
             priority_waiters: AtomicUsize::new(0),
             priority_gate: (Mutex::new(()), Condvar::new()),
             broker_budget_bytes: AtomicU64::new(0),
+            last_wal_reclaim: Mutex::new(None),
+            wal_reclaim_interval: super::broker::wal_maintenance_interval(),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
+            durable_broker_enabled: AtomicBool::new(false),
             write_state: write_state.clone(),
             outbound_write_tx,
             writer_thread: Some(Self::spawn_outbound_write_worker(write_state, outbound_write_rx)),
             read_conn: None,
+            maintenance_conn: None,
             read_lock_wait_ns_total: AtomicU64::new(0),
             read_ops_total: AtomicU64::new(0),
         };
@@ -64,13 +68,19 @@ impl MessagesStore {
             priority_waiters: AtomicUsize::new(0),
             priority_gate: (Mutex::new(()), Condvar::new()),
             broker_budget_bytes: AtomicU64::new(0),
+            last_wal_reclaim: Mutex::new(None),
+            wal_reclaim_interval: super::broker::wal_maintenance_interval(),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
+            durable_broker_enabled: AtomicBool::new(false),
             write_state: write_state.clone(),
             outbound_write_tx,
             writer_thread: Some(Self::spawn_outbound_write_worker(write_state, outbound_write_rx)),
             read_conn: Some(Mutex::new(read_conn)),
+            maintenance_conn: Some(Mutex::new(Connection::open_with_flags(
+                path, OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI,
+            )?)),
             read_lock_wait_ns_total: AtomicU64::new(0),
             read_ops_total: AtomicU64::new(0),
         };
@@ -106,36 +116,6 @@ impl MessagesStore {
         f(&conn).map_err(super::broker::map_commit_error)
     }
 
-    /// Per-acquisition WAL guard without SQL: the cached budget decides whether the
-    /// file is even checked, and only a WAL past budget/8 triggers a non-blocking
-    /// TRUNCATE. Routine shrinking belongs to `maintain_wal`; this path exists so
-    /// broker-full recovery after a pinned reader still works on the next write.
-    fn reclaim_wal_recorded(write_state: &WriteState, conn: &Connection) -> rusqlite::Result<()> {
-        let budget = write_state.broker_budget_bytes.load(Ordering::Relaxed);
-        if budget == 0 || !conn.is_autocommit() {
-            return Ok(());
-        }
-        let size = super::broker::wal_file_size(conn)?;
-        if size <= budget / 8 {
-            if size > 0 {
-                write_state.wal_metrics.last_wal_bytes.store(size, Ordering::Relaxed);
-            }
-            return Ok(());
-        }
-        write_state.wal_metrics.emergency_reclaim_total.fetch_add(1, Ordering::Relaxed);
-        match super::broker::checkpoint_truncate_nonblocking(conn) {
-            Ok(outcome) => {
-                let after = super::broker::wal_file_size(conn)?;
-                write_state.wal_metrics.record_outcome(outcome, after);
-                Ok(())
-            }
-            Err(error) => {
-                write_state.wal_metrics.record_error();
-                Err(error)
-            }
-        }
-    }
-
     /// Counts a broker/control writer while it waits for the connection so refill
     /// pages can yield instead of racing it for the unfair mutex.
     fn write_lock_priority<'a>(
@@ -156,6 +136,19 @@ impl MessagesStore {
     /// until that writer holds the connection, in 5 ms slices for at most ~50 ms.
     /// Returns how many waits were taken.
     pub(super) fn yield_to_priority_writers(&self) -> u32 {
+        let steps = self.wait_for_priority_writers();
+        if steps > 0 {
+            self.write_state
+                .refill_metrics
+                .priority_yields_total
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        steps
+    }
+
+    /// Let a priority writer acquire the shared connection without attributing
+    /// maintenance waits to the propagation-refill metrics.
+    pub(super) fn wait_for_priority_writers(&self) -> u32 {
         let (gate, signal) = &self.write_state.priority_gate;
         let deadline = std::time::Instant::now() + std::time::Duration::from_millis(50);
         let mut steps = 0u32;
@@ -170,12 +163,6 @@ impl MessagesStore {
                 .wait_timeout(guard, std::time::Duration::from_millis(5))
                 .expect("priority gate mutex poisoned");
             steps += 1;
-        }
-        if steps > 0 {
-            self.write_state
-                .refill_metrics
-                .priority_yields_total
-                .fetch_add(1, Ordering::Relaxed);
         }
         steps
     }

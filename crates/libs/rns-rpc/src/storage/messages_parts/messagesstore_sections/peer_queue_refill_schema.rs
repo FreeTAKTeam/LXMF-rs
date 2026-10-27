@@ -92,8 +92,6 @@ impl MessagesStore {
                 generation INTEGER NOT NULL
             );
             INSERT OR IGNORE INTO propagation_inventory_generation(singleton, generation) VALUES (1, 0);
-            CREATE INDEX IF NOT EXISTS idx_propagation_entries_received_transient
-                ON propagation_entries(received_at DESC, transient_id DESC);
             CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_unhandled_folded
                 ON propagation_peer_entries(LOWER(peer), transient_id) WHERE state = 'unhandled';
             CREATE TRIGGER IF NOT EXISTS propagation_refill_inventory_insert

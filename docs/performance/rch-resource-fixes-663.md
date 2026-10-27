@@ -149,10 +149,12 @@ profile, baseline daemon `main` at `8f872639`, ten minutes per run.
 
 Observations the baseline attributes or leaves open:
 
-- The idle profile reproduces the production picture: file cache grows by
-  about 360 MiB and `memory.events high` fires 1,906 times in ten minutes with
-  three writes. Reading 100,000 cached announce files back (startup, then the
-  five-minute verification) is the only file traffic of that size.
+- The idle profile reproduces file-cache pressure: cache grows by about 360 MiB
+  and `memory.events high` fires 1,906 times in ten minutes with three writes.
+  The initial inference that this was announce-cache verification was not
+  established by these counters. The instrumented 2026-10-26 comparison below
+  instead identifies a five-minute propagation-retention pass, while announce
+  persistence has zero runs.
 - Idle store reads run at about 80 per second. Half are the durable dispatch
   pump in `rpc/daemon/sdk_outbound.rs`, which re-ran `broker_pending_dispatch`
   every 25 ms on an idle daemon; a probe through `handle_rpc` confirmed the SDK
@@ -230,6 +232,130 @@ What changed and what did not:
   ten minutes (100,000 per save, 44 s total) and 677 further triggers were
   absorbed while a save was running.
 
+## Announce retention and persistence allocation, 2026-10-26
+
+The follow-through for [#678](https://github.com/FreeTAKTeam/LXMF-rs/issues/678)
+reuses the existing Python-format announce cache. Successful path/tunnel saves
+collect one bounded batch of obsolete cache files under the same save gate;
+idle daemon maintenance continues the directory cursor every 30 seconds without
+rewriting route snapshots. Each batch examines at most 512 directory entries.
+Packets referenced by the last successful persisted active-route or tunnel
+snapshot remain protected, as do files modified within the preceding 24 hours.
+The grace period and incremental sweep bound obsolete history by age and scan
+progress; this is not a fixed disk-byte budget or cross-process exclusion.
+Cleanup errors and progress are visible in `providers.announce_persistence`.
+Its reclaimed-byte counter reports logical file bytes, not filesystem block
+allocation.
+No announce-cache migration, new storage engine, protocol hash change, or route eviction policy
+is introduced.
+
+Persistence previously collected owned `Packet` clones for every route before
+writing the snapshot. The cache now shares immutable packets through `Arc`;
+response-context mutation uses copy-on-write, and existing packet-returning
+getters retain their behavior. A deterministic 100,000-route probe with 256-byte
+payloads avoids copying 25,600,000 payload bytes and 15,200,000 bytes of inline
+packet storage into each snapshot, using 800,000 bytes of packet handles instead.
+This attributes avoidable allocation churn, not all retained process memory.
+Existing route/tunnel expiry, announce-cache capacity and packet-history rotation
+remain the population policies; capacity zero retains its existing unlimited
+meaning.
+
+The new comparison also corrects the idle read attribution. In the untouched
+`f7822310` idle run, announce persistence reports zero runs throughout. Logical
+reads are nearly zero between samples, then increase by about 5.05 GB during
+the five-minute propagation-maintenance pass. The fixture has 409,600,000 bytes
+of propagation payloads against the daemon's default 256 MiB limit, plus
+600,000 peer-history rows with old timestamps. Existing retention therefore
+performs a large legitimate cleanup; the run is not a continuously idle,
+unchanging database. Its roughly 8 MiB/s whole-run read average must not be
+described as sustained empty-poll scanning or announce-file verification.
+
+The retention metadata query now uses a covering ordered index, avoiding
+lookups into the large payload table for each candidate. Expired/orphan peer-history
+marks are selected outside the writer in rowid keyset pages of at most 512
+identities and deleted in 512-row transactions. A captured upper rowid bounds
+the pass; rows are rechecked for their identity and current expiry/orphan status
+before deletion, candidate memory is released between pages, and maintenance
+yields to priority broker writers. Per-peer and global quota
+enforcement retains its original SQL in one atomic writer transaction. TTLs,
+quota ordering, configured limits and priority weights are retained. Payload
+retention still materializes its candidate metadata and quota enforcement can
+still be a long writer operation; the entire retention algorithm is not bounded
+in memory or writer duration.
+
+A controlled query-only probe using Python SQLite 3.46.1 against the same
+200,000-row fixture measured 1,960,681,407 logical read bytes / 477,234 read
+syscalls before the covering index, versus 16,687,241 bytes / 4,076 syscalls
+afterwards. Both scans returned 200,000 rows. A Rust regression independently
+checks the upgraded query plan uses the covering index without a temporary
+sort. These numbers describe that metadata query, not total daemon CPU or
+memory usage.
+
+The five affected Rust packages (`lxmf-propagation`, `reticulum-rs-rpc`,
+`reticulum-rs-transport`, `lxmf-sdk`, `reticulumd`) passed 3,345 tests with
+four test threads; 135 tests were ignored by that suite. The final keyset paging
+change additionally passed 1,816 RPC and daemon tests (121 ignored), including
+its new upper-bound regression. The explicit allocation
+probe above passed separately, and all 13 Python harness tests passed. Workspace
+Clippy (all targets/features, warnings denied), formatting, module sizes,
+boundaries and architecture checks including the bare-metal core gate passed. Tests
+cover cleanup-only snapshot preservation, current route/tunnel recovery,
+cleanup failure/retry, bounded deletion pages, refreshed/reused row protection,
+stage correlation and index migration.
+
+The choice follows the standard library's
+[`Arc` shared ownership](https://doc.rust-lang.org/std/sync/struct.Arc.html)
+and Tokio's incremental
+[`ReadDir`](https://docs.rs/tokio/latest/tokio/fs/struct.ReadDir.html).
+It removes full packet copies and reuses the persistence owner without adding
+a separate cache authority.
+
+## Exploratory ten-minute comparison, 2026-10-26
+
+Four 600-second local runs used the same untouched synthetic fixture and separate
+copies for each daemon: 200k payload rows (1.1 GiB database), 600k old peer marks,
+a 973 MiB WAL and 100k signed announces. Each daemon had two pinned CPUs,
+768 MiB MemoryHigh and 1 GiB MemoryMax; the host and storage were shared.
+Baseline was `f7822310`; the immutable candidate binary was `e4cba817`
+(SHA256 `5a15747c9607d1a7356de77f6b1f34f756fe037f253289e8476ccf2680edae41`).
+The candidate predates the final expiry-selection memory bound and quota-SQL
+simplification. These are exploratory measurements of that candidate, not an
+exact-final-head benchmark or a production acceptance result.
+
+| Measurement | Baseline idle | Candidate idle | Baseline ingress | Candidate ingress |
+| --- | ---: | ---: | ---: | ---: |
+| Time to HTTP readiness (s) | 305.8 | 615.8 | 131.1 | 621.5 |
+| CPU (% of one core) | 4.30 | 5.62 | 14.32 | 12.56 |
+| Logical reads (MiB/s) | 8.08 | 3.49 | 8.49 | 3.57 |
+| Read syscalls/s | 2074.15 | 1226.72 | 2831.13 | 1569.94 |
+| RSS first → last minute (MiB) | 95.0 → 74.7 | 234.3 → 281.3 | 265.2 → 314.9 | 375.9 → 390.9 |
+| Process swap first → last minute (MiB) | 83.9 → 137.2 | 8.0 → 28.5 | 22.5 → 50.7 | 0.0 → 20.3 |
+| Cgroup RAM first → last minute (MiB) | 100.5 → 548.6 | 646.9 → 749.2 | 424.9 → 660.6 | 645.3 → 735.0 |
+| Cgroup swap first → last minute (MiB) | 94.4 → 148.2 | 8.0 → 46.7 | 77.4 → 176.1 | 0.0 → 96.3 |
+| MemoryHigh events added | 1834 | 301 | 4144 | 1767 |
+| Writer wait added (ms) | 0.00 | 0.08 | 19022.74 | 6526.10 |
+| SDK polls / errors | 5995 / 0 | 5992 / 0 | 5870 / 1 | 5984 / 0 |
+| Worst window poll p95 (µs) | 4452 | 1524 | 898240 | 32969 |
+
+The candidate reduces maintenance reads and ingress writer wait, and these
+short runs observed no SDK poll failures. Idle CPU and resident memory are
+higher, reclaim and swap still grow, and readiness is slower. The five-minute
+retention work still has costs beyond the covering metadata query. The index is
+created synchronously on first upgrade and adds about 21 MiB to this database;
+no migration timing isolates its contribution to startup latency.
+
+The original harness also let private Unix RPC staging paths exceed Linux's
+socket-name limit in both baseline runs and candidate ingress. HTTP and ZeroMQ
+continued, but these runs do not establish complete listener health. The harness
+now binds a short relative socket from each run root. A separate 30-second
+empty-fixture ingress smoke verified both private Unix sockets and no socket
+binding panic; it does not replace the large-fixture comparison.
+
+Raw local artifacts are under `target/soak-678-663/{baseline-idle-retry,head-idle,
+baseline-ingress,head-ingress}` (each contains `run.json`, `samples.jsonl`,
+`client.jsonl`, `summary.json` and `report.md`). The tracked record preserves
+these limitations instead of treating a short poll run as durable delivery.
+
 ## Acceptance boundary
 
 Local SQL plans, regressions and socket tests do not establish a multi-hour
@@ -239,3 +365,150 @@ two cores, 768 MiB MemoryHigh and 1 GiB MemoryMax; measures CPU, logical reads,
 anon/file/cache, swap and reclaim deltas; and verifies durable inbound,
 outbound/fanout, restart and lost-ACK recovery. Hardware, public-network and
 production deployment evidence are not claimed by this increment.
+
+## Preview.26 follow-up: timer-driven persistence
+
+The [regression package](../goals/preview26-regression-663-657-678/PLAN.md)
+replaces the two-second announce debounce with dirty saves no more frequently
+than 300 seconds (`LXMD_PATH_TABLE_SAVE_INTERVAL_SECS`, positive seconds).
+The delayed 30-second maintenance tick only continues bounded cache collection;
+it cannot write a route snapshot. Shutdown still flushes explicitly.
+Canonical validated cache records seed fingerprints during restore, removing
+the first-save reread; periodic full cache verification is removed under the
+single-owner assumption. Missing/invalid records on restart remain classified.
+Focused regressions cover burst timing, cleanup without snapshots and seeded
+restore. Production acceptance and paired ingress measurements remain pending.
+
+Preview.26 control follow-up: `/readyz` returns 503 until every configured ZMQ
+listener has bound, and clears on loop exit. Durable capability reads use a
+startup/enable cache. Replay-safe broker RPC commands return a typed timeout
+after 2.5 seconds while queued work retains its commit semantics. Eight legal
+maximum control request/reply pairs and 32 bounded rejection replies have
+reserved admission capacity; power-of-two drop warnings bound log volume.
+Larger configured poll batches preclude a fixed 1 MiB reply reservation.
+Local readiness/deadline regressions passed; production p99 and pressure
+acceptance remain pending.
+
+Preview.26 WAL follow-up runs scheduled PASSIVE/TRUNCATE on a dedicated
+maintenance connection outside the traffic writer mutex. Emergency write-path
+checkpoint attempts are limited to the shared maintenance interval, so recovery
+from reader-pinned physical backpressure can wait until that next pass.
+`storage.wal.last_checkpoint` exposes SQLite busy/log/checkpointed frames.
+Regressions retain physical budget and custody/ACK guarantees and demonstrate
+checkpoint progress while both traffic connection mutexes are held.
+Production reader attribution and resource acceptance remain open.
+
+### 2026-10-26 preview.26 paired ingress and control evidence
+
+Daemon images were static `x86_64-unknown-linux-musl`, default daemon features.
+The published preview.26 image was `392fc1b9`; PR 1 was `cd7f616d` on
+`883e01b1`. Both ran against independent copies of the same 200k-entry,
+1.11 GiB database / 973 MiB fixture WAL and 100k signed routes, with
+MemoryHigh=768 MiB, MemoryMax=1 GiB, CPUs 2/3, and 600 seconds of ingress.
+Local evidence: `target/soak/preview26/{baseline-ingress,pr1-musl-ingress}`;
+`source-bindings.json` binds image hashes to commits. The sampler's
+`git_revision` identifies the active workspace, so it is not the image identity.
+The stopped glibc startup is excluded.
+
+| Sampled ingress metric | Preview.26 | PR 1 |
+| --- | ---: | ---: |
+| Path persistence runs | 210 | 1 |
+| Full announce-cache verifications | 2 | 0 |
+| Unchanged records skipped on the candidate's one save | — | 100,000 |
+| CPU, percent of one core | 14.330 | 7.831 |
+| MemoryHigh event delta after readiness | 2,013 | 205 |
+| Poll errors / polls | 0 / 5,990 | 0 / 5,974 |
+| Poll window p95 maximum, microseconds | 12,303 | 1,838 |
+| Logical read rate, MiB/s | 3.936 | 15.045 |
+| Read syscalls/second | 1,665 | 3,857 |
+| Aggregate writer wait delta, seconds | 5.776 | 14.468 |
+| Readiness startup, seconds | 209.310 | 259.095 |
+| Process swap, first/last minute medians, MiB | 0 / 21.2 | 248.1 / 74.2 |
+
+The snapshot amplification is removed, but resource acceptance **does not pass**.
+Around the 300-second retention pass the candidate's anonymous memory rose
+from about 24 MiB to 236 MiB, file cache from 23 to 521 MiB, and high events
+increased by 205; its observed tail then plateaued near 224 MiB anon / 522 MiB
+file. Startup swap was substantially higher and startup slower. The runs do not
+control host cache residency; these observed startup differences are not an
+allocator attribution. Logical reads and aggregate writer wait worsened.
+The candidate still pruned the fixture from 200k entries to 125k / 256 MB,
+which implicates retention work, while persistence did no full verification.
+The 14.468-second counter is aggregate wait across many operations, not a
+measurement of one writer hold or a particular retention phase.
+
+PR 4 remains deferred: one retention high-water step does not prove repeated
+allocator ratcheting, and cumulative wait does not establish the required
+multi-second quota/payload critical section. Per-phase/max-hold attribution or
+repeated-cycle allocation evidence is needed before changing those algorithms.
+No allocator, quota ordering, payload-prune policy or RCH timeout was changed.
+
+The combined daemon additionally passed a 90-second local control stress with
+100k restored routes, 2-second dirty-save and WAL timers, a bounded synthetic
+WAL workload, and a reader pinned then released. Propagation retention was
+disabled to isolate the save/checkpoint control boundary. There were 8,166
+broker negotiations, no errors, p99 1,087 microseconds and maximum 151,151
+microseconds, with 41 path saves and 23 checkpoint attempts. Evidence lives in
+`target/soak/preview26/control-stress-pinned`. An earlier probe had zero
+checkpoints and is excluded from proving checkpoint concurrency.
+A real occupied command endpoint kept `/readyz` at 503 while `/healthz` and
+`/livez` stayed 200 (`target/soak/preview26/failed-bind`).
+
+The standard four-package suite passed 3,329 tests (135 ignores), with the new
+SDK recovery and timeout-category regressions passing separately. A matching
+Fernet optional-feature profile passed all 687 daemon tests; the initial
+selected-package `--all-features` run enabled AES-128 transport with the other
+Fernet implementation still on its default, so that inconsistent mode failed
+propagation decryption. Final all-feature Clippy, formatting, boundaries,
+module size, architecture (including no_std), and 13 Python harness tests passed.
+`cargo xtask release-check` passed its runtime/check lanes through the publish
+dry-run, then failed packaged daemon verification against already published
+0.15.0 dependencies, which lack both #694 and current APIs. No crates are
+published or version-bumped by this daemon-only prerelease workflow.
+
+Preview.26 operator metrics, production reader attribution, fresh delivery,
+restart/lost-ACK recovery and multi-hour #663/#657 acceptance remain open.
+#678 cache file/inode retention over several GC cycles remains a separate
+acceptance lane; these resource/control runs do not close it.
+
+### Operator preview.26 metrics supplied on 2026-10-26
+
+The operator supplied the requested pre-redeployment excerpt in this chat,
+identified as preview.26. Preserve the exact counters in
+[the operator excerpt](../goals/preview26-regression-663-657-678/evidence/operator-preview26-2026-10-26.json).
+This is user-supplied production evidence, not a direct scrape by this agent;
+uptime, current broker budget, and a second sample were not supplied.
+
+- Persistence completed 2,177 runs after 8,941 triggers and examined 67,815,223
+  records, with 28 full verifications. Cumulative reported path-save wall time
+  is 2,538.980 seconds (42.316 minutes), averaging 1.166 seconds per run.
+  This supports the production save-amplification diagnosis. The duration is
+  accumulated wall time for path saves (including their cleanup), not CPU
+  utilization or process uptime; packet-hashlist persistence is outside it.
+- 65,110,554 records were skipped by known fingerprint, 845,700 verified
+  unchanged and 1,858,969 written, with zero save errors. The exact split sums
+  to the examined count. Even with about 96% skipping cache-file work, every
+  save still walks/encodes the route snapshot. The most recent save took
+  999.827 ms; the last snapshot had 28,677 active routes and 3,045 tunnel paths.
+- 4,958 dropped persistence triggers and 1,805 coalesced triggers demonstrate
+  scheduling/coalescing pressure. These counters concern redundant save
+  notifications; they are not counts of lost network announces.
+- Cache collection removed 1,046,838 files / 268,812,387 bytes (256.359 MiB),
+  completed two scans and reported zero cleanup errors. This demonstrates
+  active #678 collection, but without file/inode population trends it does
+  not establish bounded retention or complete that separate acceptance lane.
+- The reported WAL is **exactly 100,663,296 bytes (96 MiB)**, with zero
+  recorded checkpoint attempts, busy/incomplete outcomes or errors. If the
+  retained broker budget is still the plan's 6 GiB, its routine threshold is
+  `max(64 MiB, budget/64) = 96 MiB`. In deployed `392fc1b9`, `maintain` returns
+  `BelowThreshold` when `size_before <= threshold`; that outcome updates size
+  but does not increment `checkpoint_attempts_total`. Thus equality is
+  consistent with all these counters remaining zero. These counters also
+  omit SQLite's automatic checkpoints. This sample does not establish a
+  pinned reader, a stalled maintenance timer, or a currently 546 MiB WAL.
+
+This excerpt supplies the plan's requested production baseline and supports
+PR 1's existing direction. It does not require a new threshold, forced
+checkpoint, allocator change or propagation-pruning change. PR 3's dedicated
+connection and frame diagnostics remain useful for observing eligible
+checkpoints; no deployment or operational acceptance is inferred here.

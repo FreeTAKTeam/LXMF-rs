@@ -172,7 +172,7 @@ mod tests {
         assert!(mutation(&conn, true).is_err());
         reader.execute_batch("ROLLBACK").unwrap();
         assert_eq!(
-            super::wal_maintenance::checkpoint_truncate_nonblocking(&conn).unwrap(),
+            super::wal_maintenance::checkpoint_truncate_nonblocking(&conn).unwrap().0,
             crate::storage::operation_metrics::WalCheckpointOutcome::Truncated
         );
         mutation(&conn, true).unwrap();
