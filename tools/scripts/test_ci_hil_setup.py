@@ -43,9 +43,11 @@ elif name == 'apt-get':
             return result, calls
 
     def test_installed_dependencies_do_not_contact_package_servers(self):
-        result, calls = self.setup_run("interfaces")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(calls, [])
+        for suite in ["interfaces", "tools"]:
+            with self.subTest(suite=suite):
+                result, calls = self.setup_run(suite)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls, [])
 
     def test_non_media_suite_only_installs_missing_build_dependencies(self):
         result, calls = self.setup_run("controller-channel", ["libdbus-1-dev", "ffmpeg"])
@@ -63,6 +65,8 @@ elif name == 'apt-get':
         media = ["ffmpeg", "imagemagick", "graphicsmagick", "squashfs-tools"]
         result, calls = self.setup_run("tools", media)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[0][:3], ["--kill-after=10s", "120s", "apt-get"])
+        self.assertEqual(calls[1][:3], ["--kill-after=10s", "480s", "apt-get"])
         self.assertEqual(calls[1][-4:], media)
         self.assertIn("--no-install-recommends", calls[1])
 

@@ -98,7 +98,7 @@ class WorkflowTests(unittest.TestCase):
     def test_hil_setup_is_bounded_and_media_setup_only_runs_for_tools(self):
         _, blocks, _ = self.verify_suites()
         install = next(b for b in blocks if "ci-install-hil-deps.sh" in b)
-        self.assertIn("timeout-minutes: 5", install)
+        self.assertIn("timeout-minutes: ${{ matrix.suite == 'tools' && 11 || 5 }}", install)
         for name in ["Install pinned ImageMagick", "Smoke-test pinned ImageMagick"]:
             block = next(b for b in blocks if name in b)
             self.assertIn("matrix.suite == 'tools'", block)

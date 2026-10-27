@@ -92,7 +92,7 @@ jobs:
           tool: cargo-nextest
 
       - name: Install HIL dependencies
-        timeout-minutes: 5
+        timeout-minutes: ${{ matrix.suite == 'tools' && 11 || 5 }}
         run: bash tools/scripts/ci-install-hil-deps.sh "$VERIFY_SUITE"
 
       - name: Install pinned ImageMagick 7 AppImage with WebP support
