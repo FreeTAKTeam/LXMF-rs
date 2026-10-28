@@ -675,10 +675,58 @@ that gate remains open rather than crediting unmeasured allocator/SQLite slack.
 The daemon-only candidate uses mimalloc 0.1.52 (libmimalloc-sys 0.1.49) as the
 Rust global allocator, following the conditional PR 4 in the earlier plan. The
 measured step is retained anonymous memory with flat table populations, not yet
-proof of repeated ratcheting. This is an experiment pending a same-fixture,
-same-limit static-musl control/candidate comparison. Native C/SQLite malloc is
+proof of repeated ratcheting. The same-fixture, same-limit static-musl
+control/candidate comparison is complete; it remains a draft evaluation because
+the memory slope and attribution gates failed. Native C/SQLite malloc is
 not overridden. The dependency adds no core or workspace-local edge; unrelated
 Cargo.lock resolution changes were removed and `cargo check --locked` passed.
 Audit found no vulnerabilities, with the existing unmaintained serial 0.4.0
 warning; cargo deny licenses/bans/sources passed but advisories rejected that
 same pre-existing serial advisory (RUSTSEC-2017-0008). No allowlist was weakened.
+
+### Completed static-musl allocator comparison
+
+Both binaries used the identical 200,000-entry / 100,000-announce fixture,
+MemoryHigh=768M, MemoryMax=1G, CPUs 0,1, one peer announcing each second and
+600 seconds of SDK polling. The control was `6ad4a2bf`; the mimalloc candidate
+was `1ed254c0`, SHA-256
+`b83a114f94777139ebc387287b2991ef768f9c2bd53b6989ff32e536ae00dde8`.
+The [machine-readable comparison](../goals/p0-2026-10-28-663-608-609-625/evidence/663-local-resource-comparison.json)
+records full binary revisions/hashes, fixture, summaries, final phase metrics,
+occupancy and the content estimate. Harness checkout revisions are separate from
+immutable measured-binary revisions.
+
+| Metric | Paged static-musl control | Mimalloc candidate |
+|---|---:|---:|
+| First / last minute anon median | 267.08 / 289.90 MiB | 201.99 / 211.87 MiB |
+| Anon median at 60–120 s / final minute | 267.97 / 289.90 MiB | 202.03 / 211.87 MiB |
+| Post-minute-one OLS growth, normalised to 600 s | 34.99 MiB | 16.45 MiB |
+| MemoryHigh / max / OOM event delta | 280 / 0 / 0 | 254 / 0 / 0 |
+| Swap first / last minute | 0 / 0 | 0 / 0 |
+| CPU, percent of one core | 6.23 | 6.22 |
+| SDK polls / errors | 5,996 / 0 | 5,997 / 0 |
+| Payload duration / physical-read bytes | 9.10 s / 404,541,440 | 6.96 s / 395,780,096 |
+| Expiry duration / physical-read bytes | 13.99 s / 226,648,064 | 15.17 s / 130,244,608 |
+| Quota duration / physical-read bytes | 5.79 ms / 241,664 | 1.14 ms / 0 |
+| Logical reads (rchar) | 5.64 MiB/s | 10.04 MiB/s |
+| Write-lock wait delta | 9.36 s | 5.24 s |
+
+The candidate has a smaller absolute anonymous footprint but still retains a
+step after maintenance and adds reclaim events. Both fail the <=1 MiB/10 min
+growth gate. Initial cgroup file-cache ownership differed (315.47 versus
+175.59 MiB), so reclaim/read-byte changes are not isolated allocator causality.
+The higher logical-read rate is also not an overall resource-improvement claim.
+
+The conservative per-table content estimate is 139,000,000 bytes / 132.56 MiB:
+100,000 times recipient 792 B, path 128 B, random blob 10 B, cached announce
+including packet/payload 396 B, and fingerprint 64 B. It excludes unmeasured
+collection slack, allocator retention/metadata, SQLite/native caches and other
+runtime allocations. It explains about 77% of the GNU pre-pass sample and 66%
+of the candidate's first-minute anon, so >=80% attribution remains unmet.
+No unmeasured residual is credited to a named owner. Further heap ownership
+measurement and repeated maintenance cycles are needed before selecting a
+qualified allocator fix; this draft is not a production-ready memory solution.
+
+Static-musl process checks with and without ZMQ also passed READY, readyz=200,
+STOPPING and SIGTERM exit 0. No multi-hour soak, fresh message-delivery load,
+RCH production startup trial or release/deployment was performed. #663 stays open.

@@ -1,0 +1,473 @@
+{
+  "content_estimate": {
+    "announce_entry_with_packet_and_148byte_payload": 396,
+    "estimated_content_bytes": 139000000,
+    "excludes": "hash-map spare buckets/control bytes, B-tree slack, allocator metadata/retention, SQLite/native cache, stacks and other runtime allocations; no configured capacity is credited as owned bytes",
+    "fingerprint_entry_bytes": 64,
+    "formula": "100000 * (792 + 128 + 10 + 396 + 64)",
+    "limitation": "Conservative content estimate, not a heap profile; below the 80% attribution gate.",
+    "path_bytes_excluding_blobs": 128,
+    "random_blob_bytes": 10,
+    "single_recipient_bytes": 792
+  },
+  "fixture": {
+    "announce_root": {
+      "announces_requested": 100000,
+      "cache_files": 100000,
+      "destination_table_bytes": 13700005,
+      "paths_saved": 100000
+    },
+    "database": {
+      "budget_bytes": 6442450944,
+      "db_bytes": 1204756480,
+      "entries": 200000,
+      "payload_bytes": 2048,
+      "peer_history_rows": 600000,
+      "peers": 300,
+      "wal_bytes": 1029748712
+    },
+    "elapsed_secs": 25.89374642,
+    "git_revision": "0ff916997041e576014e85a65f97338931729d8a",
+    "schema": "lxmf-rs-resource-soak-663-fixture-v1",
+    "seed": 663
+  },
+  "limitations": [
+    "Initial file-cache ownership differs even in the static-musl pair; high-event/read-byte changes are not isolated allocator causality.",
+    "GNU and musl are not interchangeable allocator controls.",
+    "One maintenance cycle does not prove repeated ratcheting or multi-hour production stability.",
+    "The allocator is a draft evaluation; memory growth/attribution gates remain unmet."
+  ],
+  "limits": {
+    "announce_rate_per_sec": 1,
+    "cpus": "0,1",
+    "duration_secs": 600,
+    "fresh_message_delivery_driven": false,
+    "memory_high_bytes": 805306368,
+    "memory_max_bytes": 1073741824,
+    "profile": "ingress"
+  },
+  "results": {
+    "after-final": {
+      "binary_code_revision": "a182a4ea970a118f7f18fc7fabedb1b1bff7e6c5",
+      "binary_sha256": "1c7fc2c0237ea4ed642680c2710eee6ba5c1f567198d59fd1f6cd3e2b547a2a4",
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 900,
+        "latency_p95_us_max": 2193,
+        "latency_p95_us_median": 716.5,
+        "polls": 5997
+      },
+      "harness_checkout_revision": "a182a4ea970a118f7f18fc7fabedb1b1bff7e6c5",
+      "last_maintenance": {
+        "expiry": {
+          "duration_ns_total": 9918872421,
+          "errors_total": 0,
+          "last_duration_ns": 9918872421,
+          "last_read_bytes": 224223232,
+          "last_rows_deleted": 600000,
+          "max_duration_ns": 9918872421,
+          "max_read_bytes": 224223232,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 224223232,
+          "rows_deleted_total": 600000,
+          "runs_total": 1
+        },
+        "payload": {
+          "duration_ns_total": 8078823893,
+          "errors_total": 0,
+          "last_duration_ns": 8078823893,
+          "last_read_bytes": 397365248,
+          "last_rows_deleted": 75000,
+          "max_duration_ns": 8078823893,
+          "max_read_bytes": 397365248,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 397365248,
+          "rows_deleted_total": 75000,
+          "runs_total": 1
+        },
+        "quota": {
+          "duration_ns_total": 1743105,
+          "errors_total": 0,
+          "last_duration_ns": 1743105,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 1743105,
+          "max_read_bytes": 0,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 0,
+          "rows_deleted_total": 0,
+          "runs_total": 1
+        }
+      },
+      "last_transport_tables": {
+        "announce_cache_capacity": 100000,
+        "announce_cache_entries": 100000,
+        "announce_retransmit_entries": 0,
+        "available": true,
+        "link_entries": 0,
+        "packet_cache_hashes": 892,
+        "packet_cache_tracked": 0,
+        "path_entries": 100002,
+        "peer_crypto": 2,
+        "peer_crypto_removed_total": 0,
+        "random_blob_count": 100128,
+        "single_out_destinations": 100002,
+        "single_out_destinations_removed_total": 0,
+        "tunnel_entries": 1,
+        "tunnel_path_entries": 2
+      },
+      "post_minute_one": {
+        "first_60s_anon_mib_median": 171.033203125,
+        "last_60s_anon_mib_median": 255.33984375,
+        "ols_anon_growth_mib_per_600s": 138.15402957590635
+      },
+      "ready_after_secs": 190.42647660398507,
+      "samples": {
+        "cpu_percent_one_core": 5.562557042517055,
+        "elapsed_secs": 596.4882651340158,
+        "first_minute_median": {
+          "anon_bytes": 179040256.0,
+          "cgroup_anon": 179038208.0,
+          "cgroup_file": 185835520.0,
+          "cgroup_memory_current": 390070272.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 200327168.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 457352.0
+        },
+        "last_minute_median": {
+          "anon_bytes": 267743232.0,
+          "cgroup_anon": 267743232.0,
+          "cgroup_file": 512452608.0,
+          "cgroup_memory_current": 804315136.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 289288192.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 59093192.0
+        },
+        "memory_events_delta": {
+          "high": 476,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "metrics_available": true,
+        "rchar_per_sec": 3876565.0745542813,
+        "read_bytes_per_sec": 1043178.6782262976,
+        "samples": 120,
+        "syscr_per_sec": 952.4210838789268,
+        "write_lock_wait_ms_delta": 8013.44983,
+        "write_ops_delta": 2968.0
+      },
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    "allocator-musl": {
+      "binary_code_revision": "1ed254c0b220d8b40d680fa7a87230c3cf0781ab",
+      "binary_sha256": "b83a114f94777139ebc387287b2991ef768f9c2bd53b6989ff32e536ae00dde8",
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 839,
+        "latency_p95_us_max": 4773,
+        "latency_p95_us_median": 736.0,
+        "polls": 5997
+      },
+      "harness_checkout_revision": "1ae2ded105c63eaefbadeaa495f3c90b40fad5ba",
+      "last_maintenance": {
+        "expiry": {
+          "duration_ns_total": 15172794780,
+          "errors_total": 0,
+          "last_duration_ns": 15172794780,
+          "last_read_bytes": 130244608,
+          "last_rows_deleted": 600000,
+          "max_duration_ns": 15172794780,
+          "max_read_bytes": 130244608,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 130244608,
+          "rows_deleted_total": 600000,
+          "runs_total": 1
+        },
+        "payload": {
+          "duration_ns_total": 6961496883,
+          "errors_total": 0,
+          "last_duration_ns": 6961496883,
+          "last_read_bytes": 395780096,
+          "last_rows_deleted": 75000,
+          "max_duration_ns": 6961496883,
+          "max_read_bytes": 395780096,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 395780096,
+          "rows_deleted_total": 75000,
+          "runs_total": 1
+        },
+        "quota": {
+          "duration_ns_total": 1136781,
+          "errors_total": 0,
+          "last_duration_ns": 1136781,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 1136781,
+          "max_read_bytes": 0,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 0,
+          "rows_deleted_total": 0,
+          "runs_total": 1
+        }
+      },
+      "last_transport_tables": {
+        "announce_cache_capacity": 100000,
+        "announce_cache_entries": 100000,
+        "announce_retransmit_entries": 0,
+        "available": true,
+        "fingerprint_map_len": 100000,
+        "link_entries": 0,
+        "packet_cache_hashes": 829,
+        "packet_cache_tracked": 0,
+        "path_entries": 100002,
+        "peer_crypto": 2,
+        "peer_crypto_removed_total": 0,
+        "random_blob_count": 100128,
+        "single_out_destinations": 100002,
+        "single_out_destinations_removed_total": 0,
+        "tunnel_entries": 1,
+        "tunnel_path_entries": 2
+      },
+      "post_minute_one": {
+        "first_60s_anon_mib_median": 202.029296875,
+        "last_60s_anon_mib_median": 211.865234375,
+        "ols_anon_growth_mib_per_600s": 16.4543678334964
+      },
+      "ready_after_secs": 176.11661089400877,
+      "samples": {
+        "cpu_percent_one_core": 6.218810028730632,
+        "elapsed_secs": 595.6123410889995,
+        "first_minute_median": {
+          "anon_bytes": 211804160.0,
+          "cgroup_anon": 211804160.0,
+          "cgroup_file": 184115200.0,
+          "cgroup_memory_current": 420517888.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 230248448.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 477952.0
+        },
+        "last_minute_median": {
+          "anon_bytes": 222156800.0,
+          "cgroup_anon": 222156800.0,
+          "cgroup_file": 528848896.0,
+          "cgroup_memory_current": 788793344.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 240662528.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 20814272.0
+        },
+        "memory_events_delta": {
+          "high": 254,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "metrics_available": true,
+        "rchar_per_sec": 10532473.167916806,
+        "read_bytes_per_sec": 884018.9695151442,
+        "samples": 120,
+        "syscr_per_sec": 2576.6709218852093,
+        "write_lock_wait_ms_delta": 5236.124483,
+        "write_ops_delta": 2861.0
+      },
+      "target": "x86_64-unknown-linux-musl"
+    },
+    "before-200k": {
+      "binary_code_revision": "0ff916997041e576014e85a65f97338931729d8a",
+      "binary_sha256": "21cdfe59cbc5287892c6e4ef393d5de4898ceb77e9e64f6af46031b3a2fb9892",
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 655,
+        "latency_p95_us_max": 5275,
+        "latency_p95_us_median": 714.0,
+        "polls": 5995
+      },
+      "harness_checkout_revision": "0ff916997041e576014e85a65f97338931729d8a",
+      "last_maintenance": null,
+      "last_transport_tables": {
+        "announce_cache_capacity": 100000,
+        "announce_cache_entries": 100000,
+        "announce_retransmit_entries": 0,
+        "available": true,
+        "link_entries": 0,
+        "packet_cache_hashes": 649,
+        "packet_cache_tracked": 0,
+        "path_entries": 100002,
+        "tunnel_entries": 1,
+        "tunnel_path_entries": 2
+      },
+      "post_minute_one": {
+        "first_60s_anon_mib_median": 170.994140625,
+        "last_60s_anon_mib_median": 220.458984375,
+        "ols_anon_growth_mib_per_600s": 81.04251643987293
+      },
+      "ready_after_secs": 207.7608068829868,
+      "samples": {
+        "cpu_percent_one_core": 5.329012640133476,
+        "elapsed_secs": 596.3581275949837,
+        "first_minute_median": {
+          "anon_bytes": 179034112.0,
+          "cgroup_anon": 179034112.0,
+          "cgroup_file": 31543296.0,
+          "cgroup_memory_current": 213327872.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 199956480.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 486192.0
+        },
+        "last_minute_median": {
+          "anon_bytes": 231168000.0,
+          "cgroup_anon": 231168000.0,
+          "cgroup_file": 563615744.0,
+          "cgroup_memory_current": 803751936.0,
+          "cgroup_swap_current": 2414592.0,
+          "rss_bytes": 252262400.0,
+          "swap_bytes": 2406400.0,
+          "wal_bytes": 59105552.0
+        },
+        "memory_events_delta": {
+          "high": 226,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "metrics_available": true,
+        "rchar_per_sec": 3970958.9882680415,
+        "read_bytes_per_sec": 1060247.530372249,
+        "samples": 120,
+        "syscr_per_sec": 975.4172418943872,
+        "write_lock_wait_ms_delta": 6547.908448,
+        "write_ops_delta": 2482.0
+      },
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    "paged-musl": {
+      "binary_code_revision": "6ad4a2bfd099eaf089a5a0145ae0ce9bdaadc1a9",
+      "binary_sha256": "db9e7ceea0c4f56c5f8af57916a88af9beb949d67c66637bf605078cf23b44c8",
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 1024,
+        "latency_p95_us_max": 3703,
+        "latency_p95_us_median": 706.0,
+        "polls": 5996
+      },
+      "harness_checkout_revision": "6ad4a2bfd099eaf089a5a0145ae0ce9bdaadc1a9",
+      "last_maintenance": {
+        "expiry": {
+          "duration_ns_total": 13991848389,
+          "errors_total": 0,
+          "last_duration_ns": 13991848389,
+          "last_read_bytes": 226648064,
+          "last_rows_deleted": 600000,
+          "max_duration_ns": 13991848389,
+          "max_read_bytes": 226648064,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 226648064,
+          "rows_deleted_total": 600000,
+          "runs_total": 1
+        },
+        "payload": {
+          "duration_ns_total": 9099582714,
+          "errors_total": 0,
+          "last_duration_ns": 9099582714,
+          "last_read_bytes": 404541440,
+          "last_rows_deleted": 75000,
+          "max_duration_ns": 9099582714,
+          "max_read_bytes": 404541440,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 404541440,
+          "rows_deleted_total": 75000,
+          "runs_total": 1
+        },
+        "quota": {
+          "duration_ns_total": 5787001,
+          "errors_total": 0,
+          "last_duration_ns": 5787001,
+          "last_read_bytes": 241664,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 5787001,
+          "max_read_bytes": 241664,
+          "read_bytes_samples_total": 1,
+          "read_bytes_total": 241664,
+          "rows_deleted_total": 0,
+          "runs_total": 1
+        }
+      },
+      "last_transport_tables": {
+        "announce_cache_capacity": 100000,
+        "announce_cache_entries": 100000,
+        "announce_retransmit_entries": 0,
+        "available": true,
+        "fingerprint_map_len": 100000,
+        "link_entries": 0,
+        "packet_cache_hashes": 1134,
+        "packet_cache_tracked": 0,
+        "path_entries": 100002,
+        "peer_crypto": 2,
+        "peer_crypto_removed_total": 0,
+        "random_blob_count": 100128,
+        "single_out_destinations": 100002,
+        "single_out_destinations_removed_total": 0,
+        "tunnel_entries": 1,
+        "tunnel_path_entries": 2
+      },
+      "post_minute_one": {
+        "first_60s_anon_mib_median": 267.966796875,
+        "last_60s_anon_mib_median": 289.8984375,
+        "ols_anon_growth_mib_per_600s": 34.98696910786438
+      },
+      "ready_after_secs": 213.99994950200198,
+      "samples": {
+        "cpu_percent_one_core": 6.233239001353208,
+        "elapsed_secs": 596.8004755139991,
+        "first_minute_median": {
+          "anon_bytes": 280053760.0,
+          "cgroup_anon": 280053760.0,
+          "cgroup_file": 330792960.0,
+          "cgroup_memory_current": 641624064.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 297953280.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 482072.0
+        },
+        "last_minute_median": {
+          "anon_bytes": 303980544.0,
+          "cgroup_anon": 303980544.0,
+          "cgroup_file": 486207488.0,
+          "cgroup_memory_current": 804521984.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 313151488.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 20834872.0
+        },
+        "memory_events_delta": {
+          "high": 280,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "metrics_available": true,
+        "rchar_per_sec": 5909687.023895928,
+        "read_bytes_per_sec": 1059763.6596306034,
+        "samples": 120,
+        "syscr_per_sec": 1448.0501196915159,
+        "write_lock_wait_ms_delta": 9359.820195,
+        "write_ops_delta": 3471.0
+      },
+      "target": "x86_64-unknown-linux-musl"
+    }
+  },
+  "schema": "lxmf-rs-663-local-comparison-v1"
+}

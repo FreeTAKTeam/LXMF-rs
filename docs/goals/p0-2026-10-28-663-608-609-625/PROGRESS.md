@@ -73,8 +73,9 @@ populations; it does not by itself prove repeated ratcheting. Following item 1's
 conditional pointer, the existing preview.26 PR 4 is reopened as a measured
 evaluation. The candidate selects mimalloc only in the reticulumd binary (no
 native malloc override), with no tuning options. A static-musl control containing
-payload paging and a same-fixture static-musl allocator candidate will be compared
-before deciding whether to ship the allocator change. SQLite/native C allocations
+payload paging and a same-fixture allocator candidate completed the comparison.
+The candidate remains a draft evaluation because memory slope and attribution
+gates are unmet; no merge/release is proposed as a qualified memory fix. SQLite/native C allocations
 remain system-allocated. No production or >=80% ownership claim is inferred.
 
 ## Local software validation
@@ -92,3 +93,20 @@ The 600 s paged static-musl control completed with flat populations but anon
 9.10 s / 386 MiB reads; only candidate materialisation/deletion is bounded per
 writer transaction. The full indexed size sum is repeated per page to include
 concurrent writes. Memory acceptance and a total-latency improvement remain open.
+
+## Allocator evaluation outcome
+
+The completed 600 s pair shows control anon 267.08 -> 289.90 MiB versus
+mimalloc 201.99 -> 211.87 MiB. After minute one, normalised OLS growth is
+34.99 versus 16.45 MiB/600 s: both fail the <=1 MiB gate. High events were
++280 versus +254; max/OOM and swap remained zero; SDK polls were 5,996/5,997
+with zero errors. File-cache starting ownership differed, so high/read-byte
+changes are not isolated allocator causality. Logical reads rose 5.64 ->
+10.04 MiB/s, so this is not a demonstrated overall resource improvement.
+
+The conservative 132.56 MiB table content estimate explains about 66% of the
+candidate's first-minute anon, below 80%. Further heap ownership measurement
+and repeated cycles remain unresolved within #663; a ten-minute run cannot
+establish multi-hour working-set/delivery acceptance. The machine-readable
+[evidence](evidence/663-local-resource-comparison.json) includes binary hashes,
+source revisions, counts and phase metrics. No production deploy or issue closure.
