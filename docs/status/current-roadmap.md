@@ -273,7 +273,11 @@ after that increment. The follow-through runs from the
 one PR per item, with progress in its
 [progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). Preview.26 regression work follows the
 [ordered regression plan](../goals/preview26-regression-663-657-678/PLAN.md) and
-[regression progress](../goals/preview26-regression-663-657-678/PROGRESS.md). The
+[regression progress](../goals/preview26-regression-663-657-678/PROGRESS.md).
+Remaining P0 closure for #663, #608, #609 and #625 (evaluated 2026-10-28 at
+`45b5f565`) is ordered in the
+[P0 closure plan](../goals/p0-2026-10-28-663-608-609-625/PLAN.md) with its
+[progress record](../goals/p0-2026-10-28-663-608-609-625/PROGRESS.md). The
 first item adds a production-shaped fixture, an RCH-shaped poller and a
 cgroup-constrained sampler (`cargo xtask resource-soak-663`); its ten-minute
 baseline is recorded in the resource regression record and is a harness smoke
