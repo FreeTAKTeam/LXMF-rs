@@ -559,8 +559,11 @@ receipts. The announce worker prunes its peer identity cache on the same cadence
 a busy transport retains entries until a later pass. Metrics scrapes remain
 nonblocking and expose `single_out_destinations`, `random_blob_count`,
 `peer_crypto` (null when busy), and both removal totals under `transport_tables`.
-The existing `announce_persistence.last_fingerprint_map_len` is the fingerprint
-gauge; a second cache or truth path was unnecessary.
+`transport_tables.fingerprint_map_len` reads the existing persistence state
+without blocking, including restored fingerprints before the first save. It is
+null while persistence owns that state for I/O. The existing
+`announce_persistence.last_fingerprint_map_len` remains the last-save gauge;
+no second cache or truth path was introduced.
 
 Source correction to the plan: cloning 64 random blobs and pushing one retained
 capacity 128, rather than doubling without limit across refreshes. The shared
