@@ -188,11 +188,13 @@ pub struct MaintenancePhaseMetrics {
     errors_total: AtomicU64,
     duration_ns_total: AtomicU64,
     last_duration_ns: AtomicU64,
+    max_duration_ns: AtomicU64,
     rows_deleted_total: AtomicU64,
     last_rows_deleted: AtomicU64,
     last_failed: std::sync::atomic::AtomicBool,
     read_bytes_total: AtomicU64,
     last_read_bytes: AtomicU64,
+    max_read_bytes: AtomicU64,
     read_bytes_samples_total: AtomicU64,
     last_read_available: std::sync::atomic::AtomicBool,
 }
@@ -214,6 +216,7 @@ impl MaintenancePhaseMetrics {
         self.runs_total.fetch_add(1, order);
         self.duration_ns_total.fetch_add(duration, order);
         self.last_duration_ns.store(duration, order);
+        self.max_duration_ns.fetch_max(duration, order);
         self.last_failed.store(result.is_err(), order);
         match result.as_ref() {
             Ok(value) => {
@@ -229,6 +232,7 @@ impl MaintenancePhaseMetrics {
         if let Some(reads) = reads {
             self.read_bytes_total.fetch_add(reads, order);
             self.last_read_bytes.store(reads, order);
+            self.max_read_bytes.fetch_max(reads, order);
             self.read_bytes_samples_total.fetch_add(1, order);
         }
         result
@@ -241,10 +245,12 @@ impl MaintenancePhaseMetrics {
             "errors_total": load(&self.errors_total),
             "duration_ns_total": load(&self.duration_ns_total),
             "last_duration_ns": load(&self.last_duration_ns),
+            "max_duration_ns": load(&self.max_duration_ns),
             "rows_deleted_total": load(&self.rows_deleted_total),
             "last_rows_deleted": (!self.last_failed.load(Ordering::Relaxed)).then(|| load(&self.last_rows_deleted)),
             "read_bytes_total": load(&self.read_bytes_total),
             "last_read_bytes": self.last_read_available.load(Ordering::Relaxed).then(|| load(&self.last_read_bytes)),
+            "max_read_bytes": (load(&self.read_bytes_samples_total) > 0).then(|| load(&self.max_read_bytes)),
             "read_bytes_samples_total": load(&self.read_bytes_samples_total),
         })
     }
@@ -290,6 +296,10 @@ mod maintenance_tests {
         assert_eq!(snapshot["errors_total"], 1);
         assert_eq!(snapshot["rows_deleted_total"], 3);
         assert!(snapshot["last_rows_deleted"].is_null());
+        assert!(
+            snapshot["max_duration_ns"].as_u64().expect("maximum")
+                >= snapshot["last_duration_ns"].as_u64().expect("last")
+        );
         assert!(
             snapshot["duration_ns_total"].as_u64().expect("duration")
                 >= snapshot["last_duration_ns"].as_u64().expect("last duration")

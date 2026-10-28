@@ -603,8 +603,8 @@ deployment was performed.
 ## P0 item 3 — maintenance attribution and paging gate (2026-10-28)
 
 `storage.maintenance.{expiry,quota,payload}` on `/metrics` now reports run/error
-totals, last/total duration in ns, successful-phase deleted-row totals, last rows
-deleted (null on error), last/total physical read-byte deltas and available-read
+totals, last/total/max duration in ns, successful-phase deleted-row totals, last rows
+deleted (null on error), last/total/max physical read-byte deltas and available-read
 sample totals. The counters surround the existing storage owners and preserve
 errors. An unavailable `/proc/self/io` read is null, rather than zero. Read deltas
 include all concurrent process work and exclude logical cached reads; durations
@@ -616,3 +616,9 @@ committed; its last-row count is unknown/null and the total counts only complete
 successful phases. Tests exercise each real phase and preserve an original error.
 Paging is conditional on a quota/payload duration above 1 s or physical reads
 above 200 MiB in the controlled ingress run. The decision and measurements follow.
+
+Payload pruning uses a shared operation owner, so its totals/maxima also include
+inline ingestion/import and policy changes. Lifetime maxima retain slow calls
+that later fast calls would hide from the last-run gauges; the paging gate uses
+these maxima. The ingress profile sends announces, rather than payload traffic,
+so the recorded payload operations in that profile are scheduled maintenance.
