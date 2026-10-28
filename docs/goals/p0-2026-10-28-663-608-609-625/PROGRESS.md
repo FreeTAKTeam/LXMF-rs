@@ -7,6 +7,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | 1. Attribute and bound daemon memory | #663 | Implemented; memory acceptance open | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,069 transport tests; provider/capacity regressions; completed soaks fail memory gates |
 | 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
 | 3. Maintenance-pass metrics and quota paging | #663 | Implemented; software gates passed; resource acceptance open | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
+| 1b. Heap-owner gauge and 60-minute allocator soak | #663 | Not started | planned on [draft #707](https://github.com/FreeTAKTeam/LXMF-rs/pull/707) | Decides item 1's slope and attribution gates with a measured Rust-heap owner and six maintenance cycles |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
@@ -123,3 +124,14 @@ failed memory gates explicit; its hosted checks are separate and still running.
 All task-owned soak processes stopped. Raw evidence is preserved in
 `target/issue663/`, including the abandoned temporary fixture moved there to
 avoid leaving the system temporary-filesystem quota exhausted.
+
+## 2026-10-28 evaluation of the memory gates
+
+The three 600 s runs in `evidence/663-local-resource-comparison.json` show flat
+transport populations and an anon step after the single maintenance pass whose
+size tracks the allocator (glibc +85 MiB, musl +23 MiB, mimalloc +10 MiB). The
+growth is allocator retention of transient maintenance work, not a leak. Item
+1's slope and 80 % gates were measured on one cycle against a hand estimate and
+cannot be decided from that evidence; item 1b replaces the estimate with a
+measured Rust-heap gauge and judges the slope on a 60-minute run. #704-#706
+stay mergeable on their own merits; #707 stays draft until item 1b is recorded.
