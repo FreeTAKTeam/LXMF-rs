@@ -348,6 +348,8 @@ def cmd_fixture(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    if args.resident_memory and not (sys.platform == "linux" and hasattr(os, "pidfd_open")):
+        raise RuntimeError("resident-memory capture requires Linux pidfds")
     root = Path(args.root).resolve()
     if not (root / "reticulum.db").exists():
         print(f"[soak] no fixture at {root}; run `fixture` first", file=sys.stderr)
@@ -409,14 +411,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         "fixture_root": str(fixture_root),
         "daemon_command": command,
         "completed": False,
+        "resident_memory": args.resident_memory,
     }
     sample_started = None
+    resident_pidfd = None
     try:
         ready_started = time.monotonic()
         wait_for_http(http_port, "/readyz", args.ready_timeout_secs, daemon)
         run_meta["ready_after_secs"] = time.monotonic() - ready_started
         log(f"daemon ready after {run_meta['ready_after_secs']:.1f} s")
         daemon_pid = resolve_daemon_pid(daemon, daemon_bin)
+        if args.resident_memory:
+            resident_pidfd = os.pidfd_open(daemon_pid)
         cgroup_dir = cgroup_dir_for_pid(daemon_pid)
         run_meta["daemon_pid"] = daemon_pid
         run_meta["cgroup_dir"] = str(cgroup_dir) if cgroup_dir else None
@@ -445,12 +451,21 @@ def cmd_run(args: argparse.Namespace) -> int:
             stderr=(out / "client.log").open("a", encoding="utf-8"),
         )
         sample_started = time.monotonic()
-        sample_loop(out, daemon, client, daemon_pid, cgroup_dir, http_port, root, args, log)
+        sample_loop(out, daemon, client, daemon_pid, cgroup_dir, http_port, root, args, log,
+                    resident_pidfd)
         run_meta["completed"] = True
     finally:
         if sample_started is not None:
             run_meta["measured_duration_secs"] = time.monotonic() - sample_started
         run_meta["ended_unix"] = time.time()
+        if resident_pidfd is not None:
+            try:
+                signal.pidfd_send_signal(resident_pidfd, signal.SIGCONT)
+            except OSError as error:
+                log(f"owned daemon resume before cleanup: {error}")
+                run_meta["completed"] = False
+            finally:
+                os.close(resident_pidfd)
         terminate(client, "client", log)
         terminate(peer, "peer daemon", log)
         terminate(daemon, "daemon", log)
@@ -495,7 +510,8 @@ def start_peer(daemon_bin: Path, out: Path, target_transport_port: int, log) -> 
     return subprocess.Popen(command, cwd=peer_root, env=daemon_env(), stdout=peer_log, stderr=peer_log)
 
 
-def sample_loop(out, daemon, client, daemon_pid, cgroup_dir, http_port, root, args, log) -> None:
+def sample_loop(out, daemon, client, daemon_pid, cgroup_dir, http_port, root, args, log,
+                resident_pidfd=None) -> None:
     deadline = time.monotonic() + args.duration_secs
     wal = Path(str(root / "reticulum.db") + "-wal")
     with (out / "samples.jsonl").open("a", encoding="utf-8") as samples:
@@ -515,6 +531,10 @@ def sample_loop(out, daemon, client, daemon_pid, cgroup_dir, http_port, root, ar
                 "db_bytes": file_size(root / "reticulum.db"),
                 "metrics": fetch_metrics(http_port),
             }
+            if args.resident_memory:
+                from resource_soak_663_resident import capture_resident
+
+                sample["resident_memory"] = capture_resident(daemon_pid, out, index, resident_pidfd)
             samples.write(json.dumps(sample, sort_keys=True) + "\n")
             samples.flush()
             if index % 12 == 0:
@@ -680,6 +700,15 @@ def render_report(out: Path) -> str:
         "|---|---|",
     ]
     lines += acceptance_rows(summary, client, run)
+    if run.get("resident_memory"):
+        from resource_soak_663_resident import verify_resident_run
+
+        resident = verify_resident_run(out)
+        (out / "resident-summary.json").write_text(json.dumps(resident, indent=2, sort_keys=True) + "\n")
+        result = "pass" if resident["resident_owner_80_percent_gate"] else "not met"
+        minimum = resident["minimum_resident_memory"]
+        fraction = "not measured" if minimum is None else f"{minimum['attributed_fraction']:.4%}"
+        lines.append(f"| ≥80% resident anon in named mimalloc mappings | {result}; minimum {fraction} |")
     lines += [
         "",
         f"This run lasted {summary['elapsed_secs']:.0f} s. Anything under several hours is a "
@@ -785,6 +814,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--skip-build", action="store_true")
     run.add_argument("--keep-work", action="store_true", help="keep the per-run fixture copy")
+    run.add_argument("--resident-memory", action="store_true",
+                     help="Linux diagnostic: briefly pause the owned daemon for raw resident VMA accounting")
     run.set_defaults(func=cmd_run)
 
     report = sub.add_parser("report", help="render report.md from a run directory")
@@ -795,7 +826,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    previous = None
+    if getattr(args, "resident_memory", False):
+        def cancel(_signum, _frame):
+            raise KeyboardInterrupt
+
+        previous = signal.signal(signal.SIGTERM, cancel)
+    try:
+        return args.func(args)
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
 
 
 if __name__ == "__main__":

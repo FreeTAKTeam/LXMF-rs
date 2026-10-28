@@ -288,3 +288,33 @@ traces/logs, selected environment values, method/harness snapshots and the
 standalone bootstrap observation are recoverable; private identities, databases
 and binaries are excluded. The comparison JSON maps original acquisition paths
 to portable members and records source/binary/client hashes and gate outcomes.
+
+## #709 remaining resident-attribution execution
+
+Goal: meet the ≥80% resident-memory gate and close #709 only with supporting
+acceptance evidence. PLAN.md item 1b's follow-up defines the measurement boundary:
+RSS-domain anonymous residency in kernel-named mimalloc VMAs. It replaces only
+the unresolved attribution status; the earlier runs remain independent evidence.
+It does not establish live-object ownership, retention or production acceptance.
+
+Main-agent implementation stays in the existing soak harness, a focused resident
+capture/replay helper, regressions, CI and the existing truth-owner documents.
+No daemon Rust code, allocator policy, fixture content or production units change.
+Kill criteria are missing labels, invalid/missing/racy captures, failed resume,
+failed reconciliation, under-80% post-second-pass residency or failed soak gates.
+
+| Task | State | Evidence / dependency |
+| --- | --- | --- |
+| PRE mapping-owner contract | complete | Independent review confirms kernel label + same-domain smaps accounting; phase counters precede freeze, stable stopped TIDs, cancellation cleanup and no selective omission required. |
+| Tagged diagnostic binary | complete | Daemon source `bae40251`; static-musl SHA-256 `f3b04f3d60db138dcac271f0c68addd0e370ab2889e5e96e4257109a173c4127`; only existing Linux naming hook enabled through the two C macro definitions in PLAN.md. |
+| Capture/replay tooling | complete | 19 focused tests pass, including 80% boundary, one under-80 capture, missing/corrupt capture, real multithread stop/resume/read failure/timeout/SIGTERM and HTTP-before-freeze ordering; CI runs the suite. Independent review cleared acquisition/resume; malformed permission parsing was tightened. |
+| Full-size 3,600 s diagnostic ingress | next | Same immutable fixture/limits and previously tested purge settings; control peer identity only, every five-second capture retained and replayed. |
+| POST correctness / maintainer / verifier | next | Raw hashes, source/binary/method identity, complete-run arithmetic, replay bundle and acceptance-text reconciliation gate closure. |
+
+A separate tagged startup probe witnesses three successful PR_SET_VMA naming
+calls and reconciles 89.60% named anon, while the earlier binary has no labels.
+A ten-second small-fixture end-to-end smoke completes, replays both captures and
+resumes the daemon cleanly. Its 70.8–71.9% named fractions and missing second pass
+correctly fail the acceptance gate; it is tooling evidence, not the full-size
+fixture result. Naming can change VMA merging and pauses change timing, so the
+new binary's evidence cannot retrospectively attribute the earlier untagged runs.

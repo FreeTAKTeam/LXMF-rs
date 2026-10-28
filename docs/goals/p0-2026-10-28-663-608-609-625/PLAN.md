@@ -188,6 +188,44 @@ References: [Cap requested-byte API](https://docs.rs/cap/0.1.2/cap/struct.Cap.ht
 [SQLite cache target](https://www.sqlite.org/pragma.html#pragma_cache_size),
 [SQLite memory owners](https://www.sqlite.org/malloc.html).
 
+#### Remaining resident-attribution gate (#709)
+
+The follow-up measures physical allocation ownership: resident anonymous bytes
+in kernel-named mimalloc mappings. It does not infer live-object ownership or
+allocator retention. Existing requested-byte and full-hour evidence stays intact.
+The truth owners remain the comparison JSON, performance report, progress log,
+roadmap and parity matrix. The new result replaces only their unresolved
+resident-attribution status when its evidence passes.
+
+Use a diagnostic static-musl build of the same daemon source with
+`CFLAGS_x86_64_unknown_linux_musl='-DPR_SET_VMA=0x53564d41 -DPR_SET_VMA_ANON_NAME=0'`.
+This enables the pinned allocator's existing Linux mapping-name hook; the earlier
+musl binary compiled it out. Record source, binary, build flags and allocator
+source hashes, and witness actual names/syscalls. No native malloc override,
+application unsafe, allocator-policy change or production configuration change.
+
+Extend the existing soak's optional diagnostic sampling: stop its owned daemon
+through a pidfd, await all threads stopped, capture raw `smaps` and bracketing
+`smaps_rollup`, verify all threads remain stopped, and always resume in `finally`.
+The denominator is the sum of every VMA's `Anonymous` bytes, reconciled exactly
+with both rollups. Credit only private, inode-zero, device-zero VMAs named exactly
+`[anon:mimalloc]`; every other resident anonymous byte stays unclassified.
+Do not add Cap requests, huge-page counters, SQLite targets or estimated content.
+
+Run another full 3,600-second ingress fixture with the previously tested two
+purge settings, same limits and peer identity. Retain every five-second raw
+capture, including transient peaks. After the second successful maintenance pass,
+every scheduled capture must exist, reconcile and attribute ≥80%; report the
+minimum, per-window owners and the complete unclassified remainder. Also require
+the existing duration/cadence/stability gates and zero phase/poll errors. A
+missing label, failed stop/resume, racy/missing capture or failed reconciliation
+invalidates the evidence rather than permitting selective omission.
+
+Main-agent edits are limited to the soak helper/harness/tests and these existing
+evidence/status documents. Read-only PRE, correctness, maintainer and verifier
+reviews gate the final result. Production, fresh-message/fanout and multi-hour
+qualification remain outside this issue's local measurement acceptance.
+
 ### 4. IFAC: alias fix, CI wiring, evidence refresh (#608)
 
 Code: `config_parts/interfaceconfig_sections/normalize_auto_aliases.rs:138,145`
