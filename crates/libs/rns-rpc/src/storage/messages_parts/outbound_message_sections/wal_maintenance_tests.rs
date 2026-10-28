@@ -160,3 +160,30 @@ fn emergency_checkpoint_is_throttled_even_when_a_reader_pins_the_wal() {
     assert_eq!(wal_counters(&store)["last_checkpoint"]["log_frames"], frames.log_frames);
     reader.execute_batch("ROLLBACK").expect("release reader");
 }
+
+#[test]
+fn wal_pinned_at_journal_size_limit_is_still_truncated() {
+    // Production preview.29: `journal_size_limit` trims the WAL to exactly the
+    // maintenance threshold on reset, so equality is the steady state.
+    let (_temp, path, store) = wal_store_on_disk();
+    grow_wal(&store, 64, 32 * 1024);
+    let pinned = wal_bytes(&path);
+    assert!(pinned > 0);
+    let outcome = store.maintain_wal_with_threshold(pinned).expect("maintain at threshold");
+    assert_eq!(outcome.outcome, crate::storage::operation_metrics::WalCheckpointOutcome::Truncated);
+    assert!(wal_bytes(&path) < pinned, "wal after {}", wal_bytes(&path));
+    let counters = wal_counters(&store);
+    assert_eq!(counters["checkpoint_attempts_total"], 1);
+    assert_eq!(counters["runs_total"], 1);
+}
+
+#[test]
+fn below_threshold_runs_are_counted_without_checkpoint_attempts() {
+    let (_temp, _path, store) = wal_store_on_disk();
+    grow_wal(&store, 4, 1024);
+    let outcome = store.maintain_wal_with_threshold(u64::MAX).expect("maintain below threshold");
+    assert_eq!(outcome.outcome, crate::storage::operation_metrics::WalCheckpointOutcome::BelowThreshold);
+    let counters = wal_counters(&store);
+    assert_eq!(counters["runs_total"], 1, "a live timer is visible even when nothing is due");
+    assert_eq!(counters["checkpoint_attempts_total"], 0);
+}

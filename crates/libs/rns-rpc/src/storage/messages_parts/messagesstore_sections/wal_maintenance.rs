@@ -15,7 +15,7 @@ impl MessagesStore {
     }
 
     /// Routine WAL maintenance for the periodic daemon timer: checkpoint and
-    /// truncate once the file exceeds `max(64 MiB, budget/64)`, reporting busy
+    /// truncate once the file reaches `max(64 MiB, budget/64)`, reporting busy
     /// rather than waiting on readers. Outcomes feed `storage.wal` metrics.
     pub fn maintain_wal(&self) -> rusqlite::Result<super::broker::WalMaintenanceOutcome> {
         let budget = self.write_state.broker_budget_bytes.load(Ordering::Relaxed);

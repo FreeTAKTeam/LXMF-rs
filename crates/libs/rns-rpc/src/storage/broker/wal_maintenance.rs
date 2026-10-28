@@ -65,14 +65,16 @@ pub(crate) fn checkpoint_truncate_nonblocking(
     checkpoint_nonblocking(conn, "TRUNCATE")
 }
 
-/// Routine maintenance: when the WAL file exceeds `threshold`, run PASSIVE and,
+/// Routine maintenance: once the WAL file reaches `threshold`, run PASSIVE and,
 /// if every frame was checkpointed and nothing was busy, TRUNCATE the file.
+/// `journal_size_limit` is the same value, so a WAL SQLite already trimmed on
+/// reset sits at exactly `threshold`; `>=` keeps that steady state eligible.
 pub(crate) fn maintain(
     conn: &Connection,
     threshold: u64,
 ) -> rusqlite::Result<WalMaintenanceOutcome> {
     let size_before = wal_file_size(conn)?;
-    if size_before <= threshold || !conn.is_autocommit() {
+    if size_before < threshold || !conn.is_autocommit() {
         return Ok(WalMaintenanceOutcome {
             outcome: WalCheckpointOutcome::BelowThreshold,
             size_before,

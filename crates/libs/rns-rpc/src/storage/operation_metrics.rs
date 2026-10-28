@@ -81,6 +81,9 @@ pub struct WalCheckpointFrames {
 
 #[derive(Debug, Default)]
 pub struct WalMetrics {
+    /// Every maintenance pass, including below-threshold ones, so a live timer is
+    /// distinguishable from a stalled one when no checkpoint is due.
+    pub runs_total: AtomicU64,
     pub checkpoint_attempts_total: AtomicU64,
     pub truncated_total: AtomicU64,
     pub busy_total: AtomicU64,
@@ -98,6 +101,7 @@ impl WalMetrics {
     }
 
     pub fn record_outcome(&self, outcome: WalCheckpointOutcome, wal_bytes_after: u64) {
+        self.runs_total.fetch_add(1, Ordering::Relaxed);
         self.last_wal_bytes.store(wal_bytes_after, Ordering::Relaxed);
         match outcome {
             WalCheckpointOutcome::BelowThreshold => return,
@@ -122,6 +126,7 @@ impl WalMetrics {
 
     pub fn snapshot(&self) -> serde_json::Value {
         serde_json::json!({
+            "runs_total": self.runs_total.load(Ordering::Relaxed),
             "checkpoint_attempts_total": self.checkpoint_attempts_total.load(Ordering::Relaxed),
             "truncated_total": self.truncated_total.load(Ordering::Relaxed),
             "busy_total": self.busy_total.load(Ordering::Relaxed),

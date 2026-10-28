@@ -508,7 +508,43 @@ uptime, current broker budget, and a second sample were not supplied.
   pinned reader, a stalled maintenance timer, or a currently 546 MiB WAL.
 
 This excerpt supplies the plan's requested production baseline and supports
-PR 1's existing direction. It does not require a new threshold, forced
-checkpoint, allocator change or propagation-pruning change. PR 3's dedicated
+PR 1's existing direction. At the time it was not read as requiring a threshold
+change; the preview.29 collection below shows equality is the permanent steady
+state, which that reading missed. PR 3's dedicated
 connection and frame diagnostics remain useful for observing eligible
 checkpoints; no deployment or operational acceptance is inferred here.
+
+## Preview.29 follow-up: WAL pinned at the maintenance threshold, 2026-10-27
+
+The operator's four-hourly collector (preview.29, LXMF-rs `6782e899`) recorded
+`storage.wal.last_wal_bytes` fixed at exactly 100,663,296 bytes (96 MiB) and
+`checkpoint_attempts_total` at zero across 13 h 47 min of uptime, and asked
+whether the maintenance worker was stalled or the metric stale.
+
+Neither. With the production 6 GiB broker budget, `truncate_limit_bytes` is
+`max(64 MiB, 6 GiB / 64) = 96 MiB`, and the same value is applied as SQLite's
+`journal_size_limit`. SQLite trims the WAL to exactly that limit when it resets
+the log after an automatic checkpoint, so the file settles at 96 MiB. Routine
+`maintain` then compared `size_before <= threshold` and returned
+`BelowThreshold` every minute: the timer ran and refreshed the gauge, but the
+checkpoint/truncate branch was unreachable in steady state. The file-cache
+footprint therefore carried a permanent 96 MiB WAL whose content SQLite had
+already checkpointed.
+
+Change: `maintain` runs the PASSIVE/TRUNCATE pass once the file *reaches* the
+threshold (`>=`), so the trimmed-to-limit state is eligible and the file
+returns to near zero on the next quiet pass. A new `storage.wal.runs_total`
+counter advances on every pass, including below-threshold ones, so a live timer
+is distinguishable from a stalled one when nothing is due. Regressions:
+`wal_pinned_at_journal_size_limit_is_still_truncated` and
+`below_threshold_runs_are_counted_without_checkpoint_attempts`.
+
+Dropped persistence triggers (241 of 47,081 in the same collection) are
+redundant save notifications: the trigger channel has capacity one, and
+`announce_worker` counts a send as dropped only when a trigger is already
+queued, which the worker turns into the next dirty save. No dirty route state
+is lost; `dropped_persistence_trigger_still_reaches_a_dirty_save` pins that
+guarantee. The counter is kept for scheduling-pressure visibility.
+
+Not covered here: anonymous-memory growth attribution, polling-error
+classification and multi-hour production acceptance remain open per the issue.
