@@ -6,7 +6,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | --- | --- | --- | --- | --- |
 | 1. Attribute and bound daemon memory | #663 | Implemented; memory acceptance open | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,069 transport tests; provider/capacity regressions; completed soaks fail memory gates |
 | 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
-| 3. Maintenance-pass metrics and quota paging | #663 | Implemented; local gates passed, hosted checks running | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
+| 3. Maintenance-pass metrics and quota paging | #663 | Implemented; software gates passed; resource acceptance open | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
@@ -113,3 +113,13 @@ and repeated cycles remain unresolved within #663; a ten-minute run cannot
 establish multi-hour working-set/delivery acceptance. The machine-readable
 [evidence](evidence/663-local-resource-comparison.json) includes binary hashes,
 source revisions, counts and phase metrics. No production deploy or issue closure.
+
+## Hosted software checkpoint
+
+CI, Verify and independent interoperability checks pass on exact heads
+#704 `e8377ccf`, #705 `026aabf9`, and #706 `c49bac7e`; all three are ready for
+review and remain unmerged. Draft #707 keeps the allocator experiment and the
+failed memory gates explicit; its hosted checks are separate and still running.
+All task-owned soak processes stopped. Raw evidence is preserved in
+`target/issue663/`, including the abandoned temporary fixture moved there to
+avoid leaving the system temporary-filesystem quota exhausted.
