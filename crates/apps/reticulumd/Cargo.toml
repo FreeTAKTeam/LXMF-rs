@@ -1,6 +1,6 @@
 [package]
 name = "reticulumd"
-version = "0.15.0"
+version = "0.16.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -13,11 +13,11 @@ name = "reticulum_daemon"
 
 [dependencies]
 lxmf-propagation = { workspace = true, features = ["daemon"] }
-rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.15.0" }
-rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.15.0" }
-lxmf = { package = "lxmf-wire", path = "../../libs/lxmf-core", version = "0.15.0", default-features = false, features = ["std"] }
-rns_core = { package = "reticulum-rs-core", path = "../../libs/rns-core", version = "0.15.0" }
-meshchat-api = { path = "../../libs/meshchat-api", version = "0.15.0" }
+rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.16.0" }
+rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.16.0" }
+lxmf = { package = "lxmf-wire", path = "../../libs/lxmf-core", version = "0.16.0", default-features = false, features = ["std"] }
+rns_core = { package = "reticulum-rs-core", path = "../../libs/rns-core", version = "0.16.0" }
+meshchat-api = { path = "../../libs/meshchat-api", version = "0.16.0" }
 base64 = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 rand_core = { workspace = true, features = ["getrandom"] }
@@ -50,7 +50,7 @@ rnode-ble = ["rns_transport/rnode-ble"]
 vrn76-kiss-ble = ["rns_transport/vrn76-kiss-ble"]
 
 [dev-dependencies]
-lxmf-sdk = { path = "../../libs/lxmf-sdk", version = "0.15.0", default-features = false, features = ["zmq-pipeline-backend"] }
+lxmf-sdk = { path = "../../libs/lxmf-sdk", version = "0.16.0", default-features = false, features = ["zmq-pipeline-backend"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 

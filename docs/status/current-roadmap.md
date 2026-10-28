@@ -3310,6 +3310,10 @@ direction.
 
 ## Current Release State
 
+The v0.16.0 release train includes bounded announce-cache cleanup, persistence,
+ZeroMQ readiness and WAL maintenance fixes. Production resource and multi-cycle
+retention acceptance remain open. See [release notes](../release-notes-v0.16.0.md).
+
 The v0.15.0 release train aligns 21 public packages and carries the delivery,
 interface lifecycle, Bluetooth, bare-metal and embedded custody changes since
 v0.14.0. Its software/artifact qualification does not close announce-cache disk

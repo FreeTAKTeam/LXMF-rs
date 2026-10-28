@@ -6,7 +6,7 @@ truth for active members and allowed workspace-local dependency edges.
 
 The workspace uses resolver 2, Rust edition 2021, and a minimum Rust version
 of 1.88. The 20 publishable workspace packages and vendored ZeroMQ package
-follow the 0.15.0 release; `test-support` and `xtask` are unpublished. The
+follow the 0.16.0 release; `test-support` and `xtask` are unpublished. The
 independent Bluetooth leaf uses edition 2024 and retains its Rust 1.85 minimum.
 
 ## Directory layout
