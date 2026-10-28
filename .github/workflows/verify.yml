@@ -28,10 +28,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [controller, compatibility, interfaces, tools]
+        suite: [controller-channel, controller-compatibility, controller-relay, controller-reference, compatibility, interfaces, tools]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
+      VERIFY_SUITE: ${{ matrix.suite }}
       LXMF_PYTHON_BIN: python
       RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
       LXMF_PY_REPO: ${{ github.workspace }}/LXMF
@@ -90,17 +91,18 @@ jobs:
         with:
           tool: cargo-nextest
 
-      - name: Install Linux BLE build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libdbus-1-dev ffmpeg imagemagick graphicsmagick squashfs-tools
+      - name: Install HIL dependencies
+        timeout-minutes: 5
+        run: bash tools/scripts/ci-install-hil-deps.sh "$VERIFY_SUITE"
 
       - name: Install pinned ImageMagick 7 AppImage with WebP support
+        if: ${{ matrix.suite == 'tools' }}
+        timeout-minutes: 3
         run: |
           asset=ImageMagick-7.1.2-31-gcc-x86_64.AppImage
           image="$RUNNER_TEMP/$asset"
           appdir="$RUNNER_TEMP/imagemagick-appdir"
-          curl --fail --location --retry 3 \
+          curl --fail --location --connect-timeout 20 --max-time 120 --retry 2 --retry-max-time 150 \
             "https://github.com/ImageMagick/ImageMagick/releases/download/7.1.2-31/$asset" \
             --output "$image"
           printf '%s  %s\n' \
@@ -119,6 +121,8 @@ jobs:
           printf '%s\n' "$RUNNER_TEMP/magick-bin" >> "$GITHUB_PATH"
 
       - name: Smoke-test pinned ImageMagick WebP encode and decode
+        if: ${{ matrix.suite == 'tools' }}
+        timeout-minutes: 1
         run: |
           magick -version
           input="$RUNNER_TEMP/magick-webp-smoke.png"
@@ -352,9 +356,52 @@ jobs:
           ifac -- --ignored --nocapture
           --test-threads=1
 
-      - name: Run repository-native PR HIL controller
-        if: ${{ matrix.suite == 'controller' }}
-        run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
+      - name: Run PR HIL channel cases
+        if: ${{ matrix.suite == 'controller-channel' }}
+        run: >-
+          cargo xtask hil run --level pr --all
+          --case python-channel-interop
+          --output target/hil/runs/pr-${{ matrix.suite }}-${{ github.run_id }}
+
+      - name: Run PR HIL compatibility cases
+        if: ${{ matrix.suite == 'controller-compatibility' }}
+        run: >-
+          cargo xtask hil run --level pr --all
+          --case python-lxmd-compatibility
+          --output target/hil/runs/pr-${{ matrix.suite }}-${{ github.run_id }}
+
+      - name: Run PR HIL relay cases
+        if: ${{ matrix.suite == 'controller-relay' }}
+        run: >-
+          cargo xtask hil run --level pr --all
+          --case python-paper-interop
+          --case python-remote-relay
+          --output target/hil/runs/pr-${{ matrix.suite }}-${{ github.run_id }}
+
+      - name: Run PR HIL reference cases
+        if: ${{ matrix.suite == 'controller-reference' }}
+        run: >-
+          cargo xtask hil run --level pr --all
+          --case resource-retry-budget
+          --case resource-split-assembly
+          --case routing-gravity-precedence
+          --case virtual-recovery-regression
+          --case mtu-8192-resource-window
+          --case mtu-fragment-sizing
+          --case resource-compression-roundtrip
+          --case resource-cancel-recovery
+          --case link-response-roundtrip
+          --case path-request-response
+          --case virtual-routing-path-rebalance
+          --case channel-retry-terminal-failure
+          --case python-reference-conformance
+          --case python-surface-inventory
+          --case python-resolver-reference
+          --case python-resource-segments
+          --case python-backbone-selector
+          --case python-backbone-reference-selector
+          --case rust-backbone-slow-reader
+          --output target/hil/runs/pr-${{ matrix.suite }}-${{ github.run_id }}
 
       - name: Exclude auxiliary checkouts from candidate status
         run: |
@@ -737,8 +784,8 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
       - name: Generate PR HIL support report
-        if: ${{ always() && matrix.suite == 'controller' }}
-        run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
+        if: ${{ always() && startsWith(matrix.suite, 'controller-') }}
+        run: cargo xtask hil report --evidence target/hil/runs/pr-${{ matrix.suite }}-${{ github.run_id }} --output target/hil/runs/pr-${{ matrix.suite }}-${{ github.run_id }}/support-report
 
       - name: Verify pinned Python quote_plus image-markup edge fixture
         if: ${{ matrix.suite == 'tools' }}
@@ -774,11 +821,11 @@ jobs:
           -- --ignored --exact --nocapture --test-threads=1
 
       - name: Upload PR HIL evidence
-        if: ${{ always() && matrix.suite == 'controller' }}
+        if: ${{ always() && startsWith(matrix.suite, 'controller-') }}
         uses: actions/upload-artifact@v4
         with:
-          name: hil-pr-${{ github.run_id }}
-          path: target/hil/runs/pr-${{ github.run_id }}/**
+          name: hil-pr-${{ matrix.suite }}-${{ github.run_id }}
+          path: target/hil/runs/pr-${{ matrix.suite }}-${{ github.run_id }}/**
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: ${{ always() && matrix.suite == 'compatibility' }}
@@ -816,9 +863,34 @@ jobs:
     if: ${{ always() }}
     needs: python-compat
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Require every Python compatibility suite
         env:
           SUITES_RESULT: ${{ needs.python-compat.result }}
         run: test "$SUITES_RESULT" = success
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hil-pr-controller-*-${{ github.run_id }}
+          path: target/hil/runs
+      - name: Require complete same-commit PR HIL evidence
+        run: python3 tools/scripts/hil_pr_evidence.py target/hil/runs --commit "$GITHUB_SHA"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust report cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: verify-hil-report
+      - name: Generate combined PR HIL support report
+        run: cargo xtask hil report --evidence target/hil/runs --output target/hil/support-report
+      - name: Upload combined PR HIL evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hil-pr-${{ github.run_id }}
+          path: |
+            target/hil/runs/**
+            target/hil/support-report/**
+          if-no-files-found: error
