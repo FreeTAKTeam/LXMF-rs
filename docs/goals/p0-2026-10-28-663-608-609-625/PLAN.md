@@ -415,9 +415,19 @@ These are local regression screens, not production SLO qualification.
 
 TDD covers the actual cache-release boundary, failure counters and propagation,
 autocommit rejection, and file-backed data/journal validity after release/reopen;
-the real timer trial proves successful ordering and actual calls. Inspect the
+source review establishes ordering and the real timer trial proves actual calls. Inspect the
 disabled propagation path and verify it produces no release. Run the #369 scanner,
 affected RPC/daemon suites, formatting, boundaries, size/architecture and hosted
 checks. PRE review cleared the narrow reversible trial, not a production-policy
 claim. If the hypothesis or regression screen fails, retain the trial and reject
 the policy; do not randomly retune or repeat until a passing run appears.
+
+The exact baseline inputs, analyzer/comparator hashes and numerical bounds are
+frozen before candidate acquisition in `evidence/709-cache-release-criteria.json`.
+In particular, CPU <=4.971897% of a core, logical reads <=11,748,193.041 B/s,
+median poll-window P95 <=2,000 us and every P95 <=100,000 us; original post-first
+phase maxima <=10 ms for expiry/quota and <=10.941633 ms for payload. Every sample
+must contain valid release counters; cumulative values may not regress. The final
+release attempts/completions must equal all three original phase counts, with
+zero errors and <=100 ms maximum release/lock wait. Missing or malformed metrics
+fail closed. These additional screens do not change the resident/RSS closure gates.

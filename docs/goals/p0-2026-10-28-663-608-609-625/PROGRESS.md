@@ -297,9 +297,10 @@ RSS-domain anonymous residency in kernel-named mimalloc VMAs. It replaces only
 the unresolved attribution status; the earlier runs remain independent evidence.
 It does not establish live-object ownership, retention or production acceptance.
 
-Main-agent implementation stays in the existing soak harness, a focused resident
+The initial baseline implementation stayed in the existing soak harness, a focused resident
 capture/replay helper, regressions, CI and the existing truth-owner documents.
-No daemon Rust code, allocator policy, fixture content or production units change.
+It changed no daemon Rust code, allocator policy, fixture content or production units.
+The separately predeclared cache-release candidate below extends that initial scope.
 Kill criteria are missing labels, invalid/missing/racy captures, failed resume,
 failed reconciliation, under-80% post-second-pass residency or failed soak gates.
 
@@ -340,3 +341,29 @@ delta is 444 (12 post-anchor), with max/OOM/swap zero. The baseline archive is
 Independent POST verification reproduced the same hashes, source/binary identity,
 raw accounting, window arithmetic and false composite. #709 stays open; the
 candidate must meet the unchanged conjunctive gates and prospective screens.
+
+### Prospective cache-release candidate checkpoint
+
+The safe pinned SQLite release call is implemented under the existing writer
+mutex, after successful periodic propagation maintenance, with autocommit required.
+The manual RPC and disabled-propagation paths retain their behavior. Separate
+attempt/completion/error, duration and writer-lock-wait counters report calls,
+never SQLite resident bytes. The existing propagation timer moved into the
+existing storage-maintenance module without changing scheduling.
+
+Four storage regressions cover file-backed data/journal preservation, active
+transaction rejection/recovery, poisoned-writer errors and independence from
+reader/maintenance locks. A real paused-clock timer regression covers periodic
+invocation, manual maintenance and disabled propagation. Both boundaries failed
+before implementation and pass afterward. RPC tests pass (853, eight ignored),
+daemon tests pass (694 binary, 31 library), and the #369 scanner passes. Workspace
+all-target/all-feature Clippy, formatting, boundaries, module-size and architecture
+checks pass. Independent implementation review found no blocker.
+
+The prospective comparator rejects malformed/nonfinite/boolean/negative values,
+regressing cumulative source counters, inconsistent release totals/maxima, missing
+calls and all declared regression violations. Its adversarial self-checks pass.
+`evidence/709-cache-release-criteria.json` records its hash, the unchanged frozen
+analyzer and baseline inputs, exact limits and the pre-acquisition timestamp.
+No candidate observations are used to select these limits. Acquisition is pending;
+this source checkpoint does not establish the hypothesis or authorize shipping it.

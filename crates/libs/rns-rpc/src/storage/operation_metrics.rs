@@ -261,14 +261,24 @@ pub struct MaintenanceMetrics {
     pub expiry: MaintenancePhaseMetrics,
     pub quota: MaintenancePhaseMetrics,
     pub payload: MaintenancePhaseMetrics,
+    pub sqlite_cache_release: MaintenancePhaseMetrics,
+    pub sqlite_cache_release_attempts_total: AtomicU64,
+    pub sqlite_cache_release_lock_wait_ns_total: AtomicU64,
+    pub sqlite_cache_release_max_lock_wait_ns: AtomicU64,
 }
 
 impl MaintenanceMetrics {
     pub fn snapshot(&self) -> serde_json::Value {
+        let mut release = self.sqlite_cache_release.snapshot();
+        let load = |value: &AtomicU64| value.load(Ordering::Relaxed);
+        release["attempts_total"] = load(&self.sqlite_cache_release_attempts_total).into();
+        release["lock_wait_ns_total"] = load(&self.sqlite_cache_release_lock_wait_ns_total).into();
+        release["max_lock_wait_ns"] = load(&self.sqlite_cache_release_max_lock_wait_ns).into();
         serde_json::json!({
             "expiry": self.expiry.snapshot(),
             "quota": self.quota.snapshot(),
             "payload": self.payload.snapshot(),
+            "sqlite_cache_release": release,
         })
     }
 }
