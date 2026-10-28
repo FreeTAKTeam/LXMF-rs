@@ -190,7 +190,7 @@ References: [Cap requested-byte API](https://docs.rs/cap/0.1.2/cap/struct.Cap.ht
 
 #### Remaining resident-attribution gate (#709)
 
-The follow-up measures physical allocation ownership: resident anonymous bytes
+The follow-up measures resident mapping ownership: resident anonymous bytes
 in kernel-named mimalloc mappings. It does not infer live-object ownership or
 allocator retention. Existing requested-byte and full-hour evidence stays intact.
 The truth owners remain the comparison JSON, performance report, progress log,
@@ -367,3 +367,57 @@ the package suites touched, `tools/scripts/check-boundaries.sh`,
 the relevant parity matrix rows and `PROGRESS.md` in the same PR. Post each
 item's evidence as a comment on its issue; close an issue only when every
 acceptance checkbox has a named test or a documented out-of-scope note.
+
+#### Prospective SQLite pager-cache intervention after tagged RSS failure
+
+The first two complete windows of the tagged baseline are 182.3359375 and
+184.6640625 MiB: +2.328125 MiB fails the unchanged 1 MiB gate. At their one/two
+central total-anon captures, +0.2109375 MiB is named and +2.1171875 MiB remains
+unclassified. This is a paired-count decomposition, not caller attribution.
+Preserve the entire completed baseline and its failed composite before a new
+candidate. No anchor, threshold or old observation changes.
+
+One reversible diagnostic candidate will test whether unused SQLite pager caches
+contribute to that step. After the periodic blocking worker's existing
+`maintain_propagation_storage()` succeeds and releases its transaction/daemon
+locks, call the pinned safe `Connection::release_memory()` under only the
+existing writer mutex, with autocommit required. Avoid `with_control_conn()`:
+it also performs emergency WAL reclaim and would mix interventions. The pinned
+SQLite has `SQLITE_ENABLE_MEMORY_MANAGEMENT`, so one connection's call can evict
+the process-wide group's unpinned pager pages. This is not writer-only ownership,
+a byte gauge, prepared-statement cache eviction or a resident-memory measurement.
+No manual-RPC behavior, retention/quota/paging semantics, connection count,
+allocator selection, unsafe code or production unit changes are included.
+This scoped diagnostic candidate extends the initial tooling-only boundary;
+shipping the cache policy requires the prospective evidence below.
+
+Use the same full-size fixture, peer identity, limits, purge flags, tagged build
+method, frozen capture tooling and 3,600 measured seconds. Keep the original
+three-phase second-pass anchor and all conjunctive acceptance checks. Separately
+record release attempts, completed calls, errors, lock wait and duration. Require
+zero errors, one completed release for each successful periodic all-phase pass,
+no unfinished release at the end, and maximum release/lock wait <=100 ms. Missing
+metrics, invalid captures, failed resume, changed data semantics, new errors,
+OOM/swap reject the candidate. The completed baseline has 444 measured
+MemoryHigh events (12 after the second-pass anchor); a candidate may not exceed
+either count. File-cache ownership still limits causal comparison. This pressure
+regression screen is fixed before candidate acquisition, not inferred as zero.
+
+Before acquisition, the local shipping screen is fixed as follows, compared with
+the completed tagged baseline: full-run CPU may rise by at most the greater of
+25% relative or one percentage point of a core; logical-read rate may rise by
+at most 10%; median reported poll-window P95 must stay <=max(2 ms, 1.25 times
+baseline) and every reported P95 <=100 ms. For each original phase, the maximum
+observed per-pass duration after its first pass must stay <=max(10 ms, 1.25 times
+the baseline maximum after the first pass). Report physical reads and the windows
+immediately after release; cached I/O differences do not identify causality.
+These are local regression screens, not production SLO qualification.
+
+TDD covers the actual cache-release boundary, failure counters and propagation,
+autocommit rejection, and file-backed data/journal validity after release/reopen;
+the real timer trial proves successful ordering and actual calls. Inspect the
+disabled propagation path and verify it produces no release. Run the #369 scanner,
+affected RPC/daemon suites, formatting, boundaries, size/architecture and hosted
+checks. PRE review cleared the narrow reversible trial, not a production-policy
+claim. If the hypothesis or regression screen fails, retain the trial and reject
+the policy; do not randomly retune or repeat until a passing run appears.

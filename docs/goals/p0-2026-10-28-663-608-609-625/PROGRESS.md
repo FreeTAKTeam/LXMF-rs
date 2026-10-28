@@ -7,7 +7,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | 1. Attribute and bound daemon memory | #663 | Implemented; memory acceptance open | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,069 transport tests; provider/capacity regressions; completed soaks fail memory gates |
 | 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
 | 3. Maintenance-pass metrics and quota paging | #663 | Implemented; software gates passed; resource acceptance open | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
-| 1b. Heap-owner gauge and 60-minute allocator soak | #709 / #663 | Implemented; resident ownership open | [PR #710](https://github.com/FreeTAKTeam/LXMF-rs/pull/710) | Requested-byte gauge; two full-hour runs with 11 actual maintenance passes each; default RSS stability fails, purge trial passes; ≥80% resident ownership unresolved |
+| 1b. Heap-owner gauge and 60-minute allocator soak | #709 / #663 | Resident attribution verified; tagged RSS gate open | [#710](https://github.com/FreeTAKTeam/LXMF-rs/pull/710), [#711](https://github.com/FreeTAKTeam/LXMF-rs/pull/711) | Tagged full hour: all 593 post-second-pass captures >=91.203%; RSS +2.328 MiB fails; separately predeclared cache-release candidate pending |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
@@ -308,8 +308,8 @@ failed reconciliation, under-80% post-second-pass residency or failed soak gates
 | PRE mapping-owner contract | complete | Independent review confirms kernel label + same-domain smaps accounting; phase counters precede freeze, stable stopped TIDs, cancellation cleanup and no selective omission required. |
 | Tagged diagnostic binary | complete | Daemon source `bae40251`; static-musl SHA-256 `f3b04f3d60db138dcac271f0c68addd0e370ab2889e5e96e4257109a173c4127`; only existing Linux naming hook enabled through the two C macro definitions in PLAN.md. |
 | Capture/replay tooling | complete | 19 focused tests pass, including 80% boundary, one under-80 capture, missing/corrupt capture, real multithread stop/resume/read failure/timeout/SIGTERM and HTTP-before-freeze ordering; CI runs the suite. Independent review cleared acquisition/resume; malformed permission parsing was tightened. |
-| Full-size 3,600 s diagnostic ingress | next | Same immutable fixture/limits and previously tested purge settings; control peer identity only, every five-second capture retained and replayed. |
-| POST correctness / maintainer / verifier | next | Raw hashes, source/binary/method identity, complete-run arithmetic, replay bundle and acceptance-text reconciliation gate closure. |
+| Full-size 3,600 s diagnostic ingress | complete; RSS fails | 3,604.568 s / 717 captures; all 593 post-second-pass samples >=91.203066%; requested flat; RSS +2.328125/+0.289062/+0.152344 MiB. Same fixture/limits/peer and purge settings. |
+| POST correctness / maintainer / verifier | baseline verified | Independent hash/source/binary checks, exact frozen replay and window arithmetic confirm ownership pass and RSS/composite failure; prospective cache trial remains separate. |
 
 A separate tagged startup probe witnesses three successful PR_SET_VMA naming
 calls and reconciles 89.60% named anon, while the earlier binary has no labels.
@@ -318,3 +318,25 @@ resumes the daemon cleanly. Its 70.8–71.9% named fractions and missing second 
 correctly fail the acceptance gate; it is tooling evidence, not the full-size
 fixture result. Naming can change VMA merging and pauses change timing, so the
 new binary's evidence cannot retrospectively attribute the earlier untagged runs.
+
+The tagged baseline's first adjacent full-window RSS comparison fails by
++2.328125 MiB. Closure remains blocked even though resident ownership is above
+80% so far. A separately predeclared SQLite pager-cache release candidate follows
+in PLAN.md; independent PRE cleared its narrow writer-lock/autocommit boundary,
+required separate failure/timing metrics and warned that SQLite's shared page-cache
+group prevents writer-only caller attribution. Preserve the complete failed
+baseline before building or acquiring the candidate.
+
+Completed baseline: `resident_owner_80_percent_gate=true`,
+`requested_flat_window_gate=true`, `anon_window_gate=false` and
+`closure_acceptance=false`. All 717 raw captures replay; minimum sample 416 has
+176,402,432 / 193,417,216 named resident bytes with 17,014,784 unclassified. There
+are 593 post-second-pass captures, eleven successful invocations per phase and
+path saves, 35,972 polls and zero phase/persistence/SDK/HTTP errors. MemoryHigh
+delta is 444 (12 post-anchor), with max/OOM/swap zero. The baseline archive is
+3,678,306 bytes, SHA-256
+`8f7c7cc289e0602b5d8f774fa8742f7c2ce4becee45fb9fb1f1ccd9c2664fd17`:
+736 member hashes, exact fresh-extraction replay and 19 bundled tests pass.
+Independent POST verification reproduced the same hashes, source/binary identity,
+raw accounting, window arithmetic and false composite. #709 stays open; the
+candidate must meet the unchanged conjunctive gates and prospective screens.

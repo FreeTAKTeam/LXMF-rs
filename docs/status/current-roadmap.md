@@ -322,7 +322,11 @@ two-option purge trial passes RSS-window stability (0.000/+0.463/−0.266 MiB)
 and requested-byte flatness. Its matched steady ingress, different warmup and
 warmer physical-read state are recorded with recoverable raw evidence; this
 does not isolate either setting or a resident owner. Production defaults remain
-unchanged; ≥80% resident ownership and production memory acceptance remain open.
+unchanged. A separate tagged full-hour diagnostic now verifies >=91.203% named
+resident mapping ownership across every post-second-pass capture, but its first
+RSS-window growth is +2.328 MiB and fails the unchanged gate. #709 remains open
+for that failure; a predeclared SQLite pager-cache intervention is pending.
+Production memory acceptance remains open.
 
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance

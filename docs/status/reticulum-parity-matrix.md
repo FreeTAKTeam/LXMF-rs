@@ -65,7 +65,10 @@ full-hour trial with both purge settings at zero passes both stability criteria
 with matched steady ingress; warmup, cached reads and both-process environment
 changes limit causal attribution. Raw traces and frozen analysis replay are
 committed in the #709 evidence bundle. Production defaults remain unchanged;
-the ≥80% resident-ownership target and production resource acceptance stay open.
+the separate tagged full-hour run resolves the local >=80% mapping-owner target
+(minimum 91.203% across 593 post-second-pass captures), while +2.328 MiB RSS-window
+growth keeps #709 open. A separately predeclared pager-cache intervention follows;
+production resource acceptance stays open.
 
 Durable-broker-only daemon bootstrap initializes the identity-capable transport
 without opening a Reticulum listener or creating network interfaces. A focused
