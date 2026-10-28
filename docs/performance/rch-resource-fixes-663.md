@@ -652,3 +652,16 @@ runs do not establish a comparative memory improvement. The plan's conditional
 allocator follow-up is activated after this evidence. Counts plus conservative
 compiler-layout accounting explain about 77% before the pass, below the 80% gate;
 that gate remains open rather than crediting unmeasured allocator/SQLite slack.
+
+### Conditional allocator evaluation
+
+The daemon-only candidate uses mimalloc 0.1.52 (libmimalloc-sys 0.1.49) as the
+Rust global allocator, following the conditional PR 4 in the earlier plan. The
+measured step is retained anonymous memory with flat table populations, not yet
+proof of repeated ratcheting. This is an experiment pending a same-fixture,
+same-limit static-musl control/candidate comparison. Native C/SQLite malloc is
+not overridden. The dependency adds no core or workspace-local edge; unrelated
+Cargo.lock resolution changes were removed and `cargo check --locked` passed.
+Audit found no vulnerabilities, with the existing unmaintained serial 0.4.0
+warning; cargo deny licenses/bans/sources passed but advisories rejected that
+same pre-existing serial advisory (RUSTSEC-2017-0008). No allowlist was weakened.

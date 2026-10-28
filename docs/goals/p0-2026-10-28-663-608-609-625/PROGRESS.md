@@ -65,3 +65,14 @@ ordering across windows as approved and documented in the migration note.
 Conditional follow-up from preview26-regression-663-657-678 PR 4 is now active:
 the 600 s attribution run retained anonymous memory after transient work with flat
 route/recipient populations. No memory acceptance claim is made for items 1–3.
+
+## Conditional allocator evaluation
+
+The 600 s instrumented run shows a retained anonymous-memory step with flat table
+populations; it does not by itself prove repeated ratcheting. Following item 1's
+conditional pointer, the existing preview.26 PR 4 is reopened as a measured
+evaluation. The candidate selects mimalloc only in the reticulumd binary (no
+native malloc override), with no tuning options. A static-musl control containing
+payload paging and a same-fixture static-musl allocator candidate will be compared
+before deciding whether to ship the allocator change. SQLite/native C allocations
+remain system-allocated. No production or >=80% ownership claim is inferred.

@@ -31,6 +31,10 @@ mod zmq_rpc_loop;
 use clap::Parser;
 use std::path::PathBuf;
 
+// #663 ingress retained anonymous pages after persistence with flat table counts.
+#[global_allocator]
+static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 const DEFAULT_RPC_UNIX_PATH: &str = "/tmp/lxmf-rpc.sock";
 
 #[derive(Parser, Debug)]

@@ -308,8 +308,8 @@ transactions. Global payload-priority ordering is intentionally approximate acro
 windows, so the LXMRouter parity row records that remaining difference. Quota
 stays atomic after its 1.74 ms / zero-read measurement.
 Physical-read deltas include concurrent process work and exclude cached reads.
-Anonymous growth with flat table counts activated the conditional allocator
-follow-up; memory acceptance is still open.
+A retained anonymous-memory step with flat table counts activated the conditional
+allocator evaluation; repeated ratcheting and memory acceptance are still open.
 
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance
