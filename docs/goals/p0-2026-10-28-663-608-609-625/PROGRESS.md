@@ -4,7 +4,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 
 | Item | Issue | State | Branch / PR / head | Evidence |
 | --- | --- | --- | --- | --- |
-| 1. Attribute and bound daemon memory | #663 | Implemented; soak pending | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,068 transport tests; provider regression; capacity red/green |
+| 1. Attribute and bound daemon memory | #663 | Implemented; memory acceptance open | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,069 transport tests; provider/capacity regressions; completed soaks fail memory gates |
 | 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
 | 3. Maintenance-pass metrics and quota paging | #663 | Implemented; local gates passed, hosted checks running | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
@@ -95,6 +95,9 @@ writer transaction. The full indexed size sum is repeated per page to include
 concurrent writes. Memory acceptance and a total-latency improvement remain open.
 
 ## Allocator evaluation outcome
+
+Draft [PR #707](https://github.com/FreeTAKTeam/LXMF-rs/pull/707), stacked on #706,
+contains the measured conditional experiment; it is not proposed as a qualified fix.
 
 The completed 600 s pair shows control anon 267.08 -> 289.90 MiB versus
 mimalloc 201.99 -> 211.87 MiB. After minute one, normalised OLS growth is
