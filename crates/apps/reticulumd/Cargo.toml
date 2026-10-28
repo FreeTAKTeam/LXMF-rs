@@ -43,6 +43,7 @@ rustls-pki-types = { workspace = true }
 x509-parser = { workspace = true }
 zeromq = { workspace = true, optional = true }
 mimalloc = "0.1.52"
+cap = "0.1.2"
 
 [features]
 default = ["zmq-pipeline-rpc"]
