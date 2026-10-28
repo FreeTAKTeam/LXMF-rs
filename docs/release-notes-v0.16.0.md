@@ -14,6 +14,8 @@ v0.15.0.
 - WAL maintenance uses a dedicated connection and runs when the file reaches
   its threshold. Additional metrics expose maintenance and persistence activity.
 - Propagation retention work is paged and bounded. Tokio is updated to 1.53.3.
+- Python HIL checks use bounded setup and independent controller shards while
+  retaining their required case coverage.
 
 ## Upgrade and limitations
 
