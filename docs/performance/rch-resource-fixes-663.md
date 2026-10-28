@@ -548,3 +548,32 @@ guarantee. The counter is kept for scheduling-pressure visibility.
 
 Not covered here: anonymous-memory growth attribution, polling-error
 classification and multi-hour production acceptance remain open per the issue.
+
+## P0 item 1 — destination cache lifetime (2026-10-28)
+
+The approved [P0 plan](../goals/p0-2026-10-28-663-608-609-625/PLAN.md)
+is implemented at the existing transport and daemon owners. The ten-second
+interface cleanup prunes remote recipient identities after route removal, with
+exceptions for local destinations, relay/endpoint links and pending SINGLE
+receipts. The announce worker prunes its peer identity cache on the same cadence;
+a busy transport retains entries until a later pass. Metrics scrapes remain
+nonblocking and expose `single_out_destinations`, `random_blob_count`,
+`peer_crypto` (null when busy), and both removal totals under `transport_tables`.
+The existing `announce_persistence.last_fingerprint_map_len` is the fingerprint
+gauge; a second cache or truth path was unnecessary.
+
+Source correction to the plan: cloning 64 random blobs and pushing one retained
+capacity 128, rather than doubling without limit across refreshes. The shared
+bounded-blob helper now shrinks capacity for announce and restore paths. A
+regression failed at 128 versus 64 before the fix and passed afterwards.
+Hashlist persistence encodes directly from current-generation membership under
+the existing lock, releases it before disk I/O, and preserves Python's raw format.
+
+Validation: transport library suite 1,068 passed / 13 intentionally ignored;
+peer-cache provider regression passed. Paper encoding also recovers persisted recipient keys offline after live cache expiry;
+the real URI encode/decrypt regression covers cached and persisted-only keys.
+The cleanup regression preserves a live
+route, local destination, endpoint link and pending no-path receipt, then releases
+the recipient after receipt expiry. The production-shaped ingress before/after
+measurement is recorded separately; no multi-hour or production acceptance is
+claimed from the software tests.

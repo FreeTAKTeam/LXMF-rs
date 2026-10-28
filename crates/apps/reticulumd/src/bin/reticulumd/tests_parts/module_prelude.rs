@@ -371,12 +371,28 @@ async fn sdk_paper_encode_uses_real_lxm_uri_when_peer_identity_is_known() {
     let (daemon, _bridge, recipient, recipient_hex) =
         test_transport_bridge_fixture_with_peer().await;
 
+    for persisted_only in [false, true] {
+        let message_id = format!("paper-real-uri-{persisted_only}");
+        let recipient_hex = if persisted_only {
+            let remote = rns_transport::identity_bridge::to_transport_identity(recipient.as_identity());
+            let destination = rns_transport::destination::SingleOutputDestination::new(
+                remote, DestinationName::new("lxmf", "delivery"),
+            ).desc.address_hash;
+            let destination_hex = hex::encode(destination.as_slice());
+            daemon.record_announce_identity(
+                &destination_hex, &hex::encode(remote.public_key_bytes()),
+                &hex::encode(remote.verifying_key_bytes()), 1_700_000_000,
+            ).expect("persist recipient without live destination-cache entry");
+            destination_hex
+        } else {
+            recipient_hex.clone()
+        };
     let send = daemon
         .handle_rpc(RpcRequest {
             id: 261,
             method: "send_message_v2".into(),
             params: Some(json!({
-                "id": "paper-real-uri-1",
+                "id": message_id,
                 "source": "src",
                 "destination": recipient_hex,
                 "title": "Paper URI Title",
@@ -391,7 +407,7 @@ async fn sdk_paper_encode_uses_real_lxm_uri_when_peer_identity_is_known() {
         .handle_rpc(RpcRequest {
             id: 262,
             method: "sdk_paper_encode_v2".into(),
-            params: Some(json!({ "message_id": "paper-real-uri-1" })),
+            params: Some(json!({ "message_id": message_id })),
         })
         .expect("paper encode");
     assert!(encode.error.is_none(), "paper encode should succeed");
@@ -417,6 +433,7 @@ async fn sdk_paper_encode_uses_real_lxm_uri_when_peer_identity_is_known() {
             .map(|content| String::from_utf8_lossy(content).to_string()),
         Some("paper uri body".to_string())
     );
+    }
 }
 
 #[tokio::test]

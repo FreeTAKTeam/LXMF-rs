@@ -60,6 +60,10 @@ impl LinkTable {
         self.entries.len()
     }
 
+    pub(super) fn destinations(&self) -> impl Iterator<Item = AddressHash> + '_ {
+        self.entries.values().map(|entry| entry.original_destination)
+    }
+
     pub fn active_len(&self) -> usize {
         self.entries.values().filter(|entry| entry.validated).count()
     }

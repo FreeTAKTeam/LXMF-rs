@@ -45,13 +45,33 @@ pub(super) fn spawn_announce_worker(
             config.outbound.clone(),
         );
     }
+    let tables = Arc::new(crate::persistence_metrics::TransportTablesProvider::new(
+        transport.clone(),
+        peer_crypto.clone(),
+    ));
+    daemon.register_metrics_provider("transport_tables", tables.clone());
     let daemon_announce = daemon;
     let persist = path_table_persistence
         .map(|context| (context.metrics(), spawn_path_table_persistence_worker(context)));
     tokio::spawn(async move {
         let mut rx = transport.recv_announces().await;
+        let mut cleanup = tokio::time::interval(std::time::Duration::from_secs(10));
         loop {
-            if let Ok(event) = rx.recv().await {
+            let event = tokio::select! {
+                event = rx.recv() => match event {
+                    Ok(event) => event,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                        log::warn!("[daemon] announce worker lagged by {count} events");
+                        continue;
+                    }
+                },
+                _ = cleanup.tick() => {
+                    tables.prune_peers();
+                    continue;
+                }
+            };
+            {
                 if let Some(config) = discovery.as_ref() {
                     ingest_discovery_announce(&event, config).await;
                 }

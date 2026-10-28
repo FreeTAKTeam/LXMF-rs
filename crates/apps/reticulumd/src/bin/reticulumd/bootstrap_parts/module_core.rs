@@ -491,10 +491,6 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         let persistence_context =
             PathTablePersistenceContext::new(transport.clone(), reticulum_storage_path.clone());
         daemon.register_metrics_provider("announce_persistence", persistence_context.metrics());
-        daemon.register_metrics_provider(
-            "transport_tables",
-            Arc::new(crate::persistence_metrics::TransportTablesProvider::new(transport.clone())),
-        );
         path_table_persistence = Some(persistence_context.clone());
         spawn_inbound_worker_with_resource_events(
             daemon.clone(),

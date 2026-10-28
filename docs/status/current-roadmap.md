@@ -286,6 +286,14 @@ announce-persistence counters to the daemon metrics snapshot. The third item
 bounds the refill scan, yields the SQLite writer to broker commands and moves
 WAL truncation to a daemon timer.
 
+The 2026-10-28 #663 closure increment prunes remote recipient and daemon peer
+identity caches after route expiry while preserving pending SINGLE receipts,
+local destinations and live links. It bounds retained random-blob capacity and
+encodes the duplicate hashlist without a second hash snapshot. New occupancy
+and removed-entry counters use the existing metrics provider; fingerprint
+occupancy remains `announce_persistence.last_fingerprint_map_len`. Focused
+regressions and the transport suite pass; production acceptance stays open.
+
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance
 that does not rewrite route snapshots. It also shares cached packet data during

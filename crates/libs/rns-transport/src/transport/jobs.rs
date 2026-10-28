@@ -143,6 +143,7 @@ pub(super) async fn handle_cleanup<'a>(mut handler: MutexGuard<'a, TransportHand
         handler.tunnel_table.remove_stale(std::time::Instant::now());
         iface_manager.cleanup();
     }
+    handler.prune_destination_cache().await;
 }
 
 pub(super) async fn manage_transport(
