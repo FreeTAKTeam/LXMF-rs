@@ -3,6 +3,7 @@ use crate::transport::reticulum_announce_cache::{
     CacheWriteOutcome, CachedAnnounce, CachedAnnounceRestore, ReticulumAnnounceCache,
 };
 mod cleanup;
+mod state;
 use cleanup::clean_announce_cache_batch;
 pub use cleanup::AnnounceCacheCleanupReport;
 use std::collections::{HashMap, HashSet};
@@ -16,31 +17,12 @@ pub(super) struct PathTablePersistence {
     state: tokio::sync::Mutex<Option<AnnounceCacheState>>,
 }
 
-impl PathTablePersistence {
-    pub(super) fn fingerprint_map_len_now(&self) -> Option<usize> {
-        let state = self.state.try_lock().ok()?;
-        state.as_ref().map(|state| state.files.len())
-    }
-}
-
-impl Default for PathTablePersistence {
-    fn default() -> Self {
-        Self { save_gate: tokio::sync::Semaphore::new(1), state: tokio::sync::Mutex::new(None) }
-    }
-}
-
 #[derive(Default)]
 struct AnnounceCacheState {
     storage_root: Option<PathBuf>,
     files: HashMap<Hash, [u8; 32]>,
     persisted_snapshot_matches_files: bool,
     cleanup_scan: Option<tokio::fs::ReadDir>,
-}
-
-impl AnnounceCacheState {
-    fn retain_current_files(&mut self, current_hashes: &HashSet<Hash>) {
-        self.files.retain(|hash, _| current_hashes.contains(hash));
-    }
 }
 
 /// What one path-table save did. Issue 663 needs the examined/skipped/written
