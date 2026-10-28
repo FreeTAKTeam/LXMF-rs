@@ -44,11 +44,10 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 ## Current status
 
 The latest stable release is
-[`v0.15.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.15.0).
-It aligns 21 public packages and includes LXMF delivery ownership, interface
-lifecycle fixes, Bluetooth foundations, bare-metal core support and shared
-embedded custody. Announce-cache disk growth and production resource acceptance
-remain open; see the release notes. Rust 1.88 or newer is required. A source checkout of
+[`v0.16.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.16.0).
+It aligns 21 public packages and includes delivery receipt, announce-cache,
+ZeroMQ readiness and WAL maintenance fixes. Production resource and retention
+acceptance remain open; see the release notes. Rust 1.88 or newer is required. A source checkout of
 `main` can contain changes after the release; use the release tag to reproduce
 its published artifacts.
 
@@ -69,7 +68,7 @@ it does not establish full forward behavioral parity.
 | Remaining operational matrix | Permanent HIL, the full declared hardware/platform matrix, public-network rows, long soak, and current-release client reruns remain separate from the completed software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
-project posture, the [v0.15.0 release notes](docs/release-notes-v0.15.0.md),
+project posture, the [v0.16.0 release notes](docs/release-notes-v0.16.0.md),
 the [v0.14.0 migration guide](docs/migrations/v0.14.0-zmq.md), and the
 [Reticulum](docs/status/reticulum-parity-matrix.md) and
 [LXMF](docs/status/lxmf-parity-matrix.md) parity matrices for row-level detail.
