@@ -6,7 +6,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | --- | --- | --- | --- | --- |
 | 1. Attribute and bound daemon memory | #663 | Implemented; soak pending | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,068 transport tests; provider regression; capacity red/green |
 | 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
-| 3. Maintenance-pass metrics and quota paging | #663 | Metrics implemented; paging gate pending | `corvo/663-maintenance-metrics` | Real storage phase attribution and failure tests; 600 s instrumented soak pending |
+| 3. Maintenance-pass metrics and quota paging | #663 | Payload paging implemented; verification running | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
@@ -55,3 +55,13 @@ notification. A direct-daemon notify unit is documented there and in the daemon
 operations guide; the combined launcher stays simple. RPC bind completion is
 also gated because `is_ready()` alone checks only ZeroMQ, and is initially true
 when no ZeroMQ endpoint is configured. SIGTERM uses the graceful SIGINT path.
+
+The measured gate justified payload paging, not quota paging. Quota is left atomic
+because its 1.74 ms / zero-read pass is not the driver; this narrows item 3 to the
+measured source and avoids a needless concurrent-write semantic change. Payload
+weight ordering applies inside each oldest 4,096-row candidate window, with age
+ordering across windows as approved and documented in the migration note.
+
+Conditional follow-up from preview26-regression-663-657-678 PR 4 is now active:
+the 600 s attribution run retained anonymous memory after transient work with flat
+route/recipient populations. No memory acceptance claim is made for items 1–3.

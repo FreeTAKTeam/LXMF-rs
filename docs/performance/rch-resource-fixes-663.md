@@ -625,3 +625,30 @@ inline ingestion/import and policy changes. Lifetime maxima retain slow calls
 that later fast calls would hide from the last-run gauges; the paging gate uses
 these maxima. The ingress profile sends announces, rather than payload traffic,
 so the recorded payload operations in that profile are scheduled maintenance.
+
+### Measured paging decision
+
+The 600 s instrumented run at `a182a4ea` on the paired fixture measured expiry
+9.92 s / 224,223,232 physical read bytes / 600,000 deleted history rows; quota
+1.74 ms / 0 bytes / 0 rows; payload 8.08 s / 397,365,248 bytes / 75,000 rows.
+Payload exceeded both gates. It now sorts at most 4,096 oldest candidates per
+transaction, commits/releases the writer and yields between windows. Quota stays
+atomic because its measured cost did not justify changing concurrent-write
+semantics. The [migration note](../migrations/propagation-retention-paging-663.md)
+records age ordering across windows and partial-page failure semantics. The
+low-level library keeps its caller-owned transaction; only MessagesStore releases
+its writer between pages.
+
+A regression first failed with global ordering (removed `id-04097`) and passes
+with the approved age-window rule (`id-00001`). Storage tests verify 5,000-row
+paging and rollback of a failing second page while the committed first page stays
+removed. The original storage error and unknown final count remain observable.
+
+The attribution-only run is not a successful memory fix: anon medians rose from
+170.75 to 255.34 MiB, with 476 MemoryHigh events and zero OOM/max events. Table
+populations stayed essentially flat. The earlier baseline rose 170.73 to
+220.52 MiB with 226 high events; initial file-cache ownership differed, so these
+runs do not establish a comparative memory improvement. The plan's conditional
+allocator follow-up is activated after this evidence. Counts plus conservative
+compiler-layout accounting explain about 77% before the pass, below the 80% gate;
+that gate remains open rather than crediting unmeasured allocator/SQLite slack.

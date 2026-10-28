@@ -5,6 +5,23 @@ pub fn prune_propagation_entries_to_limit_bytes_with_priorities(
     limit_bytes: u64,
     prioritised_destinations: &[String],
 ) -> rusqlite::Result<Vec<String>> {
+    let mut removed = Vec::new();
+    loop {
+        let page = prune_propagation_entries_page(conn, limit_bytes, prioritised_destinations)?;
+        if page.is_empty() {
+            return Ok(removed);
+        }
+        removed.extend(page);
+    }
+}
+
+/// Evict from at most 4,096 oldest candidates; priority/weight ordering applies
+/// within that window. The caller owns the transaction and paging lifetime.
+pub fn prune_propagation_entries_page(
+    conn: &Connection,
+    limit_bytes: u64,
+    prioritised_destinations: &[String],
+) -> rusqlite::Result<Vec<String>> {
     let total: i64 = conn.query_row(
         "SELECT COALESCE(SUM(size_bytes), 0) FROM propagation_entries",
         [],
@@ -19,7 +36,7 @@ pub fn prune_propagation_entries_to_limit_bytes_with_priorities(
         let mut stmt = conn.prepare(
             "SELECT transient_id, destination, size_bytes, received_at
                      FROM propagation_entries
-                     ORDER BY received_at ASC, transient_id ASC",
+                     ORDER BY received_at ASC, transient_id ASC LIMIT 4096",
         )?;
         let rows = stmt.query_map([], |row| {
             let transient_id: String = row.get(0)?;
@@ -31,7 +48,9 @@ pub fn prune_propagation_entries_to_limit_bytes_with_priorities(
         rows.collect::<rusqlite::Result<Vec<_>>>()?
     };
     let newest_received_at =
-        entries.iter().map(|(_id, _destination, _size, received_at)| *received_at).max();
+        conn.query_row("SELECT MAX(received_at) FROM propagation_entries", [], |row| {
+            row.get::<_, Option<i64>>(0)
+        })?;
     let mut entries = entries;
     entries.sort_by(|left, right| {
         let left_weight = propagation_prune_weight(
@@ -140,5 +159,34 @@ mod tests {
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("collect index names");
         assert!(!indexes.iter().any(|name| name == "idx_propagation_entries_received_transient"));
+    }
+}
+
+#[cfg(test)]
+mod paging_tests {
+    use super::*;
+
+    #[test]
+    fn retention_bounds_priority_sorting_to_oldest_candidate_window() {
+        let conn = Connection::open_in_memory().expect("database");
+        crate::storage::initialize(&conn).expect("schema");
+        conn.execute_batch(
+            "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<5000)
+            INSERT INTO propagation_entries
+            SELECT printf('id-%05d', x), CASE WHEN x<=4096 THEN 'priority' ELSE 'ordinary' END,
+                   '00', x, 1, NULL FROM n;",
+        )
+        .expect("inventory");
+        let removed = prune_propagation_entries_to_limit_bytes_with_priorities(
+            &conn,
+            4999,
+            &["priority".into()],
+        )
+        .expect("prune");
+        assert_eq!(
+            removed,
+            ["id-00001"],
+            "age selects the window before priority orders its candidates"
+        );
     }
 }

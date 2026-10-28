@@ -302,8 +302,14 @@ units can use `Type=notify` with RCH `After`/`Requires` ordering. The combined
 
 The #663 maintenance attribution increment exports separate expiry, quota and
 payload durations, deletion/failure totals and physical-read deltas under
-`storage.maintenance`. Paging remains gated on the instrumented ingress soak;
-physical-read deltas include concurrent process work and exclude cached reads.
+`storage.maintenance`. The instrumented ingress soak triggered payload paging at
+8.08 s / 379 MiB reads; 4,096-row candidate windows now release the writer between
+transactions. Global payload-priority ordering is intentionally approximate across
+windows, so the LXMRouter parity row records that remaining difference. Quota
+stays atomic after its 1.74 ms / zero-read measurement.
+Physical-read deltas include concurrent process work and exclude cached reads.
+Anonymous growth with flat table counts activated the conditional allocator
+follow-up; memory acceptance is still open.
 
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance
