@@ -22,6 +22,7 @@ pub fn prune_propagation_entries_page(
     limit_bytes: u64,
     prioritised_destinations: &[String],
 ) -> rusqlite::Result<Vec<String>> {
+    // shortcut: rescan size metadata each page; add an authoritative byte counter only if this scan dominates.
     let total: i64 = conn.query_row(
         "SELECT COALESCE(SUM(size_bytes), 0) FROM propagation_entries",
         [],

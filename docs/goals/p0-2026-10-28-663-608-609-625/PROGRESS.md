@@ -6,7 +6,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | --- | --- | --- | --- | --- |
 | 1. Attribute and bound daemon memory | #663 | Implemented; soak pending | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,068 transport tests; provider regression; capacity red/green |
 | 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
-| 3. Maintenance-pass metrics and quota paging | #663 | Payload paging implemented; verification running | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
+| 3. Maintenance-pass metrics and quota paging | #663 | Implemented; local gates passed, hosted checks running | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
@@ -65,3 +65,19 @@ ordering across windows as approved and documented in the migration note.
 Conditional follow-up from preview26-regression-663-657-678 PR 4 is now active:
 the 600 s attribution run retained anonymous memory after transient work with flat
 route/recipient populations. No memory acceptance claim is made for items 1–3.
+
+## Local software validation
+
+Final suites: transport 1,069 passed / 13 ignored, RPC 849 / 8 ignored, daemon
+692 passed, propagation 6 passed, and the #369 diagnostics scanner passed.
+Workspace all-target/all-feature Clippy, formatting, boundaries, module-size and
+architecture checks passed. The live fingerprint accessor initially exceeded the
+500-line policy; persistence-state methods now live in a 20-line child module.
+Focused path save/restore tests passed after that extraction. Test temporary files
+use workspace TMPDIR because the system temporary filesystem exhausted its quota.
+
+The 600 s paged static-musl control completed with flat populations but anon
+267.08 -> 289.90 MiB and +280 MemoryHigh events. Payload total duration remains
+9.10 s / 386 MiB reads; only candidate materialisation/deletion is bounded per
+writer transaction. The full indexed size sum is repeated per page to include
+concurrent writes. Memory acceptance and a total-latency improvement remain open.
