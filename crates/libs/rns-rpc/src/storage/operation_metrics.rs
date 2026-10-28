@@ -179,3 +179,120 @@ mod tests {
         assert!(snapshot["last_checkpoint_unix_secs"].as_u64().unwrap_or(0) > 0);
     }
 }
+
+/// Propagation maintenance attribution. Read deltas are process-wide physical
+/// I/O, including concurrent work; unavailable counters are exported as null.
+#[derive(Debug, Default)]
+pub struct MaintenancePhaseMetrics {
+    runs_total: AtomicU64,
+    errors_total: AtomicU64,
+    duration_ns_total: AtomicU64,
+    last_duration_ns: AtomicU64,
+    rows_deleted_total: AtomicU64,
+    last_rows_deleted: AtomicU64,
+    last_failed: std::sync::atomic::AtomicBool,
+    read_bytes_total: AtomicU64,
+    last_read_bytes: AtomicU64,
+    read_bytes_samples_total: AtomicU64,
+    last_read_available: std::sync::atomic::AtomicBool,
+}
+
+impl MaintenancePhaseMetrics {
+    pub fn measure<T, E>(
+        &self,
+        operation: impl FnOnce() -> Result<T, E>,
+        rows: impl FnOnce(&T) -> usize,
+    ) -> Result<T, E> {
+        let reads_before = physical_read_bytes();
+        let started = std::time::Instant::now();
+        let result = operation();
+        let duration = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        let reads = reads_before
+            .zip(physical_read_bytes())
+            .map(|(before, after)| after.saturating_sub(before));
+        let order = Ordering::Relaxed;
+        self.runs_total.fetch_add(1, order);
+        self.duration_ns_total.fetch_add(duration, order);
+        self.last_duration_ns.store(duration, order);
+        self.last_failed.store(result.is_err(), order);
+        match result.as_ref() {
+            Ok(value) => {
+                let count = rows(value) as u64;
+                self.rows_deleted_total.fetch_add(count, order);
+                self.last_rows_deleted.store(count, order);
+            }
+            Err(_) => {
+                self.errors_total.fetch_add(1, order);
+            }
+        }
+        self.last_read_available.store(reads.is_some(), order);
+        if let Some(reads) = reads {
+            self.read_bytes_total.fetch_add(reads, order);
+            self.last_read_bytes.store(reads, order);
+            self.read_bytes_samples_total.fetch_add(1, order);
+        }
+        result
+    }
+
+    pub fn snapshot(&self) -> serde_json::Value {
+        let load = |value: &AtomicU64| value.load(Ordering::Relaxed);
+        serde_json::json!({
+            "runs_total": load(&self.runs_total),
+            "errors_total": load(&self.errors_total),
+            "duration_ns_total": load(&self.duration_ns_total),
+            "last_duration_ns": load(&self.last_duration_ns),
+            "rows_deleted_total": load(&self.rows_deleted_total),
+            "last_rows_deleted": (!self.last_failed.load(Ordering::Relaxed)).then(|| load(&self.last_rows_deleted)),
+            "read_bytes_total": load(&self.read_bytes_total),
+            "last_read_bytes": self.last_read_available.load(Ordering::Relaxed).then(|| load(&self.last_read_bytes)),
+            "read_bytes_samples_total": load(&self.read_bytes_samples_total),
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct MaintenanceMetrics {
+    pub expiry: MaintenancePhaseMetrics,
+    pub quota: MaintenancePhaseMetrics,
+    pub payload: MaintenancePhaseMetrics,
+}
+
+impl MaintenanceMetrics {
+    pub fn snapshot(&self) -> serde_json::Value {
+        serde_json::json!({
+            "expiry": self.expiry.snapshot(),
+            "quota": self.quota.snapshot(),
+            "payload": self.payload.snapshot(),
+        })
+    }
+}
+
+fn physical_read_bytes() -> Option<u64> {
+    // /proc is optional; absence or a malformed counter means unavailable, not zero.
+    let contents = std::fs::read_to_string("/proc/self/io").ok()?;
+    contents.lines().find_map(|line| line.strip_prefix("read_bytes:")?.trim().parse().ok())
+}
+
+#[cfg(test)]
+mod maintenance_tests {
+    use super::*;
+
+    #[test]
+    fn maintenance_phase_preserves_failure_and_does_not_report_zero_deleted() {
+        let metrics = MaintenancePhaseMetrics::default();
+        assert_eq!(metrics.measure(|| Ok::<_, &str>(3usize), |count| *count), Ok(3));
+        assert_eq!(
+            metrics.measure(|| Err::<usize, _>("storage failure"), |count| *count),
+            Err("storage failure")
+        );
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot["runs_total"], 2);
+        assert_eq!(snapshot["errors_total"], 1);
+        assert_eq!(snapshot["rows_deleted_total"], 3);
+        assert!(snapshot["last_rows_deleted"].is_null());
+        assert!(
+            snapshot["duration_ns_total"].as_u64().expect("duration")
+                >= snapshot["last_duration_ns"].as_u64().expect("last duration")
+        );
+    }
+}

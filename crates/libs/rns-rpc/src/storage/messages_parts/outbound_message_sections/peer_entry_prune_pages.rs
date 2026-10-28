@@ -190,3 +190,32 @@ fn peer_policy_prune_rechecks_candidates_after_a_refresh() {
     assert_eq!(deleted, 0);
     assert_eq!(state, "handled");
 }
+
+#[test]
+fn propagation_maintenance_metrics_attribute_expiry_quota_and_payload() {
+    let store = MessagesStore::in_memory().expect("store");
+    store.with_write_conn(|conn| conn.execute_batch(
+        "INSERT INTO propagation_entries VALUES
+            ('one', 'destination', '00', 100, 1, NULL),
+            ('two', 'destination', '00', 101, 1, NULL);
+         INSERT INTO propagation_peer_entries VALUES
+            ('peer', 'orphan', 'handled', 1),
+            ('peer', 'one', 'unhandled', 100),
+            ('peer', 'two', 'unhandled', 101);"
+    )).expect("maintenance fixture");
+    assert_eq!(store.prune_propagation_peer_entries_to_policy(105, 10, 10, 100, 1).expect("peer prune"), 2);
+    let before_payload = store.operation_metrics_snapshot()["maintenance"].clone();
+    for phase in ["expiry", "quota"] {
+        assert_eq!(before_payload[phase]["runs_total"], 1);
+        assert_eq!(before_payload[phase]["rows_deleted_total"], 1);
+        assert!(before_payload[phase]["last_duration_ns"].as_u64().expect("duration") > 0);
+        assert_eq!(before_payload[phase]["errors_total"], 0);
+    }
+    assert_eq!(before_payload["payload"]["runs_total"], 0);
+    assert_eq!(store.prune_propagation_entries_to_limit_bytes(0).expect("payload prune").len(), 2);
+    let payload = store.operation_metrics_snapshot()["maintenance"]["payload"].clone();
+    assert_eq!(payload["runs_total"], 1);
+    assert_eq!(payload["rows_deleted_total"], 2);
+    assert_eq!(payload["last_rows_deleted"], 2);
+    assert!(payload["last_duration_ns"].as_u64().expect("duration") > 0);
+}

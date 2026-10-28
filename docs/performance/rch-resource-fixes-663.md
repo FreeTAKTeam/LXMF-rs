@@ -599,3 +599,20 @@ service reached active/running with `Result=success`; stopping it through
 systemd's SIGTERM reached inactive with `ExecMainStatus=0`. Logs are under
 `target/issue663/notify-process.json` and `notify-systemd.log`. No RCH production
 deployment was performed.
+
+## P0 item 3 — maintenance attribution and paging gate (2026-10-28)
+
+`storage.maintenance.{expiry,quota,payload}` on `/metrics` now reports run/error
+totals, last/total duration in ns, successful-phase deleted-row totals, last rows
+deleted (null on error), last/total physical read-byte deltas and available-read
+sample totals. The counters surround the existing storage owners and preserve
+errors. An unavailable `/proc/self/io` read is null, rather than zero. Read deltas
+include all concurrent process work and exclude logical cached reads; durations
+include writer wait and existing WAL/admission work.
+
+The SQL predicates, deletion order, custody semantics and writer ownership are
+unchanged by instrumentation. On a phase error some earlier expiry pages may have
+committed; its last-row count is unknown/null and the total counts only completed
+successful phases. Tests exercise each real phase and preserve an original error.
+Paging is conditional on a quota/payload duration above 1 s or physical reads
+above 200 MiB in the controlled ingress run. The decision and measurements follow.

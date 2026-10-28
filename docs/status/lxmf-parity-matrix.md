@@ -39,6 +39,13 @@ extends resource evidence for issues 657/655 without promoting production
 memory/swap acceptance. See
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 
+The 2026-10-28 #663 maintenance attribution increment adds separate expiry,
+quota and payload durations, successful deletion counts, failure totals and
+process-wide physical-read deltas to `storage.maintenance` on `/metrics`.
+Unavailable read counters are null. These counters instrument existing operations;
+quota and payload retention ordering is unchanged unless the measured paging gate
+in the P0 plan is met. Production acceptance remains open.
+
 The subsequent #663 diagnostics increment exports ZeroMQ stage outcomes and
 latency buckets through `/metrics`, with a bounded recent incident ring and
 stable SDK exchange error categories. Existing durability and acknowledgement

@@ -299,6 +299,11 @@ listeners bind, and handles SIGTERM through graceful shutdown. Direct daemon
 units can use `Type=notify` with RCH `After`/`Requires` ordering. The combined
 `lxmd` launcher remains `Type=simple` because its child is not the main PID.
 
+The #663 maintenance attribution increment exports separate expiry, quota and
+payload durations, deletion/failure totals and physical-read deltas under
+`storage.maintenance`. Paging remains gated on the instrumented ingress soak;
+physical-read deltas include concurrent process work and exclude cached reads.
+
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance
 that does not rewrite route snapshots. It also shares cached packet data during

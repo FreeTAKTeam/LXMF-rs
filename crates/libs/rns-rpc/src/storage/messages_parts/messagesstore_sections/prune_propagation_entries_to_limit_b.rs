@@ -10,12 +10,12 @@ impl MessagesStore {
     pub fn prune_propagation_entries_to_limit_bytes_with_priorities(
         &self, limit_bytes: u64, prioritised_destinations: &[String],
     ) -> rusqlite::Result<Vec<String>> {
-        self.with_write_conn(|conn| {
+        self.write_state.maintenance_metrics.payload.measure(|| self.with_write_conn(|conn| {
             let tx=conn.unchecked_transaction()?;
             let result=lxmf_propagation::storage::prune_propagation_entries_to_limit_bytes_with_priorities(&tx,limit_bytes,prioritised_destinations)?;
             tx.commit()?;
             Ok(result)
-        })
+        }), Vec::len)
     }
 
     pub fn count_message_buckets(&self) -> rusqlite::Result<(u64, u64)> {

@@ -5,8 +5,8 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | Item | Issue | State | Branch / PR / head | Evidence |
 | --- | --- | --- | --- | --- |
 | 1. Attribute and bound daemon memory | #663 | Implemented; soak pending | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,068 transport tests; provider regression; capacity red/green |
-| 2. systemd readiness notification | #663 | Locally verified | `corvo/663-systemd-readiness` | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
-| 3. Maintenance-pass metrics and quota paging | #663 | Not started | | |
+| 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
+| 3. Maintenance-pass metrics and quota paging | #663 | Metrics implemented; paging gate pending | `corvo/663-maintenance-metrics` | Real storage phase attribution and failure tests; 600 s instrumented soak pending |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
