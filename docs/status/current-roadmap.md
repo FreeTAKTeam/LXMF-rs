@@ -310,8 +310,19 @@ stays atomic after its 1.74 ms / zero-read measurement.
 Physical-read deltas include concurrent process work and exclude cached reads.
 A retained anonymous-memory step with flat table counts activated the conditional
 allocator evaluation. Matched static-musl runs reduced absolute anon but still
-failed the growth/80% ownership gates; the allocator remains a draft evaluation.
-Repeated ratcheting and production memory acceptance are still open.
+failed the short-run growth/80% ownership gates. Stack #708 subsequently merged
+the allocator evaluation; this did not qualify it as a memory fix. #709 adds
+`providers.heap.rust_allocated_bytes` through the existing daemon metrics registry
+and measures repeated cycles in a 60-minute ingress run. The gauge counts
+outstanding requested Rust sizes, not resident pages. SQLite cache targets and
+anon minus requested bytes cannot be credited as measured resident owners.
+The completed default 3,600-second fixture has flat requested bytes but fails
+two RSS window comparisons (+13.51 and +2.43 MiB). The completed full-hour
+two-option purge trial passes RSS-window stability (0.000/+0.463/−0.266 MiB)
+and requested-byte flatness. Its matched steady ingress, different warmup and
+warmer physical-read state are recorded with recoverable raw evidence; this
+does not isolate either setting or a resident owner. Production defaults remain
+unchanged; ≥80% resident ownership and production memory acceptance remain open.
 
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance

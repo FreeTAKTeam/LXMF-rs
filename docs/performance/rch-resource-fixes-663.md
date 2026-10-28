@@ -676,8 +676,9 @@ The daemon-only candidate uses mimalloc 0.1.52 (libmimalloc-sys 0.1.49) as the
 Rust global allocator, following the conditional PR 4 in the earlier plan. The
 measured step is retained anonymous memory with flat table populations, not yet
 proof of repeated ratcheting. The same-fixture, same-limit static-musl
-control/candidate comparison is complete; it remains a draft evaluation because
-the memory slope and attribution gates failed. Native C/SQLite malloc is
+control/candidate comparison is complete. At that checkpoint it was a draft
+evaluation because the memory slope and attribution gates failed. Stack #708
+later merged it without establishing those gates. Native C/SQLite malloc is
 not overridden. The dependency adds no core or workspace-local edge; unrelated
 Cargo.lock resolution changes were removed and `cargo check --locked` passed.
 Audit found no vulnerabilities, with the existing unmaintained serial 0.4.0
@@ -725,8 +726,181 @@ runtime allocations. It explains about 77% of the GNU pre-pass sample and 66%
 of the candidate's first-minute anon, so >=80% attribution remains unmet.
 No unmeasured residual is credited to a named owner. Further heap ownership
 measurement and repeated maintenance cycles are needed before selecting a
-qualified allocator fix; this draft is not a production-ready memory solution.
+qualified allocator fix; this evaluation does not establish a production-ready
+memory solution.
 
 Static-musl process checks with and without ZMQ also passed READY, readyz=200,
 STOPPING and SIGTERM exit 0. No multi-hour soak, fresh message-delivery load,
 RCH production startup trial or release/deployment was performed. #663 stays open.
+
+### #709 requested-byte gauge and repeated-cycle measurement
+
+Stack #708 merged the preceding evaluation into main at `9d03af87`; the earlier
+draft status describes the comparison checkpoint, not current merge state.
+The safe unlimited `cap::Cap<MiMalloc>` wrapper now exports
+`providers.heap.rust_allocated_bytes` through the existing daemon provider
+registry. It counts outstanding requested Rust allocation sizes, excluding
+native allocations, allocator overhead and residency. It imposes no operational
+limit and adds no application unsafe code or native malloc override.
+
+The 132.56 MiB content estimate is an aggregate cross-check, not an additional
+owner to add to this gauge. SQLite's default `cache_size=-2000` suggests
+2,048,000 bytes of page cache per connection; it is neither actual allocation
+nor a hard bound on SQLite's total heap. No configured SQLite allowance is
+credited toward the ≥80% resident-ownership target. Anon minus requested Rust
+bytes is reported as a signed **unclassified residual**, since native allocations,
+stacks, allocator slack and residency differences cannot be distinguished by
+subtraction. See [Cap](https://docs.rs/cap/0.1.2/cap/struct.Cap.html) and
+[SQLite](https://www.sqlite.org/pragma.html#pragma_cache_size).
+
+The immutable static-musl binary is from `2473e7ef861b0e53b93b3160bc23e99a72e44877`,
+SHA-256 `d721b500afb530a8532d554bbf85cb68c72fcdcd2e2b28a20cb9e32c51fe4b05`.
+The same fixture, CPUs 0,1, MemoryHigh=768M and MemoryMax=1G are used with
+3,600 seconds of ingress after readiness. Raw evidence is in
+`target/issue709/heap-3600/`. Software checks run on CPUs 2-21; the host is not
+otherwise isolated. Endpoint/registry publication is observed on the real daemon.
+
+Window analysis starts at the first sampled completion of the second maintenance
+pass (all expiry/quota/payload counters ≥2, with zero phase errors). This ingress
+profile drives announces and SDK polls only, so these are scheduled invocations.
+Adjacent complete 600-second windows
+must grow ≤1 MiB in anon median; a final partial window is reported separately.
+Valid windows require their first/last sample within 10 seconds of each edge
+and no internal gap above 10 seconds (nominal sampling is five seconds).
+Requested bytes are called flat only when the range of complete-window medians
+is ≤1 MiB; transient peaks and pass-completion samples are also retained.
+These criteria qualify this fixture only. They do not prove absence of leaks,
+resident ownership or multi-hour production stability.
+The five-second scrapes can miss allocations freed during short persistence
+operations; observed maxima are sampled values, not allocation high-water marks.
+The unchanged client negotiates `overflow_policy=reject`; bounded queue rejection
+and peer announce-parser warnings are present in both the earlier 600-second
+profile and this run. Zero poll/maintenance errors do not mean clean logs or
+successful event/message delivery. This remains an announce-ingress resource
+fixture, with no fresh-message or fanout delivery load.
+
+#### Completed default-settings control
+
+`heap-3600` completed 3,604.214 seconds after readiness, with 720 samples spanning
+3,599.207 seconds and maximum sample gap 5.010 seconds. The final scrape observed
+11 successful invocations of every maintenance phase and 11 successful path saves.
+The second all-phase completion was first sampled at 625.656 seconds. No
+maintenance/persistence errors, swap, max or OOM events were observed; MemoryHigh
+increased 251. CPU averaged 4.10% of one core and 35,974 recorded SDK polls had
+zero errors. WAL medians were 0.44 →19.87 MiB. The first pass removed 600,000
+peer-history rows and 75,000 payloads; subsequent passes removed no rows, since
+this fixture adds announces rather than fresh messages.
+
+| Seconds after readiness | Anon median, MiB | Requested Rust median, MiB | Anon change from preceding full window, MiB |
+| --- | ---: | ---: | ---: |
+| 625.656–1225.656 | 218.516 | 147.446 | — |
+| 1225.656–1825.656 | 232.029 | 147.511 | +13.514 |
+| 1825.656–2425.656 | 227.100 | 147.640 | −4.930 |
+| 2425.656–3025.656 | 229.529 | 147.640 | +2.430 |
+| 3025.656–3604.214 (partial; excluded from gate) | 224.988 | 147.640 | — |
+
+All expected complete windows have valid cadence coverage. **Anon stability
+fails** in two comparisons; **requested-byte stability passes**, with a 0.193 MiB
+range of complete-window medians. The decline in the third window means these
+results do not establish monotonic ratcheting on every cycle.
+
+The first/final wall-clock minute medians are anon 196.920 →224.863 MiB and
+requested Rust 145.014 →147.640 MiB. The requested/anon magnitude ratio is
+73.64% →65.66%; this is not a measured fraction of resident ownership. The signed
+unclassified residual is 51.906 →77.224 MiB. The content estimate is not added to
+requested bytes, and no assumed SQLite allocation is credited. **The ≥80%
+resident-owner gate remains unresolved.** Legacy harness summaries use fixed
+12-sample minute windows; the heap/window analysis uses elapsed wall time and
+retains both statistics in the JSON.
+
+The sampled anon maximum was 355.871 MiB at 2,102.432 seconds, paired with
+147.640 MiB requested bytes after a completed path save. It cannot identify the
+transient allocation peak or the owner of retained/resident pages. Raw hashes,
+code/binary identity, environment and method are recorded in `results.heap-3600`
+of the comparison JSON; neither daemon had `MIMALLOC_*` overrides. The observed
+duplicate-filter hash rate was 1.967/s, with 7,080 hashes in the final sample.
+
+The failed anon criterion with flat requested bytes activates the conditional
+local trial: `MIMALLOC_PURGE_DELAY=0 MIMALLOC_ARENA_EAGER_COMMIT=0`, another
+3,600 measured seconds using the same binary, fixture and limits. The existing
+harness inherits these settings for both measured daemon and announce peer.
+This tests the two settings together, without isolating either option or proving
+the residual belongs to mimalloc. Production units remain unchanged.
+
+The first purge setup was stopped after 766.520 sampled seconds: its fresh peer
+admitted the second destination at 671.324 seconds, versus 125.116 seconds in the
+control. Its ingress differed through the second-pass anchor, so it is preserved
+as `purge-unmatched-peer` and excluded from the full-hour comparison. The
+replacement copies only the control peer's test identity into a fresh peer
+directory, retaining no database or route state. Its public destination hashes
+match the control; the second destination was naturally learned at 245.557
+seconds, before the second maintenance pass. Subsequent admitted hashes grow at
+approximately two/s in both runs. These warmup differences and the nonisolated
+host limit causal comparison.
+
+A later probe incorrectly sent JSON to the framed-MessagePack HTTP RPC endpoint.
+It returned HTTP 400 before dispatch, adding one HTTP error. The path had already
+been learned; no `request_path` RPC or successful state-changing warmup occurred.
+The rejected request and timing are preserved separately from SDK/phase errors.
+
+#### Completed purge-settings trial
+
+`purge-3600` completed 3,603.656 seconds after readiness, with 719 samples
+spanning 3,598.644 seconds and maximum gap 5.075 seconds. Eleven successful
+maintenance invocations per phase and eleven path saves were observed. All four
+expected complete windows have valid coverage (120/120/120/119 samples).
+There were zero phase/persistence errors and zero errors in 35,973 SDK polls;
+the separately disclosed rejected HTTP probe contributes one HTTP error.
+
+| Seconds after readiness | Anon median, MiB | Requested Rust median, MiB | Anon change from preceding full window, MiB |
+| --- | ---: | ---: | ---: |
+| 621.421–1221.421 | 184.979 | 147.439 | — |
+| 1221.421–1821.421 | 184.979 | 147.503 | 0.000 |
+| 1821.421–2421.421 | 185.441 | 147.632 | +0.463 |
+| 2421.421–3021.421 | 185.176 | 147.632 | −0.266 |
+| 3021.421–3603.656 (partial; excluded from gate) | 185.184 | 147.632 | — |
+
+**Anon stability and requested-byte stability pass** for this full-hour trial.
+The complete-window requested-byte range is 0.193 MiB; the final partial
+582.235 seconds are excluded from these gates. Steady admitted hash rates after
+the second pass are 2.000/s in both runs (the trial's whole-run rate is lower
+because its natural warmup took longer).
+
+CPU averaged 4.09% of one core. MemoryHigh, max, OOM and swap deltas were zero.
+Unlike the control, the trial recorded zero physical-read bytes; cached reads
+and earlier host work therefore confound I/O and pressure comparisons. The
+first pass again removed 600,000 history rows and 75,000 payloads, with no rows
+deleted by later passes. This is repeated scheduled maintenance on the same
+fixture, not repeated fresh-message pruning or production-load qualification.
+
+First/final wall-clock minute anon medians are 169.273 →185.156 MiB; requested
+Rust medians are 145.017 →147.632 MiB. Their magnitude ratio is 85.67% →79.73%,
+not a measured resident-owner fraction; the signed unclassified residual is
+24.257 →37.524 MiB. The sampled maximum is 218.996 MiB anon paired with
+203.716 MiB requested at 2,701.517 seconds during an in-flight path save. This
+transient requested peak differs from the flat complete-window medians; sampling
+still cannot establish the true allocation high-water mark.
+
+The default control fails the RSS-window criterion despite flat requested
+bytes; this scoped two-option trial passes it. That supports further controlled
+allocator/residency investigation, without identifying an exclusive owner or
+isolating either setting. **The ≥80% resident-owner gate remains unresolved.**
+Production defaults remain unchanged; neither outcome qualifies production
+memory acceptance.
+
+#### Recoverable raw evidence
+
+The committed [review bundle](../goals/p0-2026-10-28-663-608-609-625/evidence/709-heap-soak-evidence.tar.gz)
+is 1,087,840 bytes, SHA-256
+`272d6e3f23267b8e4bc1450296c7da8577a4dd1357b76fae36f06e41c56fa301`.
+It contains both full runs, the discarded setup, logs, selected environment
+values, the separate bootstrap probe, frozen analysis/harness snapshots and a
+per-member SHA-256 manifest. It excludes private identity files, databases and
+executables. Original `target/issue709/...` paths in acquisition metadata describe
+the local host; portable files use the corresponding directories in the bundle.
+
+Extract to an empty directory and follow its README: from that extracted root,
+run `python3 analyze.py heap-3600` and `python3 analyze.py purge-3600`. All 31
+member hashes and exact replay of both full-run analyses and the discarded setup
+were verified using only extracted files. Source/binary/client identity, raw
+hashes, windows, limitations and bundle mapping are in the comparison JSON.

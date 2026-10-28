@@ -55,6 +55,18 @@ ZeroMQ binds; SIGINT/SIGTERM send STOPPING before graceful shutdown. Datagram
 regressions cover filesystem/abstract sockets, delayed readiness and cancellation.
 Direct daemon service ordering is separate from combined-launcher behavior.
 
+The #709 daemon provider publishes outstanding requested Rust allocation bytes
+at `providers.heap.rust_allocated_bytes`, including startup without transport or
+ZeroMQ. Safe unlimited Cap wraps the existing daemon-only mimalloc allocator;
+native C allocations and resident-page ownership remain separate. The registered
+provider regression and live fixture endpoint pass. The 3,600-second default
+fixture passes requested-byte flatness but fails RSS-window stability. A second
+full-hour trial with both purge settings at zero passes both stability criteria
+with matched steady ingress; warmup, cached reads and both-process environment
+changes limit causal attribution. Raw traces and frozen analysis replay are
+committed in the #709 evidence bundle. Production defaults remain unchanged;
+the ≥80% resident-ownership target and production resource acceptance stay open.
+
 Durable-broker-only daemon bootstrap initializes the identity-capable transport
 without opening a Reticulum listener or creating network interfaces. A focused
 daemon regression imports an SDK identity and verifies its delivery destination

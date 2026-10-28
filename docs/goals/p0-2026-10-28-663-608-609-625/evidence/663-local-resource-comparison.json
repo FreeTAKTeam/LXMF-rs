@@ -10,6 +10,20 @@
     "random_blob_bytes": 10,
     "single_recipient_bytes": 792
   },
+  "discarded_709_setup": {
+    "control_first_two_destinations_observed_secs": 125.11575369597995,
+    "first_two_destinations_observed_secs": 671.3236695220112,
+    "hashes": 868,
+    "observed_seconds": 766.5196722020046,
+    "original_acquisition_directory": "target/issue709/purge-3600",
+    "paths": 100002,
+    "peer_crypto": 2,
+    "preserved_directory": "target/issue709/purge-unmatched-peer",
+    "reason": "Fresh peer admitted only one destination until671.324s, versus125.116s in the control; its measured ingress was unmatched through the second-pass anchor. Stopped setup trial, excluded from the full-hour comparison.",
+    "replacement_setup": "Copy default control peer/identity into a fresh peer directory before existing harness start; verify public destinations and actual rate.",
+    "status": "discarded_noncomparable_setup",
+    "stopped_intentionally": true
+  },
   "fixture": {
     "announce_root": {
       "announces_requested": 100000,
@@ -35,17 +49,20 @@
     "Initial file-cache ownership differs even in the static-musl pair; high-event/read-byte changes are not isolated allocator causality.",
     "GNU and musl are not interchangeable allocator controls.",
     "One maintenance cycle does not prove repeated ratcheting or multi-hour production stability.",
-    "The allocator is a draft evaluation; memory growth/attribution gates remain unmet."
+    "Stack #708 merged the allocator evaluation. #709 requested-byte measurement and local repeated-cycle outcomes do not establish production memory acceptance."
   ],
   "limits": {
+    "announce_rate_note": "One announce_now invocation per second can announce multiple destinations; actual admitted duplicate-filter hash rates are recorded per run.",
     "announce_rate_per_sec": 1,
     "cpus": "0,1",
+    "duration_note": "Original comparisons are 600 s; heap-3600 and conditional purge-3600 override to 3600 s after readiness with the same fixture and limits.",
     "duration_secs": 600,
     "fresh_message_delivery_driven": false,
     "memory_high_bytes": 805306368,
     "memory_max_bytes": 1073741824,
     "profile": "ingress"
   },
+  "raw_artifact_path_note": "target paths are original local acquisition locations; the committed review bundle contains portable raw files and frozen analysis/harness snapshots.",
   "results": {
     "after-final": {
       "binary_code_revision": "a182a4ea970a118f7f18fc7fabedb1b1bff7e6c5",
@@ -351,6 +368,495 @@
       },
       "target": "x86_64-unknown-linux-gnu"
     },
+    "heap-3600": {
+      "adjacent_complete_window_anon_deltas_bytes": [
+        14170112.0,
+        -5169152.0,
+        2547712.0
+      ],
+      "adjacent_complete_window_requested_deltas_bytes": [
+        67584.0,
+        135168.0,
+        0.0
+      ],
+      "analysis_script_path": "target/issue709/analyze.py",
+      "analysis_script_sha256": "6cb90b5ecb397ed6bbb0931cf73c38df516332f0bc6f895066c6d96506940916",
+      "anon_observed_max_bytes": 373157888,
+      "anon_observed_min_bytes": 206098432,
+      "anon_peak_sample": {
+        "anon_bytes": 373157888,
+        "elapsed_secs": 2102.432437398995,
+        "index": 420,
+        "persistence": {
+          "cleanup_bytes_removed_total": 0,
+          "cleanup_duration_ns_total": 98532721,
+          "cleanup_errors_total": 0,
+          "cleanup_examined_total": 34816,
+          "cleanup_last_duration_ns": 1344427,
+          "cleanup_last_success_unix_secs": 1793214487,
+          "cleanup_removed_total": 0,
+          "cleanup_scans_completed_total": 0,
+          "coalesced_triggers_total": 4076,
+          "dropped_triggers_total": 1,
+          "duration_ns_total": 1130855926,
+          "errors_total": 0,
+          "full_verifications_total": 0,
+          "in_flight": false,
+          "last_duration_ns": 146109100,
+          "last_fingerprint_map_len": 100000,
+          "last_kept_entries": 100000,
+          "last_run_unix_secs": 1793214487,
+          "last_tunnel_paths": 2,
+          "records_examined_total": 700014,
+          "runs_total": 7,
+          "skipped_known_total": 700000,
+          "triggers_total": 4085,
+          "verified_unchanged_total": 0,
+          "written_total": 14
+        },
+        "rust_requested_bytes": 154811239
+      },
+      "anon_window_gate": false,
+      "binary_code_revision": "2473e7ef861b0e53b93b3160bc23e99a72e44877",
+      "binary_sha256": "d721b500afb530a8532d554bbf85cb68c72fcdcd2e2b28a20cb9e32c51fe4b05",
+      "binary_target": "x86_64-unknown-linux-musl",
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 1024,
+        "latency_p95_us_max": 2944,
+        "latency_p95_us_median": 698.0,
+        "polls": 35974
+      },
+      "completed": true,
+      "coverage_definition": "all expected complete windows present; 5s nominal cadence, first/last within 10s of edges and every internal gap <= 10s",
+      "duration_override_secs": 3600,
+      "environment_scope": "No MIMALLOC overrides in measured daemon or announce peer; both inherit existing harness environment.",
+      "expected_complete_windows": 4,
+      "first_minute": {
+        "anon_median_bytes": 206485504.0,
+        "cadence_coverage_valid": true,
+        "complete": true,
+        "end_secs": 60,
+        "max_sample_gap_secs": 5.005185872985749,
+        "requested_to_anon_median_ratio": 0.7364106925394627,
+        "rust_requested_max_bytes": 152139182,
+        "rust_requested_median_bytes": 152058133.0,
+        "rust_requested_min_bytes": 151789926,
+        "samples": 12,
+        "start_secs": 0,
+        "unclassified_anon_minus_requested_rust_bytes": 54427371.0
+      },
+      "first_two_destinations_observed_secs": 125.11575369597995,
+      "full_3600_second_duration_valid": true,
+      "last_maintenance": {
+        "expiry": {
+          "duration_ns_total": 15594438937,
+          "errors_total": 0,
+          "last_duration_ns": 4657180,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 15542334889,
+          "max_read_bytes": 225632256,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 225914880,
+          "rows_deleted_total": 600000,
+          "runs_total": 11
+        },
+        "payload": {
+          "duration_ns_total": 9103497160,
+          "errors_total": 0,
+          "last_duration_ns": 7298012,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 9026638907,
+          "max_read_bytes": 403722240,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 403722240,
+          "rows_deleted_total": 75000,
+          "runs_total": 11
+        },
+        "quota": {
+          "duration_ns_total": 25100723,
+          "errors_total": 0,
+          "last_duration_ns": 1728280,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 5532606,
+          "max_read_bytes": 487424,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 487424,
+          "rows_deleted_total": 0,
+          "runs_total": 11
+        }
+      },
+      "last_minute": {
+        "anon_median_bytes": 235786240,
+        "cadence_coverage_valid": true,
+        "complete": true,
+        "end_secs": 3604.213661090005,
+        "max_sample_gap_secs": 5.006473041983554,
+        "requested_to_anon_median_ratio": 0.6565745269952988,
+        "rust_requested_max_bytes": 154811239,
+        "rust_requested_median_bytes": 154811239,
+        "rust_requested_min_bytes": 154811239,
+        "samples": 11,
+        "start_secs": 3544.213661090005,
+        "unclassified_anon_minus_requested_rust_bytes": 80975001
+      },
+      "last_persistence": {
+        "cleanup_bytes_removed_total": 0,
+        "cleanup_duration_ns_total": 184341897,
+        "cleanup_errors_total": 0,
+        "cleanup_examined_total": 61952,
+        "cleanup_last_duration_ns": 1576816,
+        "cleanup_last_success_unix_secs": 1793215956,
+        "cleanup_removed_total": 0,
+        "cleanup_scans_completed_total": 0,
+        "coalesced_triggers_total": 7065,
+        "dropped_triggers_total": 2,
+        "duration_ns_total": 1754124719,
+        "errors_total": 0,
+        "full_verifications_total": 0,
+        "in_flight": false,
+        "last_duration_ns": 159104085,
+        "last_fingerprint_map_len": 100000,
+        "last_kept_entries": 100000,
+        "last_run_unix_secs": 1793215687,
+        "last_tunnel_paths": 2,
+        "records_examined_total": 1100022,
+        "runs_total": 11,
+        "skipped_known_total": 1100000,
+        "triggers_total": 7079,
+        "verified_unchanged_total": 0,
+        "written_total": 22
+      },
+      "last_transport_tables": {
+        "announce_cache_capacity": 100000,
+        "announce_cache_entries": 100000,
+        "announce_retransmit_entries": 0,
+        "available": true,
+        "fingerprint_map_len": 100000,
+        "link_entries": 0,
+        "packet_cache_hashes": 7080,
+        "packet_cache_tracked": 0,
+        "path_entries": 100002,
+        "peer_crypto": 2,
+        "peer_crypto_removed_total": 0,
+        "random_blob_count": 100128,
+        "single_out_destinations": 100002,
+        "single_out_destinations_removed_total": 0,
+        "tunnel_entries": 1,
+        "tunnel_path_entries": 2
+      },
+      "maintenance_completions": [
+        {
+          "anon_bytes": 233439232,
+          "first_observed_secs": 325.3247494599782,
+          "passes": 1,
+          "rust_requested_bytes": 153357462
+        },
+        {
+          "anon_bytes": 237793280,
+          "first_observed_secs": 625.6557112969749,
+          "passes": 2,
+          "rust_requested_bytes": 154608487
+        },
+        {
+          "anon_bytes": 232439808,
+          "first_observed_secs": 926.0134668099927,
+          "passes": 3,
+          "rust_requested_bytes": 154608487
+        },
+        {
+          "anon_bytes": 243879936,
+          "first_observed_secs": 1226.378092059982,
+          "passes": 4,
+          "rust_requested_bytes": 154676071
+        },
+        {
+          "anon_bytes": 243220480,
+          "first_observed_secs": 1526.739518731978,
+          "passes": 5,
+          "rust_requested_bytes": 154676071
+        },
+        {
+          "anon_bytes": 245575680,
+          "first_observed_secs": 1827.1013423149998,
+          "passes": 6,
+          "rust_requested_bytes": 154676071
+        },
+        {
+          "anon_bytes": 249049088,
+          "first_observed_secs": 2127.4615340099845,
+          "passes": 7,
+          "rust_requested_bytes": 154811239
+        },
+        {
+          "anon_bytes": 244899840,
+          "first_observed_secs": 2427.8176183989854,
+          "passes": 8,
+          "rust_requested_bytes": 154811239
+        },
+        {
+          "anon_bytes": 245997568,
+          "first_observed_secs": 2728.1794663879846,
+          "passes": 9,
+          "rust_requested_bytes": 154811239
+        },
+        {
+          "anon_bytes": 244756480,
+          "first_observed_secs": 3028.5380702499824,
+          "passes": 10,
+          "rust_requested_bytes": 154811239
+        },
+        {
+          "anon_bytes": 247508992,
+          "first_observed_secs": 3328.8977003509935,
+          "passes": 11,
+          "rust_requested_bytes": 154811239
+        }
+      ],
+      "maintenance_errors_total": 0,
+      "max_sample_gap_secs": 5.009744048002176,
+      "measured_duration_secs": 3604.213661090005,
+      "measurement_environment": {
+        "daemon_pid": 3703259,
+        "peer_pid": 3726779,
+        "peer_selected_environment": {
+          "LXMD_PROPAGATION_NODE": "true",
+          "TOKIO_WORKER_THREADS": "2"
+        },
+        "selected_environment": {
+          "LXMD_PROPAGATION_NODE": "true",
+          "TOKIO_WORKER_THREADS": "2"
+        }
+      },
+      "measurement_limits": [
+        "Requested Rust sizes and resident anon are different measures; their signed residual has no named owner.",
+        "Content estimate and configured SQLite targets are not additional measured owners.",
+        "Five-second snapshots can miss short-lived allocations; maxima are sampled, not high-water counters.",
+        "Client overflow_policy=reject and announce-parser/queue-rejection warnings occur; zero poll/phase errors do not establish delivery.",
+        "Initial file-cache ownership and unrelated host work are not controlled; both daemon processes use the same allocator binary.",
+        "First pass removes 600000 peer-history rows and 75000 payloads; subsequent passes remove no rows without fresh-message load.",
+        "The final partial window is reported separately and excluded from full-window gates; no multi-hour production acceptance."
+      ],
+      "observed_complete_windows": 4,
+      "observed_sample_span_secs": 3599.2069175049837,
+      "packet_hash_rate_per_sec": 1.9671000201644273,
+      "packet_hashes_first": 0,
+      "packet_hashes_last": 7080,
+      "phase_count_assumption": "ingress profile drives announces and SDK polls only; phase runs are scheduled invocations, valid as completed successful passes only with zero phase errors",
+      "post_second_pass_packet_hash_rate_per_sec": 2.0003018571135107,
+      "post_second_pass_windows": [
+        {
+          "anon_median_bytes": 229130240.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 1225.655711296975,
+          "max_sample_gap_secs": 5.0085177999862935,
+          "requested_to_anon_median_ratio": 0.67476247133508,
+          "rust_requested_max_bytes": 154676071,
+          "rust_requested_median_bytes": 154608487.0,
+          "rust_requested_min_bytes": 154608487,
+          "samples": 120,
+          "start_secs": 625.6557112969749,
+          "unclassified_anon_minus_requested_rust_bytes": 74521753.0
+        },
+        {
+          "anon_median_bytes": 243300352.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 1825.655711296975,
+          "max_sample_gap_secs": 5.008408333989792,
+          "requested_to_anon_median_ratio": 0.6357412544968287,
+          "rust_requested_max_bytes": 154679431,
+          "rust_requested_median_bytes": 154676071.0,
+          "rust_requested_min_bytes": 154676071,
+          "samples": 120,
+          "start_secs": 1225.655711296975,
+          "unclassified_anon_minus_requested_rust_bytes": 88624281.0
+        },
+        {
+          "anon_median_bytes": 238131200.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 2425.655711296975,
+          "max_sample_gap_secs": 5.008375290984986,
+          "requested_to_anon_median_ratio": 0.6501090113349279,
+          "rust_requested_max_bytes": 154811239,
+          "rust_requested_median_bytes": 154811239.0,
+          "rust_requested_min_bytes": 154676071,
+          "samples": 120,
+          "start_secs": 1825.655711296975,
+          "unclassified_anon_minus_requested_rust_bytes": 83319961.0
+        },
+        {
+          "anon_median_bytes": 240678912.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 3025.655711296975,
+          "max_sample_gap_secs": 5.007620290998602,
+          "requested_to_anon_median_ratio": 0.6432272678713123,
+          "rust_requested_max_bytes": 154815520,
+          "rust_requested_median_bytes": 154811239.0,
+          "rust_requested_min_bytes": 154811239,
+          "samples": 120,
+          "start_secs": 2425.655711296975,
+          "unclassified_anon_minus_requested_rust_bytes": 85867673.0
+        },
+        {
+          "anon_median_bytes": 235917312,
+          "cadence_coverage_valid": true,
+          "complete": false,
+          "end_secs": 3604.213661090005,
+          "max_sample_gap_secs": 5.008622330002254,
+          "requested_to_anon_median_ratio": 0.6562097443700953,
+          "rust_requested_max_bytes": 154815743,
+          "rust_requested_median_bytes": 154811239,
+          "rust_requested_min_bytes": 154811239,
+          "samples": 115,
+          "start_secs": 3025.655711296975,
+          "unclassified_anon_minus_requested_rust_bytes": 81106073
+        }
+      ],
+      "raw_artifact_root": "target/issue709/heap-3600",
+      "raw_sha256": {
+        "analysis.json": "f82cad3ffd3f10c77e4f46add3012fb23cc7b9815780e92561fc47a2541dfb93",
+        "client.jsonl": "5f060f9e62721d94935c0a2a07b1efb35b57e0adf5b920c6b774785272009b4e",
+        "measurement-environment.json": "1b59d444e7f52927d575975d06f86c1ef6d2259df6ebad00efb8a50419c8339e",
+        "run.json": "289910ab1f500f2975c641f56c9a6821d60343befd7dc4338c0ceaa09250f9c8",
+        "samples.jsonl": "5a3e970a6cb6ba551b1b59bab634f74159eaa7c3323a161ca7590abb423a3cdd"
+      },
+      "requested_flat_definition": "max minus min complete-window median <= 1 MiB; not proof of absence of leaks",
+      "requested_flat_window_gate": true,
+      "resident_owner_80_percent_gate": "unresolved: requested sizes and anon RSS are different measures; no SQLite allowance or residual is credited as an owner",
+      "review_bundle_member_root": "heap-3600/",
+      "run": {
+        "cgroup_dir": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/lxmf-soak-663-3703142-1793212184500409165.scope",
+        "completed": true,
+        "constrained": true,
+        "cpus": "0,1",
+        "daemon_command": [
+          "systemd-run",
+          "--user",
+          "--scope",
+          "-q",
+          "--unit",
+          "lxmf-soak-663-3703142-1793212184500409165",
+          "-p",
+          "MemoryHigh=768M",
+          "-p",
+          "MemoryMax=1G",
+          "taskset",
+          "-c",
+          "0,1",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709/heap-gauge-bin/reticulumd",
+          "--db",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709/heap-3600/work/reticulum.db",
+          "--identity",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709/heap-3600/work/identity",
+          "--config",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709/heap-3600/work/reticulum.toml",
+          "--rpc",
+          "127.0.0.1:44287",
+          "--rpc-unix",
+          "rpc.sock",
+          "--transport",
+          "127.0.0.1:54053",
+          "--announce-interval-secs",
+          "0",
+          "--zmq-rpc-command",
+          "tcp://127.0.0.1:43303",
+          "--zmq-durable-broker",
+          "--zmq-broker-budget-bytes",
+          "6442450944"
+        ],
+        "daemon_pid": 3703259,
+        "duration_secs": 3600,
+        "ended_unix": 1793215990.4405236,
+        "fixture": {
+          "announce_root": {
+            "announces_requested": 100000,
+            "cache_files": 100000,
+            "destination_table_bytes": 13700005,
+            "paths_saved": 100000,
+            "root": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k"
+          },
+          "database": {
+            "budget_bytes": 6442450944,
+            "db_bytes": 1204756480,
+            "entries": 200000,
+            "path": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k/reticulum.db",
+            "payload_bytes": 2048,
+            "peer_history_rows": 600000,
+            "peers": 300,
+            "wal_bytes": 1029748712
+          },
+          "elapsed_secs": 25.89374642,
+          "git_revision": "0ff916997041e576014e85a65f97338931729d8a",
+          "schema": "lxmf-rs-resource-soak-663-fixture-v1",
+          "seed": 663
+        },
+        "fixture_root": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k",
+        "git_revision": "2473e7ef861b0e53b93b3160bc23e99a72e44877",
+        "label": "2473e7ef-heap-cap-musl",
+        "measured_duration_secs": 3604.213661090005,
+        "memory_high": "768M",
+        "memory_max": "1G",
+        "profile": "ingress",
+        "ready_after_secs": 201.6826087750087,
+        "sample_secs": 5,
+        "schema": "lxmf-rs-resource-soak-663-run-v1",
+        "started_unix": 1793212184.5418522
+      },
+      "rust_requested_observed_max_bytes": 156598604,
+      "rust_requested_observed_min_bytes": 151789926,
+      "samples": 720,
+      "schema": "lxmf-rs-709-heap-soak-v1",
+      "sdk_event_log_depth_first": 1,
+      "sdk_event_log_depth_last": 1024,
+      "second_completed_pass_first_observed_secs": 625.6557112969749,
+      "summary": {
+        "cpu_percent_one_core": 4.104515338684899,
+        "elapsed_secs": 3599.2069175049837,
+        "first_minute_median": {
+          "anon_bytes": 206485504.0,
+          "cgroup_anon": 206485504.0,
+          "cgroup_file": 22581248.0,
+          "cgroup_memory_current": 246073344.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 226969600.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 457352.0
+        },
+        "last_minute_median": {
+          "anon_bytes": 235778048.0,
+          "cgroup_anon": 235778048.0,
+          "cgroup_file": 405817344.0,
+          "cgroup_memory_current": 666382336.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 254353408.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 20830752.0
+        },
+        "memory_events_delta": {
+          "high": 251,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "metrics_available": true,
+        "rchar_per_sec": 12742994.697230127,
+        "read_bytes_per_sec": 175143.72206113295,
+        "samples": 720,
+        "syscr_per_sec": 3117.117536486971,
+        "write_lock_wait_ms_delta": 8950.770833,
+        "write_ops_delta": 15383.0
+      },
+      "window_coverage_valid": true
+    },
     "paged-musl": {
       "binary_code_revision": "6ad4a2bfd099eaf089a5a0145ae0ce9bdaadc1a9",
       "binary_sha256": "db9e7ceea0c4f56c5f8af57916a88af9beb949d67c66637bf605078cf23b44c8",
@@ -467,7 +973,547 @@
         "write_ops_delta": 3471.0
       },
       "target": "x86_64-unknown-linux-musl"
+    },
+    "purge-3600": {
+      "adjacent_complete_window_anon_deltas_bytes": [
+        0.0,
+        485376.0,
+        -278528.0
+      ],
+      "adjacent_complete_window_requested_deltas_bytes": [
+        67584.0,
+        135168.0,
+        0.0
+      ],
+      "analysis_script_path": "target/issue709/analyze.py",
+      "analysis_script_sha256": "6cb90b5ecb397ed6bbb0931cf73c38df516332f0bc6f895066c6d96506940916",
+      "anon_observed_max_bytes": 229634048,
+      "anon_observed_min_bytes": 176726016,
+      "anon_peak_sample": {
+        "anon_bytes": 229634048,
+        "elapsed_secs": 2701.5165587270167,
+        "index": 539,
+        "persistence": {
+          "cleanup_bytes_removed_total": 0,
+          "cleanup_duration_ns_total": 140955575,
+          "cleanup_errors_total": 0,
+          "cleanup_examined_total": 45568,
+          "cleanup_last_duration_ns": 1823631,
+          "cleanup_last_success_unix_secs": 1793219932,
+          "cleanup_removed_total": 0,
+          "cleanup_scans_completed_total": 0,
+          "coalesced_triggers_total": 5153,
+          "dropped_triggers_total": 0,
+          "duration_ns_total": 1550808589,
+          "errors_total": 0,
+          "full_verifications_total": 0,
+          "in_flight": true,
+          "last_duration_ns": 193161676,
+          "last_fingerprint_map_len": 100000,
+          "last_kept_entries": 100000,
+          "last_run_unix_secs": 1793219634,
+          "last_tunnel_paths": 2,
+          "records_examined_total": 800016,
+          "runs_total": 8,
+          "skipped_known_total": 800000,
+          "triggers_total": 5162,
+          "verified_unchanged_total": 0,
+          "written_total": 16
+        },
+        "rust_requested_bytes": 213612142
+      },
+      "anon_window_gate": true,
+      "binary_code_revision": "2473e7ef861b0e53b93b3160bc23e99a72e44877",
+      "binary_sha256": "d721b500afb530a8532d554bbf85cb68c72fcdcd2e2b28a20cb9e32c51fe4b05",
+      "binary_target": "x86_64-unknown-linux-musl",
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 1024,
+        "latency_p95_us_max": 2256,
+        "latency_p95_us_median": 710.5,
+        "polls": 35973
+      },
+      "completed": true,
+      "coverage_definition": "all expected complete windows present; 5s nominal cadence, first/last within 10s of edges and every internal gap <= 10s",
+      "duration_override_secs": 3600,
+      "environment_scope": "Both measured daemon and announce peer inherit MIMALLOC_PURGE_DELAY=0 and MIMALLOC_ARENA_EAGER_COMMIT=0; two options and both processes change together.",
+      "expected_complete_windows": 4,
+      "first_minute": {
+        "anon_median_bytes": 177496064.0,
+        "cadence_coverage_valid": true,
+        "complete": true,
+        "end_secs": 60,
+        "max_sample_gap_secs": 5.01332522300072,
+        "requested_to_anon_median_ratio": 0.8567008280251217,
+        "rust_requested_max_bytes": 152137115,
+        "rust_requested_median_bytes": 152061025.0,
+        "rust_requested_min_bytes": 151815525,
+        "samples": 12,
+        "start_secs": 0,
+        "unclassified_anon_minus_requested_rust_bytes": 25435039.0
+      },
+      "first_two_destinations_observed_secs": 245.55689275200712,
+      "full_3600_second_duration_valid": true,
+      "http_request_errors_total": 1,
+      "last_maintenance": {
+        "expiry": {
+          "duration_ns_total": 12587757320,
+          "errors_total": 0,
+          "last_duration_ns": 5282895,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 12539248344,
+          "max_read_bytes": 0,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 0,
+          "rows_deleted_total": 600000,
+          "runs_total": 11
+        },
+        "payload": {
+          "duration_ns_total": 7509934422,
+          "errors_total": 0,
+          "last_duration_ns": 8134966,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 7424125366,
+          "max_read_bytes": 0,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 0,
+          "rows_deleted_total": 75000,
+          "runs_total": 11
+        },
+        "quota": {
+          "duration_ns_total": 21067120,
+          "errors_total": 0,
+          "last_duration_ns": 2045103,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 2272560,
+          "max_read_bytes": 0,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 0,
+          "rows_deleted_total": 0,
+          "runs_total": 11
+        }
+      },
+      "last_minute": {
+        "anon_median_bytes": 194150400,
+        "cadence_coverage_valid": true,
+        "complete": true,
+        "end_secs": 3603.655709260027,
+        "max_sample_gap_secs": 5.012429728987627,
+        "requested_to_anon_median_ratio": 0.7973371726249341,
+        "rust_requested_max_bytes": 154803331,
+        "rust_requested_median_bytes": 154803331,
+        "rust_requested_min_bytes": 154803331,
+        "samples": 11,
+        "start_secs": 3543.655709260027,
+        "unclassified_anon_minus_requested_rust_bytes": 39347069
+      },
+      "last_persistence": {
+        "cleanup_bytes_removed_total": 0,
+        "cleanup_duration_ns_total": 187501357,
+        "cleanup_errors_total": 0,
+        "cleanup_examined_total": 61952,
+        "cleanup_last_duration_ns": 2225322,
+        "cleanup_last_success_unix_secs": 1793220802,
+        "cleanup_removed_total": 0,
+        "cleanup_scans_completed_total": 0,
+        "coalesced_triggers_total": 6943,
+        "dropped_triggers_total": 1,
+        "duration_ns_total": 2180591098,
+        "errors_total": 0,
+        "full_verifications_total": 0,
+        "in_flight": false,
+        "last_duration_ns": 206496849,
+        "last_fingerprint_map_len": 100000,
+        "last_kept_entries": 100000,
+        "last_run_unix_secs": 1793220535,
+        "last_tunnel_paths": 2,
+        "records_examined_total": 1100022,
+        "runs_total": 11,
+        "skipped_known_total": 1100000,
+        "triggers_total": 6956,
+        "verified_unchanged_total": 0,
+        "written_total": 22
+      },
+      "last_transport_tables": {
+        "announce_cache_capacity": 100000,
+        "announce_cache_entries": 100000,
+        "announce_retransmit_entries": 0,
+        "available": true,
+        "fingerprint_map_len": 100000,
+        "link_entries": 0,
+        "packet_cache_hashes": 6957,
+        "packet_cache_tracked": 0,
+        "path_entries": 100002,
+        "peer_crypto": 2,
+        "peer_crypto_removed_total": 0,
+        "random_blob_count": 100128,
+        "single_out_destinations": 100002,
+        "single_out_destinations_removed_total": 0,
+        "tunnel_entries": 1,
+        "tunnel_path_entries": 2
+      },
+      "maintenance_completions": [
+        {
+          "anon_bytes": 188530688,
+          "first_observed_secs": 320.7308849550027,
+          "passes": 1,
+          "rust_requested_bytes": 153004531
+        },
+        {
+          "anon_bytes": 194424832,
+          "first_observed_secs": 621.4206413979991,
+          "passes": 2,
+          "rust_requested_bytes": 154548667
+        },
+        {
+          "anon_bytes": 194613248,
+          "first_observed_secs": 922.1104836690065,
+          "passes": 3,
+          "rust_requested_bytes": 154600579
+        },
+        {
+          "anon_bytes": 193806336,
+          "first_observed_secs": 1222.8420661700075,
+          "passes": 4,
+          "rust_requested_bytes": 154668163
+        },
+        {
+          "anon_bytes": 194719744,
+          "first_observed_secs": 1523.5923382530164,
+          "passes": 5,
+          "rust_requested_bytes": 154668163
+        },
+        {
+          "anon_bytes": 194965504,
+          "first_observed_secs": 1824.3507797520142,
+          "passes": 6,
+          "rust_requested_bytes": 154668163
+        },
+        {
+          "anon_bytes": 195215360,
+          "first_observed_secs": 2120.0710143889883,
+          "passes": 7,
+          "rust_requested_bytes": 154803331
+        },
+        {
+          "anon_bytes": 194813952,
+          "first_observed_secs": 2420.8230671980127,
+          "passes": 8,
+          "rust_requested_bytes": 154803331
+        },
+        {
+          "anon_bytes": 194928640,
+          "first_observed_secs": 2721.624153571989,
+          "passes": 9,
+          "rust_requested_bytes": 154803331
+        },
+        {
+          "anon_bytes": 195006464,
+          "first_observed_secs": 3022.2913527550118,
+          "passes": 10,
+          "rust_requested_bytes": 154803331
+        },
+        {
+          "anon_bytes": 194867200,
+          "first_observed_secs": 3323.0253364249947,
+          "passes": 11,
+          "rust_requested_bytes": 154803331
+        }
+      ],
+      "maintenance_errors_total": 0,
+      "max_sample_gap_secs": 5.07467231497867,
+      "measured_duration_secs": 3603.655709260027,
+      "measurement_environment": {
+        "daemon_pid": 3754486,
+        "peer_identity_reused_from_control": true,
+        "peer_pid": 3755456,
+        "peer_public_destinations": [
+          "[daemon] delivery destination hash=c92bc0cab768e0171e69d266df83cc6e",
+          "[daemon] propagation destination hash=b7eb74b82ae515bc25ac5df41ac2cad1",
+          "[daemon] control destination hash=76c7e925c6fc78e06ae64e97464dead4"
+        ],
+        "peer_selected_environment": {
+          "LXMD_PROPAGATION_NODE": "true",
+          "MIMALLOC_ARENA_EAGER_COMMIT": "0",
+          "MIMALLOC_PURGE_DELAY": "0",
+          "TOKIO_WORKER_THREADS": "2"
+        },
+        "selected_environment": {
+          "LXMD_PROPAGATION_NODE": "true",
+          "MIMALLOC_ARENA_EAGER_COMMIT": "0",
+          "MIMALLOC_PURGE_DELAY": "0",
+          "TOKIO_WORKER_THREADS": "2"
+        }
+      },
+      "measurement_limits": [
+        "Requested Rust sizes and resident anon are different measures; their signed residual has no named owner.",
+        "Content estimate and configured SQLite targets are not additional measured owners.",
+        "Five-second snapshots can miss short-lived allocations; maxima are sampled, not high-water counters.",
+        "Client overflow_policy=reject and announce-parser/queue-rejection warnings occur; zero poll/phase errors do not establish delivery.",
+        "Initial file-cache ownership and unrelated host work are not controlled; both daemon processes use the same allocator binary.",
+        "First pass removes 600000 peer-history rows and 75000 payloads; subsequent passes remove no rows without fresh-message load.",
+        "The final partial window is reported separately and excluded from full-window gates; no multi-hour production acceptance.",
+        "Control peer identity alone was reused in a fresh peer directory; public destinations match, but natural learning occurred at 125.116 s versus 245.557 s. Steady ingress matches before the second-pass analysis anchor.",
+        "One incorrectly JSON-encoded HTTP probe was rejected with HTTP 400 before RPC dispatch after paths were already learned; no successful path warmup or request_path dispatch occurred.",
+        "The incomplete fresh-peer trial is preserved separately as discarded setup; it is excluded from full-hour comparisons.",
+        "Both environment settings and both daemon processes change together; this local comparison does not isolate either setting or exclusive mimalloc causality."
+      ],
+      "observed_complete_windows": 4,
+      "observed_sample_span_secs": 3598.6442107699986,
+      "packet_hash_rate_per_sec": 1.93322806938767,
+      "packet_hashes_first": 0,
+      "packet_hashes_last": 6957,
+      "phase_count_assumption": "ingress profile drives announces and SDK polls only; phase runs are scheduled invocations, valid as completed successful passes only with zero phase errors",
+      "post_second_pass_packet_hash_rate_per_sec": 1.9998498135146454,
+      "post_second_pass_windows": [
+        {
+          "anon_median_bytes": 193964032.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 1221.4206413979991,
+          "max_sample_gap_secs": 5.014275589986937,
+          "requested_to_anon_median_ratio": 0.7970579772233235,
+          "rust_requested_max_bytes": 154668163,
+          "rust_requested_median_bytes": 154600579.0,
+          "rust_requested_min_bytes": 154548667,
+          "samples": 120,
+          "start_secs": 621.4206413979991,
+          "unclassified_anon_minus_requested_rust_bytes": 39363453.0
+        },
+        {
+          "anon_median_bytes": 193964032.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 1821.4206413979991,
+          "max_sample_gap_secs": 5.017768960999092,
+          "requested_to_anon_median_ratio": 0.7974064129580478,
+          "rust_requested_max_bytes": 154675026,
+          "rust_requested_median_bytes": 154668163.0,
+          "rust_requested_min_bytes": 154668163,
+          "samples": 120,
+          "start_secs": 1221.4206413979991,
+          "unclassified_anon_minus_requested_rust_bytes": 39295869.0
+        },
+        {
+          "anon_median_bytes": 194449408.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 2421.420641397999,
+          "max_sample_gap_secs": 5.016842276992975,
+          "requested_to_anon_median_ratio": 0.796111094357253,
+          "rust_requested_max_bytes": 154803331,
+          "rust_requested_median_bytes": 154803331.0,
+          "rust_requested_min_bytes": 154668163,
+          "samples": 120,
+          "start_secs": 1821.4206413979991,
+          "unclassified_anon_minus_requested_rust_bytes": 39646077.0
+        },
+        {
+          "anon_median_bytes": 194170880,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 3021.420641397999,
+          "max_sample_gap_secs": 5.07467231497867,
+          "requested_to_anon_median_ratio": 0.7972530741993856,
+          "rust_requested_max_bytes": 213612142,
+          "rust_requested_median_bytes": 154803331,
+          "rust_requested_min_bytes": 154803331,
+          "samples": 119,
+          "start_secs": 2421.420641397999,
+          "unclassified_anon_minus_requested_rust_bytes": 39367549
+        },
+        {
+          "anon_median_bytes": 194179072.0,
+          "cadence_coverage_valid": true,
+          "complete": false,
+          "end_secs": 3603.655709260027,
+          "max_sample_gap_secs": 5.018938714987598,
+          "requested_to_anon_median_ratio": 0.7972194397962722,
+          "rust_requested_max_bytes": 154807612,
+          "rust_requested_median_bytes": 154803331.0,
+          "rust_requested_min_bytes": 154803331,
+          "samples": 116,
+          "start_secs": 3021.420641397999,
+          "unclassified_anon_minus_requested_rust_bytes": 39375741.0
+        }
+      ],
+      "raw_artifact_root": "target/issue709/purge-3600",
+      "raw_sha256": {
+        "analysis.json": "514fd93f2a35e169be74bb7a66f9c27ef15c6123074b98a68375567e19efd0b6",
+        "client.jsonl": "c2c276f80a5b8f300632a44ed876c463600353e4aa4c32afd502e4b353b25655",
+        "measurement-environment.json": "00e0f6de43a7a559c8d9546180071914e510ec5c505cd096ac73f564ec84d6ee",
+        "run.json": "5cf67234fb3741496d1fadba3d8a08aa6242a6893fd8287820e393955457301c",
+        "samples.jsonl": "92476ee55f164c2ce914a4121a22c280cd93a315c7f50cecbfd760dd60efc3d2",
+        "warmup-path-request.json": "8b94e2540ef7b5ed7cf47ea3b47bef11bdf9d130a9e8ff38ce4c769ca94d9701"
+      },
+      "rejected_http_probe": {
+        "encoding": "JSON incorrectly sent to framed MessagePack HTTP endpoint",
+        "first_http_error_observed_secs": 320.7308849550027,
+        "first_two_destinations_observed_secs": 245.55689275200712,
+        "http_status": 400,
+        "outcome": "No retry: propagation destination was already observed from natural admission before this rejected probe; no successful path request sent.",
+        "path_learned_before_probe": true,
+        "request": {
+          "id": 709,
+          "method": "request_path",
+          "params": {
+            "destination": "b7eb74b82ae515bc25ac5df41ac2cad1",
+            "timeout_secs": 5
+          }
+        },
+        "request_path_rpc_calls": 0,
+        "rpc_dispatched": false,
+        "successful_path_warmup": false
+      },
+      "requested_flat_definition": "max minus min complete-window median <= 1 MiB; not proof of absence of leaks",
+      "requested_flat_window_gate": true,
+      "resident_owner_80_percent_gate": "unresolved: requested sizes and anon RSS are different measures; no SQLite allowance or residual is credited as an owner",
+      "review_bundle_member_root": "purge-3600/",
+      "run": {
+        "cgroup_dir": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/lxmf-soak-663-3754470-1793217060733993874.scope",
+        "completed": true,
+        "constrained": true,
+        "cpus": "0,1",
+        "daemon_command": [
+          "systemd-run",
+          "--user",
+          "--scope",
+          "-q",
+          "--unit",
+          "lxmf-soak-663-3754470-1793217060733993874",
+          "-p",
+          "MemoryHigh=768M",
+          "-p",
+          "MemoryMax=1G",
+          "taskset",
+          "-c",
+          "0,1",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709/heap-gauge-bin/reticulumd",
+          "--db",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709/purge-3600/work/reticulum.db",
+          "--identity",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709/purge-3600/work/identity",
+          "--config",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709/purge-3600/work/reticulum.toml",
+          "--rpc",
+          "127.0.0.1:36317",
+          "--rpc-unix",
+          "rpc.sock",
+          "--transport",
+          "127.0.0.1:56255",
+          "--announce-interval-secs",
+          "0",
+          "--zmq-rpc-command",
+          "tcp://127.0.0.1:57393",
+          "--zmq-durable-broker",
+          "--zmq-broker-budget-bytes",
+          "6442450944"
+        ],
+        "daemon_pid": 3754486,
+        "duration_secs": 3600,
+        "ended_unix": 1793220836.7992897,
+        "fixture": {
+          "announce_root": {
+            "announces_requested": 100000,
+            "cache_files": 100000,
+            "destination_table_bytes": 13700005,
+            "paths_saved": 100000,
+            "root": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k"
+          },
+          "database": {
+            "budget_bytes": 6442450944,
+            "db_bytes": 1204756480,
+            "entries": 200000,
+            "path": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k/reticulum.db",
+            "payload_bytes": 2048,
+            "peer_history_rows": 600000,
+            "peers": 300,
+            "wal_bytes": 1029748712
+          },
+          "elapsed_secs": 25.89374642,
+          "git_revision": "0ff916997041e576014e85a65f97338931729d8a",
+          "schema": "lxmf-rs-resource-soak-663-fixture-v1",
+          "seed": 663
+        },
+        "fixture_root": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k",
+        "git_revision": "2473e7ef861b0e53b93b3160bc23e99a72e44877",
+        "label": "2473e7ef-heap-cap-musl-purge-zero-fixed-peer",
+        "measured_duration_secs": 3603.655709260027,
+        "memory_high": "768M",
+        "memory_max": "1G",
+        "profile": "ingress",
+        "ready_after_secs": 172.37713228698703,
+        "sample_secs": 5,
+        "schema": "lxmf-rs-resource-soak-663-run-v1",
+        "started_unix": 1793217060.7636435
+      },
+      "rust_requested_observed_max_bytes": 213612142,
+      "rust_requested_observed_min_bytes": 151815525,
+      "samples": 719,
+      "schema": "lxmf-rs-709-heap-soak-v1",
+      "sdk_event_log_depth_first": 1,
+      "sdk_event_log_depth_last": 1024,
+      "second_completed_pass_first_observed_secs": 621.4206413979991,
+      "summary": {
+        "cpu_percent_one_core": 4.090707260235143,
+        "elapsed_secs": 3598.6442107699986,
+        "first_minute_median": {
+          "anon_bytes": 177496064.0,
+          "cgroup_anon": 177496064.0,
+          "cgroup_file": 26136576.0,
+          "cgroup_memory_current": 206446592.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 198320128.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 494432.0
+        },
+        "last_minute_median": {
+          "anon_bytes": 194150400.0,
+          "cgroup_anon": 194150400.0,
+          "cgroup_file": 64960512.0,
+          "cgroup_memory_current": 263768064.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 214974464.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 20814272.0
+        },
+        "memory_events_delta": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "metrics_available": true,
+        "rchar_per_sec": 12727315.925516289,
+        "read_bytes_per_sec": 0.0,
+        "samples": 719,
+        "syscr_per_sec": 3113.284988404779,
+        "write_lock_wait_ms_delta": 7150.017987,
+        "write_ops_delta": 15137.0
+      },
+      "window_coverage_valid": true
     }
   },
-  "schema": "lxmf-rs-663-local-comparison-v1"
+  "review_bundle": {
+    "bytes": 1087840,
+    "discarded_setup_members": "purge-unmatched-peer/",
+    "frozen_analysis": "analyze.py",
+    "frozen_harness": "tools/scripts/resource_soak_663.py",
+    "full_run_members": {
+      "heap-3600": "heap-3600/",
+      "purge-3600": "purge-3600/"
+    },
+    "manifest": "MANIFEST.json",
+    "path": "docs/goals/p0-2026-10-28-663-608-609-625/evidence/709-heap-soak-evidence.tar.gz",
+    "sha256": "272d6e3f23267b8e4bc1450296c7da8577a4dd1357b76fae36f06e41c56fa301",
+    "verification": "All 31 member hashes verified; exact analysis replay of both full runs and discarded setup using only extracted files."
+  },
+  "schema": "lxmf-rs-663-local-comparison-v1",
+  "soak_client_binary_note": "The same existing prebuilt resource_soak_663_client executable was reused without rebuilding across these #709 runs; no current-source build provenance is inferred for that client.",
+  "soak_client_binary_sha256": "abcc940bbe1c503135aef9ab90811049e6ff3b2e1896d15228b591daa12681eb"
 }
