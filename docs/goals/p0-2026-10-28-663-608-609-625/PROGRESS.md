@@ -4,8 +4,8 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 
 | Item | Issue | State | Branch / PR / head | Evidence |
 | --- | --- | --- | --- | --- |
-| 1. Attribute and bound daemon memory | #663 | Implemented; soak pending | `corvo/663-bound-daemon-memory` | 1,068 transport tests; provider regression; capacity red/green |
-| 2. systemd readiness notification | #663 | Not started | | |
+| 1. Attribute and bound daemon memory | #663 | Implemented; soak pending | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,068 transport tests; provider regression; capacity red/green |
+| 2. systemd readiness notification | #663 | Locally verified | `corvo/663-systemd-readiness` | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
 | 3. Maintenance-pass metrics and quota paging | #663 | Not started | | |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
@@ -47,3 +47,10 @@ Plan corrections: prepared SINGLE proof recipients and endpoint/backchannel link
 must also survive cleanup; incoming links target our local destination, so retain
 the identified peer's same-name destination. Blob waste is bounded 2x, not
 exponential. Fingerprint length already has an authoritative save-report gauge.
+
+Item 2 runbook deviation: the existing lxmd-systemd example starts a launcher,
+so making that unit `Type=notify`/`NotifyAccess=main` would reject the child's
+notification. A direct-daemon notify unit is documented there and in the daemon
+operations guide; the combined launcher stays simple. RPC bind completion is
+also gated because `is_ready()` alone checks only ZeroMQ, and is initially true
+when no ZeroMQ endpoint is configured. SIGTERM uses the graceful SIGINT path.

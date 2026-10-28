@@ -50,6 +50,11 @@ hashes directly. Occupancy and removal counters accompany the existing fingerpri
 save gauge. Local regressions cover these lifetimes; sustained production
 resource acceptance remains open.
 
+The #663 readiness increment sends systemd READY only after configured RPC and
+ZeroMQ binds; SIGINT/SIGTERM send STOPPING before graceful shutdown. Datagram
+regressions cover filesystem/abstract sockets, delayed readiness and cancellation.
+Direct daemon service ordering is separate from combined-launcher behavior.
+
 Durable-broker-only daemon bootstrap initializes the identity-capable transport
 without opening a Reticulum listener or creating network interfaces. A focused
 daemon regression imports an SDK identity and verifies its delivery destination

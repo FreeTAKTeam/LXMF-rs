@@ -294,6 +294,11 @@ and removed-entry counters use the existing metrics provider; fingerprint
 occupancy remains `announce_persistence.last_fingerprint_map_len`. Focused
 regressions and the transport suite pass; production acceptance stays open.
 
+The #663 readiness increment notifies systemd after configured RPC and ZeroMQ
+listeners bind, and handles SIGTERM through graceful shutdown. Direct daemon
+units can use `Type=notify` with RCH `After`/`Requires` ordering. The combined
+`lxmd` launcher remains `Type=simple` because its child is not the main PID.
+
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance
 that does not rewrite route snapshots. It also shares cached packet data during

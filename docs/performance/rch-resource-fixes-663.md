@@ -577,3 +577,25 @@ route, local destination, endpoint link and pending no-path receipt, then releas
 the recipient after receipt expiry. The production-shaped ingress before/after
 measurement is recorded separately; no multi-hour or production acceptance is
 claimed from the software tests.
+
+## P0 item 2 — systemd readiness (2026-10-28)
+
+The daemon now sends `READY=1` through optional `NOTIFY_SOCKET` after every
+configured RPC listener binds and existing `RpcDaemon::is_ready()` confirms
+ZeroMQ binds. Both filesystem and Linux abstract datagram sockets use the
+standard library. Shutdown cancels a pending readiness task and sends
+`STOPPING=1`; SIGTERM now follows the same graceful path as SIGINT.
+
+Both daemon build paths share this integration. The direct daemon runbooks use
+`Type=notify`, `NotifyAccess=main`, an explicit restoration startup timeout, and
+RCH `After`/`Requires` ordering. The combined `lxmd` launcher intentionally stays
+`Type=simple`: its child cannot notify under `NotifyAccess=main`.
+
+Socket regressions cover delayed RPC/ZMQ readiness, STOPPING, owner cancellation,
+listener disappearance, retry after a full socket queue, and Linux abstract addressing. A release-binary process check passed with and
+without ZeroMQ: READY received, `/readyz` returned 200, SIGTERM emitted STOPPING
+and exited 0. A real local user systemd `Type=notify` / `NotifyAccess=main`
+service reached active/running with `Result=success`; stopping it through
+systemd's SIGTERM reached inactive with `ExecMainStatus=0`. Logs are under
+`target/issue663/notify-process.json` and `notify-systemd.log`. No RCH production
+deployment was performed.
