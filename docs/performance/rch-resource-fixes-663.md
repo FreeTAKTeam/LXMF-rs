@@ -572,7 +572,7 @@ regression failed at 128 versus 64 before the fix and passed afterwards.
 Hashlist persistence encodes directly from current-generation membership under
 the existing lock, releases it before disk I/O, and preserves Python's raw format.
 
-Validation: transport library suite 1,068 passed / 13 intentionally ignored;
+Validation: transport library suite 1,069 passed / 13 intentionally ignored;
 peer-cache provider regression passed. Paper encoding also recovers persisted recipient keys offline after live cache expiry;
 the real URI encode/decrypt regression covers cached and persisted-only keys.
 The cleanup regression preserves a live
@@ -600,7 +600,7 @@ without ZeroMQ: READY received, `/readyz` returned 200, SIGTERM emitted STOPPING
 and exited 0. A real local user systemd `Type=notify` / `NotifyAccess=main`
 service reached active/running with `Result=success`; stopping it through
 systemd's SIGTERM reached inactive with `ExecMainStatus=0`. Logs are under
-`target/issue663/notify-process.json` and `notify-systemd.log`. No RCH production
+`target/issue663/notify-process-final.json` and `notify-systemd-final.log`. No RCH production
 deployment was performed.
 
 ## P0 item 3 — maintenance attribution and paging gate (2026-10-28)
@@ -643,6 +643,23 @@ A regression first failed with global ordering (removed `id-04097`) and passes
 with the approved age-window rule (`id-00001`). Storage tests verify 5,000-row
 paging and rollback of a failing second page while the committed first page stays
 removed. The original storage error and unknown final count remain observable.
+
+The paged static-musl control (`6ad4a2bf`, SHA-256
+`db9e7ceea0c4f56c5f8af57916a88af9beb949d67c66637bf605078cf23b44c8`)
+completed the same 600 s ingress profile. Payload removed 75,000 rows in 9.10 s
+with 404,541,440 physical read bytes; expiry removed 600,000 rows in 13.99 s with
+226,648,064 bytes; quota took 5.79 ms / 241,664 bytes / zero rows. The full payload
+pass remains slow. Each transaction bounds candidate materialisation/deletion to
+4,096 rows, but rechecks a full indexed size sum to include concurrent writes.
+This is not a constant-time transaction or a demonstrated total-latency reduction.
+
+Its first/last minute medians were anon 267.08 -> 289.90 MiB, RSS 284.15 ->
+298.64 MiB, WAL 0.46 -> 19.87 MiB; MemoryHigh increased 280, max/OOM stayed zero,
+and swap stayed zero. CPU was 6.23% of one core, 5,996 SDK polls had zero errors,
+and write-lock wait increased 9.36 s. This control is the comparator for the
+allocator evaluation, not a passed memory gate. Raw samples, client results,
+summary and report are in `target/issue663/paged-musl/`. GNU and musl results are
+not directly comparable allocator measurements.
 
 The attribution-only run is not a successful memory fix: anon medians rose from
 170.75 to 255.34 MiB, with 476 MemoryHigh events and zero OOM/max events. Table

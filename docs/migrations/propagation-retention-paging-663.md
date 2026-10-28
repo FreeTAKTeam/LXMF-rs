@@ -11,7 +11,9 @@ This replaces global weight sorting, which materialised every inventory row when
 over budget. No schema or data migration is needed. Limits and custody/ACK
 semantics do not change. The low-level library retains caller-owned transaction
 semantics. `MessagesStore` commits each window separately, releases its writer
-and yields to waiting control work before continuing. A failure rolls back its
+and yields to waiting control work before continuing. Each page rechecks the
+current inventory size so concurrent writes remain included; this indexed sum
+still scans all remaining size metadata, so the transaction is not constant-time. A failure rolls back its
 current window while earlier windows stay committed; the error is preserved and
 metrics report the final deleted-row count as unknown rather than zero.
 
