@@ -145,3 +145,38 @@ Swatinem/rust-cache restored a partial cache and cleaned downloaded result files
 from `target/hil/runs`. Cache restoration now runs before downloading/validating
 evidence. The workflow-order regression failed before the reorder and passes
 afterwards; no test, evidence or branch-protection requirement was removed.
+
+## #709 execution contract and task board
+
+Stack #708 is merged at `9d03af87398f082abcf892f50e4f1527c22ccef4`.
+The earlier allocator-retention conclusion and SQLite bound above are superseded
+by the corrected item 1b contract: Cap measures requested Rust bytes; SQLite's
+cache target is neither measured ownership nor a total native-heap bound. A
+signed anon-minus-requested residual stays unclassified. No production memory
+acceptance or issue #663 closure follows from the earlier runs.
+
+Goal/intent: distinguish requested Rust heap growth from resident anon during
+repeated fixture maintenance. Plan: `PLAN.md` item 1b. Truth owners: this progress
+log, comparison evidence, performance report, roadmap and parity matrix.
+Boundary/cutover: the daemon binary replaces direct MiMalloc with unlimited Cap;
+the existing provider registry owns publication, with no parallel counter.
+Acceptance: live endpoint, 3,600 s trace, completed-pass/window statistics and
+qualified ownership outcome. Kill criteria: invalid provenance, early exit or
+missing metrics invalidates the run. Forbidden moves: unsafe/native interposition,
+new memory limits, assumed SQLite ownership or production acceptance claims.
+
+Main agent owns sequential edits to daemon allocator/provider/registration,
+dependency lock and the existing evidence/status documents; other code and the
+fixture are excluded. Input is merged stack #708 plus item 1b. Each row depends
+on the preceding implementation/evidence; read-only review is parallel safe.
+Output is a tested gauge and reviewable measured report, not a new runtime path.
+
+Ordered work on `corvo/709-heap-owner-gauge`:
+
+| Task | State | Evidence / gate |
+| --- | --- | --- |
+| PRE ownership/API review | complete | Independent review confirmed safe unlimited Cap API and corrected attribution/cycle-count assumptions. |
+| Gauge and focused regression | in progress | Existing daemon allocator, metrics registry and provider test only. |
+| Immutable binary and 3,600 s ingress | pending | Same fixture/limits; actual pass/save counts and window medians. |
+| Evidence and software gates | pending | JSON, performance report, roadmap/parity, focused and common checks. |
+| POST reviewer / maintainer / verifier | pending | Check implementation, provenance, arithmetic and qualified outcome claims. |

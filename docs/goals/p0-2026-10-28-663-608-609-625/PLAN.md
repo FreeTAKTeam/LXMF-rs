@@ -139,56 +139,54 @@ loads all `propagation_entries` metadata when over budget
 
 ### 1b. Heap-owner gauge and 60-minute allocator soak (#663 memory gates)
 
-Added 2026-10-28 after items 1-3 (#704-#706) and the draft allocator
-evaluation (#707). The 600 s ingress runs recorded in
-`evidence/663-local-resource-comparison.json` show every transport population
-flat (100,002 recipients, 100,128 blobs, zero removals) while anon still steps
-up after the single maintenance pass, and the step size tracks the allocator:
-glibc +85 MiB, static musl +23 MiB, musl + mimalloc +10 MiB. That is allocator
-retention of transient maintenance work, not a live-object leak. Item 1's two
-gates could not be decided by that evidence: a 10-minute run holds the warm-up
-and exactly one cycle, and the 80 % attribution compares a hand estimate of
-content bytes against total anon, which also holds allocator slack, SQLite,
-stacks and zmq buffers that the estimate cannot name.
+Updated for #709 after stack #708 merged (#704-#707). The 600 s comparisons
+show flat transport populations and retained anon after one maintenance pass.
+They do not establish a repeated-cycle slope, a live-object leak, or exclusive
+allocator causality. The 132.56 MiB table-content estimate omits collection
+capacity, native allocations, stacks and allocator overhead.
 
-Facts that bound the owners without new code: no store sets `PRAGMA
-cache_size`, so the three SQLite connections hold at most the 2 MiB default
-page cache each; SQLite is therefore not a large anon owner. The remainder
-after the content estimate is Rust-heap allocator slack plus runtime, which
-needs one measured number, not a profiler.
+Execution contract (new branch from merged main):
+1. Wrap only the daemon's existing `MiMalloc` allocator in
+   `cap::Cap::new(mimalloc::MiMalloc, usize::MAX)` (`cap = "0.1"`), with no
+   limit changes or unsafe code in this tree. Register
+   `providers.heap.rust_allocated_bytes` in the existing `MetricsProvider`
+   registry. It measures outstanding requested Rust allocation sizes, not
+   resident, reserved or retained pages. The sampler already records it.
+2. Keep measured requested bytes, estimated content and configured SQLite
+   cache targets separate. SQLite's default `cache_size=-2000` suggests
+   2,048,000 bytes per connection, not a hard total-heap bound or measured
+   allocation. Do not credit an assumed 6 MiB owner or add the content estimate
+   to the gauge. Report anon minus requested Rust bytes as a signed,
+   **unclassified** residual; it cannot identify mimalloc retention. The ≥80%
+   resident ownership target remains unresolved unless measurements establish
+   compatible, named owners.
+3. Run 3,600 seconds of ingress after readiness with the same fixture and
+   cgroup limits. Record actual completed maintenance passes and path saves;
+   maintenance waits 300 seconds after completion, so counts are not fixed.
+   Judge adjacent 10-minute anon medians after the second completed pass:
+   growth ≤1 MiB per window, with requested Rust bytes flat across passes.
+   Extend the comparison JSON, performance report and progress log with source
+   revision, binary hash, window statistics and the observed gate outcomes.
+4. If anon grows with flat requested bytes, investigate native allocations,
+   stacks, residency and allocator retention; the gauge alone cannot choose
+   among them. A scoped local trial of `MIMALLOC_PURGE_DELAY=0` and
+   `MIMALLOC_ARENA_EAGER_COMMIT=0` can test the allocator hypothesis before
+   changing production configuration. Growing requested bytes justify profiling
+   live Rust owners once transient work and intentional capacity are excluded.
 
-Work (on the #707 branch; it stays draft until step 3 is recorded):
-1. Rust-heap gauge: wrap the daemon allocator in `cap::Cap<MiMalloc>`
-   (`cap = "0.1"`, safe `allocated()` API, no `unsafe` in this tree) and
-   expose `providers.heap.rust_allocated_bytes` through the existing
-   `MetricsProvider` registry in `persistence_metrics.rs`. Two lines in
-   `main.rs`, one provider. The soak sampler already stores every `/metrics`
-   scrape, so no harness change is needed.
-2. Attribution by subtraction, in the report: `anon_bytes` =
-   `rust_allocated_bytes` + allocator retention (anon minus Rust allocated minus
-   the 6 MiB SQLite bound) + runtime. Compare `rust_allocated_bytes` with the
-   132.56 MiB content estimate: if they agree within 10 %, the estimate is
-   validated and the rest is a named owner (allocator retention). Replace
-   item 1's ≥ 80 % estimate gate with: named owners (Rust allocated + SQLite
-   bound) explain ≥ 80 % of anon, measured.
-3. 60-minute mimalloc soak, same fixture and limits as the comparison
-   (`cargo xtask resource-soak-663 -- run --profile ingress --duration-secs
-   3600`): six maintenance passes and twelve path-table saves. Pass: anon
-   median of each 10-minute window after the second maintenance pass grows
-   ≤ 1 MiB per window, and `rust_allocated_bytes` is flat across passes. The
-   slope gate is judged on this run, not on 600 s. Record the run in the
-   comparison JSON and `rch-resource-fixes-663.md`.
-4. Only if step 3 fails with flat `rust_allocated_bytes`: the retention is
-   inside mimalloc; try `MIMALLOC_PURGE_DELAY=0` and `MIMALLOC_ARENA_EAGER_COMMIT=0` by
-   environment in the unit file before touching code. If it fails with growing
-   `rust_allocated_bytes`, a live owner exists and a heap profile is justified.
+Out of scope: production deployment/acceptance, new hard memory limits and
+cgroup file-cache reclaim. Preserve the existing metrics provider boundary,
+allocator choice and fixture. No second metrics framework or native malloc
+interposition.
 
-Out of scope here: the cgroup file-cache reclaim (memory.high events) is
-driven by the fixture's 1.2 GiB database and 1 GiB WAL being read by the prune
-passes; it is addressed by production incremental pruning, not by this item.
+Tests: registered provider snapshot contains a positive numeric gauge; observe
+it on the real `/metrics` endpoint. Requested bytes below resident anon may
+occur in this fixture but is not a universal invariant (reserved buffers may
+be nonresident). Run focused daemon tests and the common software gates.
 
-Tests: provider snapshot test asserting `rust_allocated_bytes` is positive and
-below `anon_bytes`; no other code.
+References: [Cap requested-byte API](https://docs.rs/cap/0.1.2/cap/struct.Cap.html),
+[SQLite cache target](https://www.sqlite.org/pragma.html#pragma_cache_size),
+[SQLite memory owners](https://www.sqlite.org/malloc.html).
 
 ### 4. IFAC: alias fix, CI wiring, evidence refresh (#608)
 

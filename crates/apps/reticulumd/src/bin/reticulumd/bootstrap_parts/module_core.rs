@@ -304,6 +304,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         outbound_bridge,
         announce_bridge,
     ));
+    daemon.register_metrics_provider(
+        "heap",
+        Arc::new(crate::persistence_metrics::HeapMetricsProvider),
+    );
     record_restored_path_identities(daemon.as_ref(), &restored_path_identities);
     configure_startup_rpc_token_auth(&args, daemon.as_ref());
     enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());

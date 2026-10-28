@@ -1,5 +1,5 @@
-//! Metrics providers owned by the daemon binary for issue 663: announce/path
-//! persistence costs and transport table occupancy. Counts only; no
+//! Metrics providers owned by the daemon binary for issues 663/709: requested
+//! Rust heap bytes, persistence costs and transport table occupancy. No
 //! destinations, packet bytes or file names.
 
 use super::bridge::PeerCrypto;
@@ -11,6 +11,15 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+
+pub(crate) struct HeapMetricsProvider;
+
+impl MetricsProvider for HeapMetricsProvider {
+    fn snapshot(&self) -> JsonValue {
+        // Requested sizes exclude native allocations and allocator overhead/residency.
+        json!({"rust_allocated_bytes": super::GLOBAL_ALLOCATOR.allocated()})
+    }
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct PersistenceMetrics {
@@ -222,6 +231,19 @@ mod tests {
     use rns_transport::identity::PrivateIdentity;
     use rns_transport::packet::Packet;
     use rns_transport::transport::TransportConfig;
+
+    #[test]
+    fn heap_requested_bytes_appear_in_registered_metrics() {
+        let daemon = rns_rpc::RpcDaemon::with_store(
+            rns_rpc::MessagesStore::in_memory().expect("in-memory store"),
+            "heap-metrics-test".into(),
+        );
+        daemon.register_metrics_provider("heap", Arc::new(HeapMetricsProvider));
+        let snapshot = daemon.metrics_snapshot();
+        assert!(snapshot["providers"]["heap"]["rust_allocated_bytes"]
+            .as_u64()
+            .is_some_and(|bytes| bytes > 0));
+    }
 
     #[tokio::test]
     async fn peer_cleanup_and_provider_keep_only_cached_destinations_without_blocking() {
