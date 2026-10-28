@@ -135,3 +135,13 @@ growth is allocator retention of transient maintenance work, not a leak. Item
 cannot be decided from that evidence; item 1b replaces the estimate with a
 measured Rust-heap gauge and judges the slope on a 60-minute run. #704-#706
 stay mergeable on their own merits; #707 stays draft until item 1b is recorded.
+
+## Stack #708 merge preparation
+
+The user requested merging all four PRs on 2026-10-28, including the allocator
+evaluation. #663's failed memory gates and production qualification remain open.
+#707's HIL suites passed all 23 case/profile pairs, but its summary failed twice:
+Swatinem/rust-cache restored a partial cache and cleaned downloaded result files
+from `target/hil/runs`. Cache restoration now runs before downloading/validating
+evidence. The workflow-order regression failed before the reorder and passes
+afterwards; no test, evidence or branch-protection requirement was removed.
