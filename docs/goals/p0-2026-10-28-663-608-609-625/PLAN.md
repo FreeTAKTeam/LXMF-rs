@@ -431,3 +431,11 @@ must contain valid release counters; cumulative values may not regress. The fina
 release attempts/completions must equal all three original phase counts, with
 zero errors and <=100 ms maximum release/lock wait. Missing or malformed metrics
 fail closed. These additional screens do not change the resident/RSS closure gates.
+
+
+Execution superseded by explicit user direction: stop the synthetic candidate
+soak and prepare a Linux real-system test release. Do not restart the one-hour
+trial. The criteria above remain historical predeclared limits, not passing
+evidence. Source `132c692e` is packaged in the experimental draft test release;
+#709/#663 and PR #711 remain open/unmerged. See PROGRESS.md for cancellation
+records, artifact hashes, completed source checks and remaining qualification.

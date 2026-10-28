@@ -999,3 +999,20 @@ operation after successful periodic maintenance. Its source/call counters and
 local performance screens are defined in PLAN.md before acquisition. It is a
 separate reversible intervention, not an assertion that SQLite owns the remaining
 bytes. No failed baseline is discarded and no anchor or acceptance limit changes.
+
+
+The candidate is implemented at `132c692e`, with safe writer-lock/autocommit
+handling and separate attempt/completion/error/duration/lock-wait counters. The
+user canceled synthetic one-hour validation and requested real Linux testing;
+no attempt reached a periodic release, so candidate RSS/performance is unverified.
+The [stopped-candidate bundle](../goals/p0-2026-10-28-663-608-609-625/evidence/709-stopped-candidate-evidence.tar.gz)
+retains the cancellation history, including the clarification that earlier stops
+were deliberate human requests. The baseline and all its failed gates remain.
+
+A [draft Linux x86-64 daemon-only field-test release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/untagged-2fb4378c2ccd9b23eac9)
+packages that exact static-musl binary with checksums, BUILDINFO and install/rollback
+instructions. Binary SHA-256 is
+`b6d622812040d66f19b82e0883f47693cdfab3a1649acd48a3096b201205828a`.
+All 27 runnable hosted source checks and packaged startup checks pass. This is an
+unmerged experimental candidate, not stable promotion or real-system acceptance;
+#709/#663 remain open. No further synthetic soak is scheduled.

@@ -1,4 +1,26 @@
 {
+  "candidate_field_test": {
+    "archive_sha256": "7f98a7b779fb91759c061b7973d3c25b6940e9506f69e291ff205832e7951a17",
+    "binary_sha256": "b6d622812040d66f19b82e0883f47693cdfab3a1649acd48a3096b201205828a",
+    "candidate_acceptance": null,
+    "meaning": "Human-directed cancellations, not candidate-policy observations; no restart. Baseline ownership verified; RSS failure and #709/#663 remain open. Source tests/27 runnable hosted checks and packaged startup pass; real-system qualification pending.",
+    "periodic_release_calls_observed": 0,
+    "release_is_draft": true,
+    "release_tag": "reticulumd-test-0.16.0-linux-132c692e.1",
+    "release_url": "https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/untagged-2fb4378c2ccd9b23eac9",
+    "source_pr": "https://github.com/FreeTAKTeam/LXMF-rs/pull/711",
+    "source_revision": "132c692e80330bf0bf9fd75ae93607f0b1ab552d",
+    "status": "user-canceled-synthetic-soak; draft Linux field-test release prepared",
+    "stopped_attempts": 4,
+    "stopped_evidence": {
+      "bytes": 96285,
+      "hashed_members": 64,
+      "path": "709-stopped-candidate-evidence.tar.gz",
+      "sha256": "729ced4f8cb880390d5f80ec4a3ad7fb9ae18fdd29d31d1c6a7799baa6f6262a"
+    },
+    "timed_attempt_captures": 10,
+    "timed_attempt_secs": 46.16354634898016
+  },
   "content_estimate": {
     "announce_entry_with_packet_and_148byte_payload": 396,
     "estimated_content_bytes": 139000000,

@@ -1,5 +1,10 @@
 # P0 closure progress (#663, #608, #609, #625)
 
+**User direction (2026-10-28):** Cancel the 60-minute candidate soak and prepare a
+Linux test release for a real system. The interrupted candidate is not acceptance
+evidence; #709 and #663 remain open. Draft test release preparation is recorded in
+`/home/pgiuseppe/Documents/LXMF-rs-release-evidence/reticulumd-test-0.16.0-linux-132c692e.1`.
+
 Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 
 | Item | Issue | State | Branch / PR / head | Evidence |
@@ -7,7 +12,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | 1. Attribute and bound daemon memory | #663 | Implemented; memory acceptance open | [PR #704](https://github.com/FreeTAKTeam/LXMF-rs/pull/704) | 1,069 transport tests; provider/capacity regressions; completed soaks fail memory gates |
 | 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
 | 3. Maintenance-pass metrics and quota paging | #663 | Implemented; software gates passed; resource acceptance open | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
-| 1b. Heap-owner gauge and 60-minute allocator soak | #709 / #663 | Resident attribution verified; tagged RSS gate open | [#710](https://github.com/FreeTAKTeam/LXMF-rs/pull/710), [#711](https://github.com/FreeTAKTeam/LXMF-rs/pull/711) | Tagged full hour: all 593 post-second-pass captures >=91.203%; RSS +2.328 MiB fails; separately predeclared cache-release candidate pending |
+| 1b. Heap-owner gauge and 60-minute allocator soak | #709 / #663 | Resident attribution verified; tagged RSS gate open | [#710](https://github.com/FreeTAKTeam/LXMF-rs/pull/710), [#711](https://github.com/FreeTAKTeam/LXMF-rs/pull/711) | Tagged full hour: all 593 post-second-pass captures >=91.203%; RSS +2.328 MiB fails; cache-release soak canceled by user; Linux field-test draft prepared |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
@@ -365,5 +370,41 @@ regressing cumulative source counters, inconsistent release totals/maxima, missi
 calls and all declared regression violations. Its adversarial self-checks pass.
 `evidence/709-cache-release-criteria.json` records its hash, the unchanged frozen
 analyzer and baseline inputs, exact limits and the pre-acquisition timestamp.
-No candidate observations are used to select these limits. Acquisition is pending;
-this source checkpoint does not establish the hypothesis or authorize shipping it.
+No candidate observations were used to select these limits. The user canceled
+synthetic validation and requested a Linux field-test release; this source
+checkpoint does not establish the hypothesis or authorize stable promotion.
+
+
+### User-directed stop and Linux field-test release
+
+The user explicitly stopped synthetic one-hour candidate validation and asked for
+real Linux testing. Do not restart the canceled soak. The side conversation's
+confirmed direction was relayed to the main chat after three interrupted attempts;
+initial speculation about unexplained harness failures was incorrect. The fourth
+attempt was stopped on receipt. Only the first attempt acquired samples (ten over
+46.164 s); the other three stopped before readiness. No attempt reached periodic
+maintenance or a cache-release call. All have `completed=false`; no candidate
+RSS/performance or shipping verdict exists. The task-owned processes are stopped.
+
+The [stopped-candidate bundle](evidence/709-stopped-candidate-evidence.tar.gz)
+preserves all attempts, cancellation clarification, signal/service history,
+frozen candidate criteria/build provenance and startup/package validation. It is
+96,285 bytes, SHA-256
+`729ced4f8cb880390d5f80ec4a3ad7fb9ae18fdd29d31d1c6a7799baa6f6262a`,
+with 64 hashed members. Fresh stored-capture replay and independent final review
+pass; all four attempts remain incomplete. The baseline bundle and failed RSS gate remain
+unchanged. #709 and #663 stay open; PR #711 stays draft and unmerged.
+
+The [draft Linux x86-64 daemon-only test release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/untagged-2fb4378c2ccd9b23eac9)
+is `reticulumd-test-0.16.0-linux-132c692e.1`, bound to source
+`132c692e80330bf0bf9fd75ae93607f0b1ab552d`. It packages the experimental safe
+SQLite pager-cache release and diagnostic mimalloc VMA-name hook, with no stable
+promotion. Binary SHA-256 is
+`b6d622812040d66f19b82e0883f47693cdfab3a1649acd48a3096b201205828a`;
+tar.gz SHA-256 is
+`7f98a7b779fb91759c061b7973d3c25b6940e9506f69e291ff205832e7951a17`.
+Fresh authenticated downloads and contained binary/source hashes match. Packaged
+startup passes help/health/readiness, positive heap requests, zero release calls
+with propagation disabled, clean SIGINT exit and socket cleanup. All 27 runnable
+hosted source checks pass, with one intentional publish skip. Real-system load,
+delivery and sustained RSS/performance remain unverified; no deployment occurred.
