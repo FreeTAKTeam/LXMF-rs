@@ -79,7 +79,7 @@ def active_mirrors() -> dict[str, tuple[str, ...]]:
         ".github/workflows/hil-nightly.yml": ("ref: {revision}",),
         ".github/workflows/hil-release.yml": ("ref: {revision}",),
         "tools/benchmarks/python_impl.toml": ('reticulum = "{revision}"',),
-        "xtask/src/hil/runner.rs": ('"python_rns_version".to_string(), "{version}".to_string()', '"{revision}".to_string()'),
+        "xtask/src/hil/run_controller.rs": ('"python_rns_version".to_string(), "{version}".to_string()', '"{revision}".to_string()'),
         "crates/apps/lxmf-cli/tests/version_cli.rs": (
             'PYTHON_RETICULUM_VERSION: &str = "{version}"',
             'PYTHON_RETICULUM_REF: &str = "{revision}"',

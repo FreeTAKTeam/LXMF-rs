@@ -13,8 +13,15 @@ Run the controller from the repository root:
     cargo xtask hil doctor --all
     cargo xtask hil list
     cargo xtask hil run --level pr --all
+    cargo xtask hil run --level pr --all --case python-channel-interop
     cargo xtask hil run --level nightly --profile heltec
     cargo xtask hil report
+
+`--case` selects existing case IDs and accepts repeated or comma-separated
+values. Unknown IDs or cases outside the selected level/profile/suite fail
+before any cases execute. Without `--case`, selection is unchanged. Verify
+partitions all PR cases across isolated runners and validates their combined
+evidence against this inventory before reporting `HIL PR level` as passing.
 
 For a physical profile, the runner environment must provide the profile's
 identity, endpoint, firmware version/hash, executor, and either a reset command or a

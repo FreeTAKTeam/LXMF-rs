@@ -1,13 +1,17 @@
 """Guard the wiring around the tested selector and evaluator."""
 import os
+from collections import Counter
 from pathlib import Path
 import re
 import subprocess
 import unittest
 
 from ci_selection import JOB_IDS
+from hil_pr_evidence import expected_cases
 
 ROOT = Path(__file__).resolve().parents[2]
+SUITES = ["controller-channel", "controller-compatibility", "controller-relay",
+          "controller-reference", "compatibility", "interfaces", "tools"]
 
 
 class WorkflowTests(unittest.TestCase):
@@ -19,7 +23,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_python_suites_run_independently_and_keep_all_checks_required(self):
         suites, _, final = self.verify_suites()
-        self.assertIn("suite: [controller, compatibility, interfaces, tools]", suites)
+        self.assertIn("suite: [" + ", ".join(SUITES) + "]", suites)
         self.assertIn("fail-fast: false", suites)
         self.assertNotIn("    needs:", suites)
         self.assertNotIn("continue-on-error:", suites)
@@ -27,7 +31,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("if: ${{ always() }}", final)
         self.assertIn("needs: python-compat", final)
         self.assertIn("SUITES_RESULT: ${{ needs.python-compat.result }}", final)
-        command = final.split("        run: ", 1)[1].strip()
+        self.assertIn('hil_pr_evidence.py target/hil/runs --commit "$GITHUB_SHA"', final)
+        self.assertIn("pattern: hil-pr-controller-*-${{ github.run_id }}", final)
+        self.assertIn("name: hil-pr-${{ github.run_id }}", final)
+        command = re.search(r"^        run: (.+)$", final, re.M).group(1)
         for status in ["success", "failure", "cancelled", "skipped", "", "pending"]:
             with self.subTest(status=status):
                 result = subprocess.run(
@@ -37,17 +44,23 @@ class WorkflowTests(unittest.TestCase):
 
     def test_python_test_commands_belong_to_exactly_one_suite(self):
         _, blocks, _ = self.verify_suites()
-        assigned = {suite: [] for suite in ["controller", "compatibility", "interfaces", "tools"]}
+        assigned = {suite: [] for suite in SUITES}
         for block in blocks:
             if "        run:" not in block or "        if:" not in block:
                 continue
-            matches = re.findall(r"matrix.suite == '([a-z]+)'", block)
+            matches = re.findall(r"matrix.suite == '([a-z-]+)'", block)
+            if "startsWith(matrix.suite, 'controller-')" in block:
+                continue
             self.assertEqual(len(matches), 1, block)
             self.assertIn(matches[0], assigned)
             assigned[matches[0]].append(block)
         for suite, checks in assigned.items():
             self.assertTrue(checks, suite)
-        self.assertTrue(any("hil run --level pr --all" in b for b in assigned["controller"]))
+        selected = Counter()
+        for suite in SUITES[:4]:
+            command = next(b for b in assigned[suite] if "hil run --level pr --all" in b)
+            selected.update(re.findall(r"--case ([a-z0-9-]+)", command))
+        self.assertEqual(selected, Counter({case: 1 for _, case in expected_cases(ROOT)}))
         self.assertTrue(any("python_compat_matrix.py" in b and "--all" in b
                             for b in assigned["compatibility"]))
         for block in blocks:
@@ -68,7 +81,6 @@ class WorkflowTests(unittest.TestCase):
         self.assertLess(suites.index("dtolnay/rust-toolchain@stable"), suites.index(cache))
         self.assertLess(suites.index(cache), suites.index("cargo test"))
         expected = {
-            "hil-pr": "controller",
             "python-compat-matrix": "compatibility",
             "python-behavioral-inventory": "interfaces",
             "python-rust-wire-conformance": "interfaces",
@@ -76,10 +88,21 @@ class WorkflowTests(unittest.TestCase):
             "pipe-fake-subprocess": "interfaces",
         }
         uploads = [b for b in blocks if "uses: actions/upload-artifact@v4" in b]
-        self.assertEqual(len(uploads), len(expected))
+        self.assertEqual(len(uploads), len(expected) + 1)
+        shard_upload = next(b for b in uploads if "name: hil-pr-${{ matrix.suite }}-" in b)
+        self.assertIn("always() && startsWith(matrix.suite, 'controller-')", shard_upload)
         for name, suite in expected.items():
             block = next(b for b in uploads if f"name: {name}-${{{{ github.run_id }}}}" in b)
             self.assertIn("always() && matrix.suite == '" + suite + "'", block)
+
+    def test_hil_setup_is_bounded_and_media_setup_only_runs_for_tools(self):
+        _, blocks, _ = self.verify_suites()
+        install = next(b for b in blocks if "ci-install-hil-deps.sh" in b)
+        self.assertIn("timeout-minutes: 5", install)
+        for name in ["Install pinned ImageMagick", "Smoke-test pinned ImageMagick"]:
+            block = next(b for b in blocks if name in b)
+            self.assertIn("matrix.suite == 'tools'", block)
+            self.assertIn("timeout-minutes:", block)
 
     def test_every_ci_job_is_a_final_dependency(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text()
