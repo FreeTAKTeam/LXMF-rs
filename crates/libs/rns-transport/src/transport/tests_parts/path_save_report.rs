@@ -27,6 +27,7 @@ async fn path_save_report_splits_written_skipped_and_verified_records() {
     assert_eq!(tables.path_entries, 1);
     assert_eq!(tables.single_out_destinations, 1);
     assert_eq!(tables.random_blob_count, 1);
+    assert_eq!(tables.fingerprint_map_len, Some(1));
     assert!(tables.announce_retransmit_entries + tables.announce_cache_entries >= 1);
     assert_eq!(tables.announce_cache_capacity, 100_000);
     assert_eq!(transport.table_occupancy_now().expect("tables idle"), tables);
@@ -47,6 +48,7 @@ async fn restore_seeds_canonical_cache_fingerprints() {
     let restored = Transport::new(config);
     assert_eq!(*restored.iface_manager().lock().await.new_channel(16).address(), iface);
     assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 1);
+    assert_eq!(restored.table_occupancy_now().expect("restored tables").fingerprint_map_len, Some(1), "restored fingerprints are visible before the first save");
     let report = restored.save_reticulum_path_table_report(temp.path()).await.expect("save restored");
     assert_eq!(report.skipped_known, 1, "validated restore needs no file open on save: {report:?}");
     assert_eq!(report.written, 0);

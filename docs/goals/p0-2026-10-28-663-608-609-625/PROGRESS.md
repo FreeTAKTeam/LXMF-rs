@@ -46,4 +46,5 @@ weakened receipt/TTL/quota semantics, production acceptance from local evidence.
 Plan corrections: prepared SINGLE proof recipients and endpoint/backchannel links
 must also survive cleanup; incoming links target our local destination, so retain
 the identified peer's same-name destination. Blob waste is bounded 2x, not
-exponential. Fingerprint length already has an authoritative save-report gauge.
+exponential. Live fingerprint occupancy reads the existing persistence state;
+the earlier save-report gauge alone missed restored entries before the first save.

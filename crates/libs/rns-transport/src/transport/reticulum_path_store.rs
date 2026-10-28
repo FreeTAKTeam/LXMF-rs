@@ -16,6 +16,13 @@ pub(super) struct PathTablePersistence {
     state: tokio::sync::Mutex<Option<AnnounceCacheState>>,
 }
 
+impl PathTablePersistence {
+    pub(super) fn fingerprint_map_len_now(&self) -> Option<usize> {
+        let state = self.state.try_lock().ok()?;
+        state.as_ref().map(|state| state.files.len())
+    }
+}
+
 impl Default for PathTablePersistence {
     fn default() -> Self {
         Self { save_gate: tokio::sync::Semaphore::new(1), state: tokio::sync::Mutex::new(None) }
