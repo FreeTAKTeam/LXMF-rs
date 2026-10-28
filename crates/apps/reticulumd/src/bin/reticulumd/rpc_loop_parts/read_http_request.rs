@@ -387,7 +387,7 @@ mod rpc_loop_tests {
             let task_path = path.clone();
             let task =
                 tokio::spawn(
-                    async move { run_unix_rpc_loop(task_path, daemon, shutdown_rx).await },
+                    async move { run_unix_rpc_loop(task_path, daemon, shutdown_rx, watch::channel(0).0).await },
                 );
 
             assert!(wait_for_unix_connect(&path).await, "unix listener did not become ready");

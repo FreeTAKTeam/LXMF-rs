@@ -73,6 +73,7 @@ mod link_packet_receipt;
 mod link_table;
 mod packet_cache;
 pub use link_packet_receipt::LinkPacketReceipt;
+mod destination_cache;
 mod packet_disk_cache;
 mod path_requests;
 mod path_table;
@@ -258,6 +259,7 @@ pub(crate) struct TransportHandler {
     single_in_destinations: HashMap<AddressHash, Arc<Mutex<SingleInputDestination>>>,
     single_in_destination_app_data: HashMap<AddressHash, Vec<u8>>,
     single_out_destinations: HashMap<AddressHash, Arc<Mutex<SingleOutputDestination>>>,
+    single_out_destinations_removed_total: u64,
     blackholed_identities: HashMap<AddressHash, Option<f64>>,
 
     announce_limits: AnnounceLimits,

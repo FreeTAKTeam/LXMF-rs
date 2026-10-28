@@ -44,6 +44,7 @@ ingress profile for #663, hosted Verify/HIL runs for #608/#609, per-PR
 | 1. Attribute and bound daemon memory | #663 | M | - |
 | 2. systemd readiness notification | #663 | S | - |
 | 3. Maintenance-pass metrics and quota paging | #663 | M | 1 |
+| 1b. Heap-owner gauge and 60-minute allocator soak | #663 | S | 1, 3 |
 | 4. IFAC: alias fix, CI wiring, evidence refresh | #608 | S | - |
 | 5. IFAC: remaining carrier-family traces | #608 | M | 4 |
 | 6. Designated no_std core and seeded checks | #625 | M | - |
@@ -135,6 +136,59 @@ loads all `propagation_entries` metadata when over budget
    window; cross-window ordering is by age.
 4. Gate: only ship 2 and 3 if the item 1 soak shows `storage.maintenance`
    quota or payload phases above 1 s or `read_bytes` above 200 MiB per pass.
+
+### 1b. Heap-owner gauge and 60-minute allocator soak (#663 memory gates)
+
+Added 2026-10-28 after items 1-3 (#704-#706) and the draft allocator
+evaluation (#707). The 600 s ingress runs recorded in
+`evidence/663-local-resource-comparison.json` show every transport population
+flat (100,002 recipients, 100,128 blobs, zero removals) while anon still steps
+up after the single maintenance pass, and the step size tracks the allocator:
+glibc +85 MiB, static musl +23 MiB, musl + mimalloc +10 MiB. That is allocator
+retention of transient maintenance work, not a live-object leak. Item 1's two
+gates could not be decided by that evidence: a 10-minute run holds the warm-up
+and exactly one cycle, and the 80 % attribution compares a hand estimate of
+content bytes against total anon, which also holds allocator slack, SQLite,
+stacks and zmq buffers that the estimate cannot name.
+
+Facts that bound the owners without new code: no store sets `PRAGMA
+cache_size`, so the three SQLite connections hold at most the 2 MiB default
+page cache each; SQLite is therefore not a large anon owner. The remainder
+after the content estimate is Rust-heap allocator slack plus runtime, which
+needs one measured number, not a profiler.
+
+Work (on the #707 branch; it stays draft until step 3 is recorded):
+1. Rust-heap gauge: wrap the daemon allocator in `cap::Cap<MiMalloc>`
+   (`cap = "0.1"`, safe `allocated()` API, no `unsafe` in this tree) and
+   expose `providers.heap.rust_allocated_bytes` through the existing
+   `MetricsProvider` registry in `persistence_metrics.rs`. Two lines in
+   `main.rs`, one provider. The soak sampler already stores every `/metrics`
+   scrape, so no harness change is needed.
+2. Attribution by subtraction, in the report: `anon_bytes` =
+   `rust_allocated_bytes` + allocator retention (anon minus Rust allocated minus
+   the 6 MiB SQLite bound) + runtime. Compare `rust_allocated_bytes` with the
+   132.56 MiB content estimate: if they agree within 10 %, the estimate is
+   validated and the rest is a named owner (allocator retention). Replace
+   item 1's ≥ 80 % estimate gate with: named owners (Rust allocated + SQLite
+   bound) explain ≥ 80 % of anon, measured.
+3. 60-minute mimalloc soak, same fixture and limits as the comparison
+   (`cargo xtask resource-soak-663 -- run --profile ingress --duration-secs
+   3600`): six maintenance passes and twelve path-table saves. Pass: anon
+   median of each 10-minute window after the second maintenance pass grows
+   ≤ 1 MiB per window, and `rust_allocated_bytes` is flat across passes. The
+   slope gate is judged on this run, not on 600 s. Record the run in the
+   comparison JSON and `rch-resource-fixes-663.md`.
+4. Only if step 3 fails with flat `rust_allocated_bytes`: the retention is
+   inside mimalloc; try `MIMALLOC_PURGE_DELAY=0` and `MIMALLOC_ARENA_EAGER_COMMIT=0` by
+   environment in the unit file before touching code. If it fails with growing
+   `rust_allocated_bytes`, a live owner exists and a heap profile is justified.
+
+Out of scope here: the cgroup file-cache reclaim (memory.high events) is
+driven by the fixture's 1.2 GiB database and 1 GiB WAL being read by the prune
+passes; it is addressed by production incremental pruning, not by this item.
+
+Tests: provider snapshot test asserting `rust_allocated_bytes` is positive and
+below `anon_bytes`; no other code.
 
 ### 4. IFAC: alias fix, CI wiring, evidence refresh (#608)
 

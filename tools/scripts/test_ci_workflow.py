@@ -95,6 +95,17 @@ class WorkflowTests(unittest.TestCase):
             block = next(b for b in uploads if f"name: {name}-${{{{ github.run_id }}}}" in b)
             self.assertIn("always() && matrix.suite == '" + suite + "'", block)
 
+    def test_hil_report_cache_cannot_clean_downloaded_evidence(self):
+        _, _, final = self.verify_suites()
+        # A partial Rust-cache hit cleans non-Cargo files under target/.
+        cache = final.index("Swatinem/rust-cache@v2")
+        download = final.index("actions/download-artifact@v4")
+        validate = final.index("hil_pr_evidence.py")
+        report = final.index("cargo xtask hil report")
+        self.assertLess(cache, download)
+        self.assertLess(download, validate)
+        self.assertLess(validate, report)
+
     def test_hil_setup_is_bounded_and_media_setup_only_runs_for_tools(self):
         _, blocks, _ = self.verify_suites()
         install = next(b for b in blocks if "ci-install-hil-deps.sh" in b)

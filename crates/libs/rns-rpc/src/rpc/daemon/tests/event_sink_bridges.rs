@@ -476,3 +476,13 @@ fn sdk_event_sink_recovers_after_error_and_panic_without_rewriting_terminal_rece
         );
     }
 }
+
+#[test]
+fn propagation_maintenance_phases_are_exported_in_daemon_metrics() {
+    let daemon = RpcDaemon::test_instance();
+    let snapshot = daemon.metrics_snapshot();
+    for phase in ["expiry", "quota", "payload"] {
+        assert_eq!(snapshot["storage"]["maintenance"][phase]["runs_total"], 0);
+        assert!(snapshot["storage"]["maintenance"][phase]["last_read_bytes"].is_null());
+    }
+}

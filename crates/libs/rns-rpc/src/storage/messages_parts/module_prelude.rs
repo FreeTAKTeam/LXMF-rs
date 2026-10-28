@@ -58,6 +58,7 @@ struct WriteState {
     write_ops_total: AtomicU64,
     refill_metrics: super::operation_metrics::RefillMetrics,
     wal_metrics: super::operation_metrics::WalMetrics,
+    maintenance_metrics: super::operation_metrics::MaintenanceMetrics,
     /// Broker/control writers currently waiting for `conn`; refill pages yield to them.
     priority_waiters: AtomicUsize,
     /// Signalled once a priority writer holds `conn`, so a yielding refill wakes

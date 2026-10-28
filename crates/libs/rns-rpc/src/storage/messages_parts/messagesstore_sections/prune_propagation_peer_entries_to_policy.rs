@@ -15,12 +15,14 @@ impl MessagesStore {
         let completed_cutoff =
             now.saturating_sub(i64::try_from(completed_ttl_secs).unwrap_or(i64::MAX));
 
-        let mut deleted =
-            self.prune_expired_peer_entry_pages(unhandled_cutoff, completed_cutoff)?;
+        let mut deleted = self.write_state.maintenance_metrics.expiry.measure(
+            || self.prune_expired_peer_entry_pages(unhandled_cutoff, completed_cutoff),
+            |count| *count,
+        )?;
 
         // Keep quota ordering and concurrent-write semantics in the original
         // atomic transaction; only the measured expiry/orphan deletion is paged.
-        deleted = deleted.saturating_add(self.with_write_conn(|conn| {
+        deleted = deleted.saturating_add(self.write_state.maintenance_metrics.quota.measure(|| self.with_write_conn(|conn| {
             let tx = conn.unchecked_transaction()?;
             let mut quota_deleted = tx.execute(
                 "DELETE FROM propagation_peer_entries
@@ -84,7 +86,7 @@ impl MessagesStore {
             }
             tx.commit()?;
             Ok(quota_deleted)
-        })?);
+        }), |count| *count)?);
         Ok(deleted)
     }
 

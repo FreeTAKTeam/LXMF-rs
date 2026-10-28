@@ -286,6 +286,33 @@ announce-persistence counters to the daemon metrics snapshot. The third item
 bounds the refill scan, yields the SQLite writer to broker commands and moves
 WAL truncation to a daemon timer.
 
+The 2026-10-28 #663 closure increment prunes remote recipient and daemon peer
+identity caches after route expiry while preserving pending SINGLE receipts,
+local destinations and live links. It bounds retained random-blob capacity and
+encodes the duplicate hashlist without a second hash snapshot. New occupancy
+and removed-entry counters use the existing metrics provider; live fingerprint
+occupancy is read from the persistence owner without blocking, and the existing
+last-save fingerprint gauge remains available. Focused
+regressions and the transport suite pass; production acceptance stays open.
+
+The #663 readiness increment notifies systemd after configured RPC and ZeroMQ
+listeners bind, and handles SIGTERM through graceful shutdown. Direct daemon
+units can use `Type=notify` with RCH `After`/`Requires` ordering. The combined
+`lxmd` launcher remains `Type=simple` because its child is not the main PID.
+
+The #663 maintenance attribution increment exports separate expiry, quota and
+payload durations, deletion/failure totals and physical-read deltas under
+`storage.maintenance`. The instrumented ingress soak triggered payload paging at
+8.08 s / 379 MiB reads; 4,096-row candidate windows now release the writer between
+transactions. Global payload-priority ordering is intentionally approximate across
+windows, so the LXMRouter parity row records that remaining difference. Quota
+stays atomic after its 1.74 ms / zero-read measurement.
+Physical-read deltas include concurrent process work and exclude cached reads.
+A retained anonymous-memory step with flat table counts activated the conditional
+allocator evaluation. Matched static-musl runs reduced absolute anon but still
+failed the growth/80% ownership gates; the allocator remains a draft evaluation.
+Repeated ratcheting and production memory acceptance are still open.
+
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance
 that does not rewrite route snapshots. It also shares cached packet data during

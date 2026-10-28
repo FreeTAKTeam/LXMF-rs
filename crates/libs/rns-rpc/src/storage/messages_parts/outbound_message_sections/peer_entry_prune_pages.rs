@@ -190,3 +190,69 @@ fn peer_policy_prune_rechecks_candidates_after_a_refresh() {
     assert_eq!(deleted, 0);
     assert_eq!(state, "handled");
 }
+
+#[test]
+fn propagation_maintenance_metrics_attribute_expiry_quota_and_payload() {
+    let store = MessagesStore::in_memory().expect("store");
+    store.with_write_conn(|conn| conn.execute_batch(
+        "INSERT INTO propagation_entries VALUES
+            ('one', 'destination', '00', 100, 1, NULL),
+            ('two', 'destination', '00', 101, 1, NULL);
+         INSERT INTO propagation_peer_entries VALUES
+            ('peer', 'orphan', 'handled', 1),
+            ('peer', 'one', 'unhandled', 100),
+            ('peer', 'two', 'unhandled', 101);"
+    )).expect("maintenance fixture");
+    assert_eq!(store.prune_propagation_peer_entries_to_policy(105, 10, 10, 100, 1).expect("peer prune"), 2);
+    let before_payload = store.operation_metrics_snapshot()["maintenance"].clone();
+    for phase in ["expiry", "quota"] {
+        assert_eq!(before_payload[phase]["runs_total"], 1);
+        assert_eq!(before_payload[phase]["rows_deleted_total"], 1);
+        assert!(before_payload[phase]["last_duration_ns"].as_u64().expect("duration") > 0);
+        assert_eq!(before_payload[phase]["errors_total"], 0);
+    }
+    assert_eq!(before_payload["payload"]["runs_total"], 0);
+    assert_eq!(store.prune_propagation_entries_to_limit_bytes(0).expect("payload prune").len(), 2);
+    let payload = store.operation_metrics_snapshot()["maintenance"]["payload"].clone();
+    assert_eq!(payload["runs_total"], 1);
+    assert_eq!(payload["rows_deleted_total"], 2);
+    assert_eq!(payload["last_rows_deleted"], 2);
+    assert!(payload["last_duration_ns"].as_u64().expect("duration") > 0);
+}
+
+#[test]
+fn payload_prune_releases_writer_between_candidate_windows() {
+    let store = MessagesStore::in_memory().expect("store");
+    seed_payload_prune_windows(&store);
+    let before = store.contention_snapshot().write_ops_total;
+    let removed = store.prune_propagation_entries_to_limit_bytes(0).expect("paged payload prune");
+    assert_eq!(removed.len(), 5000);
+    assert!(store.contention_snapshot().write_ops_total - before >= 2, "each window has its own writer transaction");
+    assert_eq!(store.operation_metrics_snapshot()["maintenance"]["payload"]["rows_deleted_total"], 5000);
+}
+
+#[test]
+fn payload_prune_failure_preserves_prior_committed_pages_and_reports_unknown_count() {
+    let store = MessagesStore::in_memory().expect("store");
+    seed_payload_prune_windows(&store);
+    store.with_write_conn(|conn| conn.execute_batch(
+        "CREATE TRIGGER fail_second_window BEFORE DELETE ON propagation_entries
+         WHEN OLD.transient_id='id-04097' BEGIN SELECT RAISE(ABORT, 'page failure'); END;"
+    )).expect("fault injection");
+    let error = store.prune_propagation_entries_to_limit_bytes(0).expect_err("second page fails");
+    assert!(error.to_string().contains("page failure"));
+    let remaining: i64 = store.with_read_conn(|conn| conn.query_row(
+        "SELECT COUNT(*) FROM propagation_entries", [], |row| row.get(0)
+    )).expect("remaining rows");
+    assert_eq!(remaining, 904, "first page committed, failing page rolled back");
+    let metrics = store.operation_metrics_snapshot()["maintenance"]["payload"].clone();
+    assert_eq!(metrics["errors_total"], 1);
+    assert!(metrics["last_rows_deleted"].is_null());
+}
+
+fn seed_payload_prune_windows(store: &MessagesStore) {
+    store.with_write_conn(|conn| conn.execute_batch(
+        "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<5000)
+         INSERT INTO propagation_entries SELECT printf('id-%05d',x), 'destination', '00', x, 1, NULL FROM n;"
+    )).expect("paged payload fixture");
+}

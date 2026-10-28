@@ -42,6 +42,19 @@ snapshots. The #663 allocation increment shares immutable cached packets during
 saves and preserves copy-on-write response changes. These are software resource
 protections; they do not promote public-network or sustained memory acceptance.
 
+The 2026-10-28 #663 cache-lifetime increment removes expired recipient identities
+while preserving locally registered destinations, endpoint/relay links and
+prepared SINGLE proof contexts. Random-blob storage capacity now follows the
+64-blob reference window, and raw hashlist persistence encodes current-generation
+hashes directly. Occupancy and removal counters accompany the existing fingerprint
+save gauge. Local regressions cover these lifetimes; sustained production
+resource acceptance remains open.
+
+The #663 readiness increment sends systemd READY only after configured RPC and
+ZeroMQ binds; SIGINT/SIGTERM send STOPPING before graceful shutdown. Datagram
+regressions cover filesystem/abstract sockets, delayed readiness and cancellation.
+Direct daemon service ordering is separate from combined-launcher behavior.
+
 Durable-broker-only daemon bootstrap initializes the identity-capable transport
 without opening a Reticulum listener or creating network interfaces. A focused
 daemon regression imports an SDK identity and verifies its delivery destination
