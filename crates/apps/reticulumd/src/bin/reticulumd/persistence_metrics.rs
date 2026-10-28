@@ -194,6 +194,7 @@ impl MetricsProvider for TransportTablesProvider {
                 "single_out_destinations": tables.single_out_destinations,
                 "single_out_destinations_removed_total": tables.single_out_destinations_removed_total,
                 "random_blob_count": tables.random_blob_count,
+                "fingerprint_map_len": tables.fingerprint_map_len,
                 "peer_crypto": peer_crypto,
                 "peer_crypto_removed_total": self.peers_removed_total.load(Ordering::Relaxed),
                 "tunnel_entries": tables.tunnel_entries,

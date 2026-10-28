@@ -290,8 +290,9 @@ The 2026-10-28 #663 closure increment prunes remote recipient and daemon peer
 identity caches after route expiry while preserving pending SINGLE receipts,
 local destinations and live links. It bounds retained random-blob capacity and
 encodes the duplicate hashlist without a second hash snapshot. New occupancy
-and removed-entry counters use the existing metrics provider; fingerprint
-occupancy remains `announce_persistence.last_fingerprint_map_len`. Focused
+and removed-entry counters use the existing metrics provider; live fingerprint
+occupancy is read from the persistence owner without blocking, and the existing
+last-save fingerprint gauge remains available. Focused
 regressions and the transport suite pass; production acceptance stays open.
 
 The #663 readiness increment notifies systemd after configured RPC and ZeroMQ
