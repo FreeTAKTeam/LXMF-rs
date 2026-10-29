@@ -95,12 +95,14 @@ impl MessagesStore {
 
     /// Expired marks come from the `(state, updated_at)` index in bounded pages,
     /// so an idle pass reads a few index pages instead of the whole table (#663).
+    /// Marks whose entry is gone keep their TTL/quota lifetime: the per-row
+    /// orphan join scanned every page, and completed marks must survive a purge.
     fn prune_expired_peer_entry_pages(
         &self,
         unhandled_cutoff: i64,
         completed_cutoff: i64,
     ) -> rusqlite::Result<usize> {
-        let mut deleted = self.sweep_orphan_peer_entries_once(unhandled_cutoff, completed_cutoff)?;
+        let mut deleted = 0usize;
         let states = std::iter::once(("unhandled", unhandled_cutoff))
             .chain(COMPLETED_PEER_ENTRY_STATES.iter().map(|state| (*state, completed_cutoff)));
         for (state, cutoff) in states {
@@ -148,66 +150,6 @@ impl MessagesStore {
             )?;
             rows.collect()
         })
-    }
-
-    /// Marks whose entry is gone are removed with the entry since #663; this
-    /// rowid walk only clears rows left by earlier builds, once per process.
-    fn sweep_orphan_peer_entries_once(
-        &self,
-        unhandled_cutoff: i64,
-        completed_cutoff: i64,
-    ) -> rusqlite::Result<usize> {
-        if self.write_state.orphan_sweep_done.load(Ordering::Relaxed) {
-            return Ok(0);
-        }
-        // A fixed upper bound keeps concurrent arrivals from extending this pass.
-        let upper_rowid = self.with_read_conn(|conn| {
-            conn.query_row("SELECT MAX(rowid) FROM propagation_peer_entries", [], |row| {
-                row.get::<_, Option<i64>>(0)
-            })
-        })?;
-        let mut deleted = 0usize;
-        let mut cursor = i64::MIN;
-        let Some(upper_rowid) = upper_rowid else {
-            self.write_state.orphan_sweep_done.store(true, Ordering::Relaxed);
-            return Ok(0);
-        };
-        loop {
-            let candidates = self.with_read_conn(|conn| {
-                let mut statement = conn.prepare(
-                    "SELECT rowid, updated_at, peer, transient_id
-                     FROM propagation_peer_entries
-                     WHERE rowid >= ?1 AND rowid <= ?2
-                       AND NOT EXISTS (
-                           SELECT 1 FROM propagation_entries e
-                           WHERE e.transient_id = propagation_peer_entries.transient_id
-                       )
-                     ORDER BY rowid LIMIT ?3",
-                )?;
-                let rows = statement.query_map(
-                    rusqlite::params![cursor, upper_rowid, PEER_ENTRY_PRUNE_BATCH as i64],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-                )?;
-                rows.collect::<rusqlite::Result<Vec<PeerEntryCandidate>>>()
-            })?;
-            let Some(&(last_rowid, _, _, _)) = candidates.last() else {
-                break;
-            };
-            let has_more = candidates.len() == PEER_ENTRY_PRUNE_BATCH && last_rowid < upper_rowid;
-            deleted = deleted.saturating_add(self.delete_expired_peer_entry_candidates(
-                &candidates,
-                unhandled_cutoff,
-                completed_cutoff,
-            )?);
-            drop(candidates);
-            let Some(next_cursor) = last_rowid.checked_add(1).filter(|_| has_more) else {
-                break;
-            };
-            self.wait_for_priority_writers();
-            cursor = next_cursor;
-        }
-        self.write_state.orphan_sweep_done.store(true, Ordering::Relaxed);
-        Ok(deleted)
     }
 
     /// Apply the current orphan/TTL predicates to each selected identity.

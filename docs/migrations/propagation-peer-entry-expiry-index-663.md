@@ -8,17 +8,20 @@ whole `propagation_peer_entries` table by rowid and probed the
 table twice for quota. On a full table with nothing to delete that re-read
 roughly the same pages every pass.
 
-Two indexes are added on first open and build once on existing databases:
-`idx_propagation_peer_entries_expiry (state, updated_at)` and
-`idx_propagation_peer_entries_transient (transient_id)`. Expiry now selects each
-state's marks older than its cutoff through the first index in 512-row keyset
-pages ordered by `(updated_at, rowid)`; an idle pass reads a few index pages.
-Deleting a propagation entry removes its peer marks in every state through the
-second index, matching Python, where per-peer handled/unhandled accounting lives
-inside the entry and leaves with it. Earlier builds kept completed marks until
-the next orphan sweep; that sweep now runs once per process start for rows left
-by those builds. Quota counts the table once per pass. TTLs, per-peer and global
-limits, ordering and the writer-release pattern are unchanged.
+One index is added on first open and builds once on existing databases:
+`idx_propagation_peer_entries_expiry (state, updated_at)`. Expiry now selects
+each state's marks older than its cutoff through it in 512-row keyset pages
+ordered by `(updated_at, rowid)`; an idle pass reads a few index pages. The
+per-row orphan join is removed: a mark whose entry is gone now lives until its
+own TTL (30 days for completed marks by default) or the quota, both served by
+the same index, instead of the next pass. This keeps the documented contract
+that completed marks survive a haves purge so reintroduced payloads are not
+re-queued to peers that declared them; earlier builds only honoured it until the
+following pass. Entry deletion still removes the entry's unhandled marks. Quota
+counts the table once per pass. TTLs, per-peer and global limits, ordering and
+the writer-release pattern are unchanged. The peer table may therefore hold up
+to 30 days of completed marks per peer regardless of entry lifetime, bounded by
+`peer_entry_limit` (1,000,000 rows by default).
 
 `storage.maintenance` phases also report `logical_read_bytes_total` and
 `last_logical_read_bytes` from the maintenance thread's `rchar`, because the

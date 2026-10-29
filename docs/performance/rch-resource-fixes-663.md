@@ -919,10 +919,10 @@ quota a near-empty table.
 
 Expiry now uses `idx_propagation_peer_entries_expiry (state, updated_at)` in
 512-row keyset pages; the regression asserts the query plan searches that index
-with no table scan or temporary B-tree. Entry deletion removes marks in every
-state through `idx_propagation_peer_entries_transient`, matching Python's
-entry-held accounting; the orphan join runs once per process. Phases report
-per-thread logical read bytes. Expected production effect: per-pass DB reads
+with no table scan or temporary B-tree. The per-row orphan join is removed:
+marks of deleted entries expire by their TTL or the quota, which also preserves
+the documented completed-mark-across-purge contract that the old sweep voided
+within one pass. Phases report per-thread logical read bytes. Expected production effect: per-pass DB reads
 fall from roughly 175 MiB to a few index pages, so file-cache residency decays
 to the poll path's hot set and stops refilling. Production acceptance remains
 the operator's 24-hour observation on a field-test build.

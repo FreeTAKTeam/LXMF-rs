@@ -59,27 +59,6 @@ fn peer_policy_expiry_page_uses_the_state_index_and_keyset_cursor() {
 }
 
 #[test]
-fn payload_prune_removes_marks_in_every_state_with_the_entry() {
-    let store = MessagesStore::in_memory().expect("store");
-    store
-        .with_write_conn(|conn| {
-            conn.execute_batch(
-                "INSERT INTO propagation_entries VALUES ('gone', 'destination', '00', 1, 1, NULL);
-                 INSERT INTO propagation_peer_entries VALUES
-                    ('p', 'gone', 'handled', 1), ('q', 'gone', 'unhandled', 1);",
-            )
-        })
-        .expect("seed entry with marks");
-    assert_eq!(store.prune_propagation_entries_to_limit_bytes(0).expect("prune").len(), 1);
-    let remaining: i64 = store
-        .with_read_conn(|conn| {
-            conn.query_row("SELECT COUNT(*) FROM propagation_peer_entries", [], |row| row.get(0))
-        })
-        .expect("count marks");
-    assert_eq!(remaining, 0, "completed marks no longer wait for the orphan sweep");
-}
-
-#[test]
 fn peer_policy_prune_deletes_expired_marks_in_bounded_writer_pages() {
     const EXPIRED: usize = 2_048;
     let (_temp, store) = refill_store_on_disk();

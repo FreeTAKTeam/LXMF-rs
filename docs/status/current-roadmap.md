@@ -310,8 +310,8 @@ stays atomic after its 1.74 ms / zero-read measurement.
 Physical-read deltas include concurrent process work and exclude cached reads.
 The 2026-10-29 production residency map attributed the repeated 175 MiB DB
 read to that expiry phase's rowid walk and per-row orphan probe; expiry is now
-served by a `(state, updated_at)` index, entry deletion removes marks in every
-state through a `transient_id` index, and phases report logical read bytes
+served by a `(state, updated_at)` index, orphaned marks expire by TTL or quota
+instead of a per-pass join, and phases report logical read bytes
 (`docs/migrations/propagation-peer-entry-expiry-index-663.md`).
 A retained anonymous-memory step with flat table counts activated the conditional
 allocator evaluation. Matched static-musl runs reduced absolute anon but still

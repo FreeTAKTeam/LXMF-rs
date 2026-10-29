@@ -86,7 +86,9 @@ pub fn prune_propagation_entries_page(
         )?;
         if affected > 0 {
             conn.execute(
-                "DELETE FROM propagation_peer_entries WHERE transient_id = ?1",
+                "DELETE FROM propagation_peer_entries
+                         WHERE transient_id = ?1
+                           AND state = 'unhandled'",
                 params![transient_id],
             )?;
             total = total.saturating_sub(size_bytes);

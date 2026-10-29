@@ -177,7 +177,9 @@ pub fn purge_propagation_entries_for_destination(
         )?;
         if affected > 0 {
             conn.execute(
-                "DELETE FROM propagation_peer_entries WHERE transient_id = ?1",
+                "DELETE FROM propagation_peer_entries
+                         WHERE transient_id = ?1
+                           AND state = 'unhandled'",
                 params![transient_id],
             )?;
             purged = purged.saturating_add(affected);
