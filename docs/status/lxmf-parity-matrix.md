@@ -48,6 +48,13 @@ oldest candidate windows with weight/priority ordering inside each window and
 writer release between pages. Quota remains atomic after a 1.74 ms / zero-read
 measurement. Cross-window ordering follows age; see the retention migration note. Production acceptance remains open.
 
+The 2026-10-29 #663 increment makes peer-entry expiry index-driven: a
+`(state, updated_at)` index serves TTL candidates in keyset pages, the per-row
+orphan join is removed so marks of deleted entries live until their TTL or the
+quota (which also keeps completed marks across a haves purge, as documented
+below), and quota counts once per pass. Phase metrics add per-thread logical
+read bytes. See `docs/migrations/propagation-peer-entry-expiry-index-663.md`.
+
 The subsequent #663 diagnostics increment exports ZeroMQ stage outcomes and
 latency buckets through `/metrics`, with a bounded recent incident ring and
 stable SDK exchange error categories. Existing durability and acknowledgement
