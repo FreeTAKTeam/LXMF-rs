@@ -22,45 +22,61 @@ fn peer_policy_prune_does_not_delete_a_reused_rowid() {
 }
 
 #[test]
-fn peer_policy_prune_keyset_page_respects_captured_upper_rowid() {
+fn peer_policy_expiry_page_uses_the_state_index_and_keyset_cursor() {
     let (_temp, store) = refill_store_on_disk();
     store
         .with_write_conn(|conn| {
-            conn.execute(
-                "INSERT INTO propagation_peer_entries
-                    (rowid, peer, transient_id, state, updated_at)
-                 VALUES (100, 'page-peer', 'before-boundary', 'unhandled', 1)",
-                [],
-            )?;
-            Ok(())
+            conn.execute_batch(
+                "INSERT INTO propagation_peer_entries (rowid, peer, transient_id, state, updated_at)
+                 VALUES (10, 'p', 'a', 'unhandled', 1),
+                        (11, 'p', 'b', 'unhandled', 1),
+                        (12, 'p', 'c', 'unhandled', 2),
+                        (13, 'p', 'd', 'unhandled', 9),
+                        (14, 'p', 'e', 'handled', 1);",
+            )
         })
-        .expect("seed initial row");
-    let upper_rowid = store
+        .expect("seed marks");
+
+    let plan = store
         .with_read_conn(|conn| {
-            conn.query_row("SELECT MAX(rowid) FROM propagation_peer_entries", [], |row| {
-                row.get::<_, Option<i64>>(0)
-            })
+            let mut statement = conn.prepare(&format!("EXPLAIN QUERY PLAN {EXPIRED_PEER_ENTRY_PAGE_SQL}"))?;
+            let rows = statement.query_map(params!["unhandled", 5, i64::MIN, i64::MIN, 512], |row| {
+                row.get::<_, String>(3)
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
         })
-        .expect("capture rowid boundary")
-        .expect("row exists");
-    store
-        .with_write_conn(|conn| {
-            conn.execute(
-                "INSERT INTO propagation_peer_entries
-                    (rowid, peer, transient_id, state, updated_at)
-                 VALUES (101, 'page-peer', 'after-boundary', 'unhandled', 1)",
-                [],
-            )?;
-            Ok(())
-        })
-        .expect("insert row after captured boundary");
+        .expect("explain expiry page")
+        .join(" ");
+    assert!(plan.contains("USING INDEX idx_propagation_peer_entries_expiry"), "{plan}");
+    assert!(!plan.contains("SCAN propagation_peer_entries"), "{plan}");
+    assert!(!plan.contains("TEMP B-TREE"), "{plan}");
 
     let page = store
-        .select_expired_peer_entry_page(i64::MIN, upper_rowid, 5, 5)
-        .expect("select bounded keyset page");
+        .select_expired_peer_entry_page("unhandled", 5, (1, 10))
+        .expect("select keyset page after rowid 10");
+    let ids: Vec<&str> = page.iter().map(|candidate| candidate.3.as_str()).collect();
+    assert_eq!(ids, ["b", "c"], "cursor skips row 10, cutoff skips row 13, state skips row 14");
+}
 
-    assert_eq!(page.len(), 1);
-    assert_eq!(page[0].3, "before-boundary");
+#[test]
+fn payload_prune_removes_marks_in_every_state_with_the_entry() {
+    let store = MessagesStore::in_memory().expect("store");
+    store
+        .with_write_conn(|conn| {
+            conn.execute_batch(
+                "INSERT INTO propagation_entries VALUES ('gone', 'destination', '00', 1, 1, NULL);
+                 INSERT INTO propagation_peer_entries VALUES
+                    ('p', 'gone', 'handled', 1), ('q', 'gone', 'unhandled', 1);",
+            )
+        })
+        .expect("seed entry with marks");
+    assert_eq!(store.prune_propagation_entries_to_limit_bytes(0).expect("prune").len(), 1);
+    let remaining: i64 = store
+        .with_read_conn(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM propagation_peer_entries", [], |row| row.get(0))
+        })
+        .expect("count marks");
+    assert_eq!(remaining, 0, "completed marks no longer wait for the orphan sweep");
 }
 
 #[test]
@@ -210,6 +226,9 @@ fn propagation_maintenance_metrics_attribute_expiry_quota_and_payload() {
         assert_eq!(before_payload[phase]["rows_deleted_total"], 1);
         assert!(before_payload[phase]["last_duration_ns"].as_u64().expect("duration") > 0);
         assert_eq!(before_payload[phase]["errors_total"], 0);
+        if cfg!(target_os = "linux") {
+            assert!(before_payload[phase]["last_logical_read_bytes"].is_u64(), "{phase}");
+        }
     }
     assert_eq!(before_payload["payload"]["runs_total"], 0);
     assert_eq!(store.prune_propagation_entries_to_limit_bytes(0).expect("payload prune").len(), 2);

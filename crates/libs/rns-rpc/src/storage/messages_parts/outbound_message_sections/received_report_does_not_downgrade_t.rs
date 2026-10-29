@@ -322,7 +322,7 @@
     }
 
     #[test]
-    fn purge_propagation_entries_removes_unhandled_marks_but_preserves_completed_state() {
+    fn purge_propagation_entries_removes_marks_in_every_state_like_python() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         let entry = PropagationEntryRecord {
             transient_id: "af".repeat(32),
@@ -353,10 +353,10 @@
             .expect("handled ids")
             .is_empty());
         assert!(
-            store
+            !store
                 .peer_completed_propagation_mark_exists("peer-cleanup", entry.transient_id.as_str())
                 .expect("completed mark"),
-            "completed peer accounting survives payload purge for future reingest"
+            "Python keeps peer accounting inside the entry, so it leaves with the entry (#663)"
         );
         assert!(
             store
@@ -415,9 +415,9 @@
             vec![new.transient_id]
         );
         assert!(
-            store
+            !store
                 .peer_completed_propagation_mark_exists("peer-done", old.transient_id.as_str())
                 .expect("completed mark"),
-            "completed peer accounting should survive propagation storage pruning"
+            "completed accounting leaves with the pruned entry, as in Python (#663)"
         );
     }

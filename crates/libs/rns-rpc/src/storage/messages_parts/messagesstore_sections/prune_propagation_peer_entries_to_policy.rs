@@ -1,5 +1,11 @@
 const PEER_ENTRY_PRUNE_BATCH: usize = 512;
+const COMPLETED_PEER_ENTRY_STATES: [&str; 4] =
+    ["handled", "transferred", "received", "transfer_limited"];
 type PeerEntryCandidate = (i64, i64, String, String);
+const EXPIRED_PEER_ENTRY_PAGE_SQL: &str = "SELECT rowid, updated_at, peer, transient_id
+     FROM propagation_peer_entries
+     WHERE state = ?1 AND updated_at < ?2 AND (updated_at, rowid) > (?3, ?4)
+     ORDER BY updated_at, rowid LIMIT ?5";
 
 impl MessagesStore {
     pub fn prune_propagation_peer_entries_to_policy(
@@ -51,7 +57,7 @@ impl MessagesStore {
             let total_limit = total_limit.max(1);
             if total > total_limit {
                 let excess = total.saturating_sub(total_limit);
-                quota_deleted = quota_deleted.saturating_add(tx.execute(
+                let unhandled_deleted = tx.execute(
                     "DELETE FROM propagation_peer_entries
                      WHERE rowid IN (
                          SELECT rowid
@@ -61,14 +67,11 @@ impl MessagesStore {
                          LIMIT ?1
                      )",
                     rusqlite::params![excess.min(i64::MAX as u64) as i64],
-                )?);
-
-                let remaining: i64 = tx.query_row(
-                    "SELECT COUNT(*) FROM propagation_peer_entries",
-                    [],
-                    |row| row.get(0),
                 )?;
-                let remaining = remaining.max(0) as u64;
+                quota_deleted = quota_deleted.saturating_add(unhandled_deleted);
+
+                // Same transaction, so the count minus the deletions is exact.
+                let remaining = total.saturating_sub(unhandled_deleted as u64);
                 if remaining > total_limit {
                     let completed_excess = remaining.saturating_sub(total_limit);
                     quota_deleted = quota_deleted.saturating_add(tx.execute(
@@ -90,36 +93,106 @@ impl MessagesStore {
         Ok(deleted)
     }
 
-    /// Stream the measured TTL/orphan candidates by rowid so temporary memory is
-    /// bounded to one page even when most of a large peer table has expired.
+    /// Expired marks come from the `(state, updated_at)` index in bounded pages,
+    /// so an idle pass reads a few index pages instead of the whole table (#663).
     fn prune_expired_peer_entry_pages(
         &self,
         unhandled_cutoff: i64,
         completed_cutoff: i64,
     ) -> rusqlite::Result<usize> {
+        let mut deleted = self.sweep_orphan_peer_entries_once(unhandled_cutoff, completed_cutoff)?;
+        let states = std::iter::once(("unhandled", unhandled_cutoff))
+            .chain(COMPLETED_PEER_ENTRY_STATES.iter().map(|state| (*state, completed_cutoff)));
+        for (state, cutoff) in states {
+            let mut cursor = (i64::MIN, i64::MIN);
+            loop {
+                let candidates = self.select_expired_peer_entry_page(state, cutoff, cursor)?;
+                let Some(&(last_rowid, last_updated_at, _, _)) = candidates.last() else {
+                    break;
+                };
+                let has_more = candidates.len() == PEER_ENTRY_PRUNE_BATCH;
+                deleted = deleted.saturating_add(self.delete_expired_peer_entry_candidates(
+                    &candidates,
+                    unhandled_cutoff,
+                    completed_cutoff,
+                )?);
+                drop(candidates);
+                if !has_more {
+                    break;
+                }
+                self.wait_for_priority_writers();
+                cursor = (last_updated_at, last_rowid);
+            }
+        }
+        Ok(deleted)
+    }
+
+    /// Keyset page of one state's expired marks in index order.
+    fn select_expired_peer_entry_page(
+        &self,
+        state: &str,
+        cutoff: i64,
+        (cursor_updated_at, cursor_rowid): (i64, i64),
+    ) -> rusqlite::Result<Vec<PeerEntryCandidate>> {
+        self.with_read_conn(|conn| {
+            let mut statement = conn.prepare_cached(EXPIRED_PEER_ENTRY_PAGE_SQL)?;
+            let rows = statement.query_map(
+                rusqlite::params![
+                    state,
+                    cutoff,
+                    cursor_updated_at,
+                    cursor_rowid,
+                    PEER_ENTRY_PRUNE_BATCH as i64
+                ],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+            rows.collect()
+        })
+    }
+
+    /// Marks whose entry is gone are removed with the entry since #663; this
+    /// rowid walk only clears rows left by earlier builds, once per process.
+    fn sweep_orphan_peer_entries_once(
+        &self,
+        unhandled_cutoff: i64,
+        completed_cutoff: i64,
+    ) -> rusqlite::Result<usize> {
+        if self.write_state.orphan_sweep_done.load(Ordering::Relaxed) {
+            return Ok(0);
+        }
         // A fixed upper bound keeps concurrent arrivals from extending this pass.
         let upper_rowid = self.with_read_conn(|conn| {
             conn.query_row("SELECT MAX(rowid) FROM propagation_peer_entries", [], |row| {
                 row.get::<_, Option<i64>>(0)
             })
         })?;
-        let Some(upper_rowid) = upper_rowid else {
-            return Ok(0);
-        };
-
         let mut deleted = 0usize;
         let mut cursor = i64::MIN;
+        let Some(upper_rowid) = upper_rowid else {
+            self.write_state.orphan_sweep_done.store(true, Ordering::Relaxed);
+            return Ok(0);
+        };
         loop {
-            let candidates = self.select_expired_peer_entry_page(
-                cursor,
-                upper_rowid,
-                unhandled_cutoff,
-                completed_cutoff,
-            )?;
-            let Some((last_rowid, _, _, _)) = candidates.last() else {
+            let candidates = self.with_read_conn(|conn| {
+                let mut statement = conn.prepare(
+                    "SELECT rowid, updated_at, peer, transient_id
+                     FROM propagation_peer_entries
+                     WHERE rowid >= ?1 AND rowid <= ?2
+                       AND NOT EXISTS (
+                           SELECT 1 FROM propagation_entries e
+                           WHERE e.transient_id = propagation_peer_entries.transient_id
+                       )
+                     ORDER BY rowid LIMIT ?3",
+                )?;
+                let rows = statement.query_map(
+                    rusqlite::params![cursor, upper_rowid, PEER_ENTRY_PRUNE_BATCH as i64],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )?;
+                rows.collect::<rusqlite::Result<Vec<PeerEntryCandidate>>>()
+            })?;
+            let Some(&(last_rowid, _, _, _)) = candidates.last() else {
                 break;
             };
-            let last_rowid = *last_rowid;
             let has_more = candidates.len() == PEER_ENTRY_PRUNE_BATCH && last_rowid < upper_rowid;
             deleted = deleted.saturating_add(self.delete_expired_peer_entry_candidates(
                 &candidates,
@@ -127,61 +200,14 @@ impl MessagesStore {
                 completed_cutoff,
             )?);
             drop(candidates);
-            if has_more {
-                self.wait_for_priority_writers();
-                let Some(next_cursor) = last_rowid.checked_add(1) else {
-                    break;
-                };
-                cursor = next_cursor;
-            } else {
+            let Some(next_cursor) = last_rowid.checked_add(1).filter(|_| has_more) else {
                 break;
-            }
+            };
+            self.wait_for_priority_writers();
+            cursor = next_cursor;
         }
+        self.write_state.orphan_sweep_done.store(true, Ordering::Relaxed);
         Ok(deleted)
-    }
-
-    fn select_expired_peer_entry_page(
-        &self,
-        cursor: i64,
-        upper_rowid: i64,
-        unhandled_cutoff: i64,
-        completed_cutoff: i64,
-    ) -> rusqlite::Result<Vec<PeerEntryCandidate>> {
-        self.with_read_conn(|conn| {
-            let mut statement = conn.prepare(
-                "SELECT rowid, updated_at, peer, transient_id
-                 FROM propagation_peer_entries
-                 WHERE rowid >= ?1 AND rowid <= ?2
-                   AND (
-                       NOT EXISTS (
-                           SELECT 1 FROM propagation_entries e
-                           WHERE e.transient_id = propagation_peer_entries.transient_id
-                       )
-                       OR (state = 'unhandled' AND updated_at < ?3)
-                       OR (state IN ('handled', 'transferred', 'received', 'transfer_limited')
-                           AND updated_at < ?4)
-                   )
-                 ORDER BY rowid LIMIT ?5",
-            )?;
-            let rows = statement.query_map(
-                rusqlite::params![
-                    cursor,
-                    upper_rowid,
-                    unhandled_cutoff,
-                    completed_cutoff,
-                    PEER_ENTRY_PRUNE_BATCH as i64
-                ],
-                |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
-                },
-            )?;
-            rows.collect()
-        })
     }
 
     /// Apply the current orphan/TTL predicates to each selected identity.

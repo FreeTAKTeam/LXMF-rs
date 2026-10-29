@@ -69,6 +69,8 @@ struct WriteState {
     broker_budget_bytes: AtomicU64,
     last_wal_reclaim: Mutex<Option<std::time::Instant>>,
     wal_reclaim_interval: std::time::Duration,
+    /// Entry deletion removes its marks, so the orphan join runs once per process (#663).
+    orphan_sweep_done: AtomicBool,
 }
 
 enum OutboundWriteCommand {

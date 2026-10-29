@@ -33,6 +33,7 @@ impl MessagesStore {
             broker_budget_bytes: AtomicU64::new(0),
             last_wal_reclaim: Mutex::new(None),
             wal_reclaim_interval: super::broker::wal_maintenance_interval(),
+            orphan_sweep_done: AtomicBool::new(false),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
@@ -72,6 +73,7 @@ impl MessagesStore {
             broker_budget_bytes: AtomicU64::new(0),
             last_wal_reclaim: Mutex::new(None),
             wal_reclaim_interval: super::broker::wal_maintenance_interval(),
+            orphan_sweep_done: AtomicBool::new(false),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {

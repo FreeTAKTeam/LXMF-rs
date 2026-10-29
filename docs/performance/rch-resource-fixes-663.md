@@ -904,3 +904,25 @@ run `python3 analyze.py heap-3600` and `python3 analyze.py purge-3600`. All 31
 member hashes and exact replay of both full-run analyses and the discarded setup
 were verified using only extracted files. Source/binary/client identity, raw
 hashes, windows, limitations and bundle mapping are in the comparison JSON.
+
+## Index-driven peer-entry expiry, 2026-10-29
+
+The operator's one-time DB/WAL eviction on production refilled 218 MiB within
+about 70 seconds with 215 MiB of physical reads, and `fincore`/`vmtouch` then
+showed 174.76 MiB of `reticulum.db` resident in 29,276 runs averaging about
+6 KiB, densest near the file end; announce cache files held only 7.1 MiB. That
+pattern is the maintenance expiry phase's full rowid walk with one
+`propagation_entries` primary-key probe per row, repeated every 300 seconds,
+plus two `COUNT(*)` walks for quota. The fixture gate had not shown it because
+`read_bytes` is physical and the fixture's expiry deleted 600,000 rows, leaving
+quota a near-empty table.
+
+Expiry now uses `idx_propagation_peer_entries_expiry (state, updated_at)` in
+512-row keyset pages; the regression asserts the query plan searches that index
+with no table scan or temporary B-tree. Entry deletion removes marks in every
+state through `idx_propagation_peer_entries_transient`, matching Python's
+entry-held accounting; the orphan join runs once per process. Phases report
+per-thread logical read bytes. Expected production effect: per-pass DB reads
+fall from roughly 175 MiB to a few index pages, so file-cache residency decays
+to the poll path's hot set and stops refilling. Production acceptance remains
+the operator's 24-hour observation on a field-test build.
