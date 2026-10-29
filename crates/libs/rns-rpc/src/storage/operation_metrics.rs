@@ -197,6 +197,9 @@ pub struct MaintenancePhaseMetrics {
     max_read_bytes: AtomicU64,
     read_bytes_samples_total: AtomicU64,
     last_read_available: std::sync::atomic::AtomicBool,
+    logical_read_bytes_total: AtomicU64,
+    last_logical_read_bytes: AtomicU64,
+    last_logical_read_available: std::sync::atomic::AtomicBool,
 }
 
 impl MaintenancePhaseMetrics {
@@ -206,9 +209,13 @@ impl MaintenancePhaseMetrics {
         rows: impl FnOnce(&T) -> usize,
     ) -> Result<T, E> {
         let reads_before = physical_read_bytes();
+        let logical_before = logical_read_bytes();
         let started = std::time::Instant::now();
         let result = operation();
         let duration = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        let logical = logical_before
+            .zip(logical_read_bytes())
+            .map(|(before, after)| after.saturating_sub(before));
         let reads = reads_before
             .zip(physical_read_bytes())
             .map(|(before, after)| after.saturating_sub(before));
@@ -235,6 +242,11 @@ impl MaintenancePhaseMetrics {
             self.max_read_bytes.fetch_max(reads, order);
             self.read_bytes_samples_total.fetch_add(1, order);
         }
+        self.last_logical_read_available.store(logical.is_some(), order);
+        if let Some(logical) = logical {
+            self.logical_read_bytes_total.fetch_add(logical, order);
+            self.last_logical_read_bytes.store(logical, order);
+        }
         result
     }
 
@@ -252,6 +264,8 @@ impl MaintenancePhaseMetrics {
             "last_read_bytes": self.last_read_available.load(Ordering::Relaxed).then(|| load(&self.last_read_bytes)),
             "max_read_bytes": (load(&self.read_bytes_samples_total) > 0).then(|| load(&self.max_read_bytes)),
             "read_bytes_samples_total": load(&self.read_bytes_samples_total),
+            "logical_read_bytes_total": load(&self.logical_read_bytes_total),
+            "last_logical_read_bytes": self.last_logical_read_available.load(Ordering::Relaxed).then(|| load(&self.last_logical_read_bytes)),
         })
     }
 }
@@ -281,6 +295,13 @@ impl MaintenanceMetrics {
             "sqlite_cache_release": release,
         })
     }
+}
+
+/// Bytes this thread asked the kernel for, cached or not: a warm page cache
+/// makes `read_bytes` report zero for a scan that still touches every page.
+fn logical_read_bytes() -> Option<u64> {
+    let contents = std::fs::read_to_string("/proc/thread-self/io").ok()?;
+    contents.lines().find_map(|line| line.strip_prefix("rchar:")?.trim().parse().ok())
 }
 
 fn physical_read_bytes() -> Option<u64> {
