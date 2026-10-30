@@ -54,6 +54,15 @@ orphan join is removed so marks of deleted entries live until their TTL or the
 quota (which also keeps completed marks across a haves purge, as documented
 below), and quota counts once per pass. Phase metrics add per-thread logical
 read bytes. See `docs/migrations/propagation-peer-entry-expiry-index-663.md`.
+A later increment serves the per-peer quota from a partial
+`(peer, updated_at DESC, transient_id DESC)` unhandled index. A read-only gate
+skips the writer when no quota is exceeded, and the original ranking runs only
+for over-quota peers, with the same limits and ordering
+(`docs/migrations/propagation-peer-entry-quota-index.md`).
+Refill now respects the global peer-entry limit. A trigger-maintained count is
+checked inside the insert transaction, and at the limit the pass is deferred
+rather than skipped. Quota and refill therefore no longer delete and recreate
+the same pair every pass (`docs/migrations/propagation-refill-global-budget.md`).
 
 The subsequent #663 diagnostics increment exports ZeroMQ stage outcomes and
 latency buckets through `/metrics`, with a bounded recent incident ring and

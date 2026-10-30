@@ -5,6 +5,13 @@
 // allow rowid reuse, so it invalidates peer scans and advances `rescan_epoch`.
 // A pass spanning that deletion cannot establish a safe incremental floor.
 // Reordering `received_at` also advances the epoch and forces a full rescan.
+//
+// `propagation_peer_entry_budget` mirrors `COUNT(*)` of
+// `propagation_peer_entries` through insert/delete triggers, so refill can
+// respect the global peer-entry limit without counting the table. Upserts fire
+// UPDATE, and ignored inserts fire nothing, so neither moves it. No writer of this
+// table uses REPLACE, whose implicit delete would skip the delete trigger. The
+// quota pass rewrites the count from its exact `COUNT(*)` if it ever drifts.
 
 const PEER_QUEUE_REFILL_SCAN_BATCH: usize = 128;
 
@@ -12,6 +19,9 @@ struct PeerQueueRefillPage {
     inserted: usize,
     capacity_reached: bool,
     pass_finished: bool,
+    /// Stopped at the global peer-entry limit (or this invocation's share of
+    /// it) with the cursor left on the first unoffered candidate.
+    deferred: bool,
 }
 
 #[derive(Clone)]
@@ -20,6 +30,7 @@ struct PeerQueueRefillBoundary {
     head: Option<(i64, String)>,
     max_rowid: Option<i64>,
     rescan_epoch: i64,
+    peer_entries: i64,
 }
 
 /// One `propagation_peer_refill_state` row.
@@ -44,6 +55,8 @@ enum PeerQueueRefillSkip {
     Complete,
     /// The peer's pending queue is already at its configured capacity.
     Capacity,
+    /// The global peer-entry limit is reached; the saved pass state is kept.
+    GlobalCapacity,
 }
 
 impl MessagesStore {
@@ -52,7 +65,8 @@ impl MessagesStore {
     ) -> rusqlite::Result<PeerQueueRefillBoundary> {
         conn.query_row(
             "SELECT inventory.generation, entry.received_at, entry.transient_id,
-                    (SELECT MAX(rowid) FROM propagation_entries), inventory.rescan_epoch
+                    (SELECT MAX(rowid) FROM propagation_entries), inventory.rescan_epoch,
+                    (SELECT entry_count FROM propagation_peer_entry_budget WHERE singleton = 1)
              FROM propagation_inventory_generation AS inventory
              LEFT JOIN propagation_entries AS entry ON entry.transient_id = (
                  SELECT transient_id FROM propagation_entries
@@ -70,6 +84,7 @@ impl MessagesStore {
                     head: received_at.zip(transient_id),
                     max_rowid,
                     rescan_epoch: row.get(4)?,
+                    peer_entries: row.get(5)?,
                 })
             },
         )
@@ -92,6 +107,19 @@ impl MessagesStore {
                 generation INTEGER NOT NULL
             );
             INSERT OR IGNORE INTO propagation_inventory_generation(singleton, generation) VALUES (1, 0);
+            CREATE TABLE IF NOT EXISTS propagation_peer_entry_budget (
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                entry_count INTEGER NOT NULL
+            );
+            -- Backfilled once, in the schema transaction that creates the triggers.
+            INSERT OR IGNORE INTO propagation_peer_entry_budget(singleton, entry_count)
+                SELECT 1, COUNT(*) FROM propagation_peer_entries;
+            CREATE TRIGGER IF NOT EXISTS propagation_peer_entry_budget_insert
+                AFTER INSERT ON propagation_peer_entries
+                BEGIN UPDATE propagation_peer_entry_budget SET entry_count = entry_count + 1 WHERE singleton = 1; END;
+            CREATE TRIGGER IF NOT EXISTS propagation_peer_entry_budget_delete
+                AFTER DELETE ON propagation_peer_entries
+                BEGIN UPDATE propagation_peer_entry_budget SET entry_count = entry_count - 1 WHERE singleton = 1; END;
             CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_unhandled_folded
                 ON propagation_peer_entries(LOWER(peer), transient_id) WHERE state = 'unhandled';
             CREATE TRIGGER IF NOT EXISTS propagation_refill_inventory_insert
@@ -202,6 +230,33 @@ impl MessagesStore {
         .optional()
     }
 
+    /// Peer entries that may still be added under the global limit (`max(1)`
+    /// like the quota pass).
+    fn global_peer_entry_room(peer_entries: i64, total_limit: u64) -> u64 {
+        total_limit.max(1).saturating_sub(peer_entries.max(0) as u64)
+    }
+
+    /// Other peers whose saved refill pass is unfinished or stale, capped at
+    /// `cap`: they share freed global room with this invocation.
+    fn count_peers_awaiting_refill(
+        conn: &Connection,
+        peer: &str,
+        generation: i64,
+        cap: u64,
+    ) -> rusqlite::Result<u64> {
+        let waiting: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM (
+                SELECT 1 FROM propagation_peer_refill_state
+                WHERE peer <> ?1
+                  AND NOT (scan_complete = 1 AND rescan_required = 0 AND observed_generation = ?2)
+                LIMIT ?3
+            )",
+            params![peer, generation, cap.min(i64::MAX as u64) as i64],
+            |row| row.get(0),
+        )?;
+        Ok(waiting.max(0) as u64)
+    }
+
     /// Effective pending entries for `peer`, capped at `limit`: completed or
     /// received marks for the same transient id outrank a pending one.
     fn count_peer_queue_pending(conn: &Connection, peer: &str, limit: u64) -> rusqlite::Result<u64> {
@@ -235,6 +290,7 @@ impl MessagesStore {
         conn: &Connection,
         peer: &str,
         limit: u64,
+        total_limit: u64,
         boundary: &PeerQueueRefillBoundary,
     ) -> rusqlite::Result<Option<PeerQueueRefillSkip>> {
         let saved = Self::load_peer_queue_refill_state(conn, peer)?;
@@ -248,6 +304,11 @@ impl MessagesStore {
             {
                 return Ok(Some(PeerQueueRefillSkip::Complete));
             }
+        }
+        // A peer without saved state takes the writer once to record its
+        // unfinished pass, so freed room is shared with it later.
+        if saved.is_some() && Self::global_peer_entry_room(boundary.peer_entries, total_limit) == 0 {
+            return Ok(Some(PeerQueueRefillSkip::GlobalCapacity));
         }
         if Self::count_peer_queue_pending(conn, peer, limit)? >= limit.max(1) {
             return Ok(Some(PeerQueueRefillSkip::Capacity));
