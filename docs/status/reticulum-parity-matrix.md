@@ -42,6 +42,36 @@ snapshots. The #663 allocation increment shares immutable cached packets during
 saves and preserves copy-on-write response changes. These are software resource
 protections; they do not promote public-network or sustained memory acceptance.
 
+The 2026-10-28 #663 cache-lifetime increment removes expired recipient identities
+while preserving locally registered destinations, endpoint/relay links and
+prepared SINGLE proof contexts. Random-blob storage capacity now follows the
+64-blob reference window, and raw hashlist persistence encodes current-generation
+hashes directly. Occupancy and removal counters accompany the existing fingerprint
+save gauge. Local regressions cover these lifetimes; sustained production
+resource acceptance remains open.
+
+The #663 readiness increment sends systemd READY only after configured RPC and
+ZeroMQ binds; SIGINT/SIGTERM send STOPPING before graceful shutdown. Datagram
+regressions cover filesystem/abstract sockets, delayed readiness and cancellation.
+Direct daemon service ordering is separate from combined-launcher behavior.
+
+The #709 daemon provider publishes outstanding requested Rust allocation bytes
+at `providers.heap.rust_allocated_bytes`, including startup without transport or
+ZeroMQ. Safe unlimited Cap wraps the existing daemon-only mimalloc allocator;
+native C allocations and resident-page ownership remain separate. The registered
+provider regression and live fixture endpoint pass. The 3,600-second default
+fixture passes requested-byte flatness but fails RSS-window stability. A second
+full-hour trial with both purge settings at zero passes both stability criteria
+with matched steady ingress; warmup, cached reads and both-process environment
+changes limit causal attribution. Raw traces and frozen analysis replay are
+committed in the #709 evidence bundle. Production defaults remain unchanged;
+the separate tagged full-hour run resolves the local >=80% mapping-owner target
+(minimum 91.203% across 593 post-second-pass captures), while +2.328 MiB RSS-window
+growth keeps #709 open. The user canceled synthetic pager-cache candidate validation
+and requested real Linux testing. Source `132c692e` is packaged as a draft Linux
+x86-64 daemon-only release; candidate RSS/performance and production resource
+acceptance stay open. PR #711 is unmerged; do not restart the canceled soak.
+
 Durable-broker-only daemon bootstrap initializes the identity-capable transport
 without opening a Reticulum listener or creating network interfaces. A focused
 daemon regression imports an SDK identity and verifies its delivery destination

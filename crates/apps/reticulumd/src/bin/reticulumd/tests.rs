@@ -31,3 +31,5 @@ include!("tests_parts/bootstrap_strict_mode_panics_on_lora.rs");
 include!("tests_parts/propagation_node_toml_config.rs");
 
 include!("tests_parts/propagation_default_stamp_cost_is_the_python_target.rs");
+
+include!("tests/sqlite_cache_release.rs");

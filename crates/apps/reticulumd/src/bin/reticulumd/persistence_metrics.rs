@@ -1,12 +1,25 @@
-//! Metrics providers owned by the daemon binary for issue 663: announce/path
-//! persistence costs and transport table occupancy. Counts only; no
+//! Metrics providers owned by the daemon binary for issues 663/709: requested
+//! Rust heap bytes, persistence costs and transport table occupancy. No
 //! destinations, packet bytes or file names.
 
+use super::bridge::PeerCrypto;
 use rns_rpc::MetricsProvider;
+use rns_transport::hash::AddressHash;
 use rns_transport::transport::{AnnounceCacheCleanupReport, PathTableSaveReport, Transport};
 use serde_json::{json, Value as JsonValue};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
+
+pub(crate) struct HeapMetricsProvider;
+
+impl MetricsProvider for HeapMetricsProvider {
+    fn snapshot(&self) -> JsonValue {
+        // Requested sizes exclude native allocations and allocator overhead/residency.
+        json!({"rust_allocated_bytes": super::GLOBAL_ALLOCATOR.allocated()})
+    }
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct PersistenceMetrics {
@@ -144,16 +157,42 @@ impl MetricsProvider for PersistenceMetrics {
 /// Transport table sizes, read without blocking the network reactor.
 pub(crate) struct TransportTablesProvider {
     transport: Arc<Transport>,
+    peers: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    peers_removed_total: AtomicU64,
 }
 
 impl TransportTablesProvider {
-    pub(crate) fn new(transport: Arc<Transport>) -> Self {
-        Self { transport }
+    pub(crate) fn new(
+        transport: Arc<Transport>,
+        peers: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    ) -> Self {
+        Self { transport, peers, peers_removed_total: AtomicU64::new(0) }
+    }
+
+    pub(crate) fn prune_peers(&self) {
+        let mut peers = match self.peers.lock() {
+            Ok(peers) => peers,
+            Err(error) => {
+                log::error!("[daemon] peer identity cache cleanup lock poisoned: {error}");
+                return;
+            }
+        };
+        let before = peers.len();
+        peers.retain(|peer, _| {
+            let mut bytes = [0; 16];
+            if let Err(error) = hex::decode_to_slice(peer, &mut bytes) {
+                log::warn!("[daemon] malformed destination in peer identity cache: {error}");
+                return false;
+            }
+            self.transport.destination_is_cached_now(&AddressHash::new(bytes)) != Some(false)
+        });
+        self.peers_removed_total.fetch_add((before - peers.len()) as u64, Ordering::Relaxed);
     }
 }
 
 impl MetricsProvider for TransportTablesProvider {
     fn snapshot(&self) -> JsonValue {
+        let peer_crypto = self.peers.try_lock().ok().map(|peers| peers.len());
         match self.transport.table_occupancy_now() {
             Some(tables) => json!({
                 "available": true,
@@ -161,6 +200,12 @@ impl MetricsProvider for TransportTablesProvider {
                 "announce_cache_entries": tables.announce_cache_entries,
                 "announce_cache_capacity": tables.announce_cache_capacity,
                 "path_entries": tables.path_entries,
+                "single_out_destinations": tables.single_out_destinations,
+                "single_out_destinations_removed_total": tables.single_out_destinations_removed_total,
+                "random_blob_count": tables.random_blob_count,
+                "fingerprint_map_len": tables.fingerprint_map_len,
+                "peer_crypto": peer_crypto,
+                "peer_crypto_removed_total": self.peers_removed_total.load(Ordering::Relaxed),
                 "tunnel_entries": tables.tunnel_entries,
                 "tunnel_path_entries": tables.tunnel_path_entries,
                 "link_entries": tables.link_entries,
@@ -177,4 +222,58 @@ fn unix_now_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rns_transport::destination::{DestinationName, SingleOutputDestination};
+    use rns_transport::identity::PrivateIdentity;
+    use rns_transport::packet::Packet;
+    use rns_transport::transport::TransportConfig;
+
+    #[test]
+    fn heap_requested_bytes_appear_in_registered_metrics() {
+        let daemon = rns_rpc::RpcDaemon::with_store(
+            rns_rpc::MessagesStore::in_memory().expect("in-memory store"),
+            "heap-metrics-test".into(),
+        );
+        daemon.register_metrics_provider("heap", Arc::new(HeapMetricsProvider));
+        let snapshot = daemon.metrics_snapshot();
+        assert!(snapshot["providers"]["heap"]["rust_allocated_bytes"]
+            .as_u64()
+            .is_some_and(|bytes| bytes > 0));
+    }
+
+    #[tokio::test]
+    async fn peer_cleanup_and_provider_keep_only_cached_destinations_without_blocking() {
+        let local = PrivateIdentity::new_from_name("peer-cache-local");
+        let transport = Arc::new(Transport::new(TransportConfig::new("peer-cache", &local, true)));
+        let _channel = transport.iface_manager().lock().await.new_channel(16);
+        let remote = PrivateIdentity::new_from_name("peer-cache-live");
+        let name = DestinationName::new("lxmf", "delivery");
+        let address = SingleOutputDestination::new(*remote.as_identity(), name).desc.address_hash;
+        transport
+            .send_prepared_single_packet_observed_with_trace(
+                Packet { destination: address, ..Packet::default() },
+                *remote.as_identity(),
+                name,
+                |_| {},
+            )
+            .await
+            .expect("prepared recipient");
+        let peers = Arc::new(Mutex::new(HashMap::from([
+            (hex::encode(address.as_slice()), PeerCrypto { identity: *remote.as_identity() }),
+            (hex::encode([0x77; 16]), PeerCrypto { identity: *local.as_identity() }),
+        ])));
+        let metrics = TransportTablesProvider::new(transport, peers.clone());
+        assert_eq!(metrics.snapshot()["peer_crypto"], 2);
+        metrics.prune_peers();
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot["peer_crypto"], 1);
+        assert_eq!(snapshot["peer_crypto_removed_total"], 1);
+        assert_eq!(snapshot["single_out_destinations"], 1);
+        let _guard = peers.lock().expect("peers");
+        assert!(metrics.snapshot()["peer_crypto"].is_null(), "busy cache is unavailable");
+    }
 }

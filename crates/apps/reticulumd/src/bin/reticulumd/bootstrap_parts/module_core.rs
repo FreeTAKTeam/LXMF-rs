@@ -304,6 +304,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         outbound_bridge,
         announce_bridge,
     ));
+    daemon.register_metrics_provider(
+        "heap",
+        Arc::new(crate::persistence_metrics::HeapMetricsProvider),
+    );
     record_restored_path_identities(daemon.as_ref(), &restored_path_identities);
     configure_startup_rpc_token_auth(&args, daemon.as_ref());
     enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
@@ -491,10 +495,6 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         let persistence_context =
             PathTablePersistenceContext::new(transport.clone(), reticulum_storage_path.clone());
         daemon.register_metrics_provider("announce_persistence", persistence_context.metrics());
-        daemon.register_metrics_provider(
-            "transport_tables",
-            Arc::new(crate::persistence_metrics::TransportTablesProvider::new(transport.clone())),
-        );
         path_table_persistence = Some(persistence_context.clone());
         spawn_inbound_worker_with_resource_events(
             daemon.clone(),
@@ -565,60 +565,6 @@ pub(super) async fn shutdown_auto_interfaces(
             log::debug!("[daemon] AutoInterface host already absent during shutdown iface={host_iface}");
         }
     }
-}
-
-fn spawn_propagation_storage_maintenance(daemon: Arc<RpcDaemon>) {
-    tokio::spawn(async move {
-        let mut last_enabled = false;
-        let mut interval_secs = 0;
-        let mut next_maintenance = tokio::time::Instant::now();
-        loop {
-            let state = daemon.current_propagation_state();
-            let configured_interval_secs = state.storage_maintenance_interval_secs.max(1);
-            if state.enabled != last_enabled || configured_interval_secs != interval_secs {
-                last_enabled = state.enabled;
-                interval_secs = configured_interval_secs;
-                next_maintenance = tokio::time::Instant::now()
-                    + Duration::from_secs(configured_interval_secs);
-            }
-
-            if !state.enabled {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                continue;
-            }
-
-            let now = tokio::time::Instant::now();
-            if now >= next_maintenance {
-                let maintenance_daemon = Arc::clone(&daemon);
-                // Join each storage operation before scheduling another one;
-                // database contention must not block the network reactor.
-                match tokio::task::spawn_blocking(move || {
-                    maintenance_daemon.maintain_propagation_storage()
-                })
-                .await
-                {
-                    Ok(Ok(pruned)) if pruned > 0 => {
-                        log::info!(
-                            "[daemon] propagation storage maintenance pruned peer entries={pruned}"
-                        );
-                    }
-                    Ok(Ok(_)) => {}
-                    Ok(Err(error)) => {
-                        log::error!("[daemon] propagation storage maintenance failed: {error}");
-                    }
-                    Err(error) => {
-                        log::error!("[daemon] propagation storage maintenance worker failed: {error}");
-                    }
-                }
-                next_maintenance = tokio::time::Instant::now()
-                    + Duration::from_secs(interval_secs);
-                continue;
-            }
-
-            tokio::time::sleep(next_maintenance.duration_since(now).min(Duration::from_secs(1)))
-                .await;
-        }
-    });
 }
 
 fn record_restored_path_identities(

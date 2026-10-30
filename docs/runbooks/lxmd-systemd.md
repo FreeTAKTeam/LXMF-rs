@@ -77,6 +77,51 @@ sudo systemctl enable --now lxmd.service
 sudo systemctl status lxmd.service --no-pager
 ```
 
+## Separate daemon and RCH services
+
+For RCH deployments with a separate `reticulumd` process, use this unit as
+`lxmd.service` in place of the combined launcher above. Add the existing daemon
+arguments for your database, identity, configuration and ZeroMQ endpoints to
+`ExecStart`:
+
+```ini
+[Unit]
+Description=Reticulum daemon for RCH
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=1800
+User=lxmd
+Group=lxmd
+WorkingDirectory=/etc/lxmf/lxmd
+ExecStart=/usr/local/bin/reticulumd --config /etc/lxmf/reticulumd/config.toml --rpc-unix /run/lxmd/rpc.sock
+RuntimeDirectory=lxmd
+RuntimeDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+The daemon sends `READY=1` only after all configured RPC sockets and ZeroMQ
+listeners bind. The startup timeout allows large database and route restoration;
+size it for the deployment. It sends `STOPPING=1` on SIGINT or SIGTERM.
+Add these dependencies to the separate RCH unit:
+
+```ini
+[Unit]
+After=lxmd.service
+Requires=lxmd.service
+```
+
+The combined `lxmd` launcher above stays `Type=simple`: `NotifyAccess=main`
+would reject notifications from its `reticulumd` child. Use the direct daemon
+unit when RCH startup must wait for daemon readiness.
+
 ## Inspect and troubleshoot
 
 Follow the service log with:

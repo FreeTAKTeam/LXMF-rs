@@ -113,7 +113,7 @@ impl Transport {
     }
 
     pub async fn save_packet_hashlist<P: AsRef<Path>>(&self, storage_path: P) -> io::Result<usize> {
-        let hashes = {
+        let payload = {
             let handler = self.handler.lock().await;
             if !handler.config.transport_enabled || handler.config.connected_to_shared_instance {
                 return Ok(0);
@@ -122,12 +122,13 @@ impl Transport {
                 .packet_cache
                 .try_lock()
                 .map_err(|_| io::Error::other("packet cache is busy"))?;
-            cache.hashes()
+            ReticulumPacketDiskCache::encode_packet_hashlist(cache.iter_hashes())
         };
+        let count = payload.len() / crate::hash::HASH_SIZE;
         ReticulumPacketDiskCache::new(storage_path.as_ref())
-            .save_packet_hashlist(storage_path, &hashes)
+            .save_packet_hashlist_payload(storage_path, payload)
             .await?;
-        Ok(hashes.len())
+        Ok(count)
     }
 
     pub async fn restore_packet_hashlist<P: AsRef<Path>>(

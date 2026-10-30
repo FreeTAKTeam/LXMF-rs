@@ -118,6 +118,10 @@ impl PathTable {
         self.map.len()
     }
 
+    pub(super) fn random_blob_count(&self) -> usize {
+        self.map.values().map(|entry| entry.random_blobs.len()).sum()
+    }
+
     pub fn get(&self, destination: &AddressHash) -> Option<&PathEntry> {
         self.map.get(destination)
     }

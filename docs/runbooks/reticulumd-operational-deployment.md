@@ -92,7 +92,9 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=1800
 ExecStart=/usr/local/bin/reticulumd --rpc-unix /run/reticulumd/lxmf-rpc.sock
 RuntimeDirectory=reticulumd
 RuntimeDirectoryMode=0700
@@ -106,6 +108,16 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 ```
+
+The daemon sends `READY=1` after its configured RPC sockets and ZeroMQ listeners
+have bound. `TimeoutStartSec` must allow identity, route and database restoration;
+it does not make an unready daemon ready. `STOPPING=1` precedes graceful shutdown
+on SIGINT or SIGTERM. `NOTIFY_SOCKET` is optional outside systemd.
+
+For a separate RCH service, put `After=lxmd.service` and `Requires=lxmd.service`
+in its `[Unit]` when this direct daemon unit is named `lxmd.service` (use
+`reticulumd.service` in both directives if that is its name). systemd then waits
+for daemon readiness before starting RCH.
 
 ## launchd Example
 

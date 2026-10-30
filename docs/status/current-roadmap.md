@@ -273,7 +273,11 @@ after that increment. The follow-through runs from the
 one PR per item, with progress in its
 [progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). Preview.26 regression work follows the
 [ordered regression plan](../goals/preview26-regression-663-657-678/PLAN.md) and
-[regression progress](../goals/preview26-regression-663-657-678/PROGRESS.md). The
+[regression progress](../goals/preview26-regression-663-657-678/PROGRESS.md).
+Remaining P0 closure for #663, #608, #609 and #625 (evaluated 2026-10-28 at
+`45b5f565`) is ordered in the
+[P0 closure plan](../goals/p0-2026-10-28-663-608-609-625/PLAN.md) with its
+[progress record](../goals/p0-2026-10-28-663-608-609-625/PROGRESS.md). The
 first item adds a production-shaped fixture, an RCH-shaped poller and a
 cgroup-constrained sampler (`cargo xtask resource-soak-663`); its ten-minute
 baseline is recorded in the resource regression record and is a harness smoke
@@ -281,6 +285,63 @@ check, not acceptance. The second item adds refill, WAL, cgroup memory and
 announce-persistence counters to the daemon metrics snapshot. The third item
 bounds the refill scan, yields the SQLite writer to broker commands and moves
 WAL truncation to a daemon timer.
+
+The 2026-10-28 #663 closure increment prunes remote recipient and daemon peer
+identity caches after route expiry while preserving pending SINGLE receipts,
+local destinations and live links. It bounds retained random-blob capacity and
+encodes the duplicate hashlist without a second hash snapshot. New occupancy
+and removed-entry counters use the existing metrics provider; live fingerprint
+occupancy is read from the persistence owner without blocking, and the existing
+last-save fingerprint gauge remains available. Focused
+regressions and the transport suite pass; production acceptance stays open.
+
+The #663 readiness increment notifies systemd after configured RPC and ZeroMQ
+listeners bind, and handles SIGTERM through graceful shutdown. Direct daemon
+units can use `Type=notify` with RCH `After`/`Requires` ordering. The combined
+`lxmd` launcher remains `Type=simple` because its child is not the main PID.
+
+The #663 maintenance attribution increment exports separate expiry, quota and
+payload durations, deletion/failure totals and physical-read deltas under
+`storage.maintenance`. The instrumented ingress soak triggered payload paging at
+8.08 s / 379 MiB reads; 4,096-row candidate windows now release the writer between
+transactions. Global payload-priority ordering is intentionally approximate across
+windows, so the LXMRouter parity row records that remaining difference. Quota
+stays atomic after its 1.74 ms / zero-read measurement.
+Physical-read deltas include concurrent process work and exclude cached reads.
+The 2026-10-29 production residency map attributed the repeated 175 MiB DB
+read to that expiry phase's rowid walk and per-row orphan probe; expiry is now
+served by a `(state, updated_at)` index, orphaned marks expire by TTL or quota
+instead of a per-pass join, and phases report logical read bytes
+(`docs/migrations/propagation-peer-entry-expiry-index-663.md`).
+Quota no longer ranks every unhandled mark each pass. A partial rank index serves a
+read-only gate and the over-quota ranking, so an idle pass takes no writer and
+does no sort (`docs/migrations/propagation-peer-entry-quota-index.md`).
+Refill now respects the global peer-entry limit. A trigger-maintained count is
+checked inside the insert transaction, and at the limit the pass is deferred
+rather than skipped. Quota and refill therefore no longer delete and recreate
+the same pair every pass (`docs/migrations/propagation-refill-global-budget.md`).
+A retained anonymous-memory step with flat table counts activated the conditional
+allocator evaluation. Matched static-musl runs reduced absolute anon but still
+failed the short-run growth/80% ownership gates. Stack #708 subsequently merged
+the allocator evaluation; this did not qualify it as a memory fix. #709 adds
+`providers.heap.rust_allocated_bytes` through the existing daemon metrics registry
+and measures repeated cycles in a 60-minute ingress run. The gauge counts
+outstanding requested Rust sizes, not resident pages. SQLite cache targets and
+anon minus requested bytes cannot be credited as measured resident owners.
+The completed default 3,600-second fixture has flat requested bytes but fails
+two RSS window comparisons (+13.51 and +2.43 MiB). The completed full-hour
+two-option purge trial passes RSS-window stability (0.000/+0.463/−0.266 MiB)
+and requested-byte flatness. Its matched steady ingress, different warmup and
+warmer physical-read state are recorded with recoverable raw evidence; this
+does not isolate either setting or a resident owner. Production defaults remain
+unchanged. A separate tagged full-hour diagnostic now verifies >=91.203% named
+resident mapping ownership across every post-second-pass capture, but its first
+RSS-window growth is +2.328 MiB and fails the unchanged gate. #709 remains open
+for that failure. The user canceled synthetic candidate validation and requested
+real Linux testing; the safe SQLite pager-cache candidate is packaged in a draft
+Linux x86-64 daemon-only release from `132c692e`. Its RSS/performance remains
+unverified, PR #711 is unmerged, and no synthetic restart is planned.
+Production memory acceptance remains open.
 
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance

@@ -12,6 +12,21 @@ import resource_soak_663 as soak  # noqa: E402
 
 
 class ParserTests(unittest.TestCase):
+    def test_resident_capture_follows_http_metrics(self):
+        order = []
+        process = SimpleNamespace(poll=lambda: None)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(soak.time, "monotonic", side_effect=[0, 0, 0, 6]), \
+                 patch.object(soak.time, "sleep"), \
+                 patch.object(soak, "sample_process", return_value={}), \
+                 patch.object(soak, "sample_cgroup", return_value={}), \
+                 patch.object(soak, "fetch_metrics", side_effect=lambda _: order.append("http") or {}), \
+                 patch("resource_soak_663_resident.capture_resident", side_effect=lambda *a: order.append("capture") or {}):
+                soak.sample_loop(Path(directory), process, process, 123, None, 0, Path(directory),
+                                 SimpleNamespace(duration_secs=5, sample_secs=5, resident_memory=True),
+                                 lambda _: None, 42)
+        self.assertEqual(order, ["http", "capture"])
+
     def test_release_binary_respects_shared_target(self):
         with patch.dict(soak.os.environ, {"CARGO_TARGET_DIR": "/tmp/shared-target"}):
             self.assertEqual(

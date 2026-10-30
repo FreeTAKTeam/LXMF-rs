@@ -226,10 +226,25 @@ impl ReticulumPacketDiskCache {
         storage_path: impl AsRef<Path>,
         hashes: &[Hash],
     ) -> io::Result<()> {
+        let payload = Self::encode_packet_hashlist(hashes.iter());
+        self.save_packet_hashlist_payload(storage_path, payload).await
+    }
+
+    pub(super) fn encode_packet_hashlist<'a>(
+        hashes: impl ExactSizeIterator<Item = &'a Hash>,
+    ) -> Vec<u8> {
         let mut payload = Vec::with_capacity(hashes.len().saturating_mul(HASH_SIZE));
         for hash in hashes {
             payload.extend_from_slice(hash.as_slice());
         }
+        payload
+    }
+
+    pub(super) async fn save_packet_hashlist_payload(
+        &self,
+        storage_path: impl AsRef<Path>,
+        payload: Vec<u8>,
+    ) -> io::Result<()> {
         tokio::fs::write(storage_path.as_ref().join("packet_hashlist.raw"), payload).await
     }
 

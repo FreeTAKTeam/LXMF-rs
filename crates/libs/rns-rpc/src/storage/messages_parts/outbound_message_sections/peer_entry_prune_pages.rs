@@ -22,45 +22,40 @@ fn peer_policy_prune_does_not_delete_a_reused_rowid() {
 }
 
 #[test]
-fn peer_policy_prune_keyset_page_respects_captured_upper_rowid() {
+fn peer_policy_expiry_page_uses_the_state_index_and_keyset_cursor() {
     let (_temp, store) = refill_store_on_disk();
     store
         .with_write_conn(|conn| {
-            conn.execute(
-                "INSERT INTO propagation_peer_entries
-                    (rowid, peer, transient_id, state, updated_at)
-                 VALUES (100, 'page-peer', 'before-boundary', 'unhandled', 1)",
-                [],
-            )?;
-            Ok(())
+            conn.execute_batch(
+                "INSERT INTO propagation_peer_entries (rowid, peer, transient_id, state, updated_at)
+                 VALUES (10, 'p', 'a', 'unhandled', 1),
+                        (11, 'p', 'b', 'unhandled', 1),
+                        (12, 'p', 'c', 'unhandled', 2),
+                        (13, 'p', 'd', 'unhandled', 9),
+                        (14, 'p', 'e', 'handled', 1);",
+            )
         })
-        .expect("seed initial row");
-    let upper_rowid = store
+        .expect("seed marks");
+
+    let plan = store
         .with_read_conn(|conn| {
-            conn.query_row("SELECT MAX(rowid) FROM propagation_peer_entries", [], |row| {
-                row.get::<_, Option<i64>>(0)
-            })
+            let mut statement = conn.prepare(&format!("EXPLAIN QUERY PLAN {EXPIRED_PEER_ENTRY_PAGE_SQL}"))?;
+            let rows = statement.query_map(params!["unhandled", 5, i64::MIN, i64::MIN, 512], |row| {
+                row.get::<_, String>(3)
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
         })
-        .expect("capture rowid boundary")
-        .expect("row exists");
-    store
-        .with_write_conn(|conn| {
-            conn.execute(
-                "INSERT INTO propagation_peer_entries
-                    (rowid, peer, transient_id, state, updated_at)
-                 VALUES (101, 'page-peer', 'after-boundary', 'unhandled', 1)",
-                [],
-            )?;
-            Ok(())
-        })
-        .expect("insert row after captured boundary");
+        .expect("explain expiry page")
+        .join(" ");
+    assert!(plan.contains("USING INDEX idx_propagation_peer_entries_expiry"), "{plan}");
+    assert!(!plan.contains("SCAN propagation_peer_entries"), "{plan}");
+    assert!(!plan.contains("TEMP B-TREE"), "{plan}");
 
     let page = store
-        .select_expired_peer_entry_page(i64::MIN, upper_rowid, 5, 5)
-        .expect("select bounded keyset page");
-
-    assert_eq!(page.len(), 1);
-    assert_eq!(page[0].3, "before-boundary");
+        .select_expired_peer_entry_page("unhandled", 5, (1, 10))
+        .expect("select keyset page after rowid 10");
+    let ids: Vec<&str> = page.iter().map(|candidate| candidate.3.as_str()).collect();
+    assert_eq!(ids, ["b", "c"], "cursor skips row 10, cutoff skips row 13, state skips row 14");
 }
 
 #[test]
@@ -189,4 +184,73 @@ fn peer_policy_prune_rechecks_candidates_after_a_refresh() {
 
     assert_eq!(deleted, 0);
     assert_eq!(state, "handled");
+}
+
+#[test]
+fn propagation_maintenance_metrics_attribute_expiry_quota_and_payload() {
+    let store = MessagesStore::in_memory().expect("store");
+    store.with_write_conn(|conn| conn.execute_batch(
+        "INSERT INTO propagation_entries VALUES
+            ('one', 'destination', '00', 100, 1, NULL),
+            ('two', 'destination', '00', 101, 1, NULL);
+         INSERT INTO propagation_peer_entries VALUES
+            ('peer', 'orphan', 'handled', 1),
+            ('peer', 'one', 'unhandled', 100),
+            ('peer', 'two', 'unhandled', 101);"
+    )).expect("maintenance fixture");
+    assert_eq!(store.prune_propagation_peer_entries_to_policy(105, 10, 10, 100, 1).expect("peer prune"), 2);
+    let before_payload = store.operation_metrics_snapshot()["maintenance"].clone();
+    for phase in ["expiry", "quota"] {
+        assert_eq!(before_payload[phase]["runs_total"], 1);
+        assert_eq!(before_payload[phase]["rows_deleted_total"], 1);
+        assert!(before_payload[phase]["last_duration_ns"].as_u64().expect("duration") > 0);
+        assert_eq!(before_payload[phase]["errors_total"], 0);
+        if cfg!(target_os = "linux") {
+            assert!(before_payload[phase]["last_logical_read_bytes"].is_u64(), "{phase}");
+        }
+    }
+    assert_eq!(before_payload["payload"]["runs_total"], 0);
+    assert_eq!(store.prune_propagation_entries_to_limit_bytes(0).expect("payload prune").len(), 2);
+    let payload = store.operation_metrics_snapshot()["maintenance"]["payload"].clone();
+    assert_eq!(payload["runs_total"], 1);
+    assert_eq!(payload["rows_deleted_total"], 2);
+    assert_eq!(payload["last_rows_deleted"], 2);
+    assert!(payload["last_duration_ns"].as_u64().expect("duration") > 0);
+}
+
+#[test]
+fn payload_prune_releases_writer_between_candidate_windows() {
+    let store = MessagesStore::in_memory().expect("store");
+    seed_payload_prune_windows(&store);
+    let before = store.contention_snapshot().write_ops_total;
+    let removed = store.prune_propagation_entries_to_limit_bytes(0).expect("paged payload prune");
+    assert_eq!(removed.len(), 5000);
+    assert!(store.contention_snapshot().write_ops_total - before >= 2, "each window has its own writer transaction");
+    assert_eq!(store.operation_metrics_snapshot()["maintenance"]["payload"]["rows_deleted_total"], 5000);
+}
+
+#[test]
+fn payload_prune_failure_preserves_prior_committed_pages_and_reports_unknown_count() {
+    let store = MessagesStore::in_memory().expect("store");
+    seed_payload_prune_windows(&store);
+    store.with_write_conn(|conn| conn.execute_batch(
+        "CREATE TRIGGER fail_second_window BEFORE DELETE ON propagation_entries
+         WHEN OLD.transient_id='id-04097' BEGIN SELECT RAISE(ABORT, 'page failure'); END;"
+    )).expect("fault injection");
+    let error = store.prune_propagation_entries_to_limit_bytes(0).expect_err("second page fails");
+    assert!(error.to_string().contains("page failure"));
+    let remaining: i64 = store.with_read_conn(|conn| conn.query_row(
+        "SELECT COUNT(*) FROM propagation_entries", [], |row| row.get(0)
+    )).expect("remaining rows");
+    assert_eq!(remaining, 904, "first page committed, failing page rolled back");
+    let metrics = store.operation_metrics_snapshot()["maintenance"]["payload"].clone();
+    assert_eq!(metrics["errors_total"], 1);
+    assert!(metrics["last_rows_deleted"].is_null());
+}
+
+fn seed_payload_prune_windows(store: &MessagesStore) {
+    store.with_write_conn(|conn| conn.execute_batch(
+        "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<5000)
+         INSERT INTO propagation_entries SELECT printf('id-%05d',x), 'destination', '00', x, 1, NULL FROM n;"
+    )).expect("paged payload fixture");
 }

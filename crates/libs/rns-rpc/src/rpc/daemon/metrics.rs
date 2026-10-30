@@ -397,6 +397,7 @@ impl RpcDaemon {
                 "write_lock_wait_ns_total": store_contention.write_lock_wait_ns_total,
                 "refill": store_operations["refill"].clone(),
                 "wal": store_operations["wal"].clone(),
+                "maintenance": store_operations["maintenance"].clone(),
             },
             "zmq_pipeline": self.zmq_pipeline_metrics.snapshot(),
             "memory": super::cgroup_memory::memory_accounting_snapshot(),

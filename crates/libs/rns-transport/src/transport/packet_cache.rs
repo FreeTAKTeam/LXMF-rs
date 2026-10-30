@@ -187,6 +187,15 @@ impl PacketCache {
         Some((hash, track.destination, track.source_iface))
     }
 
+    pub(super) fn tracked_destinations(&self) -> impl Iterator<Item = AddressHash> + '_ {
+        self.map.values().map(|entry| entry.destination)
+    }
+
+    pub(super) fn iter_hashes(&self) -> impl ExactSizeIterator<Item = &Hash> {
+        self.current.iter()
+    }
+
+    #[cfg(test)]
     pub fn hashes(&self) -> Vec<Hash> {
         self.current.iter().copied().collect()
     }

@@ -5,7 +5,7 @@
 | 1. Timer-driven dirty persistence | Implemented; resource acceptance open | [#695](https://github.com/FreeTAKTeam/LXMF-rs/pull/695), `cd7f616d` | Paired static-musl ingress: 210→1 saves, 2→0 verifications, CPU 14.33→7.83%, sampled high events 2,013→205. Retention memory/read/wait regressions remain. |
 | 2. Truthful readiness and cheap control | Implemented; production acceptance open | [#696](https://github.com/FreeTAKTeam/LXMF-rs/pull/696), `105a113f` | Actual failed bind: ready503/health200/live200. 8,166 negotiations: p99 1.087 ms, 0 errors during 41 saves and 23 checkpoints. SDK retry/reconcile and older-client timeout category regressions pass. |
 | 3. WAL maintenance connection | Implemented; production reader attribution open | [#697](https://github.com/FreeTAKTeam/LXMF-rs/pull/697) | Dedicated checkpoint connection, traffic-mutex and throttle regressions; 14 durability integration tests passed. Frame gauges cover normal/emergency attempts. |
-| 4. Conditional allocator/prune paging | Deferred: conditional attribution not established | No PR | One retention step with a flat observed tail does not demonstrate repeated ratcheting; cumulative wait does not prove a single multi-second critical section. |
+| 4. Conditional allocator/prune paging | 2026-10-28 measured evaluation complete; acceptance open | Payload paging: #706; allocator experiment: `corvo/663-measured-allocator` | Per-phase evidence now identifies payload pruning at 8.08 s / 379 MiB reads. Flat populations accompany +84.6 MiB retained anon after one pass; repeated ratcheting is not yet proven. Paired static-musl runs reduced absolute anon but failed slope/80% attribution gates; allocator remains draft, not a qualified fix. |
 
 ## PR 1 decisions
 

@@ -54,6 +54,7 @@ impl MessagesStore {
             inserted: inserted as usize,
             capacity_reached: false,
             pass_finished: exhausted,
+            deferred: false,
         })
     }
 }
