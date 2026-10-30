@@ -67,6 +67,7 @@ impl RpcDaemon {
             "sdk_voice_session_close_v2",
             "announce_now",
             "announce_delivery",
+            "set_display_name",
             "list_interfaces",
             "set_interfaces",
             "reload_config",

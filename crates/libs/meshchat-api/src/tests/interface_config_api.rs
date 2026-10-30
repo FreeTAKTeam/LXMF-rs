@@ -173,3 +173,78 @@ async fn rnode_multi_subinterfaces_survive_save_and_read() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(listed["interfaces"]["multi"]["sub_interfaces"][0]["name"], "left");
 }
+
+struct DiscoveryBridge;
+
+impl rns_rpc::PathLookupBridge for DiscoveryBridge {
+    fn has_path(&self, _destination: &str) -> Result<bool, std::io::Error> {
+        Ok(false)
+    }
+
+    fn request_path(&self, _destination: &str) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn discovered_interfaces(&self) -> Result<Value, std::io::Error> {
+        Ok(json!([{
+            "discovery_hash":[171, 205], "name":"Hub", "type":"BackboneInterface", "transport":true,
+            "status":"available", "reachable_on":"hub.example", "port":4242, "hops":2,
+            "network_id":"net", "transport_id":"tid", "stamp":[1, 2, 3], "value":16,
+        }]))
+    }
+}
+
+#[tokio::test]
+async fn discovered_interfaces_and_discovery_policy_roundtrip() {
+    let temp = tempfile::tempdir().expect("temp directory");
+    let path = temp.path().join("daemon.toml");
+    std::fs::write(&path, "[reticulum]\nenable_transport = true\n").expect("fixture");
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_path_lookup_bridge(Arc::new(DiscoveryBridge));
+    let (events, _) = broadcast::channel(16);
+    let app = build_router(
+        Arc::new(AppState {
+            daemon: Arc::new(daemon),
+            local: Arc::new(RwLock::new(LocalState::default())),
+            events,
+            persist: None,
+            config: Some(Arc::new(interface_control::ConfigStore::new(path.clone()))),
+        }),
+        None,
+    );
+
+    let (status, listed) =
+        call(app.clone(), "GET", "/api/v1/reticulum/discovered-interfaces", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed["discovery_enabled"], false);
+    assert_eq!(listed["interfaces"][0]["discovery_hash"], "abcd");
+    assert_eq!(listed["interfaces"][0]["reachable_on"], "hub.example");
+    assert!(listed["interfaces"][0].get("stamp").is_none());
+
+    let (status, _) = call(app.clone(), "POST", "/api/v1/reticulum/enable-discovery", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let contents = std::fs::read_to_string(&path).expect("saved config");
+    assert!(contents.contains("enable_transport = true"));
+    assert!(contents.contains("discover_interfaces = true"));
+    let (_, listed) = call(app, "GET", "/api/v1/reticulum/discovered-interfaces", None).await;
+    assert_eq!(listed["discovery_enabled"], true);
+}
+
+#[tokio::test]
+async fn display_name_patch_reaches_daemon_and_rejects_empty_names() {
+    let temp = tempfile::tempdir().expect("temp directory");
+    let app = config_router(temp.path().join("daemon.toml"));
+    let (status, saved) = call(
+        app.clone(),
+        "PATCH",
+        "/api/v1/config",
+        Some(json!({"config":{"display_name":"Corvo"}})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["config"]["display_name"], "Corvo");
+
+    let (status, _) =
+        call(app, "PATCH", "/api/v1/config", Some(json!({"config":{"display_name":"  "}}))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

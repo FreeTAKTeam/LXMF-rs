@@ -175,6 +175,12 @@ fn build_router(state: Arc<AppState>, assets: Option<PathBuf>) -> Router {
         .route("/api/v1/reticulum/interfaces/import", post(interface_control::import))
         .route("/api/v1/reticulum/enable-transport", post(interface_control::enable_transport))
         .route("/api/v1/reticulum/disable-transport", post(interface_control::disable_transport))
+        .route(
+            "/api/v1/reticulum/discovered-interfaces",
+            get(interface_control::discovered_interfaces),
+        )
+        .route("/api/v1/reticulum/enable-discovery", post(interface_control::enable_discovery))
+        .route("/api/v1/reticulum/disable-discovery", post(interface_control::disable_discovery))
         .route("/api/v1/calls", get(calls))
         .route("/api/v1/calls/clear-call-history", post(unsupported))
         .route("/api/v1/calls/hangup-all", get(unsupported))
