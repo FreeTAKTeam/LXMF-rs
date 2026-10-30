@@ -395,6 +395,7 @@ impl RpcDaemon {
                 })
             }
             "announce_delivery" => self.handle_announce_delivery(request),
+            "set_display_name" => self.handle_set_display_name(request),
             "announce_received" => {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")

@@ -462,3 +462,16 @@ async fn transport_bridge_rejects_propagated_send_without_selected_node() {
         error.message
     );
 }
+
+#[tokio::test]
+async fn transport_bridge_announces_renamed_display_name() {
+    let (_daemon, bridge) = test_transport_bridge_fixture().await;
+    rns_rpc::AnnounceBridge::set_display_name(bridge.as_ref(), "Renamed node").expect("rename");
+
+    let app_data = bridge.current_delivery_announce_app_data_for_test().expect("delivery app data");
+    let (name, _) = reticulum_daemon::announce_names::parse_peer_name_from_app_data(app_data.as_slice())
+        .expect("parse app data")
+        .expect("announced name");
+    assert_eq!(name, "Renamed node");
+    assert!(rns_rpc::AnnounceBridge::set_display_name(bridge.as_ref(), "   ").is_err());
+}

@@ -1,3 +1,4 @@
+mod discovery;
 mod exchange;
 mod store;
 mod write;
@@ -170,6 +171,19 @@ pub(super) async fn disable_transport(State(state): State<Arc<AppState>>) -> Api
 }
 
 async fn toggle_transport(state: &AppState, enabled: bool) -> ApiResult {
+    set_reticulum_flag(state, "enable_transport", enabled).await?;
+    Ok(Json(json!({"message":if enabled {
+        "Transport has been enabled. MeshChat must be restarted for this change to take effect."
+    } else {
+        "Transport has been disabled. MeshChat must be restarted for this change to take effect."
+    }})))
+}
+
+async fn set_reticulum_flag(
+    state: &AppState,
+    key: &'static str,
+    enabled: bool,
+) -> Result<(), ApiError> {
     config_task(state, move |store| {
         store.edit(|doc| {
             if doc.get("reticulum").is_none() {
@@ -178,16 +192,12 @@ async fn toggle_transport(state: &AppState, enabled: bool) -> ApiResult {
             let table = doc["reticulum"]
                 .as_table_mut()
                 .ok_or_else(|| ApiError::unavailable("reticulum config is not a table"))?;
-            table["enable_transport"] = toml_edit::value(enabled);
+            table[key] = toml_edit::value(enabled);
             Ok(())
         })
     })
-    .await?;
-    Ok(Json(json!({"message":if enabled {
-        "Transport has been enabled. MeshChat must be restarted for this change to take effect."
-    } else {
-        "Transport has been disabled. MeshChat must be restarted for this change to take effect."
-    }})))
+    .await
 }
 
+pub(super) use discovery::{disable_discovery, discovered_interfaces, enable_discovery};
 pub(super) use exchange::{export, import, import_preview};
