@@ -567,60 +567,6 @@ pub(super) async fn shutdown_auto_interfaces(
     }
 }
 
-fn spawn_propagation_storage_maintenance(daemon: Arc<RpcDaemon>) {
-    tokio::spawn(async move {
-        let mut last_enabled = false;
-        let mut interval_secs = 0;
-        let mut next_maintenance = tokio::time::Instant::now();
-        loop {
-            let state = daemon.current_propagation_state();
-            let configured_interval_secs = state.storage_maintenance_interval_secs.max(1);
-            if state.enabled != last_enabled || configured_interval_secs != interval_secs {
-                last_enabled = state.enabled;
-                interval_secs = configured_interval_secs;
-                next_maintenance = tokio::time::Instant::now()
-                    + Duration::from_secs(configured_interval_secs);
-            }
-
-            if !state.enabled {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                continue;
-            }
-
-            let now = tokio::time::Instant::now();
-            if now >= next_maintenance {
-                let maintenance_daemon = Arc::clone(&daemon);
-                // Join each storage operation before scheduling another one;
-                // database contention must not block the network reactor.
-                match tokio::task::spawn_blocking(move || {
-                    maintenance_daemon.maintain_propagation_storage()
-                })
-                .await
-                {
-                    Ok(Ok(pruned)) if pruned > 0 => {
-                        log::info!(
-                            "[daemon] propagation storage maintenance pruned peer entries={pruned}"
-                        );
-                    }
-                    Ok(Ok(_)) => {}
-                    Ok(Err(error)) => {
-                        log::error!("[daemon] propagation storage maintenance failed: {error}");
-                    }
-                    Err(error) => {
-                        log::error!("[daemon] propagation storage maintenance worker failed: {error}");
-                    }
-                }
-                next_maintenance = tokio::time::Instant::now()
-                    + Duration::from_secs(interval_secs);
-                continue;
-            }
-
-            tokio::time::sleep(next_maintenance.duration_since(now).min(Duration::from_secs(1)))
-                .await;
-        }
-    });
-}
-
 fn record_restored_path_identities(
     daemon: &RpcDaemon,
     restored_path_identities: &[RestoredReticulumPathIdentity],

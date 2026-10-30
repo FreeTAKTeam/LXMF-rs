@@ -65,7 +65,12 @@ full-hour trial with both purge settings at zero passes both stability criteria
 with matched steady ingress; warmup, cached reads and both-process environment
 changes limit causal attribution. Raw traces and frozen analysis replay are
 committed in the #709 evidence bundle. Production defaults remain unchanged;
-the ≥80% resident-ownership target and production resource acceptance stay open.
+the separate tagged full-hour run resolves the local >=80% mapping-owner target
+(minimum 91.203% across 593 post-second-pass captures), while +2.328 MiB RSS-window
+growth keeps #709 open. The user canceled synthetic pager-cache candidate validation
+and requested real Linux testing. Source `132c692e` is packaged as a draft Linux
+x86-64 daemon-only release; candidate RSS/performance and production resource
+acceptance stay open. PR #711 is unmerged; do not restart the canceled soak.
 
 Durable-broker-only daemon bootstrap initializes the identity-capable transport
 without opening a Reticulum listener or creating network interfaces. A focused

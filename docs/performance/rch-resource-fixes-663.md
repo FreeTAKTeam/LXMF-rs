@@ -905,6 +905,118 @@ member hashes and exact replay of both full-run analyses and the discarded setup
 were verified using only extracted files. Source/binary/client identity, raw
 hashes, windows, limitations and bundle mapping are in the comparison JSON.
 
+### #709 resident mapping attribution follow-up
+
+The remaining gate uses measured resident mapping ownership. A diagnostic
+static-musl build enables the pinned libmimalloc-sys 0.1.49 Linux naming hook with
+`CFLAGS_x86_64_unknown_linux_musl='-DPR_SET_VMA=0x53564d41 -DPR_SET_VMA_ANON_NAME=0'`.
+Daemon source `bae40251` has identical application/Cargo sources to `2473e7ef`;
+the tagged binary SHA-256 is
+`f3b04f3d60db138dcac271f0c68addd0e370ab2889e5e96e4257109a173c4127`.
+A real syscall witness records successful `PR_SET_VMA_ANON_NAME` calls.
+The earlier musl binary had no names. Naming can change VMA merging, so this
+instrumented run is separate evidence rather than retrospective attribution.
+See the [Linux naming API](https://man7.org/linux/man-pages/man2/PR_SET_VMA.2const.html).
+
+The opt-in `--resident-memory` sampler fetches phase/heap metrics first, then
+uses a pidfd to briefly stop its owned daemon. A stable thread set must remain
+entirely stopped before and after raw `smaps` and bracketing rollup reads.
+Ordinary cancellation is deferred until resume; outer cleanup also resumes the
+owned process. Each VMA's resident `Anonymous` bytes count exactly once. Only
+private, device-zero/inode-zero VMAs named exactly `[anon:mimalloc]` receive
+credit; the complete remainder stays unclassified. Both rollups must match the
+sum. Neither Cap requests, SQLite estimates, huge-page counters nor mapping
+`Size` are added. See [kernel accounting](https://www.kernel.org/doc/html/latest/filesystems/proc.html).
+
+Every raw capture is retained and replayed. After the second successful
+maintenance pass, every capture must attribute ≥80%; no invalid, missing or
+under-threshold sample can be omitted. RSS windows use the quiescent capture's
+total Anonymous bytes. Requested gauges come from before freezing and remain a
+separate measure; legacy harness summaries retain their earlier unpaused reads.
+The final closure decision also requires full duration/cadence, RSS/requested
+stability and zero phase, persistence, SDK-poll and HTTP errors. Mapping ownership
+does not distinguish live objects, allocator slack or metadata, and does not
+establish a leak verdict.
+
+The full-size tagged baseline completed 3,604.568 measured seconds with 717
+captures (maximum gap 5.163 seconds). All 717 raw captures replay and reconcile;
+all 593 observations from the second successful all-phase pass onward pass the
+80% criterion. The minimum is **91.203066%**, at sample 416: 176,402,432 named
+anonymous resident bytes out of 193,417,216 total, leaving **17,014,784 bytes**
+unclassified. Every capture retains its entire remainder. Naming/capture pauses
+sum to a conservative 9.285-second envelope, with a 150.548 ms maximum.
+
+The second-pass anchor is 623.372 seconds. All four full windows and the 581.196 s
+tail have valid cadence. The minimum fractions below each come from one actual
+capture; they are not ratios of independently selected medians.
+
+| Window seconds | Captures | Anon median MiB | Requested median MiB | Minimum named resident % |
+| --- | ---: | ---: | ---: | ---: |
+| 623.372–1223.372 | 120 | 182.335938 | 147.454845 | 91.245862 |
+| 1223.372–1823.372 | 119 | 184.664062 | 147.519299 | 91.207349 |
+| 1823.372–2423.372 | 120 | 184.953125 | 147.648205 | 91.203066 |
+| 2423.372–3023.372 | 119 | 185.105469 | 147.648639 | 91.209395 |
+| 3023.372–3604.568 (partial) | 115 | 185.257812 | 147.648639 | 91.216259 |
+
+Resident ownership passes, and requested full-window medians span 0.193793 MiB.
+**RSS stability fails:** adjacent full-window changes are +2.328125/+0.289062/
++0.152344 MiB against the unchanged <=1 MiB criterion. `closure_acceptance` is
+false and #709 stays open. At the one/two central total-anon captures defining
+the first two medians, their +2.328125 MiB change decomposes into +0.210938 MiB
+named and +2.117188 MiB unclassified. This uses paired counts (ties by sample
+index), not separate component medians or causal caller attribution.
+
+Eleven successful invocations per original phase and eleven path saves are
+observed, with zero phase/persistence/cleanup/HTTP errors. The complete client
+trace has 35,972 SDK polls and zero errors; median reported window P95 is 724 us
+and maximum 2,547 us. The measured daemon actually runs on CPUs 0,1 with
+MemoryHigh 805,306,368 and MemoryMax 1,073,741,824 bytes, and both actual daemon
+executables match the frozen diagnostic hash. Both processes have the two purge
+settings at zero and the control peer's public destination hashes match.
+
+Measured MemoryHigh events increase by 444 (12 after the second-pass anchor),
+ending at 668 including startup. Max/OOM/OOM-kill and captured swap stay zero.
+CPU averages 3.972% of one core; logical reads are 10,680,175 B/s and physical
+reads 66,326 B/s. Cache ownership/pressure and existing reject-profile/parser
+warnings remain material limits; this is not a clean production delivery test.
+First-pass pruning removes 600,000 history and 75,000 payload rows; later passes
+mostly revisit the remaining fixture under announce ingress, not fresh-message
+load. The original 200k fixture and production defaults are unchanged.
+
+The new [resident review bundle](../goals/p0-2026-10-28-663-608-609-625/evidence/709-resident-attribution.tar.gz)
+is 3,678,306 bytes, SHA-256
+`8f7c7cc289e0602b5d8f774fa8742f7c2ce4becee45fb9fb1f1ccd9c2664fd17`.
+All 736 member hashes, exact frozen analysis replay and 19 bundled tests pass
+from a fresh extraction. Raw captures/rollups, traces/logs, selected environment,
+build provenance, naming witness and frozen scripts are recoverable; no private
+identity, database or executable is included. The original #710 bundle remains
+unchanged. Acquisition code is `65ee62f1`; all 27 runnable hosted software checks
+pass, with one intentional publish skip. Software checks do not override the
+failed local RSS gate.
+
+The next predeclared candidate tests the pinned safe SQLite pager-cache release
+operation after successful periodic maintenance. Its source/call counters and
+local performance screens are defined in PLAN.md before acquisition. It is a
+separate reversible intervention, not an assertion that SQLite owns the remaining
+bytes. No failed baseline is discarded and no anchor or acceptance limit changes.
+
+
+The candidate is implemented at `132c692e`, with safe writer-lock/autocommit
+handling and separate attempt/completion/error/duration/lock-wait counters. The
+user canceled synthetic one-hour validation and requested real Linux testing;
+no attempt reached a periodic release, so candidate RSS/performance is unverified.
+The [stopped-candidate bundle](../goals/p0-2026-10-28-663-608-609-625/evidence/709-stopped-candidate-evidence.tar.gz)
+retains the cancellation history, including the clarification that earlier stops
+were deliberate human requests. The baseline and all its failed gates remain.
+
+A [draft Linux x86-64 daemon-only field-test release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/untagged-2fb4378c2ccd9b23eac9)
+packages that exact static-musl binary with checksums, BUILDINFO and install/rollback
+instructions. Binary SHA-256 is
+`b6d622812040d66f19b82e0883f47693cdfab3a1649acd48a3096b201205828a`.
+All 27 runnable hosted source checks and packaged startup checks pass. This is an
+unmerged experimental candidate, not stable promotion or real-system acceptance;
+#709/#663 remain open. No further synthetic soak is scheduled.
+
 ## Index-driven peer-entry expiry, 2026-10-29
 
 The operator's one-time DB/WAL eviction on production refilled 218 MiB within
