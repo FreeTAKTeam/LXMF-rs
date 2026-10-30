@@ -6,6 +6,16 @@
 // - an incremental pass, taken when a completed peer sees new inventory, walks
 //   only rows whose rowid lies above the last completed `floor_rowid`.
 // `rescan_required` (freed capacity or a reordered row) forces the full pass.
+//
+// Inserts also respect the global peer-entry limit that the quota pass
+// enforces. The room is read from `propagation_peer_entry_budget` inside the
+// same IMMEDIATE transaction as the inserts, and each insert in the page counts
+// against it. At the limit a page stops before the next unoffered candidate and
+// leaves the saved pass unfinished (or `rescan_required` set), so the work is
+// deferred rather than skipped. The next refill after quota, expiry or an entry
+// deletion frees room resumes it. Without this, quota would delete a mark and
+// refill would recreate it on every pass. Freed room is shared: one invocation
+// takes at most `ceil(room / (peers awaiting refill + 1))`.
 
 impl MessagesStore {
     fn refill_recent_peer_propagation_on(
@@ -13,7 +23,9 @@ impl MessagesStore {
         conn: &Connection,
         peer: &str,
         limit: u64,
+        total_limit: u64,
         boundary: &PeerQueueRefillBoundary,
+        share: &mut Option<u64>,
     ) -> rusqlite::Result<PeerQueueRefillPage> {
         let tx =
             rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
@@ -25,6 +37,7 @@ impl MessagesStore {
                 inserted: 0,
                 capacity_reached: false,
                 pass_finished: true,
+                deferred: false,
             });
         };
         let pending_count = Self::count_peer_queue_pending(&tx, &peer, limit)?;
@@ -35,10 +48,26 @@ impl MessagesStore {
                 inserted: 0,
                 capacity_reached: true,
                 pass_finished: false,
+                deferred: false,
             });
         }
-
-        let saved = Self::load_peer_queue_refill_state(&tx, &peer)?;
+        let peer_entries: i64 = tx.query_row(
+            "SELECT entry_count FROM propagation_peer_entry_budget WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        let room = Self::global_peer_entry_room(peer_entries, total_limit);
+        let share_left = match *share {
+            Some(left) => left,
+            None => {
+                let waiting = if room > 0 {
+                    Self::count_peers_awaiting_refill(&tx, &peer, boundary.generation, room)?
+                } else {
+                    0
+                };
+                *share.insert(room.div_ceil(waiting.saturating_add(1)))
+            }
+        };
         let fresh = || PeerQueueRefillSavedState {
             head_received_at: *boundary_head_received_at,
             head_transient_id: boundary_head_id.clone(),
@@ -49,6 +78,23 @@ impl MessagesStore {
             floor_rowid: None,
             cursor_rowid: None,
         };
+        let budget = room.min(share_left);
+        if budget == 0 {
+            // Saved pass state is untouched, so the candidates stay eligible; a
+            // peer seen for the first time records an unfinished pass instead.
+            if Self::load_peer_queue_refill_state(&tx, &peer)?.is_none() {
+                Self::persist_peer_queue_refill_state(&tx, &peer, &fresh())?;
+            }
+            tx.commit()?;
+            return Ok(PeerQueueRefillPage {
+                inserted: 0,
+                capacity_reached: false,
+                pass_finished: false,
+                deferred: true,
+            });
+        }
+
+        let saved = Self::load_peer_queue_refill_state(&tx, &peer)?;
         let mut state = match saved {
             None => fresh(),
             Some(saved) => {
@@ -59,6 +105,7 @@ impl MessagesStore {
                         inserted: 0,
                         capacity_reached: false,
                         pass_finished: true,
+                        deferred: false,
                     });
                 }
                 if saved.rescan_required {
@@ -96,13 +143,18 @@ impl MessagesStore {
             }
         };
 
-        let page = if state.cursor_rowid.is_some() {
-            self.refill_incremental_page(&tx, &peer, remaining, boundary, &mut state)?
+        let page_limit = remaining.min(budget);
+        let mut page = if state.cursor_rowid.is_some() {
+            self.refill_incremental_page(&tx, &peer, page_limit, boundary, &mut state)?
         } else {
-            self.refill_full_page(&tx, &peer, remaining, boundary, &mut state)?
+            self.refill_full_page(&tx, &peer, page_limit, boundary, &mut state)?
         };
         Self::persist_peer_queue_refill_state(&tx, &peer, &state)?;
         tx.commit()?;
+        // Only after commit: a rolled-back page consumes no share.
+        let inserted = page.inserted as u64;
+        *share = Some(share_left.saturating_sub(inserted));
+        page.deferred = !page.pass_finished && budget < remaining && inserted >= budget;
         Ok(page)
     }
 
@@ -180,10 +232,16 @@ impl MessagesStore {
             inserted: inserted as usize,
             capacity_reached: false,
             pass_finished: exhausted_page,
+            deferred: false,
         })
     }
 
-    fn refill_recent_peer_propagation(&self, peer: &str, limit: u64) -> rusqlite::Result<usize> {
+    fn refill_recent_peer_propagation(
+        &self,
+        peer: &str,
+        limit: u64,
+        total_limit: u64,
+    ) -> rusqlite::Result<usize> {
         let metrics = &self.write_state.refill_metrics;
         let _in_flight = metrics.track_in_flight();
         let started = std::time::Instant::now();
@@ -191,7 +249,7 @@ impl MessagesStore {
         let normalized = normalize_peer_key(peer);
         let (boundary, skip) = self.with_read_conn(|conn| {
             let boundary = Self::capture_peer_queue_refill_boundary(conn)?;
-            let skip = Self::peer_queue_refill_gate(conn, &normalized, limit, &boundary)?;
+            let skip = Self::peer_queue_refill_gate(conn, &normalized, limit, total_limit, &boundary)?;
             Ok((boundary, skip))
         })?;
         if let Some(skip) = skip {
@@ -202,21 +260,35 @@ impl MessagesStore {
                 PeerQueueRefillSkip::Capacity => {
                     metrics.skipped_capacity_total.fetch_add(1, Ordering::Relaxed);
                 }
+                PeerQueueRefillSkip::GlobalCapacity => {
+                    metrics.skipped_global_capacity_total.fetch_add(1, Ordering::Relaxed);
+                }
             }
             return Ok(0);
         }
         let mut inserted = 0usize;
+        let mut share = None;
         loop {
             // Each page owns and commits its own transaction so a large mostly-known
             // inventory cannot hold SQLite's shared writer lock across the whole scan.
             let page = self.with_write_conn(|conn| {
-                self.refill_recent_peer_propagation_on(conn, peer, limit, &boundary)
+                self.refill_recent_peer_propagation_on(
+                    conn,
+                    peer,
+                    limit,
+                    total_limit,
+                    &boundary,
+                    &mut share,
+                )
             })?;
             inserted = inserted.saturating_add(page.inserted);
             if page.capacity_reached {
                 metrics.capacity_reached_total.fetch_add(1, Ordering::Relaxed);
             }
-            if page.capacity_reached || page.pass_finished {
+            if page.deferred {
+                metrics.deferred_global_capacity_total.fetch_add(1, Ordering::Relaxed);
+            }
+            if page.capacity_reached || page.pass_finished || page.deferred {
                 break;
             }
             // Broker/control commands share this mutex; let a waiting one run first.
