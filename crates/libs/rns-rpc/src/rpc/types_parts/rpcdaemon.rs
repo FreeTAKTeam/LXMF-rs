@@ -124,6 +124,11 @@ pub trait AnnounceBridge: Send + Sync {
     fn announce_delivery(&self, _destination_hash: &str) -> Result<(), std::io::Error> {
         Err(std::io::Error::other("targeted delivery announce is not configured"))
     }
+
+    /// Replace the display name carried by later delivery announces.
+    fn set_display_name(&self, _display_name: &str) -> Result<(), std::io::Error> {
+        Err(std::io::Error::other("display name update is not configured"))
+    }
 }
 
 pub trait InterfaceMutationBridge: Send + Sync {

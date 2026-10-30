@@ -114,6 +114,15 @@ async fn update_config(state: &AppState, body: Value) -> Result<(), ApiError> {
     if let Some(peer) = &preferred {
         state.rpc("set_outbound_propagation_node", Some(json!({"peer":peer}))).await?;
     }
+    if let Some(name) = patch.get("display_name") {
+        // the daemon announces this name, so it must change there too, not only in local state
+        let name = name
+            .as_str()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| ApiError::bad("Display name must not be empty"))?;
+        state.rpc("set_display_name", Some(json!({"display_name":name}))).await?;
+    }
     let mut local = state.local.write().await;
     for (key, value) in patch {
         if key == "lxmf_preferred_propagation_node_destination_hash" {

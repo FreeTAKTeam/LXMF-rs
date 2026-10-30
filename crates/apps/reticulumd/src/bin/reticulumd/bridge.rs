@@ -89,7 +89,8 @@ pub(super) struct TransportBridge {
     signer: PrivateIdentity,
     delivery_source_hash: [u8; 16],
     announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
-    announce_app_data: Option<Vec<u8>>,
+    // replaceable at runtime so a renamed identity is announced without a restart
+    announce_app_data: RwLock<Option<Vec<u8>>>,
     announce_capabilities: Vec<String>,
     propagation_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     propagation_announce_app_data: Option<Vec<u8>>,
@@ -144,7 +145,7 @@ impl TransportBridge {
             signer,
             delivery_source_hash,
             announce_destination,
-            announce_app_data,
+            announce_app_data: RwLock::new(announce_app_data),
             announce_capabilities,
             propagation_announce_destination,
             propagation_announce_app_data,
