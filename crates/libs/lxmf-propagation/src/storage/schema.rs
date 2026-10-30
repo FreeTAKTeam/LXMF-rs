@@ -30,5 +30,8 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_folded_lookup
                     ON propagation_peer_entries(LOWER(peer), transient_id, state);
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_expiry
-                    ON propagation_peer_entries(state, updated_at);")
+                    ON propagation_peer_entries(state, updated_at);
+                CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_unhandled_rank
+                    ON propagation_peer_entries(peer, updated_at DESC, transient_id DESC)
+                    WHERE state = 'unhandled';")
 }

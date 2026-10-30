@@ -1038,3 +1038,40 @@ within one pass. Phases report per-thread logical read bytes. Expected productio
 fall from roughly 175 MiB to a few index pages, so file-cache residency decays
 to the poll path's hot set and stops refilling. Production acceptance remains
 the operator's 24-hour observation on a field-test build.
+
+## Index-driven peer-entry quota, 2026-10-30
+
+Quota ranked every unhandled mark with a global `ROW_NUMBER()` each pass. The
+plan read rows through `(state=?)` on the expiry index, looked up each row in
+the table, and sorted them in a temporary B-tree, all while holding the writer.
+A partial index on `(peer, updated_at DESC, transient_id DESC) WHERE state =
+'unhandled'` now serves a read-only over-quota gate and the restricted ranking
+(`docs/migrations/propagation-peer-entry-quota-index.md`).
+
+Measured with the bundled SQLite (rusqlite 0.40.2) on the production schema,
+WAL with `synchronous=FULL` and the default 2 MB page cache. The fixture is 256
+peers with alternating upper- and lower-case keys, 64 distinct timestamps and
+600,000 completed marks. Nothing is expired, so the whole history reaches the
+quota phase. Each measurement is a second pass on a warmed cache. Statement
+counters come from `sqlite3_stmt_status` and `rchar`/`wchar` from
+`/proc/self/io`. Remaining rows were identical to the baseline in every case.
+
+| Case | Baseline | Indexed quota |
+| --- | --- | --- |
+| No deletion: 856,000 rows, 256,000 unhandled | 461–501 ms writer hold, 10.75 M VM steps, 1 sort, 1.11 GB rchar, 28 MB wchar (sort spill) | 20–21 ms read-only gate, no writer, 1.54 M VM steps, 0 sorts, 52 MB rchar, 0 wchar |
+| One peer 21,000 unhandled: 19,976 deleted | 906–956 ms writer hold, 12.3 M VM steps, 1 sort | 12 ms gate + 404 ms writer hold, 3.49 M VM steps, 0 sorts |
+| Per-peer + global: 1,624,000 rows, 1,124,000 deleted | 13.2 / 16.8 / 15.1 s writer hold, 97.7 M VM steps, 274 sorts | 12 ms gate + 14.2 / 19.6 / 14.5 s writer hold, 98.9 M VM steps, 18 sorts |
+
+The heavy case is bound by B-tree maintenance under the 2 MB cache. Its
+logical I/O is equal (9.7 GB rchar, 6.2 GB wchar in both), and its wall time is
+within run-to-run noise of the baseline. The remaining sorts come from the
+unchanged global stages: a partial sort on `(state=?)` for unhandled marks and
+a table scan for completed marks. Both run only when the table is over the
+global limit. `COUNT(*)` is still one covering walk of the expiry index per
+pass, 23 MB for 856,000 rows. Rejected alternatives:
+
+- A gate on the existing case-folded unhandled index adds no index. With
+  mixed-case keys it sorted every folded group (120–136 ms, temporary-file
+  spill), and its per-peer deletes ran 9.3–10.2 s with 5× the I/O.
+- Deleting peer by peer through the new index without the window function
+  showed the same 5× I/O.

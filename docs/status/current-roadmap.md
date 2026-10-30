@@ -313,6 +313,9 @@ read to that expiry phase's rowid walk and per-row orphan probe; expiry is now
 served by a `(state, updated_at)` index, orphaned marks expire by TTL or quota
 instead of a per-pass join, and phases report logical read bytes
 (`docs/migrations/propagation-peer-entry-expiry-index-663.md`).
+Quota no longer ranks every unhandled mark each pass. A partial rank index serves a
+read-only gate and the over-quota ranking, so an idle pass takes no writer and
+does no sort (`docs/migrations/propagation-peer-entry-quota-index.md`).
 A retained anonymous-memory step with flat table counts activated the conditional
 allocator evaluation. Matched static-musl runs reduced absolute anon but still
 failed the short-run growth/80% ownership gates. Stack #708 subsequently merged
