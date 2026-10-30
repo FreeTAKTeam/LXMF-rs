@@ -59,6 +59,10 @@ A later increment serves the per-peer quota from a partial
 skips the writer when no quota is exceeded, and the original ranking runs only
 for over-quota peers, with the same limits and ordering
 (`docs/migrations/propagation-peer-entry-quota-index.md`).
+Refill now respects the global peer-entry limit. A trigger-maintained count is
+checked inside the insert transaction, and at the limit the pass is deferred
+rather than skipped. Quota and refill therefore no longer delete and recreate
+the same pair every pass (`docs/migrations/propagation-refill-global-budget.md`).
 
 The subsequent #663 diagnostics increment exports ZeroMQ stage outcomes and
 latency buckets through `/metrics`, with a bounded recent incident ring and

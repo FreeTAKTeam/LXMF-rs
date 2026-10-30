@@ -316,6 +316,10 @@ instead of a per-pass join, and phases report logical read bytes
 Quota no longer ranks every unhandled mark each pass. A partial rank index serves a
 read-only gate and the over-quota ranking, so an idle pass takes no writer and
 does no sort (`docs/migrations/propagation-peer-entry-quota-index.md`).
+Refill now respects the global peer-entry limit. A trigger-maintained count is
+checked inside the insert transaction, and at the limit the pass is deferred
+rather than skipped. Quota and refill therefore no longer delete and recreate
+the same pair every pass (`docs/migrations/propagation-refill-global-budget.md`).
 A retained anonymous-memory step with flat table counts activated the conditional
 allocator evaluation. Matched static-musl runs reduced absolute anon but still
 failed the short-run growth/80% ownership gates. Stack #708 subsequently merged

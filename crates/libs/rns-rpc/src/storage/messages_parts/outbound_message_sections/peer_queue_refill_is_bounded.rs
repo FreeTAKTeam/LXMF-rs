@@ -57,7 +57,7 @@ fn refill_operation_counters_follow_pages_candidates_and_inserts() {
     assert_eq!(before["wal"]["checkpoint_attempts_total"], 0);
 
     let inserted =
-        store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).expect("refill");
+        store.mark_recent_propagation_unhandled_for_peer(peer, 1_000, u64::MAX).expect("refill");
     assert_eq!(inserted, 300);
     let after = store.operation_metrics_snapshot()["refill"].clone();
     assert_eq!(after["invocations_total"], 1);
@@ -72,8 +72,8 @@ fn refill_operation_counters_follow_pages_candidates_and_inserts() {
 
     // A smaller capacity stops at the limit and counts it.
     let capped = "peer-refill-capped";
-    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10).expect("capped"), 10);
-    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10).expect("full"), 0);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10, u64::MAX).expect("capped"), 10);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10, u64::MAX).expect("full"), 0);
     let capped_after = store.operation_metrics_snapshot()["refill"].clone();
     // The first capped call fills ten rows and then observes the full queue on
     // its next page; the second call is turned away by the read-only gate.
@@ -96,13 +96,13 @@ fn refill_scans_known_inventory_in_bounded_pages_and_coalesces_completed_announc
         }
     }
 
-    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 10);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000, u64::MAX).unwrap(), 10);
     assert_eq!(store.list_peer_unhandled_propagation_ids(peer).unwrap().len(), 10);
 
     let completed_state = refill_state(&store, peer).expect("completed scan state");
     assert!(completed_state.scan_complete);
     assert_eq!(
-        store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(),
+        store.mark_recent_propagation_unhandled_for_peer(peer, 1_000, u64::MAX).unwrap(),
         0,
         "an unchanged completed inventory should not be rescanned on every announce"
     );
@@ -162,7 +162,7 @@ fn refill_scan_survives_reopen_and_observes_inventory_arriving_mid_scan() {
     }
 
     assert_eq!(
-        store.mark_recent_propagation_unhandled_for_peer(peer, 10).expect("fill first page"),
+        store.mark_recent_propagation_unhandled_for_peer(peer, 10, u64::MAX).expect("fill first page"),
         10
     );
     let prior = refill_state(&store, peer).expect("persisted cursor");
@@ -184,7 +184,7 @@ fn refill_scan_survives_reopen_and_observes_inventory_arriving_mid_scan() {
     let freed_id = refill_entry(259, 259).transient_id;
     store.mark_peer_handled_propagation(peer, &freed_id).expect("free pending capacity");
     assert_eq!(
-        store.mark_recent_propagation_unhandled_for_peer(peer, 10).unwrap(),
+        store.mark_recent_propagation_unhandled_for_peer(peer, 10, u64::MAX).unwrap(),
         1,
         "the newest candidate visible at call entry wins over the older saved cursor"
     );
@@ -235,7 +235,7 @@ fn refill_reaches_older_unseen_entry_after_more_than_8192_known_candidates() {
     });
     tx.expect("seed large known inventory");
 
-    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1).unwrap(), 1);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1, u64::MAX).unwrap(), 1);
     assert_eq!(
         store.list_peer_unhandled_propagation_ids(peer).unwrap(),
         vec![format!("{:064x}", 0)]
@@ -267,7 +267,7 @@ fn refill_defers_inventory_inserted_between_pages_until_next_invocation() {
         .expect("capture boundary");
     let first_page = store
         .with_write_conn(|conn| {
-            store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
+            store.refill_recent_peer_propagation_on(conn, peer, 1_000, u64::MAX, &boundary, &mut None)
         })
         .expect("scan first page");
     assert!(!first_page.pass_finished);
@@ -285,7 +285,7 @@ fn refill_defers_inventory_inserted_between_pages_until_next_invocation() {
     loop {
         let page = store
             .with_write_conn(|conn| {
-                store.refill_recent_peer_propagation_on(conn, peer, 1_000, &boundary)
+                store.refill_recent_peer_propagation_on(conn, peer, 1_000, u64::MAX, &boundary, &mut None)
             })
             .expect("continue captured pass");
         assert_eq!(page.inserted, 0);
@@ -295,7 +295,7 @@ fn refill_defers_inventory_inserted_between_pages_until_next_invocation() {
     }
     assert!(store.list_peer_unhandled_propagation_ids(peer).unwrap().is_empty());
 
-    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 1);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000, u64::MAX).unwrap(), 1);
     assert_eq!(
         store.list_peer_unhandled_propagation_ids(peer).unwrap(),
         vec![new_entry.transient_id]

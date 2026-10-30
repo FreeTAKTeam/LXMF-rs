@@ -72,13 +72,12 @@ impl RpcDaemon {
         peer: &str,
     ) -> Result<(), std::io::Error> {
         self.ensure_peer_queue_import(peer)?;
-        let per_peer_limit = self
-            .propagation_state
-            .lock()
-            .expect("propagation mutex poisoned")
-            .peer_entry_limit_per_peer;
+        let (per_peer_limit, total_limit) = {
+            let state = self.propagation_state.lock().expect("propagation mutex poisoned");
+            (state.peer_entry_limit_per_peer, state.peer_entry_limit)
+        };
         self.store
-            .mark_recent_propagation_unhandled_for_peer(peer, per_peer_limit)
+            .mark_recent_propagation_unhandled_for_peer(peer, per_peer_limit, total_limit)
             .map_err(std::io::Error::other)?;
         Ok(())
     }

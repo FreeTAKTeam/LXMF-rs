@@ -14,7 +14,8 @@ const QUOTA_GATE_SQL: &str = "SELECT EXISTS (
          SELECT 1 FROM propagation_peer_entries
          INDEXED BY idx_propagation_peer_entries_unhandled_rank
          WHERE state = 'unhandled' GROUP BY peer HAVING COUNT(*) > ?1
-     ), (SELECT COUNT(*) FROM propagation_peer_entries)";
+     ), (SELECT COUNT(*) FROM propagation_peer_entries),
+     (SELECT entry_count FROM propagation_peer_entry_budget WHERE singleton = 1)";
 const PER_PEER_QUOTA_DELETE_SQL: &str = "DELETE FROM propagation_peer_entries
      WHERE rowid IN (
          SELECT rowid
@@ -80,14 +81,15 @@ impl MessagesStore {
 
     /// A read-snapshot gate skips the writer when nothing is over quota; any
     /// deletion is decided again inside one write transaction, so a concurrent
-    /// insert is either seen there or left for the next pass, as before.
+    /// insert is either seen there or left for the next pass, as before. The
+    /// exact count also repairs the refill budget counter if it ever drifts.
     fn prune_peer_entries_to_quota(&self, total_limit: u64, per_peer_limit: u64) -> rusqlite::Result<usize> {
         let per_peer_limit = sql_u64(per_peer_limit)?;
-        let (peer_over, total): (bool, i64) = self.with_read_conn(|conn| {
+        let (peer_over, total, budget): (bool, i64, i64) = self.with_read_conn(|conn| {
             conn.prepare_cached(QUOTA_GATE_SQL)?
-                .query_row([per_peer_limit], |row| Ok((row.get(0)?, row.get(1)?)))
+                .query_row([per_peer_limit], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
         })?;
-        if !peer_over && total.max(0) as u64 <= total_limit {
+        if !peer_over && total.max(0) as u64 <= total_limit && budget == total {
             return Ok(0);
         }
         self.with_write_conn(|conn| {
@@ -100,6 +102,7 @@ impl MessagesStore {
                 |row| row.get(0),
             )?;
             let total = total.max(0) as u64;
+            let mut remaining_total = total;
             if total > total_limit {
                 let excess = total.saturating_sub(total_limit);
                 let unhandled_deleted = tx.execute(
@@ -110,14 +113,22 @@ impl MessagesStore {
 
                 // Same transaction, so the count minus the deletions is exact.
                 let remaining = total.saturating_sub(unhandled_deleted as u64);
+                remaining_total = remaining;
                 if remaining > total_limit {
                     let completed_excess = remaining.saturating_sub(total_limit);
-                    quota_deleted = quota_deleted.saturating_add(tx.execute(
+                    let completed_deleted = tx.execute(
                         GLOBAL_COMPLETED_QUOTA_DELETE_SQL,
                         rusqlite::params![completed_excess.min(i64::MAX as u64) as i64],
-                    )?);
+                    )?;
+                    quota_deleted = quota_deleted.saturating_add(completed_deleted);
+                    remaining_total = remaining.saturating_sub(completed_deleted as u64);
                 }
             }
+            tx.execute(
+                "UPDATE propagation_peer_entry_budget SET entry_count = ?1
+                 WHERE singleton = 1 AND entry_count <> ?1",
+                [sql_u64(remaining_total)?],
+            )?;
             tx.commit()?;
             Ok(quota_deleted)
         })
