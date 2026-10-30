@@ -1,5 +1,10 @@
 # P0 closure progress (#663, #608, #609, #625)
 
+**User direction (2026-10-28):** Cancel the 60-minute candidate soak and prepare a
+Linux test release for a real system. The interrupted candidate is not acceptance
+evidence; #709 and #663 remain open. Draft test release preparation is recorded in
+`/home/pgiuseppe/Documents/LXMF-rs-release-evidence/reticulumd-test-0.16.0-linux-132c692e.1`.
+
 Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 
 | Item | Issue | State | Branch / PR / head | Evidence |
@@ -8,7 +13,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | 2. systemd readiness notification | #663 | Locally verified | [PR #705](https://github.com/FreeTAKTeam/LXMF-rs/pull/705) | Datagram tests; release process READY/readyz/STOPPING/SIGTERM; real user systemd notify service active then clean exit |
 | 3. Maintenance-pass metrics and quota paging | #663 | Implemented; software gates passed; resource acceptance open | [PR #706](https://github.com/FreeTAKTeam/LXMF-rs/pull/706) | 600 s gate: payload 8.08 s / 379 MiB; quota 1.74 ms / 0 reads; bounded-window and failure regressions |
 | 3b. Index-driven peer-entry expiry | #663 | Implemented; production acceptance open | [PR #712](https://github.com/FreeTAKTeam/LXMF-rs/pull/712) | Production residency map: 174.76 MiB DB in 29,276 runs from the expiry rowid walk and orphan probe; query-plan regression; completed-mark purge contract kept |
-| 1b. Heap-owner gauge and 60-minute allocator soak | #709 / #663 | Implemented; resident ownership open | [PR #710](https://github.com/FreeTAKTeam/LXMF-rs/pull/710) | Requested-byte gauge; two full-hour runs with 11 actual maintenance passes each; default RSS stability fails, purge trial passes; ≥80% resident ownership unresolved |
+| 1b. Heap-owner gauge and 60-minute allocator soak | #709 / #663 | Resident attribution verified; tagged RSS gate open | [#710](https://github.com/FreeTAKTeam/LXMF-rs/pull/710), [#711](https://github.com/FreeTAKTeam/LXMF-rs/pull/711) | Tagged full hour: all 593 post-second-pass captures >=91.203%; RSS +2.328 MiB fails; cache-release soak canceled by user; Linux field-test draft prepared |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
@@ -289,3 +294,118 @@ traces/logs, selected environment values, method/harness snapshots and the
 standalone bootstrap observation are recoverable; private identities, databases
 and binaries are excluded. The comparison JSON maps original acquisition paths
 to portable members and records source/binary/client hashes and gate outcomes.
+
+## #709 remaining resident-attribution execution
+
+Goal: meet the ≥80% resident-memory gate and close #709 only with supporting
+acceptance evidence. PLAN.md item 1b's follow-up defines the measurement boundary:
+RSS-domain anonymous residency in kernel-named mimalloc VMAs. It replaces only
+the unresolved attribution status; the earlier runs remain independent evidence.
+It does not establish live-object ownership, retention or production acceptance.
+
+The initial baseline implementation stayed in the existing soak harness, a focused resident
+capture/replay helper, regressions, CI and the existing truth-owner documents.
+It changed no daemon Rust code, allocator policy, fixture content or production units.
+The separately predeclared cache-release candidate below extends that initial scope.
+Kill criteria are missing labels, invalid/missing/racy captures, failed resume,
+failed reconciliation, under-80% post-second-pass residency or failed soak gates.
+
+| Task | State | Evidence / dependency |
+| --- | --- | --- |
+| PRE mapping-owner contract | complete | Independent review confirms kernel label + same-domain smaps accounting; phase counters precede freeze, stable stopped TIDs, cancellation cleanup and no selective omission required. |
+| Tagged diagnostic binary | complete | Daemon source `bae40251`; static-musl SHA-256 `f3b04f3d60db138dcac271f0c68addd0e370ab2889e5e96e4257109a173c4127`; only existing Linux naming hook enabled through the two C macro definitions in PLAN.md. |
+| Capture/replay tooling | complete | 19 focused tests pass, including 80% boundary, one under-80 capture, missing/corrupt capture, real multithread stop/resume/read failure/timeout/SIGTERM and HTTP-before-freeze ordering; CI runs the suite. Independent review cleared acquisition/resume; malformed permission parsing was tightened. |
+| Full-size 3,600 s diagnostic ingress | complete; RSS fails | 3,604.568 s / 717 captures; all 593 post-second-pass samples >=91.203066%; requested flat; RSS +2.328125/+0.289062/+0.152344 MiB. Same fixture/limits/peer and purge settings. |
+| POST correctness / maintainer / verifier | baseline verified | Independent hash/source/binary checks, exact frozen replay and window arithmetic confirm ownership pass and RSS/composite failure; prospective cache trial remains separate. |
+
+A separate tagged startup probe witnesses three successful PR_SET_VMA naming
+calls and reconciles 89.60% named anon, while the earlier binary has no labels.
+A ten-second small-fixture end-to-end smoke completes, replays both captures and
+resumes the daemon cleanly. Its 70.8–71.9% named fractions and missing second pass
+correctly fail the acceptance gate; it is tooling evidence, not the full-size
+fixture result. Naming can change VMA merging and pauses change timing, so the
+new binary's evidence cannot retrospectively attribute the earlier untagged runs.
+
+The tagged baseline's first adjacent full-window RSS comparison fails by
++2.328125 MiB. Closure remains blocked even though resident ownership is above
+80% so far. A separately predeclared SQLite pager-cache release candidate follows
+in PLAN.md; independent PRE cleared its narrow writer-lock/autocommit boundary,
+required separate failure/timing metrics and warned that SQLite's shared page-cache
+group prevents writer-only caller attribution. Preserve the complete failed
+baseline before building or acquiring the candidate.
+
+Completed baseline: `resident_owner_80_percent_gate=true`,
+`requested_flat_window_gate=true`, `anon_window_gate=false` and
+`closure_acceptance=false`. All 717 raw captures replay; minimum sample 416 has
+176,402,432 / 193,417,216 named resident bytes with 17,014,784 unclassified. There
+are 593 post-second-pass captures, eleven successful invocations per phase and
+path saves, 35,972 polls and zero phase/persistence/SDK/HTTP errors. MemoryHigh
+delta is 444 (12 post-anchor), with max/OOM/swap zero. The baseline archive is
+3,678,306 bytes, SHA-256
+`8f7c7cc289e0602b5d8f774fa8742f7c2ce4becee45fb9fb1f1ccd9c2664fd17`:
+736 member hashes, exact fresh-extraction replay and 19 bundled tests pass.
+Independent POST verification reproduced the same hashes, source/binary identity,
+raw accounting, window arithmetic and false composite. #709 stays open; the
+candidate must meet the unchanged conjunctive gates and prospective screens.
+
+### Prospective cache-release candidate checkpoint
+
+The safe pinned SQLite release call is implemented under the existing writer
+mutex, after successful periodic propagation maintenance, with autocommit required.
+The manual RPC and disabled-propagation paths retain their behavior. Separate
+attempt/completion/error, duration and writer-lock-wait counters report calls,
+never SQLite resident bytes. The existing propagation timer moved into the
+existing storage-maintenance module without changing scheduling.
+
+Four storage regressions cover file-backed data/journal preservation, active
+transaction rejection/recovery, poisoned-writer errors and independence from
+reader/maintenance locks. A real paused-clock timer regression covers periodic
+invocation, manual maintenance and disabled propagation. Both boundaries failed
+before implementation and pass afterward. RPC tests pass (853, eight ignored),
+daemon tests pass (694 binary, 31 library), and the #369 scanner passes. Workspace
+all-target/all-feature Clippy, formatting, boundaries, module-size and architecture
+checks pass. Independent implementation review found no blocker.
+
+The prospective comparator rejects malformed/nonfinite/boolean/negative values,
+regressing cumulative source counters, inconsistent release totals/maxima, missing
+calls and all declared regression violations. Its adversarial self-checks pass.
+`evidence/709-cache-release-criteria.json` records its hash, the unchanged frozen
+analyzer and baseline inputs, exact limits and the pre-acquisition timestamp.
+No candidate observations were used to select these limits. The user canceled
+synthetic validation and requested a Linux field-test release; this source
+checkpoint does not establish the hypothesis or authorize stable promotion.
+
+
+### User-directed stop and Linux field-test release
+
+The user explicitly stopped synthetic one-hour candidate validation and asked for
+real Linux testing. Do not restart the canceled soak. The side conversation's
+confirmed direction was relayed to the main chat after three interrupted attempts;
+initial speculation about unexplained harness failures was incorrect. The fourth
+attempt was stopped on receipt. Only the first attempt acquired samples (ten over
+46.164 s); the other three stopped before readiness. No attempt reached periodic
+maintenance or a cache-release call. All have `completed=false`; no candidate
+RSS/performance or shipping verdict exists. The task-owned processes are stopped.
+
+The [stopped-candidate bundle](evidence/709-stopped-candidate-evidence.tar.gz)
+preserves all attempts, cancellation clarification, signal/service history,
+frozen candidate criteria/build provenance and startup/package validation. It is
+96,285 bytes, SHA-256
+`729ced4f8cb880390d5f80ec4a3ad7fb9ae18fdd29d31d1c6a7799baa6f6262a`,
+with 64 hashed members. Fresh stored-capture replay and independent final review
+pass; all four attempts remain incomplete. The baseline bundle and failed RSS gate remain
+unchanged. #709 and #663 stay open; PR #711 stays draft and unmerged.
+
+The [draft Linux x86-64 daemon-only test release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/untagged-2fb4378c2ccd9b23eac9)
+is `reticulumd-test-0.16.0-linux-132c692e.1`, bound to source
+`132c692e80330bf0bf9fd75ae93607f0b1ab552d`. It packages the experimental safe
+SQLite pager-cache release and diagnostic mimalloc VMA-name hook, with no stable
+promotion. Binary SHA-256 is
+`b6d622812040d66f19b82e0883f47693cdfab3a1649acd48a3096b201205828a`;
+tar.gz SHA-256 is
+`7f98a7b779fb91759c061b7973d3c25b6940e9506f69e291ff205832e7951a17`.
+Fresh authenticated downloads and contained binary/source hashes match. Packaged
+startup passes help/health/readiness, positive heap requests, zero release calls
+with propagation disabled, clean SIGINT exit and socket cleanup. All 27 runnable
+hosted source checks pass, with one intentional publish skip. Real-system load,
+delivery and sustained RSS/performance remain unverified; no deployment occurred.

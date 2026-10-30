@@ -1,4 +1,26 @@
 {
+  "candidate_field_test": {
+    "archive_sha256": "7f98a7b779fb91759c061b7973d3c25b6940e9506f69e291ff205832e7951a17",
+    "binary_sha256": "b6d622812040d66f19b82e0883f47693cdfab3a1649acd48a3096b201205828a",
+    "candidate_acceptance": null,
+    "meaning": "Human-directed cancellations, not candidate-policy observations; no restart. Baseline ownership verified; RSS failure and #709/#663 remain open. Source tests/27 runnable hosted checks and packaged startup pass; real-system qualification pending.",
+    "periodic_release_calls_observed": 0,
+    "release_is_draft": true,
+    "release_tag": "reticulumd-test-0.16.0-linux-132c692e.1",
+    "release_url": "https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/untagged-2fb4378c2ccd9b23eac9",
+    "source_pr": "https://github.com/FreeTAKTeam/LXMF-rs/pull/711",
+    "source_revision": "132c692e80330bf0bf9fd75ae93607f0b1ab552d",
+    "status": "user-canceled-synthetic-soak; draft Linux field-test release prepared",
+    "stopped_attempts": 4,
+    "stopped_evidence": {
+      "bytes": 96285,
+      "hashed_members": 64,
+      "path": "709-stopped-candidate-evidence.tar.gz",
+      "sha256": "729ced4f8cb880390d5f80ec4a3ad7fb9ae18fdd29d31d1c6a7799baa6f6262a"
+    },
+    "timed_attempt_captures": 10,
+    "timed_attempt_secs": 46.16354634898016
+  },
   "content_estimate": {
     "announce_entry_with_packet_and_148byte_payload": 396,
     "estimated_content_bytes": 139000000,
@@ -63,6 +85,17 @@
     "profile": "ingress"
   },
   "raw_artifact_path_note": "target paths are original local acquisition locations; the committed review bundle contains portable raw files and frozen analysis/harness snapshots.",
+  "resident_review_bundle": {
+    "bytes": 3678306,
+    "frozen_analysis": "analyze.py",
+    "frozen_harness": "tools/scripts/resource_soak_663.py",
+    "full_run_member": "ingress-3600/",
+    "hashed_members": 736,
+    "manifest": "MANIFEST.json",
+    "path": "docs/goals/p0-2026-10-28-663-608-609-625/evidence/709-resident-attribution.tar.gz",
+    "sha256": "8f7c7cc289e0602b5d8f774fa8742f7c2ce4becee45fb9fb1f1ccd9c2664fd17",
+    "verification": "All 736 member hashes verified; exact frozen analysis replay and 19 bundled tooling tests pass from a fresh extraction."
+  },
   "results": {
     "after-final": {
       "binary_code_revision": "a182a4ea970a118f7f18fc7fabedb1b1bff7e6c5",
@@ -1495,6 +1528,689 @@
         "syscr_per_sec": 3113.284988404779,
         "write_lock_wait_ms_delta": 7150.017987,
         "write_ops_delta": 15137.0
+      },
+      "window_coverage_valid": true
+    },
+    "resident-tagged-3600": {
+      "acquisition_root": "target/issue709-resident/ingress-3600",
+      "adjacent_complete_window_anon_deltas_bytes": [
+        2441216.0,
+        303104.0,
+        159744.0
+      ],
+      "adjacent_complete_window_requested_deltas_bytes": [
+        67584.0,
+        135168.0,
+        455.0
+      ],
+      "analysis_script_path": "target/issue709-resident/analyze.py",
+      "analysis_script_sha256": "37a6946dcb9cddce266b1e0461a20f054e071b656af8e7cc7812633387d0da38",
+      "anon_observed_max_bytes": 235618304,
+      "anon_observed_min_bytes": 176922624,
+      "anon_peak_sample": {
+        "anon_bytes": 235618304,
+        "elapsed_secs": 2101.335962009005,
+        "index": 418,
+        "persistence_before_capture": {
+          "cleanup_bytes_removed_total": 0,
+          "cleanup_duration_ns_total": 96708799,
+          "cleanup_errors_total": 0,
+          "cleanup_examined_total": 34304,
+          "cleanup_last_duration_ns": 1827037,
+          "cleanup_last_success_unix_secs": 1793226190,
+          "cleanup_removed_total": 0,
+          "cleanup_scans_completed_total": 0,
+          "coalesced_triggers_total": 4074,
+          "dropped_triggers_total": 2,
+          "duration_ns_total": 1296024231,
+          "errors_total": 0,
+          "full_verifications_total": 0,
+          "in_flight": true,
+          "last_duration_ns": 208209009,
+          "last_fingerprint_map_len": 100000,
+          "last_kept_entries": 100000,
+          "last_run_unix_secs": 1793225891,
+          "last_tunnel_paths": 2,
+          "records_examined_total": 600012,
+          "runs_total": 6,
+          "skipped_known_total": 600000,
+          "triggers_total": 4083,
+          "verified_unchanged_total": 0,
+          "written_total": 12
+        },
+        "rust_requested_before_capture_bytes": 213629208
+      },
+      "anon_source": "Quiescent per-VMA Anonymous totals, reconciled with bracketing rollups.",
+      "anon_window_gate": false,
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 1024,
+        "latency_p95_us_max": 2547,
+        "latency_p95_us_median": 724.0,
+        "polls": 35972
+      },
+      "client_trace_coverage_valid": true,
+      "client_trace_elapsed_secs": 3600.076392082,
+      "closure_acceptance": false,
+      "completed": true,
+      "coverage_definition": "all expected complete windows present; 5s nominal cadence, first/last within 10s of edges and every internal gap <= 10s",
+      "daemon_build_provenance": {
+        "CFLAGS_x86_64_unknown_linux_musl": "-DPR_SET_VMA=0x53564d41 -DPR_SET_VMA_ANON_NAME=0",
+        "acquisition_code_revision": "65ee62f1f26f47934f0257ad721fc187c42a3b9f",
+        "application_source_same_as_requested_gauge_checkpoint": "git diff2473e7ef..bae40251 -- crates Cargo.toml Cargo.lock is empty",
+        "binary_sha256": "f3b04f3d60db138dcac271f0c68addd0e370ab2889e5e96e4257109a173c4127",
+        "build_command": [
+          "cargo",
+          "zigbuild",
+          "--locked",
+          "--release",
+          "--target",
+          "x86_64-unknown-linux-musl",
+          "-p",
+          "reticulumd",
+          "--bin",
+          "reticulumd",
+          "-j",
+          "8"
+        ],
+        "cargo_zigbuild_install": "cargo-zigbuild v0.23.4:",
+        "client": {
+          "executable": "/home/pgiuseppe/Documents/LXMF-rs/target/release/examples/resource_soak_663_client",
+          "meaning": "Existing SDK v2 ZeroMQ dual-endpoint poll client; source and binary unchanged from #710.",
+          "pid": 3820674,
+          "sha256": "abcc940bbe1c503135aef9ab90811049e6ff3b2e1896d15228b591daa12681eb"
+        },
+        "daemon_source_revision": "bae40251e6ad0c3a1df1dbad1e7b0c647517c142",
+        "kernel": "7.0.0-38-generic",
+        "libmimalloc_sys_version": "0.1.49",
+        "meaning": "Diagnostic existing-hook enablement only; new binary and VMA-merge/timing effects, no retroactive ownership proof for2473.",
+        "mimalloc_prim_unix_c_sha256": "c1ae32eaac7ccf18c10058cca99723892f8bd027318590151f5011c929c7e3be",
+        "name_hook_excerpt": "static void* unix_mmap_prim(void* addr, size_t size, int protect_flags, int flags, int fd) {\n  void* p = mmap(addr, size, protect_flags, flags, fd, 0 /* offset */);\n  #if defined(__linux__) && defined(PR_SET_VMA)\n  if (p!=MAP_FAILED && p!=NULL) {\n    prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, p, size, \"mimalloc\");\n  }\n  #endif\n  return p;\n}",
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+        "schema": "lxmf-rs-709-resident-build-v1",
+        "target": "x86_64-unknown-linux-musl"
+      },
+      "expected_complete_windows": 4,
+      "first_minute": {
+        "anon_median_bytes": 177586176.0,
+        "cadence_coverage_valid": true,
+        "complete": true,
+        "end_secs": 60,
+        "max_sample_gap_secs": 5.162841566023417,
+        "rust_requested_max_bytes": 152145842,
+        "rust_requested_median_bytes": 152069752.0,
+        "rust_requested_min_bytes": 151815646,
+        "samples": 12,
+        "start_secs": 0
+      },
+      "full_3600_second_duration_valid": true,
+      "http_errors_valid": true,
+      "last_maintenance": {
+        "expiry": {
+          "duration_ns_total": 13372766616,
+          "errors_total": 0,
+          "last_duration_ns": 3871828,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 13334204686,
+          "max_read_bytes": 1519616,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 1519616,
+          "rows_deleted_total": 600000,
+          "runs_total": 11
+        },
+        "payload": {
+          "duration_ns_total": 8222194881,
+          "errors_total": 0,
+          "last_duration_ns": 8544190,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 8138741226,
+          "max_read_bytes": 237178880,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 237178880,
+          "rows_deleted_total": 75000,
+          "runs_total": 11
+        },
+        "quota": {
+          "duration_ns_total": 21630234,
+          "errors_total": 0,
+          "last_duration_ns": 2056665,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 0,
+          "max_duration_ns": 3498400,
+          "max_read_bytes": 0,
+          "read_bytes_samples_total": 11,
+          "read_bytes_total": 0,
+          "rows_deleted_total": 0,
+          "runs_total": 11
+        }
+      },
+      "last_minute": {
+        "anon_median_bytes": 194129920,
+        "cadence_coverage_valid": true,
+        "complete": true,
+        "end_secs": 3604.5677183170046,
+        "max_sample_gap_secs": 5.031207321007969,
+        "rust_requested_max_bytes": 154820819,
+        "rust_requested_median_bytes": 154820819,
+        "rust_requested_min_bytes": 154820819,
+        "samples": 11,
+        "start_secs": 3544.5677183170046
+      },
+      "last_persistence": {
+        "cleanup_bytes_removed_total": 0,
+        "cleanup_duration_ns_total": 180047883,
+        "cleanup_errors_total": 0,
+        "cleanup_examined_total": 61952,
+        "cleanup_last_duration_ns": 1354468,
+        "cleanup_last_success_unix_secs": 1793227660,
+        "cleanup_removed_total": 0,
+        "cleanup_scans_completed_total": 0,
+        "coalesced_triggers_total": 7064,
+        "dropped_triggers_total": 3,
+        "duration_ns_total": 2329710156,
+        "errors_total": 0,
+        "full_verifications_total": 0,
+        "in_flight": false,
+        "last_duration_ns": 196746629,
+        "last_fingerprint_map_len": 100000,
+        "last_kept_entries": 100000,
+        "last_run_unix_secs": 1793227392,
+        "last_tunnel_paths": 2,
+        "records_examined_total": 1100022,
+        "runs_total": 11,
+        "skipped_known_total": 1100000,
+        "triggers_total": 7079,
+        "verified_unchanged_total": 0,
+        "written_total": 22
+      },
+      "last_transport_tables": {
+        "announce_cache_capacity": 100000,
+        "announce_cache_entries": 100000,
+        "announce_retransmit_entries": 0,
+        "available": true,
+        "fingerprint_map_len": 100000,
+        "link_entries": 0,
+        "packet_cache_hashes": 7080,
+        "packet_cache_tracked": 0,
+        "path_entries": 100002,
+        "peer_crypto": 2,
+        "peer_crypto_removed_total": 0,
+        "random_blob_count": 100128,
+        "single_out_destinations": 100002,
+        "single_out_destinations_removed_total": 0,
+        "tunnel_entries": 1,
+        "tunnel_path_entries": 2
+      },
+      "limitations": [
+        "Tagged naming and controlled pauses can change VMA merging/timing; this does not retrospectively attribute the untagged #710 runs.",
+        "Named resident mappings are not live-object ownership, allocator retention or proof of leak absence.",
+        "The complete unclassified remainder remains unknown; requested sizes and SQLite targets are never credited as resident bytes.",
+        "RSS fails despite the owner80 gate passing; no #709 closure or #663 production acceptance follows."
+      ],
+      "maintenance_completions": [
+        {
+          "anon_bytes": 184360960,
+          "first_observed_secs": 321.76844636999886,
+          "passes": 1,
+          "rust_requested_before_capture_bytes": 153346795
+        },
+        {
+          "anon_bytes": 189931520,
+          "first_observed_secs": 623.3721651920059,
+          "passes": 2,
+          "rust_requested_before_capture_bytes": 154617612
+        },
+        {
+          "anon_bytes": 193224704,
+          "first_observed_secs": 925.0253170549986,
+          "passes": 3,
+          "rust_requested_before_capture_bytes": 154617612
+        },
+        {
+          "anon_bytes": 194269184,
+          "first_observed_secs": 1221.6523659189988,
+          "passes": 4,
+          "rust_requested_before_capture_bytes": 154685196
+        },
+        {
+          "anon_bytes": 194371584,
+          "first_observed_secs": 1523.2572536339867,
+          "passes": 5,
+          "rust_requested_before_capture_bytes": 154685196
+        },
+        {
+          "anon_bytes": 194428928,
+          "first_observed_secs": 1824.8845431579975,
+          "passes": 6,
+          "rust_requested_before_capture_bytes": 154685196
+        },
+        {
+          "anon_bytes": 194666496,
+          "first_observed_secs": 2121.4434941229993,
+          "passes": 7,
+          "rust_requested_before_capture_bytes": 154820364
+        },
+        {
+          "anon_bytes": 194482176,
+          "first_observed_secs": 2423.065007878002,
+          "passes": 8,
+          "rust_requested_before_capture_bytes": 154820364
+        },
+        {
+          "anon_bytes": 194727936,
+          "first_observed_secs": 2724.668322412006,
+          "passes": 9,
+          "rust_requested_before_capture_bytes": 154820819
+        },
+        {
+          "anon_bytes": 195026944,
+          "first_observed_secs": 3026.316703054006,
+          "passes": 10,
+          "rust_requested_before_capture_bytes": 154820819
+        },
+        {
+          "anon_bytes": 194838528,
+          "first_observed_secs": 3322.957412691001,
+          "passes": 11,
+          "rust_requested_before_capture_bytes": 154820819
+        }
+      ],
+      "maintenance_errors_total": 0,
+      "max_sample_gap_secs": 5.162841566023417,
+      "measured_duration_secs": 3604.5677183170046,
+      "median_component_definition": "Use the one/two central TOTAL-anon captures for each window (ties by sample index); average their paired named/unclassified counts. These sum to the total median and decompose its change; they are not independent component medians, object owners or inputs to the per-capture 80% gate.",
+      "minimum_all_capture_index": 416,
+      "minimum_all_capture_resident_memory": {
+        "attributed_fraction": 0.9120306643230766,
+        "mimalloc_anon_bytes": 176402432,
+        "mimalloc_vmas": 19,
+        "pause_secs": 0.008256565983174369,
+        "raw_capture_path": "resident/000416.json",
+        "raw_capture_sha256": "391d9099f4c30f65d3ff480b10d2829f6d044368b545b9b833d6354c86bbf264",
+        "swap_bytes": 0,
+        "total_anon_bytes": 193417216,
+        "unclassified_anon_bytes": 17014784,
+        "vmas": 197
+      },
+      "observed_complete_windows": 4,
+      "observed_sample_span_secs": 3599.5397139179986,
+      "packet_hashes_first": 0,
+      "packet_hashes_last": 7080,
+      "peak_capture_resident_memory": {
+        "attributed_fraction": 0.9277866629580697,
+        "mimalloc_anon_bytes": 218603520,
+        "mimalloc_vmas": 19,
+        "pause_secs": 0.015672498004278168,
+        "raw_capture_path": "resident/000418.json",
+        "raw_capture_sha256": "82eae8707fa5b787a52849636e7f80da3cb466e448b9aa999a52e78ad2d7580b",
+        "swap_bytes": 0,
+        "total_anon_bytes": 235618304,
+        "unclassified_anon_bytes": 17014784,
+        "vmas": 197
+      },
+      "phase_count_assumption": "ingress profile drives announces and SDK polls only; phase runs are scheduled invocations, valid as completed successful passes only with zero phase errors",
+      "post_second_pass_windows": [
+        {
+          "anon_median_bytes": 191193088.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 1223.372165192006,
+          "max_sample_gap_secs": 5.033381047978764,
+          "rust_requested_max_bytes": 154688494,
+          "rust_requested_median_bytes": 154617612.0,
+          "rust_requested_min_bytes": 154617612,
+          "samples": 120,
+          "start_secs": 623.3721651920059
+        },
+        {
+          "anon_median_bytes": 193634304,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 1823.372165192006,
+          "max_sample_gap_secs": 5.032115398003953,
+          "rust_requested_max_bytes": 154689477,
+          "rust_requested_median_bytes": 154685196,
+          "rust_requested_min_bytes": 154685196,
+          "samples": 119,
+          "start_secs": 1223.372165192006
+        },
+        {
+          "anon_median_bytes": 193937408.0,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 2423.372165192006,
+          "max_sample_gap_secs": 5.044545967975864,
+          "rust_requested_max_bytes": 213629208,
+          "rust_requested_median_bytes": 154820364.0,
+          "rust_requested_min_bytes": 154685196,
+          "samples": 120,
+          "start_secs": 1823.372165192006
+        },
+        {
+          "anon_median_bytes": 194097152,
+          "cadence_coverage_valid": true,
+          "complete": true,
+          "end_secs": 3023.372165192006,
+          "max_sample_gap_secs": 5.047889217006741,
+          "rust_requested_max_bytes": 154824885,
+          "rust_requested_median_bytes": 154820819,
+          "rust_requested_min_bytes": 154820364,
+          "samples": 119,
+          "start_secs": 2423.372165192006
+        },
+        {
+          "anon_median_bytes": 194256896,
+          "cadence_coverage_valid": true,
+          "complete": false,
+          "end_secs": 3604.5677183170046,
+          "max_sample_gap_secs": 5.048163091996685,
+          "rust_requested_max_bytes": 154824218,
+          "rust_requested_median_bytes": 154820819,
+          "rust_requested_min_bytes": 154820819,
+          "samples": 115,
+          "start_secs": 3023.372165192006
+        }
+      ],
+      "raw_sha256": {
+        "analysis.json": "2e599819a77d574f3cf70a2304278404f4052daf7309c6434b87f75f8c2efa9d",
+        "client.jsonl": "0913fdf11ef19005ea9e1b1ab179ecdc19deae57a6d57101adf32abd28cd5930",
+        "measurement-environment.json": "32c69a3719a5358822b605f9c654289026e0d38e06df464cb96abcdfb452505a",
+        "resident-summary.json": "516b187be7e55d109f1779398e27862831d1b7f2b7ee1bb78add8b78e4d424e9",
+        "run.json": "de837982826fbed3f7ec2de6e4ae296190b567336d655b4e52b532cd2decaac8",
+        "samples.jsonl": "0328ddbea437c8b19c455a4cd4d08a0832949ad4628ce8f4d51384bb76e4166d"
+      },
+      "requested_flat_definition": "max minus min complete-window median <= 1 MiB; not proof of absence of leaks",
+      "requested_flat_window_gate": true,
+      "requested_source": "HTTP gauge before freezing; separate time/domain, never added to resident ownership.",
+      "resident_memory": {
+        "anchor_index": 124,
+        "capture_duration_coverage_valid": true,
+        "captures_replayed": 717,
+        "max_pause_secs": 0.15054837497882545,
+        "minimum_resident_memory": {
+          "attributed_fraction": 0.9120306643230766,
+          "mimalloc_anon_bytes": 176402432,
+          "mimalloc_vmas": 19,
+          "pause_secs": 0.008256565983174369,
+          "raw_capture_path": "resident/000416.json",
+          "raw_capture_sha256": "391d9099f4c30f65d3ff480b10d2829f6d044368b545b9b833d6354c86bbf264",
+          "swap_bytes": 0,
+          "total_anon_bytes": 193417216,
+          "unclassified_anon_bytes": 17014784,
+          "vmas": 197
+        },
+        "minimum_sample_index": 416,
+        "post_second_pass_captures": 593,
+        "resident_owner_80_percent_gate": true,
+        "schema": "lxmf-rs-resident-gate-v1",
+        "total_pause_secs": 9.28497795612202
+      },
+      "resident_owner_80_percent_gate": true,
+      "resident_window_worst_samples": [
+        {
+          "anon_median_components": {
+            "capture_indices": [
+              180,
+              206
+            ],
+            "mimalloc_anon_bytes": 176398336,
+            "total_anon_bytes": 191193088,
+            "unclassified_anon_bytes": 14794752
+          },
+          "captures": 120,
+          "complete": true,
+          "end_secs": 1223.372165192006,
+          "resident_memory": {
+            "attributed_fraction": 0.9124586223618462,
+            "mimalloc_anon_bytes": 177262592,
+            "mimalloc_vmas": 19,
+            "pause_secs": 0.014391063014045358,
+            "raw_capture_path": "resident/000243.json",
+            "raw_capture_sha256": "134cf7ed30b61eb2092d5cebcd5e0f6b9c3a3da9503f57ed37befa593cc84108",
+            "swap_bytes": 0,
+            "total_anon_bytes": 194269184,
+            "unclassified_anon_bytes": 17006592,
+            "vmas": 197
+          },
+          "sample_index": 243,
+          "start_secs": 623.3721651920059
+        },
+        {
+          "anon_median_components": {
+            "capture_indices": [
+              328
+            ],
+            "mimalloc_anon_bytes": 176619520,
+            "total_anon_bytes": 193634304,
+            "unclassified_anon_bytes": 17014784
+          },
+          "captures": 119,
+          "complete": true,
+          "end_secs": 1823.372165192006,
+          "resident_memory": {
+            "attributed_fraction": 0.9120734908136483,
+            "mimalloc_anon_bytes": 176496640,
+            "mimalloc_vmas": 19,
+            "pause_secs": 0.017284362023929134,
+            "raw_capture_path": "resident/000355.json",
+            "raw_capture_sha256": "c8c51f3b7fa0b8c2b6df70391d9344fd20f85cc8ad7b419372c9189edba61b12",
+            "swap_bytes": 0,
+            "total_anon_bytes": 193511424,
+            "unclassified_anon_bytes": 17014784,
+            "vmas": 197
+          },
+          "sample_index": 355,
+          "start_secs": 1223.372165192006
+        },
+        {
+          "anon_median_components": {
+            "capture_indices": [
+              383,
+              384
+            ],
+            "mimalloc_anon_bytes": 176922624,
+            "total_anon_bytes": 193937408,
+            "unclassified_anon_bytes": 17014784
+          },
+          "captures": 120,
+          "complete": true,
+          "end_secs": 2423.372165192006,
+          "resident_memory": {
+            "attributed_fraction": 0.9120306643230766,
+            "mimalloc_anon_bytes": 176402432,
+            "mimalloc_vmas": 19,
+            "pause_secs": 0.008256565983174369,
+            "raw_capture_path": "resident/000416.json",
+            "raw_capture_sha256": "391d9099f4c30f65d3ff480b10d2829f6d044368b545b9b833d6354c86bbf264",
+            "swap_bytes": 0,
+            "total_anon_bytes": 193417216,
+            "unclassified_anon_bytes": 17014784,
+            "vmas": 197
+          },
+          "sample_index": 416,
+          "start_secs": 1823.372165192006
+        },
+        {
+          "anon_median_components": {
+            "capture_indices": [
+              576
+            ],
+            "mimalloc_anon_bytes": 177049600,
+            "total_anon_bytes": 194097152,
+            "unclassified_anon_bytes": 17047552
+          },
+          "captures": 119,
+          "complete": true,
+          "end_secs": 3023.372165192006,
+          "resident_memory": {
+            "attributed_fraction": 0.9120939466903223,
+            "mimalloc_anon_bytes": 176881664,
+            "mimalloc_vmas": 19,
+            "pause_secs": 0.012632288999157026,
+            "raw_capture_path": "resident/000511.json",
+            "raw_capture_sha256": "f19989785765e30bfab7084242355bdb2f51bb2341c8a3e9e18bc4548cdb7b94",
+            "swap_bytes": 0,
+            "total_anon_bytes": 193929216,
+            "unclassified_anon_bytes": 17047552,
+            "vmas": 201
+          },
+          "sample_index": 511,
+          "start_secs": 2423.372165192006
+        },
+        {
+          "anon_median_components": {
+            "capture_indices": [
+              636
+            ],
+            "mimalloc_anon_bytes": 177209344,
+            "total_anon_bytes": 194256896,
+            "unclassified_anon_bytes": 17047552
+          },
+          "captures": 115,
+          "complete": false,
+          "end_secs": 3604.5677183170046,
+          "resident_memory": {
+            "attributed_fraction": 0.9121625899584239,
+            "mimalloc_anon_bytes": 177033216,
+            "mimalloc_vmas": 19,
+            "pause_secs": 0.01270015601767227,
+            "raw_capture_path": "resident/000694.json",
+            "raw_capture_sha256": "59c05a9891e3e80530163aae914aad54fcc2936c5dfaa25e164e51fd72cb6dc0",
+            "swap_bytes": 0,
+            "total_anon_bytes": 194080768,
+            "unclassified_anon_bytes": 17047552,
+            "vmas": 201
+          },
+          "sample_index": 694,
+          "start_secs": 3023.372165192006
+        }
+      ],
+      "run": {
+        "cgroup_dir": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/lxmf-soak-663-3818775-1793223855879866432.scope",
+        "completed": true,
+        "constrained": true,
+        "cpus": "0,1",
+        "daemon_command": [
+          "systemd-run",
+          "--user",
+          "--scope",
+          "-q",
+          "--unit",
+          "lxmf-soak-663-3818775-1793223855879866432",
+          "-p",
+          "MemoryHigh=768M",
+          "-p",
+          "MemoryMax=1G",
+          "taskset",
+          "-c",
+          "0,1",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709-resident/bin/reticulumd",
+          "--db",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709-resident/ingress-3600/work/reticulum.db",
+          "--identity",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709-resident/ingress-3600/work/identity",
+          "--config",
+          "/home/pgiuseppe/Documents/LXMF-rs/target/issue709-resident/ingress-3600/work/reticulum.toml",
+          "--rpc",
+          "127.0.0.1:58769",
+          "--rpc-unix",
+          "rpc.sock",
+          "--transport",
+          "127.0.0.1:42797",
+          "--announce-interval-secs",
+          "0",
+          "--zmq-rpc-command",
+          "tcp://127.0.0.1:59517",
+          "--zmq-durable-broker",
+          "--zmq-broker-budget-bytes",
+          "6442450944"
+        ],
+        "daemon_pid": 3818845,
+        "duration_secs": 3600,
+        "ended_unix": 1793227695.2520714,
+        "fixture": {
+          "announce_root": {
+            "announces_requested": 100000,
+            "cache_files": 100000,
+            "destination_table_bytes": 13700005,
+            "paths_saved": 100000,
+            "root": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k"
+          },
+          "database": {
+            "budget_bytes": 6442450944,
+            "db_bytes": 1204756480,
+            "entries": 200000,
+            "path": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k/reticulum.db",
+            "payload_bytes": 2048,
+            "peer_history_rows": 600000,
+            "peers": 300,
+            "wal_bytes": 1029748712
+          },
+          "elapsed_secs": 25.89374642,
+          "git_revision": "0ff916997041e576014e85a65f97338931729d8a",
+          "schema": "lxmf-rs-resource-soak-663-fixture-v1",
+          "seed": 663
+        },
+        "fixture_root": "/home/pgiuseppe/Documents/LXMF-rs/target/issue663/fixture-200k",
+        "git_revision": "65ee62f1f26f47934f0257ad721fc187c42a3b9f",
+        "label": "bae40251-tagged-resident-musl-purge-zero",
+        "measured_duration_secs": 3604.5677183170046,
+        "memory_high": "768M",
+        "memory_max": "1G",
+        "profile": "ingress",
+        "ready_after_secs": 234.76546596200205,
+        "resident_memory": true,
+        "sample_secs": 5,
+        "schema": "lxmf-rs-resource-soak-663-run-v1",
+        "started_unix": 1793223855.916399
+      },
+      "rust_requested_observed_max_bytes": 213629208,
+      "rust_requested_observed_min_bytes": 151815646,
+      "samples": 717,
+      "schema": "lxmf-rs-709-resident-soak-v1",
+      "sdk_event_log_depth_first": 1,
+      "sdk_event_log_depth_last": 1024,
+      "second_completed_pass_first_observed_secs": 623.3721651920059,
+      "summary": {
+        "cpu_percent_one_core": 3.97189672466153,
+        "elapsed_secs": 3599.5397139179986,
+        "first_minute_median": {
+          "anon_bytes": 177534976.0,
+          "cgroup_anon": 177537024.0,
+          "cgroup_file": 522862592.0,
+          "cgroup_memory_current": 722931712.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 198703104.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 494432.0
+        },
+        "last_minute_median": {
+          "anon_bytes": 194103296.0,
+          "cgroup_anon": 194113536.0,
+          "cgroup_file": 474454016.0,
+          "cgroup_memory_current": 690536448.0,
+          "cgroup_swap_current": 0.0,
+          "rss_bytes": 215271424.0,
+          "swap_bytes": 0.0,
+          "wal_bytes": 20847232.0
+        },
+        "memory_events_delta": {
+          "high": 444,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "metrics_available": true,
+        "rchar_per_sec": 10680175.491703378,
+        "read_bytes_per_sec": 66326.13361004824,
+        "samples": 717,
+        "syscr_per_sec": 2613.4744294182024,
+        "write_lock_wait_ms_delta": 8651.203292,
+        "write_ops_delta": 15383.0
       },
       "window_coverage_valid": true
     }

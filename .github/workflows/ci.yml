@@ -139,6 +139,8 @@ jobs:
           cache-on-failure: false
       - name: Format
         run: cargo fmt --all -- --check
+      - name: Resource measurement regressions
+        run: python3 -m unittest discover -s tools/scripts -p 'test_resource_soak_663*.py' -v
       - name: License metadata and packaged notices
         run: |
           python3 -m unittest discover -s tools/scripts -p test_license_metadata.py -v

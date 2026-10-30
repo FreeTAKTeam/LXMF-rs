@@ -10,5 +10,6 @@ include!("outbound_message_sections/peer_queue_refill_is_bounded.rs");
 include!("outbound_message_sections/peer_queue_refill_incremental_tests.rs");
 include!("outbound_message_sections/peer_entry_prune_pages.rs");
 include!("outbound_message_sections/wal_maintenance_tests.rs");
+include!("outbound_message_sections/sqlite_cache_release_tests.rs");
 include!("outbound_message_sections/broker_control_tests.rs");
 }

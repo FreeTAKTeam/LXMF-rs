@@ -1,6 +1,13 @@
 use super::*;
 
 impl RpcDaemon {
+    /// Called by the periodic worker after propagation maintenance releases its locks.
+    pub fn release_unused_storage_memory(&self) -> Result<(), std::io::Error> {
+        self.store.release_unused_sqlite_memory().inspect_err(|error| {
+            log::warn!("[daemon] SQLite pager-cache release failed: {error}");
+        })
+    }
+
     /// Periodic WAL maintenance entry point for the daemon binary's timer. Logs a
     /// truncation at info and a reader-pinned WAL at debug; sizes only, no payloads.
     pub fn maintain_storage_wal(
