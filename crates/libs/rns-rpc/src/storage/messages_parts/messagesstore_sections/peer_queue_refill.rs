@@ -14,8 +14,9 @@
 // leaves the saved pass unfinished (or `rescan_required` set), so the work is
 // deferred rather than skipped. The next refill after quota, expiry or an entry
 // deletion frees room resumes it. Without this, quota would delete a mark and
-// refill would recreate it on every pass. Freed room is shared: one invocation
-// takes at most `ceil(room / (peers awaiting refill + 1))`.
+// refill would recreate it on every pass. Scarce room is shared: when the room
+// is smaller than this peer's need, one invocation takes at most
+// `ceil(room / (peers awaiting refill + 1))`.
 
 impl MessagesStore {
     fn refill_recent_peer_propagation_on(
@@ -60,7 +61,10 @@ impl MessagesStore {
         let share_left = match *share {
             Some(left) => left,
             None => {
-                let waiting = if room > 0 {
+                // Room for this peer's whole need leaves nothing to ration; every
+                // new inventory item marks other passes stale, so counting them
+                // here would throttle refill even with ample room.
+                let waiting = if room > 0 && room < remaining {
                     Self::count_peers_awaiting_refill(&tx, &peer, boundary.generation, room)?
                 } else {
                     0

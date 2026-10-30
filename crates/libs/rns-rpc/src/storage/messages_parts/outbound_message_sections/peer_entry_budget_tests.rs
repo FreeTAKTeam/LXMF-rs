@@ -274,6 +274,18 @@ fn freed_global_room_is_shared_between_waiting_peers() {
 }
 
 #[test]
+fn ample_global_room_is_not_rationed_across_stale_peers() {
+    let (_temp, store) = refill_store_on_disk();
+    budget_inventory(&store, 300);
+    for peer in 0..200 {
+        store.mark_recent_propagation_unhandled_for_peer(&format!("old-{peer}"), 1, 10_000).expect("old peer");
+    }
+    // New inventory makes every saved pass stale; 9,800 free slots still cover the need.
+    store.upsert_propagation_entry(&refill_entry(5_000, 9_999)).expect("new inventory");
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer("newcomer", 100, 10_000).expect("newcomer"), 100);
+}
+
+#[test]
 fn failed_refill_page_consumes_no_room_and_keeps_progress() {
     let (_temp, store) = refill_store_on_disk();
     budget_inventory(&store, 6);

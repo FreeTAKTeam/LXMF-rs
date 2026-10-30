@@ -34,8 +34,10 @@ pass keeps its existing role and order for every other writer.
 - Deferred work resumes on the next refill, which runs on every announce and
   peer sync after quota, expiry or entry deletion frees room. The state is in
   the existing refill-state table, so a restart does not lose it.
-- An invocation takes at most `ceil(room / (other peers with an unfinished or
-  stale pass + 1))`, so the first caller after room frees cannot take all of it.
+- When the room is smaller than the peer's remaining need, an invocation takes
+  at most `ceil(room / (other peers with an unfinished or stale pass + 1))`, so
+  the first caller after room frees cannot take all of it. With enough room the
+  peer fills its whole need, as before.
 
 ## Unchanged
 
