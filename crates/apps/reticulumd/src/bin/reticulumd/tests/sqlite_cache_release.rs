@@ -1,3 +1,5 @@
+use super::*;
+
 #[tokio::test(start_paused = true)]
 async fn sqlite_cache_release_timer_preserves_manual_and_disabled_paths() {
     let daemon = std::sync::Arc::new(rns_rpc::RpcDaemon::test_instance());

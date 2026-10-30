@@ -16,4 +16,5 @@ include!("messagesstore_sections/list_announces.rs");
 
 include!("messagesstore_sections/broker.rs");
 include!("messagesstore_sections/wal_maintenance.rs");
-include!("messagesstore_sections/sqlite_cache_release.rs");
+#[path = "messagesstore_sections/sqlite_cache_release.rs"]
+mod sqlite_cache_release;

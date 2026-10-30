@@ -6,7 +6,8 @@ include!("tests_parts/reticulum_path_restore_bad_cache.rs");
 
 include!("tests_parts/unchanged_path_cache.rs");
 include!("tests_parts/path_save_report.rs");
-include!("tests_parts/destination_map_prune.rs");
+#[path = "tests_parts/destination_map_prune.rs"]
+mod destination_map_prune;
 
 include!("tests_parts/blackholed_path_restore.rs");
 

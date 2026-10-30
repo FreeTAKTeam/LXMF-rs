@@ -1,3 +1,5 @@
+use super::*;
+
 impl MessagesStore {
     /// Release unpinned SQLite pager pages; the bundled shared cache group may
     /// include other connections. This reports calls, never resident bytes.

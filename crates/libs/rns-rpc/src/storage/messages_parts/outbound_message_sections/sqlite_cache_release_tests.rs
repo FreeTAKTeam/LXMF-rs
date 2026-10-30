@@ -1,3 +1,5 @@
+use super::*;
+
 fn cache_release_counters(store: &MessagesStore) -> serde_json::Value {
     store.operation_metrics_snapshot()["maintenance"]["sqlite_cache_release"].clone()
 }
