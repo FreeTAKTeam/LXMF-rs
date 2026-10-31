@@ -29,6 +29,7 @@ impl MessagesStore {
             wal_metrics: Default::default(),
             maintenance_metrics: Default::default(),
             announce_metrics: Default::default(),
+            handled_propagation_metrics: Default::default(),
             priority_waiters: AtomicUsize::new(0),
             priority_gate: (Mutex::new(()), Condvar::new()),
             broker_budget_bytes: AtomicU64::new(0),
@@ -69,6 +70,7 @@ impl MessagesStore {
             wal_metrics: Default::default(),
             maintenance_metrics: Default::default(),
             announce_metrics: Default::default(),
+            handled_propagation_metrics: Default::default(),
             priority_waiters: AtomicUsize::new(0),
             priority_gate: (Mutex::new(()), Condvar::new()),
             broker_budget_bytes: AtomicU64::new(0),
@@ -194,6 +196,7 @@ impl MessagesStore {
             "wal": self.write_state.wal_metrics.snapshot(),
             "maintenance": self.write_state.maintenance_metrics.snapshot(),
             "announces": self.write_state.announce_metrics.snapshot(),
+            "propagation_queries": {"handled_ids": self.write_state.handled_propagation_metrics.snapshot()},
         })
     }
 

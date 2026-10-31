@@ -102,11 +102,12 @@ strace -f -yy -s 80 -e trace=pwrite64,write,openat,close \
   > target/issue717/candidate.jsonl 2> target/issue717/candidate.stderr
 ```
 
-The original production trace's producing statements remain unconfirmed. The
+The original production trace's producing statements remain unconfirmed; the
+production snapshot replay below identifies a recurring status-listing spill. The
 stamp-cost query is a proven scan/sort problem, but the bounded `LIMIT 1` sort
 must not be blamed for the production 70.9 MiB temporary writes without a matching
-execution trace. Keep #717 open until that attribution and representative
-post-fix acceptance have been completed.
+execution trace. The snapshot replay below supplies statement-family attribution and representative
+post-fix checks; it does not identify individual calls in the historical trace.
 
 Design: indexed, paged SQL in the existing storage owner was chosen over a second
 current-peer table. It preserves operational records without a second projection
@@ -188,8 +189,132 @@ establish RAM savings, a leak, production readiness, or convergence at the real
 timer cadence. Fresh message delivery was not driven during these soaks.
 Native Link-send and receipt-owner tests passed separately.
 
-Validation: 882 RPC library tests passed (9 pre-existing ignored), 31 daemon
+Initial validation: 882 RPC library tests passed (9 pre-existing ignored), 31 daemon
 library tests, 697 daemon binary tests, the issue-369 scanner, native Link-send
 and two receipt-owner tests passed. Formatting, strict Clippy for the affected
 packages/all targets/all features, dependency boundaries and module-size checks
 passed. No production service, data, configuration or memory limit was changed.
+
+
+### Production snapshot replay, 2026-10-31
+
+A user-supplied standalone SQLite online backup (captured at 16:01:48 UTC)
+contains 1,730,975 announces, 88,132 distinct announcing peers, 274,447 propagation
+entries and 221,676 propagation peer marks. Its SHA-256 is
+`ede6b7ae3228231e3606a1dbcd94cf69ba6fdd40956ed9267fe3de91032245e7`;
+SQLite quick-check passed. The unredacted database and raw local artifacts remain
+untracked. Only aggregate results are published. All migrations and retention
+ran on copies, with the original snapshot unchanged.
+
+The SQL replay uses bundled SQLite 3.53.2, default `cache_size=-2000` and
+`temp_store=0`. Schema initialization includes #714/#715. The baseline removes
+only the two new announce indexes and executes the original queries; the
+candidate uses those indexes and the handled-ID rewrite. The baseline's local
+setup builds then drops the announce indexes, so its migration cost is **not**
+a baseline startup measurement. Recurring query windows are marked separately.
+`strace -f -ttt -yy -s 0 -e trace=pwrite64` records successful bytes and filenames
+without database buffer contents. Timestamped BEGIN/END markers identify the
+statement family. Peer IDs and query results are never printed.
+
+One pass over all 232 case-folded propagation peers reproduces a temporary-file
+producer in `list_peer_handled_propagation_ids`. The old query reduces state
+precedence in a grouped subquery, joins inventory, then sorts the resulting IDs.
+`list_peers`, peer status/sync reporting and local unpeer cleanup call this
+shared method. Since every completed state wins over unhandled/unknown states,
+the same result is a distinct stream of completed IDs with an inventory existence
+check. The existing `(LOWER(peer), transient_id, state)` index supplies ID order
+and duplicate elimination; no new propagation index is needed.
+
+| Snapshot query pass | Before | After |
+| --- | --- | --- |
+| Handled-ID results | 196,801 | 196,801, identical ordered results for every peer |
+| Handled-ID VM steps | 16,339,344 | 6,147,320 |
+| Handled-ID sorts | 232 | 0 |
+| Handled-ID temporary writes | 4,154,744 bytes / 2 files | 0 bytes / 0 files |
+| Stamp lookup VM steps, same 232 peers | 1,205,030,098 | 2,702 |
+| Stamp full-scan steps | 401,585,968 | 0 |
+| Stamp sorts / temporary bytes | 232 / 0 | 0 / 0 |
+
+The old handled-ID plan ends with `USE TEMP B-TREE FOR ORDER BY`. The new plan is
+`SEARCH p USING COVERING INDEX idx_propagation_peer_entries_folded_lookup
+(<expr>=?); SEARCH e EXISTS USING COVERING INDEX
+sqlite_autoindex_propagation_entries_1 (transient_id=?)`. A regression test covers
+all four completed states, case-variant duplicates, unknown states, orphan marks,
+missing peers, ascending order and zero sort/full-scan/automatic-index counters.
+`/metrics` exposes this family at `storage.propagation_queries.handled_ids`, with
+the same bounded counters as announce queries and no identifier labels.
+
+The otherwise-unused `list_peer_prospective_unhandled_propagation` API spills
+2,916,352 bytes when deliberately asked to enumerate the full prospective
+inventory for the largest peer. No daemon caller exists in this tree; this
+exploratory API was left unchanged rather than expanding the production fix.
+The other exercised peer existence, stats, unhandled payload and unhandled-ID
+queries produced no temporary writes. Schema/index creation itself wrote
+427,337,365 temporary bytes and remains an explicit one-time migration cost.
+These observations identify a real recurring producer on production-shaped data;
+they do not reconstruct which RPC calls made the original 70.9 MiB trace.
+
+Accelerated retention on a separate working copy inserted six synthetic events
+per batch while deleting old history. After 3,186 bounded batches it removed
+1,555,382 old events, accepted 19,116 new events, and retained 194,709 rows,
+below the documented bound of 276,266 for 88,133 peers. Every original peer's
+latest event, latest non-null stamp event and stamp lookup value survived.
+Retention selection/deletion used no sorts or automatic indexes. The accelerated
+phase including verification took 134.95 seconds, with 71.98 seconds of measured
+maintenance and a maximum batch of 509.14 ms. Other local test/probe activity
+was present; this is correctness and work-count evidence, not an isolated
+latency benchmark. The daemon's one-second batch delay still applies in service.
+
+### Daemon checks with the snapshot
+
+Two separate 150-second runs used fresh snapshot copies, the same memory/CPU
+limits as above, 30-second propagation maintenance, a local announcing peer,
+100-ms SDK polling and a peer-status request about every five seconds. The two
+largest stored propagation peers were replayed through `announce_received` to
+exercise their existing handled-ID sets. A synthetic direct message was sent to
+the newly generated local peer. Both daemons ran in a separate user/network
+namespace with only loopback enabled; namespace isolation was checked against
+the host. Production identities were not used for the local test sender.
+Two harness setup attempts with incorrect RPC framing were excluded. The final
+harness uses the daemon's length-prefixed MessagePack HTTP RPC contract.
+
+Each run completed four propagation maintenance cycles, 29 successful status
+polls and 1,500 error-free SDK polls. Both receivers stored the fresh message
+and both senders recorded `delivered`. The candidate's live handled-ID metrics
+reported 102 calls, zero errors, zero sorts, zero full scans and zero automatic
+indexes. It pruned another 72,358 old announce events in 145 scheduled batches
+without stopping ingress. The raw namespace-local DBs/logs remain untracked.
+
+| First → last sample, unless marked delta | Snapshot baseline | Snapshot candidate |
+| --- | --- | --- |
+| Ready after | 0.52 s | 3.77 s |
+| cgroup file bytes | 18,042,880 → 34,529,280 | 334,151,680 → 238,854,144 |
+| cgroup anonymous bytes | 43,532,288 → 78,528,512 | 41,590,784 → 74,469,376 |
+| tracked live Rust allocation bytes | 1,745,122 → 2,217,620 | 1,763,497 → 2,471,651 |
+| CPU ticks delta over ~148 sampled seconds | 1,161 | 1,347 |
+| logical read / write bytes delta | 6,918,734,465 / 335,780,716 | 12,009,913,378 / 1,031,323,997 |
+| physical read / write bytes delta | 1,404,928 / 950,157,312 | 1,290,240 / 2,102,779,904 |
+| memory.high / max / oom delta | 0 / 0 / 0 | 0 / 0 / 0 |
+| memory PSI some/full delta (μs) | 31,368 / 31,360 | 105,128 / 105,129 |
+| maximum sampled cgroup bytes | 191,172,608 | 503,111,680 |
+| DB bytes | 1,359,355,904 → 1,359,355,904 | 1,572,937,728 → 1,574,076,416 |
+| WAL bytes | 2,513,232 → 17,468,832 | 100,663,296 → 2,809,872 |
+| maximum window SDK poll p95 | 1,576 μs | 1,689 μs |
+
+These short runs show the snapshot workload continuing through catch-up; they
+are not a cold-cache benchmark or a long-term RAM-savings claim. Page cache was
+not flushed, a focused test ran elsewhere on the host, and generated local peer
+identities differ. Status output reached three peers in the baseline and four
+in the candidate. The exact SQL comparison above uses identical peer bindings
+and results. Initial indexes and catch-up increase total I/O even though the
+avoidable recurring handled-ID sort disappears. The earlier synthetic run's
+13 high events remain relevant evidence that startup pressure depends on cache
+and workload conditions. No multi-hour or production deployment qualification
+is claimed.
+
+Final validation passed 883 RPC library tests (9 existing ignored), 31 daemon
+library tests, 697 daemon binary tests, the issue-369 scanner, native Link-send
+and both receipt-owner tests. The focused regression also verifies multiple
+completed case variants deduplicate. Formatting, strict affected-package Clippy,
+boundary/module checks, document links and JSON validation passed. The original
+snapshot SHA-256 was checked again and is unchanged.

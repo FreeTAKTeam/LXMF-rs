@@ -131,33 +131,6 @@ impl MessagesStore {
         })
     }
 
-    pub fn list_peer_handled_propagation_ids(&self, peer: &str) -> rusqlite::Result<Vec<String>> {
-        self.with_read_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT marks.transient_id
-                 FROM (
-                    SELECT transient_id,
-                           CASE
-                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
-                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
-                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
-                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
-                               ELSE 'unhandled'
-                           END AS state
-                    FROM propagation_peer_entries
-                    WHERE LOWER(peer) = LOWER(?1)
-                    GROUP BY transient_id
-                 ) marks
-                 INNER JOIN propagation_entries e
-                    ON e.transient_id = marks.transient_id
-                 WHERE marks.state IN ('handled', 'transferred', 'received', 'transfer_limited')
-                 ORDER BY marks.transient_id ASC",
-            )?;
-            let rows = stmt.query_map(params![peer], |row| row.get(0))?;
-            rows.collect()
-        })
-    }
-
     pub fn peer_completed_propagation_mark_exists(
         &self,
         peer: &str,

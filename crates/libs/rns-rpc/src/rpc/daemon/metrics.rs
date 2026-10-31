@@ -399,6 +399,7 @@ impl RpcDaemon {
                 "wal": store_operations["wal"].clone(),
                 "maintenance": store_operations["maintenance"].clone(),
                 "announces": store_operations["announces"].clone(),
+                "propagation_queries": store_operations["propagation_queries"].clone(),
             },
             "zmq_pipeline": self.zmq_pipeline_metrics.snapshot(),
             "memory": super::cgroup_memory::memory_accounting_snapshot(),
