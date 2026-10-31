@@ -1,3 +1,5 @@
+use super::*;
+
 impl RpcDaemon {
     pub(super) fn handle_set_display_name(
         &self,
