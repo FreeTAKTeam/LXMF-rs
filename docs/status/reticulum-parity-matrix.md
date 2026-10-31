@@ -1,5 +1,13 @@
 # Reticulum Parity Matrix
 
+The durable ZeroMQ announce projection now supports bounded latest-per-peer
+keyset sweeps. Repeated announces from busy peers cannot evict quiet peers from
+the consumer view; completed sweeps reconcile intervening updates and replay
+safely after restart. The legacy latest-32 history response remains available.
+Storage regressions cover bursts, timestamp ties, retention, reopening, and
+oversized records; this is state reconciliation, not delivery of every historical
+announce event. External-client delivery remains a separate acceptance check.
+
 Last reassessed: 2026-10-15
 MeshChat POC evidence added: 2026-09-27
 
