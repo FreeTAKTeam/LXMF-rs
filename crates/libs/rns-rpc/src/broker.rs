@@ -117,4 +117,10 @@ pub struct OperationReceipt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnnounceProjectionRequest {
     pub identity: String,
+    /// Sweep retained latest-per-peer state instead of the legacy latest-32 history window.
+    #[serde(default)]
+    pub latest_per_peer: bool,
+    /// Exclusive peer key; reset to None after completing a sweep.
+    #[serde(default)]
+    pub after_peer: Option<String>,
 }

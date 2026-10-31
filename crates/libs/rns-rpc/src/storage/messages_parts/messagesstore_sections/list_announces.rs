@@ -399,7 +399,38 @@ impl MessagesStore {
 fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before_id:Option<&str>, metrics: &super::announce_metrics::QueryMetrics)->rusqlite::Result<Vec<AnnounceRecord>> {
 
             let mut records = Vec::new();
-            let parse_row = |row: &rusqlite::Row| -> rusqlite::Result<AnnounceRecord> {
+            if let Some(ts) = before_ts {
+                let query_with_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3";
+                let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
+                if let Some(ann_id) = before_id {
+                    let mut stmt = conn.prepare(query_with_id)?;
+                    metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_announce_row(row)?); }
+                        Ok(())
+                    })?;
+                } else {
+                    let mut stmt = conn.prepare(query_without_id)?;
+                    metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![ts, limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_announce_row(row)?); }
+                        Ok(())
+                    })?;
+                }
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC,id DESC LIMIT ?1",
+                )?;
+                metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_announce_row(row)?); }
+                        Ok(())
+                    })?;
+            }
+            Ok(records)
+}
+
+fn parse_announce_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnnounceRecord> {
                 let capabilities_json: Option<String> = row.get(8)?;
                 let capabilities = capabilities_json
                     .as_deref()
@@ -424,34 +455,4 @@ fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before
                     stamp_cost_flexibility: row.get(13)?,
                     peering_cost: row.get(14)?,
                 })
-            };
-            if let Some(ts) = before_ts {
-                let query_with_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3";
-                let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
-                if let Some(ann_id) = before_id {
-                    let mut stmt = conn.prepare(query_with_id)?;
-                    metrics.measure(&mut stmt, |stmt| {
-                        let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
-                        while let Some(row) = rows.next()? { records.push(parse_row(row)?); }
-                        Ok(())
-                    })?;
-                } else {
-                    let mut stmt = conn.prepare(query_without_id)?;
-                    metrics.measure(&mut stmt, |stmt| {
-                        let mut rows = stmt.query(params![ts, limit as i64])?;
-                        while let Some(row) = rows.next()? { records.push(parse_row(row)?); }
-                        Ok(())
-                    })?;
-                }
-            } else {
-                let mut stmt = conn.prepare(
-                    "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC,id DESC LIMIT ?1",
-                )?;
-                metrics.measure(&mut stmt, |stmt| {
-                        let mut rows = stmt.query(params![limit as i64])?;
-                        while let Some(row) = rows.next()? { records.push(parse_row(row)?); }
-                        Ok(())
-                    })?;
-            }
-            Ok(records)
 }

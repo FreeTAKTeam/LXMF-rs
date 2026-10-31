@@ -160,6 +160,26 @@ impl RpcDaemon {
             RpcError::new("SDK_VALIDATION_BROKER_REQUEST", error.to_string())
         };
         if request.method == "sdk_broker_announces_v1" {
+            let request: crate::broker::AnnounceProjectionRequest =
+                serde_json::from_value(params).map_err(parse_error)?;
+            if request.latest_per_peer {
+                if request.after_peer.as_ref().is_some_and(|peer| peer.len() > 512) {
+                    return Err(RpcError::new(
+                        "SDK_VALIDATION_BROKER_REQUEST",
+                        "announce peer cursor exceeds 512 bytes",
+                    ));
+                }
+                let records = self
+                    .store
+                    .broker_announce_peer_page(request.after_peer.as_deref())
+                    .map_err(broker_store_error)?;
+                let next_peer =
+                    (records.len() == 32).then(|| records.last().expect("full page").peer.clone());
+                let result = json!({"announces":records,"next_peer":next_peer,
+                    "projection":"latest_per_peer_v1"});
+                validate_projection_size(&result)?;
+                return Ok(result);
+            }
             let records = self.store.broker_announce_projection().map_err(broker_store_error)?;
             let result = json!({"announces":records});
             validate_projection_size(&result)?;
