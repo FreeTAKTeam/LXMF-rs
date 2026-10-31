@@ -40,6 +40,7 @@ fn auto_lifecycle_runs_in_child() -> bool {
 
 fn startup_test_args() -> Args {
     Args {
+        announce_history_max_rows: 100_000,
         rpc: None,
         db: std::path::PathBuf::from("reticulum.db"),
         config: None,

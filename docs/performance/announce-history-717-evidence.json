@@ -1,0 +1,1213 @@
+{
+  "base_commit": "e7908ccb5d83c124588717fb60192761ce2296c1",
+  "sqlite": "3.53.2",
+  "limits": {
+    "memory_high": 805306368,
+    "memory_max": 1073741824,
+    "duration_seconds": 150,
+    "sample_seconds": 5,
+    "propagation_interval_seconds": 30
+  },
+  "runs": {
+    "baseline": {
+      "binary_sha256": "b600ae231cd027a6d1e7e1eefa93e4bd5e5c258b86d2975b9badf4fcaaf43e9a",
+      "sample_span_seconds": 145.11678241501795,
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 152,
+        "latency_p95_us_max": 807,
+        "latency_p95_us_median": 647.5,
+        "polls": 1500
+      },
+      "ready_seconds": 0.5117776049883105,
+      "measurements": {
+        "cgroup_file": {
+          "first": 1716224,
+          "last": 46096384
+        },
+        "cgroup_anon": {
+          "first": 43425792,
+          "last": 51183616
+        },
+        "rust_allocated_bytes": {
+          "first": 1600926,
+          "last": 2184534
+        },
+        "cgroup_current": {
+          "first": 47480832,
+          "last": 101490688
+        },
+        "db_bytes": {
+          "first": 1237348352,
+          "last": 1237393408
+        },
+        "wal_bytes": {
+          "first": 527392,
+          "last": 527392
+        },
+        "cpu_ticks": {
+          "first": 19,
+          "last": 407
+        },
+        "rchar_delta": 312843101,
+        "wchar_delta": 4037808,
+        "read_bytes_delta": 45608960,
+        "write_bytes_delta": 8830976,
+        "memory_events_delta": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "psi_total_delta": {
+          "some": 0.0,
+          "full": 0.0
+        },
+        "quota_cycles": 4
+      }
+    },
+    "final": {
+      "binary_sha256": "f55a2b065de651d5d43ef837124b1d1072a1b7499b77381bc3a806683c6f45d2",
+      "sample_span_seconds": 145.16715088899946,
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 152,
+        "latency_p95_us_max": 1477,
+        "latency_p95_us_median": 703.0,
+        "polls": 1500
+      },
+      "ready_seconds": 10.197836578998249,
+      "measurements": {
+        "cgroup_file": {
+          "first": 753819648,
+          "last": 642809856
+        },
+        "cgroup_anon": {
+          "first": 43786240,
+          "last": 59170816
+        },
+        "rust_allocated_bytes": {
+          "first": 1616848,
+          "last": 2192897
+        },
+        "cgroup_current": {
+          "first": 803737600,
+          "last": 710119424
+        },
+        "db_bytes": {
+          "first": 1353228288,
+          "last": 1353228288
+        },
+        "wal_bytes": {
+          "first": 100663296,
+          "last": 2768672
+        },
+        "cpu_ticks": {
+          "first": 405,
+          "last": 963
+        },
+        "rchar_delta": 1855398737,
+        "wchar_delta": 566882544,
+        "read_bytes_delta": 4657152,
+        "write_bytes_delta": 654753792,
+        "memory_events_delta": {
+          "high": 13,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "psi_total_delta": {
+          "some": 292.0,
+          "full": 292.0
+        },
+        "quota_cycles": 4
+      },
+      "announce_metrics_last": {
+        "examined_total": 72704,
+        "history": {
+          "autoindex_rows_total": 0,
+          "calls_total": 0,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 0,
+          "sorts_total": 0,
+          "vm_steps_total": 0,
+          "wall_ns_total": 0
+        },
+        "maintenance": {
+          "duration_ns_total": 3631348913,
+          "errors_total": 0,
+          "last_duration_ns": 21849706,
+          "last_logical_read_bytes": 12422203,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 512,
+          "logical_read_bytes_total": 1532296402,
+          "max_duration_ns": 107810240,
+          "max_read_bytes": 1413120,
+          "read_bytes_samples_total": 142,
+          "read_bytes_total": 2818048,
+          "rows_deleted_total": 72704,
+          "runs_total": 142
+        },
+        "retained_at_last_sweep": 0,
+        "retention_candidates": {
+          "autoindex_rows_total": 0,
+          "calls_total": 142,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 676517,
+          "sorts_total": 0,
+          "vm_steps_total": 658312,
+          "wall_ns_total": 18384761
+        },
+        "retention_count": {
+          "autoindex_rows_total": 0,
+          "calls_total": 0,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 0,
+          "sorts_total": 0,
+          "vm_steps_total": 0,
+          "wall_ns_total": 0
+        },
+        "retention_delete": {
+          "autoindex_rows_total": 0,
+          "calls_total": 72704,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 10560524,
+          "sorts_total": 0,
+          "vm_steps_total": 4061036,
+          "wall_ns_total": 829402789
+        },
+        "retention_window": {
+          "autoindex_rows_total": 0,
+          "calls_total": 1,
+          "errors_total": 0,
+          "fullscan_steps_total": 100000,
+          "max_wall_ns": 19282054,
+          "sorts_total": 0,
+          "vm_steps_total": 200014,
+          "wall_ns_total": 19282054
+        },
+        "stamp_cost": {
+          "autoindex_rows_total": 0,
+          "calls_total": 0,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 0,
+          "sorts_total": 0,
+          "vm_steps_total": 0,
+          "wall_ns_total": 0
+        }
+      }
+    }
+  },
+  "probe": {
+    "baseline": [
+      {
+        "mode": "baseline",
+        "rows": 1700000,
+        "seconds": 25.681147158,
+        "sqlite": "3.53.2",
+        "stage": "fixture"
+      },
+      {
+        "family": "stamp_absent",
+        "fullscan_steps": 1699999,
+        "plan": [
+          "SCAN announces",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        "rows": 0,
+        "sorts": 1,
+        "vm_steps": 5100010,
+        "wall_ns": 1815680336
+      },
+      {
+        "family": "stamp_present",
+        "fullscan_steps": 1699999,
+        "plan": [
+          "SCAN announces",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        "rows": 1,
+        "sorts": 1,
+        "vm_steps": 5119444,
+        "wall_ns": 1957058114
+      },
+      {
+        "family": "history_deep",
+        "fullscan_steps": 0,
+        "plan": [
+          "SEARCH announces USING INDEX idx_announces_timestamp_id_desc (timestamp<?)"
+        ],
+        "rows": 100,
+        "sorts": 0,
+        "vm_steps": 2493,
+        "wall_ns": 253696
+      }
+    ],
+    "final": [
+      {
+        "mode": "candidate",
+        "rows": 1700000,
+        "seconds": 11.035915706,
+        "sqlite": "3.53.2",
+        "stage": "fixture"
+      },
+      {
+        "seconds": 2.54295894,
+        "stage": "migration"
+      },
+      {
+        "family": "stamp_absent",
+        "fullscan_steps": 0,
+        "plan": [
+          "SEARCH announces USING COVERING INDEX idx_announces_peer_stamp (peer=?)"
+        ],
+        "rows": 0,
+        "sorts": 0,
+        "vm_steps": 11,
+        "wall_ns": 19980
+      },
+      {
+        "family": "stamp_present",
+        "fullscan_steps": 0,
+        "plan": [
+          "SEARCH announces USING COVERING INDEX idx_announces_peer_stamp (peer=?)"
+        ],
+        "rows": 1,
+        "sorts": 0,
+        "vm_steps": 14,
+        "wall_ns": 12308
+      },
+      {
+        "family": "history_deep",
+        "fullscan_steps": 0,
+        "plan": [
+          "SEARCH announces USING INDEX idx_announces_timestamp_id_desc (timestamp<?)"
+        ],
+        "rows": 100,
+        "sorts": 0,
+        "vm_steps": 2493,
+        "wall_ns": 157802
+      },
+      {
+        "batch": 0,
+        "deleted": 512,
+        "seconds": 0.021446336,
+        "stage": "prune"
+      },
+      {
+        "batch": 500,
+        "deleted": 256512,
+        "seconds": 8.0605479,
+        "stage": "prune"
+      },
+      {
+        "batch": 1000,
+        "deleted": 512512,
+        "seconds": 15.281407099,
+        "stage": "prune"
+      },
+      {
+        "batch": 1500,
+        "deleted": 768512,
+        "seconds": 21.983825082,
+        "stage": "prune"
+      },
+      {
+        "batch": 2000,
+        "deleted": 1024512,
+        "seconds": 31.055937987,
+        "stage": "prune"
+      },
+      {
+        "batch": 2500,
+        "deleted": 1280512,
+        "seconds": 39.163473683,
+        "stage": "prune"
+      },
+      {
+        "batch": 3000,
+        "deleted": 1536512,
+        "seconds": 46.402809984,
+        "stage": "prune"
+      },
+      {
+        "deleted": 1618972,
+        "injected": 18972,
+        "metrics": {
+          "examined_total": 1618972,
+          "history": {
+            "autoindex_rows_total": 0,
+            "calls_total": 0,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 0,
+            "sorts_total": 0,
+            "vm_steps_total": 0,
+            "wall_ns_total": 0
+          },
+          "maintenance": {
+            "duration_ns_total": 38320988012,
+            "errors_total": 0,
+            "last_duration_ns": 3284367,
+            "last_logical_read_bytes": 7880850,
+            "last_read_bytes": 0,
+            "last_rows_deleted": 0,
+            "logical_read_bytes_total": 6474756638,
+            "max_duration_ns": 147886220,
+            "max_read_bytes": 0,
+            "read_bytes_samples_total": 3167,
+            "read_bytes_total": 0,
+            "rows_deleted_total": 1618972,
+            "runs_total": 3167
+          },
+          "retained_at_last_sweep": 100000,
+          "retention_candidates": {
+            "autoindex_rows_total": 0,
+            "calls_total": 3164,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 294563,
+            "sorts_total": 0,
+            "vm_steps_total": 14649833,
+            "wall_ns_total": 252647393
+          },
+          "retention_count": {
+            "autoindex_rows_total": 0,
+            "calls_total": 6,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 987029,
+            "sorts_total": 0,
+            "vm_steps_total": 48,
+            "wall_ns_total": 5016899
+          },
+          "retention_delete": {
+            "autoindex_rows_total": 0,
+            "calls_total": 1618972,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 4897213,
+            "sorts_total": 0,
+            "vm_steps_total": 90431152,
+            "wall_ns_total": 9053374580
+          },
+          "retention_window": {
+            "autoindex_rows_total": 0,
+            "calls_total": 6,
+            "errors_total": 0,
+            "fullscan_steps_total": 599997,
+            "max_wall_ns": 2873979,
+            "sorts_total": 0,
+            "vm_steps_total": 1200075,
+            "wall_ns_total": 15030445
+          },
+          "stamp_cost": {
+            "autoindex_rows_total": 0,
+            "calls_total": 600,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 96434,
+            "sorts_total": 0,
+            "vm_steps_total": 7200,
+            "wall_ns_total": 3113927
+          }
+        },
+        "retained": 100000,
+        "seconds": 48.685954846,
+        "stage": "complete"
+      }
+    ]
+  },
+  "traced_first_candidate_io": {
+    "startup": {
+      "other": 880980868,
+      "wal": 892328048,
+      "temp": 209803283
+    },
+    "retention": {
+      "wal": 6795965680,
+      "other": 4218982400
+    },
+    "between": {
+      "other": 2535424
+    }
+  },
+  "limitations": [
+    "Synthetic smoke, not production or multi-hour acceptance.",
+    "Baseline and final ran separately, but other build/probe work ran on the host; page cache was not flushed.",
+    "Trace is from the first candidate before avoiding repeated boundary reads; final probe is untraced.",
+    "The original production temporary-file producing statements remain unknown.",
+    "Fresh end-to-end message delivery was not driven during these soaks."
+  ],
+  "production_snapshot": {
+    "sha256": "ede6b7ae3228231e3606a1dbcd94cf69ba6fdd40956ed9267fe3de91032245e7",
+    "size_bytes": 1359355904,
+    "capture_utc": "2026-10-31T16:01:48Z",
+    "quick_check": "ok",
+    "tables": {
+      "announces": 1730975,
+      "distinct_announce_peers": 88132,
+      "propagation_entries": 274447,
+      "propagation_peer_entries": 221676
+    },
+    "sqlite": "3.53.2",
+    "cache_size": -2000,
+    "temp_store": 0,
+    "original_20_second_trace_reconstructed": false,
+    "query_passes": {
+      "baseline": {
+        "statements": [
+          {
+            "autoindex_rows": 0,
+            "family": "list_peer_unhandled_propagation",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE p",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN p",
+              "SEARCH e USING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?)",
+              "USE TEMP B-TREE FOR ORDER BY"
+            ],
+            "rows": 21651,
+            "sorts": 232,
+            "vm_steps": 10455391,
+            "wall_ns": 191237702
+          },
+          {
+            "autoindex_rows": 34825,
+            "family": "list_peer_prospective_unhandled_propagation",
+            "fullscan_steps": 274446,
+            "plan": [
+              "MATERIALIZE p",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN e USING INDEX idx_propagation_entries_retention_cover",
+              "SEARCH p USING AUTOMATIC COVERING INDEX (transient_id=?) LEFT-JOIN"
+            ],
+            "rows": 240892,
+            "sorts": 0,
+            "vm_steps": 8197659,
+            "wall_ns": 1549475108
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "list_peer_handled_propagation_ids",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING COVERING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?)",
+              "USE TEMP B-TREE FOR ORDER BY"
+            ],
+            "rows": 196801,
+            "sorts": 232,
+            "vm_steps": 16339344,
+            "wall_ns": 1387981867
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_completed_propagation_mark_exists",
+            "fullscan_steps": 0,
+            "plan": [
+              "SCAN CONSTANT ROW",
+              "SCALAR SUBQUERY 1",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=? AND transient_id=? AND state=?)"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 10208,
+            "wall_ns": 8402857
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_propagation_mark_exists",
+            "fullscan_steps": 0,
+            "plan": [
+              "SCAN CONSTANT ROW",
+              "SCALAR SUBQUERY 1",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=? AND transient_id=?)"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 5104,
+            "wall_ns": 6764274
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_received_propagation_mark_exists",
+            "fullscan_steps": 0,
+            "plan": [
+              "SCAN CONSTANT ROW",
+              "SCALAR SUBQUERY 1",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=? AND transient_id=? AND state=?)"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 5336,
+            "wall_ns": 6327500
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "list_peer_unhandled_propagation_ids",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING COVERING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?)",
+              "USE TEMP B-TREE FOR ORDER BY"
+            ],
+            "rows": 21651,
+            "sorts": 232,
+            "vm_steps": 10216998,
+            "wall_ns": 180922474
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "list_peer_unhandled_propagation_ids_limited",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?)",
+              "USE TEMP B-TREE FOR ORDER BY"
+            ],
+            "rows": 21619,
+            "sorts": 232,
+            "vm_steps": 10282183,
+            "wall_ns": 187059323
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_propagation_mark_stats",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?) LEFT-JOIN"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 8657171,
+            "wall_ns": 3000159408
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_propagation_message_stats",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?) LEFT-JOIN"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 20611590,
+            "wall_ns": 1177267288
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "latest_announce_stamp_cost_for",
+            "fullscan_steps": 401585968,
+            "plan": [
+              "SCAN announces",
+              "USE TEMP B-TREE FOR ORDER BY"
+            ],
+            "rows": 50,
+            "sorts": 232,
+            "vm_steps": 1205030098,
+            "wall_ns": 196507099143
+          }
+        ],
+        "pwrite64": {
+          "migration": {
+            "temporary_bytes": 427337365,
+            "temporary_files": 6,
+            "wal_bytes": 223462960,
+            "database_bytes": 220557424
+          },
+          "list_peer_unhandled_propagation": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "list_peer_prospective_unhandled_propagation": {
+            "temporary_bytes": 2916352,
+            "temporary_files": 2,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "list_peer_handled_propagation_ids": {
+            "temporary_bytes": 4154744,
+            "temporary_files": 2,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_completed_propagation_mark_exists": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_propagation_mark_exists": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_received_propagation_mark_exists": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "list_peer_unhandled_propagation_ids": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "list_peer_unhandled_propagation_ids_limited": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_propagation_mark_stats": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_propagation_message_stats": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "latest_announce_stamp_cost_for": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          }
+        }
+      },
+      "candidate": {
+        "statements": [
+          {
+            "autoindex_rows": 0,
+            "family": "list_peer_unhandled_propagation",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE p",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN p",
+              "SEARCH e USING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?)",
+              "USE TEMP B-TREE FOR ORDER BY"
+            ],
+            "rows": 21651,
+            "sorts": 232,
+            "vm_steps": 10455391,
+            "wall_ns": 247253158
+          },
+          {
+            "autoindex_rows": 34825,
+            "family": "list_peer_prospective_unhandled_propagation",
+            "fullscan_steps": 274446,
+            "plan": [
+              "MATERIALIZE p",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN e USING INDEX idx_propagation_entries_retention_cover",
+              "SEARCH p USING AUTOMATIC COVERING INDEX (transient_id=?) LEFT-JOIN"
+            ],
+            "rows": 240892,
+            "sorts": 0,
+            "vm_steps": 8197659,
+            "wall_ns": 1412857984
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "list_peer_handled_propagation_ids",
+            "fullscan_steps": 0,
+            "plan": [
+              "SEARCH p USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SEARCH e EXISTS USING COVERING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?)"
+            ],
+            "rows": 196801,
+            "sorts": 0,
+            "vm_steps": 6147320,
+            "wall_ns": 1172999960
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_completed_propagation_mark_exists",
+            "fullscan_steps": 0,
+            "plan": [
+              "SCAN CONSTANT ROW",
+              "SCALAR SUBQUERY 1",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=? AND transient_id=? AND state=?)"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 10208,
+            "wall_ns": 5723905
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_propagation_mark_exists",
+            "fullscan_steps": 0,
+            "plan": [
+              "SCAN CONSTANT ROW",
+              "SCALAR SUBQUERY 1",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=? AND transient_id=?)"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 5104,
+            "wall_ns": 3535101
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_received_propagation_mark_exists",
+            "fullscan_steps": 0,
+            "plan": [
+              "SCAN CONSTANT ROW",
+              "SCALAR SUBQUERY 1",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=? AND transient_id=? AND state=?)"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 5336,
+            "wall_ns": 3420379
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "list_peer_unhandled_propagation_ids",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING COVERING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?)",
+              "USE TEMP B-TREE FOR ORDER BY"
+            ],
+            "rows": 21651,
+            "sorts": 232,
+            "vm_steps": 10216998,
+            "wall_ns": 204140100
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "list_peer_unhandled_propagation_ids_limited",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?)",
+              "USE TEMP B-TREE FOR ORDER BY"
+            ],
+            "rows": 21619,
+            "sorts": 232,
+            "vm_steps": 10282183,
+            "wall_ns": 226488333
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_propagation_mark_stats",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?) LEFT-JOIN"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 8657171,
+            "wall_ns": 3752023686
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "peer_propagation_message_stats",
+            "fullscan_steps": 0,
+            "plan": [
+              "CO-ROUTINE marks",
+              "SEARCH propagation_peer_entries USING COVERING INDEX idx_propagation_peer_entries_folded_lookup (<expr>=?)",
+              "SCAN marks",
+              "SEARCH e USING INDEX sqlite_autoindex_propagation_entries_1 (transient_id=?) LEFT-JOIN"
+            ],
+            "rows": 232,
+            "sorts": 0,
+            "vm_steps": 20611590,
+            "wall_ns": 1234344455
+          },
+          {
+            "autoindex_rows": 0,
+            "family": "latest_announce_stamp_cost_for",
+            "fullscan_steps": 0,
+            "plan": [
+              "SEARCH announces USING COVERING INDEX idx_announces_peer_stamp (peer=?)"
+            ],
+            "rows": 50,
+            "sorts": 0,
+            "vm_steps": 2702,
+            "wall_ns": 5556765
+          }
+        ],
+        "pwrite64": {
+          "migration": {
+            "temporary_bytes": 427337365,
+            "temporary_files": 6,
+            "wal_bytes": 223215728,
+            "database_bytes": 220557424
+          },
+          "list_peer_unhandled_propagation": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "list_peer_prospective_unhandled_propagation": {
+            "temporary_bytes": 2916352,
+            "temporary_files": 2,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "list_peer_handled_propagation_ids": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_completed_propagation_mark_exists": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_propagation_mark_exists": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_received_propagation_mark_exists": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "list_peer_unhandled_propagation_ids": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "list_peer_unhandled_propagation_ids_limited": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_propagation_mark_stats": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "peer_propagation_message_stats": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          },
+          "latest_announce_stamp_cost_for": {
+            "temporary_bytes": 0,
+            "temporary_files": 0,
+            "wal_bytes": 0,
+            "database_bytes": 0
+          }
+        }
+      }
+    },
+    "retention": {
+      "batches": 3186,
+      "bound": 276266,
+      "deleted": 1555382,
+      "injected": 19116,
+      "metrics": {
+        "examined_total": 1630981,
+        "history": {
+          "autoindex_rows_total": 0,
+          "calls_total": 0,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 0,
+          "sorts_total": 0,
+          "vm_steps_total": 0,
+          "wall_ns_total": 0
+        },
+        "maintenance": {
+          "duration_ns_total": 71975057669,
+          "errors_total": 0,
+          "last_duration_ns": 31762796,
+          "last_logical_read_bytes": 20934796,
+          "last_read_bytes": 757760,
+          "last_rows_deleted": 255,
+          "logical_read_bytes_total": 35749248769,
+          "max_duration_ns": 509143679,
+          "max_read_bytes": 757760,
+          "read_bytes_samples_total": 3186,
+          "read_bytes_total": 164610048,
+          "rows_deleted_total": 1555382,
+          "runs_total": 3186
+        },
+        "retained_at_last_sweep": 194709,
+        "retention_candidates": {
+          "autoindex_rows_total": 0,
+          "calls_total": 3186,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 16598625,
+          "sorts_total": 0,
+          "vm_steps_total": 14730991,
+          "wall_ns_total": 788485628
+        },
+        "retention_count": {
+          "autoindex_rows_total": 0,
+          "calls_total": 1,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 11704657,
+          "sorts_total": 0,
+          "vm_steps_total": 8,
+          "wall_ns_total": 11704657
+        },
+        "retention_delete": {
+          "autoindex_rows_total": 0,
+          "calls_total": 1630981,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 28345624,
+          "sorts_total": 0,
+          "vm_steps_total": 86437869,
+          "wall_ns_total": 19087178343
+        },
+        "retention_window": {
+          "autoindex_rows_total": 0,
+          "calls_total": 1,
+          "errors_total": 0,
+          "fullscan_steps_total": 100000,
+          "max_wall_ns": 8528110,
+          "sorts_total": 0,
+          "vm_steps_total": 200014,
+          "wall_ns_total": 8528110
+        },
+        "stamp_cost": {
+          "autoindex_rows_total": 0,
+          "calls_total": 88132,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 26273,
+          "sorts_total": 0,
+          "vm_steps_total": 979618,
+          "wall_ns_total": 372808514
+        }
+      },
+      "original": 1730975,
+      "preserved_peers": 88132,
+      "retained": 194709,
+      "seconds": 134.952852982
+    },
+    "limits": [
+      "Database and raw artifacts remain private and untracked.",
+      "Baseline query setup creates then drops the two announce indexes; migration is not a baseline startup measurement.",
+      "Direct SQL replay measures all 232 case-folded propagation peers; the unused prospective API is exercised only for the largest peer.",
+      "Wall times are observations, not controlled latency benchmarks."
+    ],
+    "daemon_runs": {
+      "baseline": {
+        "binary_sha256": "b600ae231cd027a6d1e7e1eefa93e4bd5e5c258b86d2975b9badf4fcaaf43e9a",
+        "sample_span_seconds": 147.51754486901336,
+        "samples": 29,
+        "ready_seconds": 0.5155306860106066,
+        "completed": true,
+        "client": {
+          "error_ratio": 0.0,
+          "errors": 0,
+          "errors_by_code": {},
+          "events": 155,
+          "latency_p95_us_max": 1576,
+          "latency_p95_us_median": 731.0,
+          "polls": 1500
+        },
+        "measurements": {
+          "file_bytes": {
+            "first": 18042880,
+            "last": 34529280
+          },
+          "anon_bytes": {
+            "first": 43532288,
+            "last": 78528512
+          },
+          "tracked_rust_bytes": {
+            "first": 1745122,
+            "last": 2217620
+          },
+          "db_bytes": {
+            "first": 1359355904,
+            "last": 1359355904
+          },
+          "wal_bytes": {
+            "first": 2513232,
+            "last": 17468832
+          },
+          "cpu_ticks_delta": 1161,
+          "io_delta": {
+            "cancelled_write_bytes": 127385600,
+            "rchar": 6918734465,
+            "read_bytes": 1404928,
+            "syscr": 1690406,
+            "syscw": 129575,
+            "wchar": 335780716,
+            "write_bytes": 950157312
+          },
+          "memory_events_delta": {
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0
+          },
+          "memory_psi_total_delta_us": {
+            "some": 31368.0,
+            "full": 31360.0
+          },
+          "max_memory_current": 191172608
+        },
+        "status_polls": {
+          "calls": 29,
+          "errors": 0,
+          "max_peer_rows": 3,
+          "median_seconds": 0.21347585401963443
+        },
+        "fresh_delivery": {
+          "received": 1,
+          "receipt": "delivered"
+        },
+        "maintenance_cycles": 4,
+        "announce_maintenance": null,
+        "handled_query_metrics": null
+      },
+      "candidate": {
+        "binary_sha256": "03ccec6a88c4ea666992b84eae691ac18da1996fa84ca0e682f91a5eefb5559b",
+        "sample_span_seconds": 147.59339263499714,
+        "samples": 29,
+        "ready_seconds": 3.7747222339967266,
+        "completed": true,
+        "client": {
+          "error_ratio": 0.0,
+          "errors": 0,
+          "errors_by_code": {},
+          "events": 245,
+          "latency_p95_us_max": 1689,
+          "latency_p95_us_median": 767.0,
+          "polls": 1500
+        },
+        "measurements": {
+          "file_bytes": {
+            "first": 334151680,
+            "last": 238854144
+          },
+          "anon_bytes": {
+            "first": 41590784,
+            "last": 74469376
+          },
+          "tracked_rust_bytes": {
+            "first": 1763497,
+            "last": 2471651
+          },
+          "db_bytes": {
+            "first": 1572937728,
+            "last": 1574076416
+          },
+          "wal_bytes": {
+            "first": 100663296,
+            "last": 2809872
+          },
+          "cpu_ticks_delta": 1347,
+          "io_delta": {
+            "cancelled_write_bytes": 7581696,
+            "rchar": 12009913378,
+            "read_bytes": 1290240,
+            "syscr": 2935888,
+            "syscw": 452204,
+            "wchar": 1031323997,
+            "write_bytes": 2102779904
+          },
+          "memory_events_delta": {
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0
+          },
+          "memory_psi_total_delta_us": {
+            "some": 105128.0,
+            "full": 105129.0
+          },
+          "max_memory_current": 503111680
+        },
+        "status_polls": {
+          "calls": 29,
+          "errors": 0,
+          "max_peer_rows": 4,
+          "median_seconds": 0.21078603802016005
+        },
+        "fresh_delivery": {
+          "received": 1,
+          "receipt": "delivered"
+        },
+        "maintenance_cycles": 4,
+        "announce_maintenance": {
+          "duration_ns_total": 2519177390,
+          "errors_total": 0,
+          "last_duration_ns": 15357584,
+          "last_logical_read_bytes": 13197448,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 498,
+          "logical_read_bytes_total": 2035817317,
+          "max_duration_ns": 190040996,
+          "max_read_bytes": 4096,
+          "read_bytes_samples_total": 145,
+          "read_bytes_total": 4096,
+          "rows_deleted_total": 72358,
+          "runs_total": 145
+        },
+        "handled_query_metrics": {
+          "autoindex_rows_total": 0,
+          "calls_total": 102,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 31904974,
+          "sorts_total": 0,
+          "vm_steps_total": 54784266,
+          "wall_ns_total": 1562489449
+        }
+      }
+    }
+  }
+}

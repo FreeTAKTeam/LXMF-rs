@@ -46,6 +46,9 @@ struct Args {
     rpc: Option<String>,
     #[arg(long, default_value = "reticulum.db")]
     db: PathBuf,
+    /// Historical announce rows to retain, in addition to latest per-peer information.
+    #[arg(long, default_value_t = 100_000, value_parser = clap::value_parser!(u64).range(0..=i64::MAX as u64))]
+    announce_history_max_rows: u64,
     /// Enable durable ZeroMQ custody; creates a persistent, forward-only storage profile.
     #[arg(long, default_value_t = false)]
     zmq_durable_broker: bool,

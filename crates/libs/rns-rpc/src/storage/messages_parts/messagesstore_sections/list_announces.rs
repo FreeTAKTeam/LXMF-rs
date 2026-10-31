@@ -6,7 +6,7 @@ impl MessagesStore {
         before_ts: Option<i64>,
         before_id: Option<&str>,
     ) -> rusqlite::Result<Vec<AnnounceRecord>> {
-        self.with_read_conn(|conn| list_announces_rows(conn,limit,before_ts,before_id))
+        self.with_read_conn(|conn| list_announces_rows(conn,limit,before_ts,before_id, &self.write_state.announce_metrics.history))
     }
 
     pub fn upsert_announce_identity(
@@ -39,12 +39,10 @@ impl MessagesStore {
 
     pub fn latest_announce_stamp_cost_for(&self, peer: &str) -> rusqlite::Result<Option<u32>> {
         self.with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT stamp_cost FROM announces WHERE peer = ?1 AND stamp_cost IS NOT NULL ORDER BY timestamp DESC, id DESC LIMIT 1",
-                params![peer],
-                |row| row.get(0),
-            )
-            .optional()
+            let mut statement = conn.prepare("SELECT stamp_cost FROM announces WHERE peer = ?1 AND stamp_cost IS NOT NULL ORDER BY timestamp DESC, id DESC LIMIT 1")?;
+            self.write_state.announce_metrics.stamp_cost.measure(&mut statement, |statement| {
+                statement.query_row(params![peer], |row| row.get(0)).optional()
+            })
         })
     }
 
@@ -163,8 +161,11 @@ impl MessagesStore {
 
     pub fn clear_announces(&self) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
-            conn.execute("DELETE FROM announces", [])?;
-            conn.execute("DELETE FROM announce_identities", [])?;
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("DELETE FROM announces", [])?;
+            tx.execute("DELETE FROM announce_identities", [])?;
+            tx.execute("DELETE FROM announce_retention_cursor", [])?;
+            tx.commit()?;
             Ok(())
         })
     }
@@ -344,6 +345,7 @@ impl MessagesStore {
                     ON announces(timestamp DESC, id DESC);
 ",
             )?;
+            Self::init_announce_retention(&tx)?;
             Self::ensure_peer_queue_refill_schema(&tx)?;
             tx.commit()
         })
@@ -389,12 +391,12 @@ impl MessagesStore {
             let tx=conn.unchecked_transaction()?;
             let bytes:i64=tx.query_row("SELECT COALESCE(MAX(bytes),0) FROM (SELECT COALESCE(length(CAST(app_data_hex AS BLOB)),0)+COALESCE(length(CAST(name AS BLOB)),0)+COALESCE(length(CAST(name_source AS BLOB)),0)+COALESCE(length(CAST(capabilities AS BLOB)),0)+length(CAST(id AS BLOB))+length(CAST(peer AS BLOB)) AS bytes FROM announces ORDER BY timestamp DESC,id DESC LIMIT 32)",[],|r|r.get(0))?;
             if bytes>128*1024 {return Err(super::broker::error("SDK_STORAGE_BROKER_EVENT_TOO_LARGE","announce projection record exceeds 128 KiB"));}
-            let records=list_announces_rows(&tx,32,None,None)?;tx.commit()?;Ok(records)
+            let records=list_announces_rows(&tx,32,None,None, &self.write_state.announce_metrics.history)?;tx.commit()?;Ok(records)
         })
     }
 }
 
-fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before_id:Option<&str>)->rusqlite::Result<Vec<AnnounceRecord>> {
+fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before_id:Option<&str>, metrics: &super::announce_metrics::QueryMetrics)->rusqlite::Result<Vec<AnnounceRecord>> {
 
             let mut records = Vec::new();
             let parse_row = |row: &rusqlite::Row| -> rusqlite::Result<AnnounceRecord> {
@@ -428,25 +430,28 @@ fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before
                 let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
                 if let Some(ann_id) = before_id {
                     let mut stmt = conn.prepare(query_with_id)?;
-                    let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
-                    while let Some(row) = rows.next()? {
-                        records.push(parse_row(row)?);
-                    }
+                    metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_row(row)?); }
+                        Ok(())
+                    })?;
                 } else {
                     let mut stmt = conn.prepare(query_without_id)?;
-                    let mut rows = stmt.query(params![ts, limit as i64])?;
-                    while let Some(row) = rows.next()? {
-                        records.push(parse_row(row)?);
-                    }
+                    metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![ts, limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_row(row)?); }
+                        Ok(())
+                    })?;
                 }
             } else {
                 let mut stmt = conn.prepare(
                     "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC,id DESC LIMIT ?1",
                 )?;
-                let mut rows = stmt.query(params![limit as i64])?;
-                while let Some(row) = rows.next()? {
-                    records.push(parse_row(row)?);
-                }
+                metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_row(row)?); }
+                        Ok(())
+                    })?;
             }
             Ok(records)
 }
