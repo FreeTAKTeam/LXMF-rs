@@ -115,6 +115,7 @@ fn test_args(
     strict_interface_startup: bool,
 ) -> Args {
     Args {
+        announce_history_max_rows: 100_000,
         rpc: Some("127.0.0.1:0".to_string()),
         db,
         config,

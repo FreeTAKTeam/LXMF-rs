@@ -87,3 +87,46 @@ fn spawn_propagation_storage_maintenance(daemon: Arc<RpcDaemon>) {
         }
     });
 }
+
+fn spawn_announce_history_maintenance(daemon: Arc<RpcDaemon>, max_rows: u64) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let daemon = Arc::clone(&daemon);
+            match tokio::task::spawn_blocking(move || daemon.maintain_announce_history(max_rows)).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => log::warn!("[daemon] announce history maintenance failed: {error}"),
+                Err(error) => log::error!("[daemon] announce history maintenance worker failed: {error}"),
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod announce_history_timer_tests {
+    use super::*;
+
+    #[test]
+    fn announce_history_cli_defaults_and_range() {
+        use clap::Parser;
+        assert_eq!(Args::try_parse_from(["reticulumd"]).unwrap().announce_history_max_rows,100_000);
+        assert_eq!(Args::try_parse_from(["reticulumd","--announce-history-max-rows","0"]).unwrap().announce_history_max_rows,0);
+        assert!(Args::try_parse_from(["reticulumd","--announce-history-max-rows","18446744073709551615"]).is_err());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn announce_history_timer_runs_with_propagation_disabled() {
+        let daemon=Arc::new(RpcDaemon::test_instance());
+        daemon.set_propagation_state(false,None,16);
+        spawn_announce_history_maintenance(Arc::clone(&daemon),100_000);
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(1)).await;
+        let deadline=std::time::Instant::now()+Duration::from_secs(5);
+        loop {
+            let stats=daemon.metrics_snapshot()["storage"]["announces"]["maintenance"].clone();
+            if stats["runs_total"]==1 { assert_eq!(stats["errors_total"],0); break; }
+            assert!(std::time::Instant::now()<deadline,"announce history timer did not finish");
+            tokio::task::yield_now().await;
+        }
+    }
+}

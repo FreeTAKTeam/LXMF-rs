@@ -1,6 +1,10 @@
 use super::*;
 
 impl RpcDaemon {
+    pub fn maintain_announce_history(&self, max_rows: u64) -> Result<usize, std::io::Error> {
+        self.store.prune_announce_history_batch(max_rows).map_err(std::io::Error::other)
+    }
+
     /// Called by the periodic worker after propagation maintenance releases its locks.
     pub fn release_unused_storage_memory(&self) -> Result<(), std::io::Error> {
         self.store.release_unused_sqlite_memory().inspect_err(|error| {

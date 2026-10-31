@@ -707,6 +707,7 @@ fn fake_i2p_private_key() -> String {
 
 fn test_args() -> Args {
     Args {
+        announce_history_max_rows: 100_000,
         rpc: None,
         db: PathBuf::from("reticulum.db"),
         config: None,

@@ -161,3 +161,14 @@ curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/readyz
 curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/metrics
 cargo run -p lxmf-cli -- --rpc unix:/tmp/lxmf-rpc.sock status
 ```
+
+## Persistent announce history
+
+The daemon retains the newest 100,000 announce events plus each peer's latest
+operational event and latest non-null stamp cost. Set
+`--announce-history-max-rows N` to change the recent-history window; zero retains
+only the per-peer records. Existing databases converge in bounded background
+batches, and index creation can extend the first startup. Deleting history does
+not immediately shrink the database file. See the
+[retention contract and diagnostics](../performance/announce-history-retention-717.md)
+for pagination effects, maintenance capacity, measurements and remaining limits.

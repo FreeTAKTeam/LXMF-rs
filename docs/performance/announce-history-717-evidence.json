@@ -1,0 +1,451 @@
+{
+  "base_commit": "e7908ccb5d83c124588717fb60192761ce2296c1",
+  "sqlite": "3.53.2",
+  "limits": {
+    "memory_high": 805306368,
+    "memory_max": 1073741824,
+    "duration_seconds": 150,
+    "sample_seconds": 5,
+    "propagation_interval_seconds": 30
+  },
+  "runs": {
+    "baseline": {
+      "binary_sha256": "b600ae231cd027a6d1e7e1eefa93e4bd5e5c258b86d2975b9badf4fcaaf43e9a",
+      "sample_span_seconds": 145.11678241501795,
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 152,
+        "latency_p95_us_max": 807,
+        "latency_p95_us_median": 647.5,
+        "polls": 1500
+      },
+      "ready_seconds": 0.5117776049883105,
+      "measurements": {
+        "cgroup_file": {
+          "first": 1716224,
+          "last": 46096384
+        },
+        "cgroup_anon": {
+          "first": 43425792,
+          "last": 51183616
+        },
+        "rust_allocated_bytes": {
+          "first": 1600926,
+          "last": 2184534
+        },
+        "cgroup_current": {
+          "first": 47480832,
+          "last": 101490688
+        },
+        "db_bytes": {
+          "first": 1237348352,
+          "last": 1237393408
+        },
+        "wal_bytes": {
+          "first": 527392,
+          "last": 527392
+        },
+        "cpu_ticks": {
+          "first": 19,
+          "last": 407
+        },
+        "rchar_delta": 312843101,
+        "wchar_delta": 4037808,
+        "read_bytes_delta": 45608960,
+        "write_bytes_delta": 8830976,
+        "memory_events_delta": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "psi_total_delta": {
+          "some": 0.0,
+          "full": 0.0
+        },
+        "quota_cycles": 4
+      }
+    },
+    "final": {
+      "binary_sha256": "f55a2b065de651d5d43ef837124b1d1072a1b7499b77381bc3a806683c6f45d2",
+      "sample_span_seconds": 145.16715088899946,
+      "client": {
+        "error_ratio": 0.0,
+        "errors": 0,
+        "errors_by_code": {},
+        "events": 152,
+        "latency_p95_us_max": 1477,
+        "latency_p95_us_median": 703.0,
+        "polls": 1500
+      },
+      "ready_seconds": 10.197836578998249,
+      "measurements": {
+        "cgroup_file": {
+          "first": 753819648,
+          "last": 642809856
+        },
+        "cgroup_anon": {
+          "first": 43786240,
+          "last": 59170816
+        },
+        "rust_allocated_bytes": {
+          "first": 1616848,
+          "last": 2192897
+        },
+        "cgroup_current": {
+          "first": 803737600,
+          "last": 710119424
+        },
+        "db_bytes": {
+          "first": 1353228288,
+          "last": 1353228288
+        },
+        "wal_bytes": {
+          "first": 100663296,
+          "last": 2768672
+        },
+        "cpu_ticks": {
+          "first": 405,
+          "last": 963
+        },
+        "rchar_delta": 1855398737,
+        "wchar_delta": 566882544,
+        "read_bytes_delta": 4657152,
+        "write_bytes_delta": 654753792,
+        "memory_events_delta": {
+          "high": 13,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        },
+        "psi_total_delta": {
+          "some": 292.0,
+          "full": 292.0
+        },
+        "quota_cycles": 4
+      },
+      "announce_metrics_last": {
+        "examined_total": 72704,
+        "history": {
+          "autoindex_rows_total": 0,
+          "calls_total": 0,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 0,
+          "sorts_total": 0,
+          "vm_steps_total": 0,
+          "wall_ns_total": 0
+        },
+        "maintenance": {
+          "duration_ns_total": 3631348913,
+          "errors_total": 0,
+          "last_duration_ns": 21849706,
+          "last_logical_read_bytes": 12422203,
+          "last_read_bytes": 0,
+          "last_rows_deleted": 512,
+          "logical_read_bytes_total": 1532296402,
+          "max_duration_ns": 107810240,
+          "max_read_bytes": 1413120,
+          "read_bytes_samples_total": 142,
+          "read_bytes_total": 2818048,
+          "rows_deleted_total": 72704,
+          "runs_total": 142
+        },
+        "retained_at_last_sweep": 0,
+        "retention_candidates": {
+          "autoindex_rows_total": 0,
+          "calls_total": 142,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 676517,
+          "sorts_total": 0,
+          "vm_steps_total": 658312,
+          "wall_ns_total": 18384761
+        },
+        "retention_count": {
+          "autoindex_rows_total": 0,
+          "calls_total": 0,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 0,
+          "sorts_total": 0,
+          "vm_steps_total": 0,
+          "wall_ns_total": 0
+        },
+        "retention_delete": {
+          "autoindex_rows_total": 0,
+          "calls_total": 72704,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 10560524,
+          "sorts_total": 0,
+          "vm_steps_total": 4061036,
+          "wall_ns_total": 829402789
+        },
+        "retention_window": {
+          "autoindex_rows_total": 0,
+          "calls_total": 1,
+          "errors_total": 0,
+          "fullscan_steps_total": 100000,
+          "max_wall_ns": 19282054,
+          "sorts_total": 0,
+          "vm_steps_total": 200014,
+          "wall_ns_total": 19282054
+        },
+        "stamp_cost": {
+          "autoindex_rows_total": 0,
+          "calls_total": 0,
+          "errors_total": 0,
+          "fullscan_steps_total": 0,
+          "max_wall_ns": 0,
+          "sorts_total": 0,
+          "vm_steps_total": 0,
+          "wall_ns_total": 0
+        }
+      }
+    }
+  },
+  "probe": {
+    "baseline": [
+      {
+        "mode": "baseline",
+        "rows": 1700000,
+        "seconds": 25.681147158,
+        "sqlite": "3.53.2",
+        "stage": "fixture"
+      },
+      {
+        "family": "stamp_absent",
+        "fullscan_steps": 1699999,
+        "plan": [
+          "SCAN announces",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        "rows": 0,
+        "sorts": 1,
+        "vm_steps": 5100010,
+        "wall_ns": 1815680336
+      },
+      {
+        "family": "stamp_present",
+        "fullscan_steps": 1699999,
+        "plan": [
+          "SCAN announces",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        "rows": 1,
+        "sorts": 1,
+        "vm_steps": 5119444,
+        "wall_ns": 1957058114
+      },
+      {
+        "family": "history_deep",
+        "fullscan_steps": 0,
+        "plan": [
+          "SEARCH announces USING INDEX idx_announces_timestamp_id_desc (timestamp<?)"
+        ],
+        "rows": 100,
+        "sorts": 0,
+        "vm_steps": 2493,
+        "wall_ns": 253696
+      }
+    ],
+    "final": [
+      {
+        "mode": "candidate",
+        "rows": 1700000,
+        "seconds": 11.035915706,
+        "sqlite": "3.53.2",
+        "stage": "fixture"
+      },
+      {
+        "seconds": 2.54295894,
+        "stage": "migration"
+      },
+      {
+        "family": "stamp_absent",
+        "fullscan_steps": 0,
+        "plan": [
+          "SEARCH announces USING COVERING INDEX idx_announces_peer_stamp (peer=?)"
+        ],
+        "rows": 0,
+        "sorts": 0,
+        "vm_steps": 11,
+        "wall_ns": 19980
+      },
+      {
+        "family": "stamp_present",
+        "fullscan_steps": 0,
+        "plan": [
+          "SEARCH announces USING COVERING INDEX idx_announces_peer_stamp (peer=?)"
+        ],
+        "rows": 1,
+        "sorts": 0,
+        "vm_steps": 14,
+        "wall_ns": 12308
+      },
+      {
+        "family": "history_deep",
+        "fullscan_steps": 0,
+        "plan": [
+          "SEARCH announces USING INDEX idx_announces_timestamp_id_desc (timestamp<?)"
+        ],
+        "rows": 100,
+        "sorts": 0,
+        "vm_steps": 2493,
+        "wall_ns": 157802
+      },
+      {
+        "batch": 0,
+        "deleted": 512,
+        "seconds": 0.021446336,
+        "stage": "prune"
+      },
+      {
+        "batch": 500,
+        "deleted": 256512,
+        "seconds": 8.0605479,
+        "stage": "prune"
+      },
+      {
+        "batch": 1000,
+        "deleted": 512512,
+        "seconds": 15.281407099,
+        "stage": "prune"
+      },
+      {
+        "batch": 1500,
+        "deleted": 768512,
+        "seconds": 21.983825082,
+        "stage": "prune"
+      },
+      {
+        "batch": 2000,
+        "deleted": 1024512,
+        "seconds": 31.055937987,
+        "stage": "prune"
+      },
+      {
+        "batch": 2500,
+        "deleted": 1280512,
+        "seconds": 39.163473683,
+        "stage": "prune"
+      },
+      {
+        "batch": 3000,
+        "deleted": 1536512,
+        "seconds": 46.402809984,
+        "stage": "prune"
+      },
+      {
+        "deleted": 1618972,
+        "injected": 18972,
+        "metrics": {
+          "examined_total": 1618972,
+          "history": {
+            "autoindex_rows_total": 0,
+            "calls_total": 0,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 0,
+            "sorts_total": 0,
+            "vm_steps_total": 0,
+            "wall_ns_total": 0
+          },
+          "maintenance": {
+            "duration_ns_total": 38320988012,
+            "errors_total": 0,
+            "last_duration_ns": 3284367,
+            "last_logical_read_bytes": 7880850,
+            "last_read_bytes": 0,
+            "last_rows_deleted": 0,
+            "logical_read_bytes_total": 6474756638,
+            "max_duration_ns": 147886220,
+            "max_read_bytes": 0,
+            "read_bytes_samples_total": 3167,
+            "read_bytes_total": 0,
+            "rows_deleted_total": 1618972,
+            "runs_total": 3167
+          },
+          "retained_at_last_sweep": 100000,
+          "retention_candidates": {
+            "autoindex_rows_total": 0,
+            "calls_total": 3164,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 294563,
+            "sorts_total": 0,
+            "vm_steps_total": 14649833,
+            "wall_ns_total": 252647393
+          },
+          "retention_count": {
+            "autoindex_rows_total": 0,
+            "calls_total": 6,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 987029,
+            "sorts_total": 0,
+            "vm_steps_total": 48,
+            "wall_ns_total": 5016899
+          },
+          "retention_delete": {
+            "autoindex_rows_total": 0,
+            "calls_total": 1618972,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 4897213,
+            "sorts_total": 0,
+            "vm_steps_total": 90431152,
+            "wall_ns_total": 9053374580
+          },
+          "retention_window": {
+            "autoindex_rows_total": 0,
+            "calls_total": 6,
+            "errors_total": 0,
+            "fullscan_steps_total": 599997,
+            "max_wall_ns": 2873979,
+            "sorts_total": 0,
+            "vm_steps_total": 1200075,
+            "wall_ns_total": 15030445
+          },
+          "stamp_cost": {
+            "autoindex_rows_total": 0,
+            "calls_total": 600,
+            "errors_total": 0,
+            "fullscan_steps_total": 0,
+            "max_wall_ns": 96434,
+            "sorts_total": 0,
+            "vm_steps_total": 7200,
+            "wall_ns_total": 3113927
+          }
+        },
+        "retained": 100000,
+        "seconds": 48.685954846,
+        "stage": "complete"
+      }
+    ]
+  },
+  "traced_first_candidate_io": {
+    "startup": {
+      "other": 880980868,
+      "wal": 892328048,
+      "temp": 209803283
+    },
+    "retention": {
+      "wal": 6795965680,
+      "other": 4218982400
+    },
+    "between": {
+      "other": 2535424
+    }
+  },
+  "limitations": [
+    "Synthetic smoke, not production or multi-hour acceptance.",
+    "Baseline and final ran separately, but other build/probe work ran on the host; page cache was not flushed.",
+    "Trace is from the first candidate before avoiding repeated boundary reads; final probe is untraced.",
+    "The original production temporary-file producing statements remain unknown.",
+    "Fresh end-to-end message delivery was not driven during these soaks."
+  ]
+}
