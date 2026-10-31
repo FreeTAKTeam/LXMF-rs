@@ -50,6 +50,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tools/scripts -p 'test_ci_*.py' -v
           python3 -m unittest discover -s tools/scripts -p 'test_branch_protection.py' -v
+          python3 -m unittest discover -s tools/scripts -p 'test_module_includes.py' -v
       - name: Select applicable checks
         id: select
         run: python3 tools/scripts/ci_selection.py

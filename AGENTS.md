@@ -76,7 +76,10 @@ remain in force; do not replace them with generic design guidance.
   error or log and recover intentionally.
 - Keep files within the active module-size policy: 500 LOC for regular Rust
   modules and 1200 LOC for test/fuzz/bench files. Extract helpers instead of
-  adding lint allowances or broad exceptions.
+  adding lint allowances or broad exceptions. Split with `mod`, never
+  `include!` fragments; `tools/scripts/check_module_includes.py` only lets the
+  existing fragment counts in
+  `docs/architecture/include-fragment-baseline.txt` shrink.
 - Use focused validation first, then broaden as risk increases. Common gates
   are `cargo fmt --all -- --check`,
   `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`,

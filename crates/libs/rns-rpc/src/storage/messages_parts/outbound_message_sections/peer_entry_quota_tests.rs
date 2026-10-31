@@ -1,3 +1,5 @@
+use super::*;
+
 // Quota-phase regressions. The pre-index statements (global ROW_NUMBER over
 // every unhandled mark, then COUNT(*)) are the oracle: the indexed quota phase
 // must delete exactly the same marks. TTLs are far beyond the fixture, so

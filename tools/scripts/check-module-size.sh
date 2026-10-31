@@ -81,6 +81,7 @@ if [[ "${#stale_allowlist[@]}" -gt 0 ]]; then
   fail "allowlist contains stale entries; remove them"
 fi
 
+python3 tools/scripts/check_module_includes.py
 python3 tools/scripts/check-bluetooth-companion.py
 python3 tools/scripts/check-bluetooth-boundaries.py
 
