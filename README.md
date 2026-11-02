@@ -37,8 +37,6 @@ Dataset: `main-2026-11-01` at `c59f35f62fb3196eeb391c943b840f0ad53ca2f3`; Python
 | LXMF large message decode + verify | 36.59 us | 94.59 us | 2.59x |
 | LXMF large message encode + sign | 21.18 us | 45.26 us | 2.14x |
 
-In the same-topology end-to-end comparison, Python was faster for: link setup, direct delivery, opportunistic delivery, resource delivery.
-
 These are matched-workload comparisons, not a claim of whole-system superiority. See [methodology, complete results, variability, and limitations](docs/performance.md).
 <!-- performance-summary:end -->
 

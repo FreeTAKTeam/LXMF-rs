@@ -61,16 +61,7 @@ In-process latency is normalized per call from fixed 100-call batches to avoid t
 
 ## Same-topology end-to-end comparison
 
-These matched sender workloads use the same two-node loopback TCP topology with one Rust and one pinned-Python endpoint. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary. Both columns run both nodes, so whole-harness CPU and RSS cannot be attributed to one implementation and are not published here.
-
-| Workload | Route | Payload | Rust p50 | Python p50 | Rust/Python | Rust p95 | Python p95 | Rust variability | Python variability |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Loopback TCP cold destination discovery | cold | 0 | 479.48 ms | 2769.66 ms | 5.78x | 492.19 ms | 2776.90 ms | 0.72% | 0.13% |
-| Loopback TCP link setup | warm | 0 | 253.00 ms | 136.47 ms | 0.54x | 259.98 ms | 138.67 ms | 2.76% | 1.61% |
-| Loopback TCP direct delivery | warm | 256 | 1151.76 ms | 451.34 ms | 0.39x | 1179.96 ms | 458.07 ms | 0.82% | 1.03% |
-| Loopback TCP opportunistic delivery | warm | 256 | 1155.64 ms | 450.58 ms | 0.39x | 1170.90 ms | 456.74 ms | 1.08% | 0.67% |
-| Loopback TCP propagated delivery | warm | 256 | 1177.70 ms | 7875.80 ms | 6.69x | 1204.52 ms | 7908.48 ms | 2.28% | 0.13% |
-| Loopback TCP resource delivery | warm | 16384 | 1153.12 ms | 827.17 ms | 0.72x | 1171.12 ms | 838.01 ms | 1.23% | 0.26% |
+No E2E measurements are published in this dataset. The previous harness timed debug Rust builds and about one second of RPC-helper start-up inside Rust's boundary, and each direction still includes the other implementation's receive path (including Rust lxmd's 250 ms on-inbound poll), so earlier E2E ratios were not attributable to either implementation.
 
 ## Independent rns-rs network comparison
 

@@ -209,20 +209,6 @@ def summary_section(data: dict[str, Any], release: str) -> str:
         lines.append(
             f"| {row['label']} | {fmt_ns(row['rust']['p50_ns'])} | {fmt_ns(row['python']['p50_ns'])} | {row['rust_advantage_vs_python']['p50_speedup']:.2f}x |"
         )
-    python_e2e_wins = [
-        row["label"].removeprefix("Loopback TCP ")
-        for row in data.get("e2e_comparisons", [])
-        if row["rust_p50_speedup_vs_python"] < 1.0
-    ]
-    if python_e2e_wins:
-        lines.extend(
-            [
-                "",
-                "In the same-topology end-to-end comparison, Python was faster for: "
-                + ", ".join(python_e2e_wins)
-                + ".",
-            ]
-        )
     lines.extend(
         [
             "",
@@ -315,22 +301,21 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
     if e2e:
         lines.extend(
             [
-                "These matched sender workloads use the same two-node loopback TCP topology with one Rust and one pinned-Python endpoint. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary. "
-                "Both columns run both nodes, so whole-harness CPU and RSS cannot be attributed to one implementation and are not published here.",
+                "These workloads use one Rust and one pinned-Python endpoint over loopback TCP. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary. "
+                "Each direction runs one implementation as sender and the other as receiver, so the two columns are not a Rust-versus-Python ratio; whole-harness CPU and RSS are not published for the same reason.",
                 "",
-                "| Workload | Route | Payload | Rust p50 | Python p50 | Rust/Python | Rust p95 | Python p95 | Rust variability | Python variability |",
-                "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+                "| Workload | Route | Payload | Rust → Python p50 | Python → Rust p50 | Rust → Python p95 | Python → Rust p95 | Rust → Python variability | Python → Rust variability |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for row in e2e:
             lines.append(
-                "| {label} | {route} | {payload} | {rust50} | {python50} | {ratio:.2f}x | {rust95} | {python95} | {rust_var:.2%} | {python_var:.2%} |".format(
+                "| {label} | {route} | {payload} | {rust50} | {python50} | {rust95} | {python95} | {rust_var:.2%} | {python_var:.2%} |".format(
                     label=row["label"],
                     route=row["route_state"],
                     payload=row["payload_size_bytes"],
                     rust50=fmt_ns(row["rust"]["p50_ns"]),
                     python50=fmt_ns(row["python"]["p50_ns"]),
-                    ratio=row["rust_p50_speedup_vs_python"],
                     rust95=fmt_ns(row["rust"]["p95_ns"]),
                     python95=fmt_ns(row["python"]["p95_ns"]),
                     rust_var=row["rust"]["dispersion"]["p50_relative_mad"],
@@ -338,7 +323,12 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
                 )
             )
     else:
-        lines.append("No E2E measurements are present; release publication must add the report before making whole-delivery claims.")
+        lines.append(
+            "No E2E measurements are published in this dataset. The previous harness timed debug Rust builds and "
+            "about one second of RPC-helper start-up inside Rust's boundary, and each direction still includes "
+            "the other implementation's receive path (including Rust lxmd's 250 ms on-inbound poll), so earlier "
+            "E2E ratios were not attributable to either implementation."
+        )
     independent = data.get("independent_performance")
     lines.extend(["", "## Independent rns-rs network comparison", ""])
     if independent:
