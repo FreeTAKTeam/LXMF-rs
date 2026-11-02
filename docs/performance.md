@@ -2,47 +2,49 @@
 
 <!-- GENERATED: tools/scripts/performance_docs.py -->
 
-Dataset: [`docs/performance/v0.10.1.json`](performance/v0.10.1.json). All numbers below originate from release SHA `25a976945cb335dff3be692981151c8741a5fdeb`.
-The standalone release dashboard is available at [the latest GitHub Release asset](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html); the release asset is the public source for the complete matrix.
+Dataset: [`docs/performance/main-2026-11-01.json`](performance/main-2026-11-01.json). All numbers below originate from commit `c59f35f62fb3196eeb391c943b840f0ad53ca2f3`.
+Release dashboards published before this methodology (up to and including v0.14.0) overstate Rust's advantage; this page supersedes them.
 
 ## Methodology
 
-The report uses `5` interleaved comparison runs and `2` isolated resource runs. Fixtures and process setup are completed before timed regions. Results are medians; p95 and p99 retain tail visibility. Rust/Python ranking is evidence, not a release threshold.
+The report uses `5` interleaved comparison runs and `3` isolated resource runs. Fixtures and process setup are completed before timed regions. Results are medians; p95 and p99 retain tail visibility. Rust/Python ranking is evidence, not a release threshold.
+
+Workloads do the same work on both sides: LXMF encode signs and decode verifies the Ed25519 signature, as `LXMessage.pack()` and `LXMessage.unpack_from_bytes()` do; announce validation re-verifies every call instead of reusing Python's per-packet validation cache. Python runs with the PyCA `cryptography` backend that a normal `pip install rns` uses; the benchmark refuses to run on RNS's pure-Python fallback. Earlier datasets did not meet these rules and overstated Rust's advantage.
 
 ## Environment
 
-- Timestamp: `2026-08-29T13:52:47Z`
-- Release SHA: `25a976945cb335dff3be692981151c8741a5fdeb`
+- Timestamp: `2026-11-02T01:04:21Z`
+- Commit: `c59f35f62fb3196eeb391c943b840f0ad53ca2f3`
 - Python Reticulum: `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`
 - Python LXMF: `727830cefda83d9c6e3982b48675425f3f988f9c`
-- Rust: `rustc 1.98.0 (88d9e12ae 2026-08-18)`
-- Python: `Python 3.12.14`
-- CPU: `AMD EPYC 7763 64-Core Processor`
-- OS/kernel: `Linux runnervmgx7h7 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux`
+- Rust: `rustc 1.99.1 (58cf8f9c3 2026-10-13)`
+- Python: `Python 3.14.4`
+- CPU: `Intel(R) Core(TM) Ultra 7 165H`
+- OS/kernel: `Linux pgiuseppe-AI 7.0.0-38-generic #38-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep  4 09:10:14 UTC 2026 x86_64 GNU/Linux`
 - Profile: `report`
 
 ## Protocol/core and transport hot paths
 
 | Workload | Class | Payload | Batch | Rust p50 | Python p50 | Rust/Python | Rust variability | Python variability | Rust RSS | Python RSS |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| LXMF message decode | protocol_core | 21 | 1 | 225 ns | 7.99 ms | 35459.28x | 0.95% | 0.62% | 37.6 MiB | 31.4 MiB |
-| LXMF message encode | protocol_core | 12 | 1 | 385 ns | 2.10 ms | 5450.73x | 0.30% | 0.35% | 24.1 MiB | 31.0 MiB |
-| LXMF large message decode | protocol_core | 2048 | 1 | 370 ns | 7.96 ms | 21536.64x | 2.22% | 0.10% | 25.0 MiB | 31.0 MiB |
-| LXMF large message encode | protocol_core | 2048 | 1 | 773 ns | 2.12 ms | 2743.59x | 2.71% | 0.34% | 15.2 MiB | 31.0 MiB |
-| LXMF resource-sized message decode | protocol_core | 16384 | 1 | 6.40 us | 8.04 ms | 1256.77x | 5.72% | 0.26% | 6.5 MiB | 31.0 MiB |
-| LXMF resource-sized message encode | protocol_core | 16384 | 1 | 17.94 us | 2.18 ms | 121.34x | 13.99% | 0.26% | 5.9 MiB | 31.1 MiB |
-| Reticulum packet pack | protocol_core | 128 | 1 | 24 ns | 3.99 us | 168.19x | 0.34% | 0.23% | 311.1 MiB | 36.9 MiB |
-| Reticulum packet unpack | protocol_core | 128 | 1 | 47 ns | 2.38 us | 50.76x | 0.00% | 0.04% | 159.7 MiB | 40.8 MiB |
-| Reticulum resource segmentation 16 KiB | transport_hotpath | 16384 | 43 | 2.09 us | 6.37 us | 3.05x | 3.43% | 1.10% | 9.3 MiB | 34.8 MiB |
-| Reticulum resource reassembly 16 KiB | transport_hotpath | 16384 | 43 | 386 ns | 942 ns | 2.44x | 0.81% | 1.06% | 24.4 MiB | 55.9 MiB |
-| Reticulum announce create | protocol_core | 22 | 1 | 20.38 us | 2.10 ms | 103.27x | 0.17% | 0.72% | 6.2 MiB | 31.7 MiB |
-| Reticulum announce validate | protocol_core | 22 | 1 | 48.97 us | 8.02 us | 0.16x | 1.03% | 0.62% | 6.0 MiB | 34.1 MiB |
-| Reticulum announce validate batch 64 | protocol_core | 22 | 64 | 3.17 ms | 507.58 us | 0.16x | 0.13% | 0.69% | 5.8 MiB | 31.0 MiB |
-| Reticulum identity sign | protocol_core | 2048 | 1 | 26.94 us | 2.10 ms | 77.80x | 0.05% | 2.40% | 6.0 MiB | 31.1 MiB |
-| Reticulum identity verify | protocol_core | 2048 | 1 | 47.51 us | 7.82 ms | 164.69x | 0.33% | 0.42% | 5.8 MiB | 31.5 MiB |
-| Reticulum identity encrypt | protocol_core | 2048 | 1 | 82.83 us | 15.53 ms | 187.55x | 0.13% | 0.29% | 5.9 MiB | 31.0 MiB |
-| Reticulum identity decrypt | protocol_core | 2048 | 1 | 61.91 us | 17.99 ms | 290.58x | 0.10% | 0.79% | 5.9 MiB | 31.1 MiB |
-| Reticulum resource request window | transport_hotpath | - | 6 | 30 ns | 4.10 us | 136.30x | 0.66% | 0.49% | 247.9 MiB | 36.7 MiB |
+| LXMF message decode + verify | protocol_core | 21 | 1 | 33.00 us | 89.44 us | 2.71x | 3.31% | 3.83% | 6.7 MiB | 51.7 MiB |
+| LXMF message encode + sign | protocol_core | 12 | 1 | 13.83 us | 37.22 us | 2.69x | 2.18% | 2.80% | 6.9 MiB | 51.4 MiB |
+| LXMF large message decode + verify | protocol_core | 2048 | 1 | 36.59 us | 94.59 us | 2.59x | 3.71% | 2.61% | 6.8 MiB | 51.5 MiB |
+| LXMF large message encode + sign | protocol_core | 2048 | 1 | 21.18 us | 45.26 us | 2.14x | 3.62% | 2.46% | 6.9 MiB | 51.7 MiB |
+| LXMF resource-sized message decode + verify | protocol_core | 16384 | 1 | 63.36 us | 119.79 us | 1.89x | 3.12% | 2.56% | 6.7 MiB | 51.4 MiB |
+| LXMF resource-sized message encode + sign | protocol_core | 16384 | 1 | 65.72 us | 85.59 us | 1.30x | 3.47% | 1.76% | 6.5 MiB | 51.7 MiB |
+| Reticulum packet pack | protocol_core | 128 | 1 | 15 ns | 2.07 us | 141.84x | 2.19% | 1.26% | 502.5 MiB | 59.7 MiB |
+| Reticulum packet unpack | protocol_core | 128 | 1 | 26 ns | 1.22 us | 46.47x | 3.69% | 0.49% | 282.1 MiB | 67.5 MiB |
+| Reticulum resource segmentation 16 KiB | transport_hotpath | 16384 | 43 | 1.10 us | 2.98 us | 2.71x | 3.77% | 1.65% | 13.1 MiB | 55.1 MiB |
+| Reticulum resource reassembly 16 KiB | transport_hotpath | 16384 | 43 | 223 ns | 541 ns | 2.43x | 2.22% | 1.85% | 38.6 MiB | 91.8 MiB |
+| Reticulum announce create | protocol_core | 22 | 1 | 14.20 us | 32.70 us | 2.30x | 1.41% | 1.80% | 6.9 MiB | 51.6 MiB |
+| Reticulum announce validate | protocol_core | 22 | 1 | 34.83 us | 81.25 us | 2.33x | 2.28% | 2.62% | 6.8 MiB | 51.4 MiB |
+| Reticulum announce validate batch 64 | protocol_core | 22 | 64 | 2.22 ms | 5.36 ms | 2.42x | 1.26% | 0.94% | 6.6 MiB | 51.5 MiB |
+| Reticulum identity sign | protocol_core | 2048 | 1 | 18.53 us | 32.78 us | 1.77x | 4.43% | 1.24% | 6.7 MiB | 51.5 MiB |
+| Reticulum identity verify | protocol_core | 2048 | 1 | 35.29 us | 75.92 us | 2.15x | 4.95% | 0.56% | 6.5 MiB | 51.7 MiB |
+| Reticulum identity encrypt | protocol_core | 2048 | 1 | 52.48 us | 70.98 us | 1.35x | 1.30% | 1.88% | 6.5 MiB | 51.5 MiB |
+| Reticulum identity decrypt | protocol_core | 2048 | 1 | 38.35 us | 39.52 us | 1.03x | 0.26% | 1.91% | 6.7 MiB | 51.6 MiB |
+| Reticulum resource request window | transport_hotpath | - | 6 | 21 ns | 2.31 us | 111.06x | 5.68% | 2.94% | 355.2 MiB | 58.4 MiB |
 
 ## Rust SDK transport comparison
 
@@ -50,25 +52,25 @@ In-process latency is normalized per call from fixed 100-call batches to avoid t
 
 | Operation | In-process p50 | ZeroMQ p50 | HTTP p50 | Unix p50 | ZeroMQ/HTTP | ZeroMQ/Unix |
 |---|---:|---:|---:|---:|---:|---:|
-| negotiate | 1.21 us | 161.20 us | 280.12 us | 172.28 us | 1.74x | 1.07x |
-| snapshot | 540 ns | 157.87 us | 262.76 us | 161.58 us | 1.66x | 1.02x |
-| status | 31 ns | 127.93 us | 217.06 us | 121.52 us | 1.70x | 0.95x |
-| poll_events | 433 ns | 102.48 us | 200.60 us | 97.78 us | 1.96x | 0.95x |
-| operation_registry | UNSUPPORTED | 912.22 us | 1.15 ms | 1.07 ms | 1.26x | 1.18x |
-| router_stats | 21 ns | 118.69 us | 209.34 us | 144.14 us | 1.76x | 1.21x |
+| negotiate | 745 ns | 159.36 us | 213.01 us | 189.49 us | 1.34x | 1.19x |
+| snapshot | 358 ns | 88.80 us | 125.61 us | 118.12 us | 1.41x | 1.33x |
+| status | 21 ns | 78.02 us | 113.98 us | 83.09 us | 1.46x | 1.06x |
+| poll_events | 280 ns | 58.21 us | 114.76 us | 80.24 us | 1.97x | 1.38x |
+| operation_registry | UNSUPPORTED | 542.27 us | 648.63 us | 660.93 us | 1.20x | 1.22x |
+| router_stats | 29 ns | 74.86 us | 123.42 us | 85.82 us | 1.65x | 1.15x |
 
 ## Same-topology end-to-end comparison
 
-These matched sender workloads use the same two-node loopback TCP topology with one Rust and one pinned-Python endpoint. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary.
+These matched sender workloads use the same two-node loopback TCP topology with one Rust and one pinned-Python endpoint. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary. Both columns run both nodes, so whole-harness CPU and RSS cannot be attributed to one implementation and are not published here.
 
-| Workload | Route | Payload | Rust p50 | Python p50 | Rust/Python | Rust p95 | Python p95 | Rust CPU | Python CPU | Rust RSS | Python RSS | Rust variability | Python variability |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Loopback TCP cold destination discovery | cold | 0 | 397.50 ms | 2659.66 ms | 6.69x | 399.20 ms | 2660.93 ms | 2.680s | 2.210s | 81.5 MiB | 81.5 MiB | 0.32% | 0.02% |
-| Loopback TCP link setup | warm | 0 | 179.79 ms | 138.59 ms | 0.77x | 185.81 ms | 139.37 ms | 2.360s | 1.870s | 81.4 MiB | 81.3 MiB | 1.85% | 0.17% |
-| Loopback TCP direct delivery | warm | 256 | 735.76 ms | 453.36 ms | 0.62x | 757.71 ms | 456.14 ms | 6.630s | 2.100s | 81.3 MiB | 81.3 MiB | 1.42% | 0.22% |
-| Loopback TCP opportunistic delivery | warm | 256 | 726.49 ms | 453.55 ms | 0.62x | 748.47 ms | 457.40 ms | 6.040s | 2.140s | 81.2 MiB | 81.4 MiB | 1.54% | 0.42% |
-| Loopback TCP propagated delivery | warm | 256 | 900.28 ms | 7866.12 ms | 8.74x | 914.56 ms | 7869.93 ms | 4.560s | 6.880s | 81.3 MiB | 81.3 MiB | 1.13% | 0.02% |
-| Loopback TCP resource delivery | warm | 16384 | 737.43 ms | 1028.66 ms | 1.39x | 760.30 ms | 1038.86 ms | 6.700s | 2.720s | 81.2 MiB | 81.4 MiB | 1.36% | 0.37% |
+| Workload | Route | Payload | Rust p50 | Python p50 | Rust/Python | Rust p95 | Python p95 | Rust variability | Python variability |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Loopback TCP cold destination discovery | cold | 0 | 479.48 ms | 2769.66 ms | 5.78x | 492.19 ms | 2776.90 ms | 0.72% | 0.13% |
+| Loopback TCP link setup | warm | 0 | 253.00 ms | 136.47 ms | 0.54x | 259.98 ms | 138.67 ms | 2.76% | 1.61% |
+| Loopback TCP direct delivery | warm | 256 | 1151.76 ms | 451.34 ms | 0.39x | 1179.96 ms | 458.07 ms | 0.82% | 1.03% |
+| Loopback TCP opportunistic delivery | warm | 256 | 1155.64 ms | 450.58 ms | 0.39x | 1170.90 ms | 456.74 ms | 1.08% | 0.67% |
+| Loopback TCP propagated delivery | warm | 256 | 1177.70 ms | 7875.80 ms | 6.69x | 1204.52 ms | 7908.48 ms | 2.28% | 0.13% |
+| Loopback TCP resource delivery | warm | 16384 | 1153.12 ms | 827.17 ms | 0.72x | 1171.12 ms | 838.01 ms | 1.23% | 0.26% |
 
 ## Independent rns-rs network comparison
 
@@ -76,13 +78,13 @@ The pinned rns-rs peer and LXMF-rs ran as independent processes on the same runn
 
 | Workload | rns-rs / LXMF-rs evidence | p50 | p99 | Variation |
 |---|---|---:|---:|---:|
-| Cold path convergence | rns-rs requester | 0.001 s | 0.001 s | 5.69% |
-| Warm path lookup | rns-rs cache | 0.000537 s | 0.000560 s | 4.30% |
-| Link establishment | rns-rs initiator -> LXMF-rs | 0.002 s | 0.103 s | 4.56% |
-| Exact 1 MiB Resource | lxmf_rs sender, SHA `cba3982ca4b9` | 0.212 s | 0.216 s | 0.34% |
-| Exact 1 MiB Resource | rns_rs sender, SHA `cba3982ca4b9` | 0.202 s | 0.202 s | 0.05% |
-| Exact 50 MiB Resource | lxmf_rs sender, SHA `649936cc2358` | 8.732 s | 8.834 s | 0.04% |
-| Exact 50 MiB Resource | rns_rs sender, SHA `649936cc2358` | 7.215 s | 7.420 s | 1.38% |
+| Cold path convergence | rns-rs requester | 0.002 s | 0.002 s | 2.12% |
+| Warm path lookup | rns-rs cache | 0.000896 s | 0.001042 s | 8.43% |
+| Link establishment | rns-rs initiator -> LXMF-rs | 0.104 s | 0.105 s | 0.18% |
+| Exact 1 MiB Resource | lxmf_rs sender, SHA `cba3982ca4b9` | 0.176 s | 0.179 s | 1.03% |
+| Exact 1 MiB Resource | rns_rs sender, SHA `cba3982ca4b9` | 0.203 s | 0.203 s | 0.06% |
+| Exact 50 MiB Resource | lxmf_rs sender, SHA `649936cc2358` | 6.481 s | 6.676 s | 1.75% |
+| Exact 50 MiB Resource | rns_rs sender, SHA `649936cc2358` | 5.698 s | 6.003 s | 1.69% |
 
 Exactly 1000 active Links: **UNSUPPORTED** — pinned rns-rs public create_link surface did not complete exactly 1000 real Links within the bounded 300-second workload; no smaller count substituted.
 
@@ -115,6 +117,6 @@ These are single runs per composition, not a repeated benchmark distribution. Th
 cargo xtask python-impl-bench-report
 python3 tools/scripts/e2e_performance.py --profile report
 python3 tools/scripts/independent_performance.py --samples 5 --links 1000
-python3 tools/scripts/performance_docs.py --release v0.10.1 --report target/criterion/python-impl-report/report.json
+python3 tools/scripts/performance_docs.py --release main-2026-11-01 --report target/criterion/python-impl-report/report.json
 python3 tools/scripts/performance_docs.py --check
 ```

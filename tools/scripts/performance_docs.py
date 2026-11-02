@@ -23,7 +23,7 @@ START = "<!-- performance-summary:start -->"
 END = "<!-- performance-summary:end -->"
 PYTHON_INTEROP_WORKFLOW = ROOT / ".github/workflows/verify.yml"
 PYTHON_BENCHMARK_CONFIG = ROOT / "tools/benchmarks/python_impl.toml"
-DEFAULT_RELEASE = "v0.10.1"
+DEFAULT_RELEASE = "main-2026-11-01"
 
 
 def parse_args() -> argparse.Namespace:
@@ -200,7 +200,7 @@ def summary_section(data: dict[str, Any], release: str) -> str:
         START,
         "## Measured performance",
         "",
-        f"Release dataset: `{release}` at `{env['git_commit']}`; Python Reticulum `{env['python_rns_revision'][:12]}` and LXMF `{env['python_lxmf_revision'][:12]}`.",
+        f"Dataset: `{release}` at `{env['git_commit']}`; Python Reticulum `{env['python_rns_revision'][:12]}` and LXMF `{env['python_lxmf_revision'][:12]}`.",
         "",
         "| Matched workload | Rust p50 | Python p50 | Rust/Python |",
         "|---|---:|---:|---:|",
@@ -208,6 +208,20 @@ def summary_section(data: dict[str, Any], release: str) -> str:
     for row in rows:
         lines.append(
             f"| {row['label']} | {fmt_ns(row['rust']['p50_ns'])} | {fmt_ns(row['python']['p50_ns'])} | {row['rust_advantage_vs_python']['p50_speedup']:.2f}x |"
+        )
+    python_e2e_wins = [
+        row["label"].removeprefix("Loopback TCP ")
+        for row in data.get("e2e_comparisons", [])
+        if row["rust_p50_speedup_vs_python"] < 1.0
+    ]
+    if python_e2e_wins:
+        lines.extend(
+            [
+                "",
+                "In the same-topology end-to-end comparison, Python was faster for: "
+                + ", ".join(python_e2e_wins)
+                + ".",
+            ]
         )
     lines.extend(
         [
@@ -226,8 +240,8 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
         "",
         "<!-- GENERATED: tools/scripts/performance_docs.py -->",
         "",
-        f"Dataset: [`docs/performance/{release}.json`](performance/{release}.json). All numbers below originate from release SHA `{env['git_commit']}`.",
-        "The standalone release dashboard is available at [the latest GitHub Release asset](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html); the release asset is the public source for the complete matrix.",
+        f"Dataset: [`docs/performance/{release}.json`](performance/{release}.json). All numbers below originate from commit `{env['git_commit']}`.",
+        "Release dashboards published before this methodology (up to and including v0.14.0) overstate Rust's advantage; this page supersedes them.",
         "",
         "## Methodology",
         "",
@@ -235,12 +249,12 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
         "",
         "Workloads do the same work on both sides: LXMF encode signs and decode verifies the Ed25519 signature, as `LXMessage.pack()` and `LXMessage.unpack_from_bytes()` do; announce validation re-verifies every call instead of reusing Python's per-packet validation cache. "
         "Python runs with the PyCA `cryptography` backend that a normal `pip install rns` uses; the benchmark refuses to run on RNS's pure-Python fallback. "
-        "Datasets before this methodology (v0.10.1 and earlier) did not meet these rules and overstated Rust's advantage.",
+        "Earlier datasets did not meet these rules and overstated Rust's advantage.",
         "",
         "## Environment",
         "",
         f"- Timestamp: `{env['timestamp_utc']}`",
-        f"- Release SHA: `{env['git_commit']}`",
+        f"- Commit: `{env['git_commit']}`",
         f"- Python Reticulum: `{env['python_rns_revision']}`",
         f"- Python LXMF: `{env['python_lxmf_revision']}`",
         f"- Rust: `{env['rustc_version']}`",
