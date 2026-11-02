@@ -28,14 +28,16 @@ Read our [full statement on independent implementations and AI-assisted developm
 <!-- performance-summary:start -->
 ## Measured performance
 
-Release dataset: `v0.10.1` at `25a976945cb335dff3be692981151c8741a5fdeb`; Python Reticulum `ea98db4f53dc` and LXMF `727830cefda8`.
+Dataset: `main-2026-11-01` at `c59f35f62fb3196eeb391c943b840f0ad53ca2f3`; Python Reticulum `ea98db4f53dc` and LXMF `727830cefda8`.
 
 | Matched workload | Rust p50 | Python p50 | Rust/Python |
 |---|---:|---:|---:|
-| LXMF message decode | 225 ns | 7.99 ms | 35459.28x |
-| LXMF message encode | 385 ns | 2.10 ms | 5450.73x |
-| LXMF large message decode | 370 ns | 7.96 ms | 21536.64x |
-| LXMF large message encode | 773 ns | 2.12 ms | 2743.59x |
+| LXMF message decode + verify | 33.00 us | 89.44 us | 2.71x |
+| LXMF message encode + sign | 13.83 us | 37.22 us | 2.69x |
+| LXMF large message decode + verify | 36.59 us | 94.59 us | 2.59x |
+| LXMF large message encode + sign | 21.18 us | 45.26 us | 2.14x |
+
+In the same-topology end-to-end comparison, Python was faster for: link setup, direct delivery, opportunistic delivery, resource delivery.
 
 These are matched-workload comparisons, not a claim of whole-system superiority. See [methodology, complete results, variability, and limitations](docs/performance.md).
 <!-- performance-summary:end -->
@@ -167,7 +169,7 @@ full gate and evidence boundaries.
 - [LXMF parity matrix](docs/status/lxmf-parity-matrix.md)
 - [Independent implementation evidence](docs/interop/README.md)
 - [Performance methodology and results](docs/performance.md)
-- [v0.14.0 performance dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/lxmf-rs-performance.html) (the generated table above retains its explicitly pinned v0.10.1 dataset)
+- [v0.14.0 performance dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/lxmf-rs-performance.html) (superseded: measured before Rust and Python did matched work, so it overstates Rust)
 - [Support and LTS policy](docs/contracts/support-policy.md)
 - [Security policy](SECURITY.md)
 

@@ -1,87 +1,38 @@
 fn run_rust_python_impl_benchmark(name: &str, iterations: usize) -> Result<PythonBenchmark> {
     let mut samples = Vec::with_capacity(iterations);
     match name {
-        "lxmf_core_message_from_wire" => {
-            let (wire, _) = rust_sample_wire_payload();
+        "lxmf_core_message_from_wire"
+        | "lxmf_core_large_message_from_wire"
+        | "lxmf_core_resource_message_from_wire" => {
+            // Matches LXMessage.unpack_from_bytes, which validates the signature.
+            let signer = PrivateIdentity::new_from_rand(OsRng);
+            let identity = *signer.as_identity();
+            let (title, content) = rust_lxmf_bench_text(name);
+            let wire = rust_unsigned_message(title, &content)
+                .to_wire(Some(&signer))
+                .context("encode sample message")?;
             for _ in 0..iterations {
                 let started = Instant::now();
-                let decoded =
-                    Message::from_wire(black_box(&wire)).context("decode should succeed")?;
-                black_box(decoded);
+                let valid = WireMessage::unpack(black_box(&wire))
+                    .context("decode should succeed")?
+                    .verify(&identity)
+                    .context("verify should succeed")?;
+                ensure!(valid, "sample message signature must verify");
+                black_box(valid);
                 samples.push(started.elapsed().as_nanos() as f64);
             }
         }
-        "lxmf_core_message_to_wire" => {
+        "lxmf_core_message_to_wire"
+        | "lxmf_core_large_message_to_wire"
+        | "lxmf_core_resource_message_to_wire" => {
+            // Matches LXMessage.pack(), which signs.
+            let signer = PrivateIdentity::new_from_rand(OsRng);
+            let (title, content) = rust_lxmf_bench_text(name);
             for _ in 0..iterations {
                 let started = Instant::now();
-                let mut message = Message::new();
-                message.destination_hash = Some([0x44; 16]);
-                message.source_hash = Some([0x55; 16]);
-                message.signature = Some([0x66; 64]);
-                message.timestamp = Some(1_770_000_001.0);
-                message.set_title_from_string("wire-title");
-                message.set_content_from_string("wire-content");
-                let wire = message.to_wire(None).context("encode should succeed")?;
-                black_box(wire);
-                samples.push(started.elapsed().as_nanos() as f64);
-            }
-        }
-        "lxmf_core_large_message_from_wire" => {
-            let (wire, _) = rust_sample_large_wire_payload();
-            for _ in 0..iterations {
-                let started = Instant::now();
-                let decoded =
-                    Message::from_wire(black_box(&wire)).context("decode should succeed")?;
-                black_box(decoded);
-                samples.push(started.elapsed().as_nanos() as f64);
-            }
-        }
-        "lxmf_core_large_message_to_wire" => {
-            let content = "x".repeat(2048);
-            for _ in 0..iterations {
-                let started = Instant::now();
-                let mut message = Message::new();
-                message.destination_hash = Some([0xa4; 16]);
-                message.source_hash = Some([0xb5; 16]);
-                message.signature = Some([0xc6; 64]);
-                message.timestamp = Some(1_770_000_101.0);
-                message.set_title_from_string("wire-large-title");
-                message.set_content_from_string(black_box(&content));
-                let wire = message.to_wire(None).context("encode should succeed")?;
-                black_box(wire);
-                samples.push(started.elapsed().as_nanos() as f64);
-            }
-        }
-        "lxmf_core_resource_message_from_wire" => {
-            let content = "x".repeat(16_384);
-            let mut message = Message::new();
-            message.destination_hash = Some([0xd4; 16]);
-            message.source_hash = Some([0xe5; 16]);
-            message.signature = Some([0xf6; 64]);
-            message.timestamp = Some(1_770_000_201.0);
-            message.set_title_from_string("wire-resource-title");
-            message.set_content_from_string(&content);
-            let wire = message.to_wire(None).context("encode resource-sized message")?;
-            for _ in 0..iterations {
-                let started = Instant::now();
-                let decoded =
-                    Message::from_wire(black_box(&wire)).context("decode should succeed")?;
-                black_box(decoded);
-                samples.push(started.elapsed().as_nanos() as f64);
-            }
-        }
-        "lxmf_core_resource_message_to_wire" => {
-            let content = "x".repeat(16_384);
-            for _ in 0..iterations {
-                let started = Instant::now();
-                let mut message = Message::new();
-                message.destination_hash = Some([0xd4; 16]);
-                message.source_hash = Some([0xe5; 16]);
-                message.signature = Some([0xf6; 64]);
-                message.timestamp = Some(1_770_000_201.0);
-                message.set_title_from_string("wire-resource-title");
-                message.set_content_from_string(black_box(&content));
-                let wire = message.to_wire(None).context("encode should succeed")?;
+                let wire = rust_unsigned_message(title, black_box(&content))
+                    .to_wire(Some(&signer))
+                    .context("encode should succeed")?;
                 black_box(wire);
                 samples.push(started.elapsed().as_nanos() as f64);
             }

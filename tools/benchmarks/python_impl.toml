@@ -31,7 +31,7 @@ resource_iterations = 10000
 resource_min_duration_seconds = 0.5
 
 [[comparisons]]
-label = "LXMF message decode"
+label = "LXMF message decode + verify"
 rust_benchmark = "lxmf_core_message_from_wire"
 python_benchmark = "python_lxmf/message_from_wire"
 workload_class = "protocol_core"
@@ -39,7 +39,7 @@ payload_size_bytes = 21
 batch_size = 1
 
 [[comparisons]]
-label = "LXMF message encode"
+label = "LXMF message encode + sign"
 rust_benchmark = "lxmf_core_message_to_wire"
 python_benchmark = "python_lxmf/message_to_wire"
 workload_class = "protocol_core"
@@ -47,7 +47,7 @@ payload_size_bytes = 12
 batch_size = 1
 
 [[comparisons]]
-label = "LXMF large message decode"
+label = "LXMF large message decode + verify"
 rust_benchmark = "lxmf_core_large_message_from_wire"
 python_benchmark = "python_lxmf/large_message_from_wire"
 workload_class = "protocol_core"
@@ -55,7 +55,7 @@ payload_size_bytes = 2048
 batch_size = 1
 
 [[comparisons]]
-label = "LXMF large message encode"
+label = "LXMF large message encode + sign"
 rust_benchmark = "lxmf_core_large_message_to_wire"
 python_benchmark = "python_lxmf/large_message_to_wire"
 workload_class = "protocol_core"
@@ -63,7 +63,7 @@ payload_size_bytes = 2048
 batch_size = 1
 
 [[comparisons]]
-label = "LXMF resource-sized message decode"
+label = "LXMF resource-sized message decode + verify"
 rust_benchmark = "lxmf_core_resource_message_from_wire"
 python_benchmark = "python_lxmf/resource_message_from_wire"
 workload_class = "protocol_core"
@@ -71,7 +71,7 @@ payload_size_bytes = 16384
 batch_size = 1
 
 [[comparisons]]
-label = "LXMF resource-sized message encode"
+label = "LXMF resource-sized message encode + sign"
 rust_benchmark = "lxmf_core_resource_message_to_wire"
 python_benchmark = "python_lxmf/resource_message_to_wire"
 workload_class = "protocol_core"

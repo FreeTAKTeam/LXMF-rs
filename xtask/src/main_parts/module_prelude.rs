@@ -1,7 +1,8 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+use lxmf_core::message::WireMessage;
 use lxmf_core::Message;
 
 use rand_core::OsRng;
