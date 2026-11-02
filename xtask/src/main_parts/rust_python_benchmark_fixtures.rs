@@ -1,29 +1,21 @@
-fn rust_sample_wire_payload() -> (Vec<u8>, [u8; 16]) {
-    let mut message = Message::new();
-    let destination = [0x11; 16];
-    let source = [0x22; 16];
-    message.destination_hash = Some(destination);
-    message.source_hash = Some(source);
-    message.signature = Some([0x33; 64]);
-    message.timestamp = Some(1_770_000_000.0);
-    message.set_title_from_string("bench-title");
-    message.set_content_from_string("bench-content-payload");
-    let wire = message.to_wire(None).expect("sample message must encode");
-    (wire, destination)
+fn rust_lxmf_bench_text(name: &str) -> (&'static str, String) {
+    if name.contains("resource_message") {
+        ("wire-resource-title", "x".repeat(16_384))
+    } else if name.contains("large_message") {
+        ("wire-large-title", "x".repeat(2048))
+    } else {
+        ("wire-title", "wire-content".to_string())
+    }
 }
 
-fn rust_sample_large_wire_payload() -> (Vec<u8>, [u8; 16]) {
+fn rust_unsigned_message(title: &str, content: &str) -> Message {
     let mut message = Message::new();
-    let destination = [0x77; 16];
-    let source = [0x88; 16];
-    message.destination_hash = Some(destination);
-    message.source_hash = Some(source);
-    message.signature = Some([0x99; 64]);
-    message.timestamp = Some(1_770_000_100.0);
-    message.set_title_from_string("bench-large-title");
-    message.set_content_from_string(&"x".repeat(2048));
-    let wire = message.to_wire(None).expect("large sample message must encode");
-    (wire, destination)
+    message.destination_hash = Some([0x11; 16]);
+    message.source_hash = Some([0x22; 16]);
+    message.timestamp = Some(1_770_000_000.0);
+    message.set_title_from_string(title);
+    message.set_content_from_string(content);
+    message
 }
 
 fn rust_sample_destination() -> SingleInputDestination {

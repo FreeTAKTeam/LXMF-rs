@@ -233,6 +233,10 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
         "",
         f"The report uses `{data['compare_runs']}` interleaved comparison runs and `{data['resource_runs']}` isolated resource runs. Fixtures and process setup are completed before timed regions. Results are medians; p95 and p99 retain tail visibility. Rust/Python ranking is evidence, not a release threshold.",
         "",
+        "Workloads do the same work on both sides: LXMF encode signs and decode verifies the Ed25519 signature, as `LXMessage.pack()` and `LXMessage.unpack_from_bytes()` do; announce validation re-verifies every call instead of reusing Python's per-packet validation cache. "
+        "Python runs with the PyCA `cryptography` backend that a normal `pip install rns` uses; the benchmark refuses to run on RNS's pure-Python fallback. "
+        "Datasets before this methodology (v0.10.1 and earlier) did not meet these rules and overstated Rust's advantage.",
+        "",
         "## Environment",
         "",
         f"- Timestamp: `{env['timestamp_utc']}`",
@@ -297,15 +301,16 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
     if e2e:
         lines.extend(
             [
-                "These matched sender workloads use the same two-node loopback TCP topology with one Rust and one pinned-Python endpoint. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary.",
+                "These matched sender workloads use the same two-node loopback TCP topology with one Rust and one pinned-Python endpoint. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary. "
+                "Both columns run both nodes, so whole-harness CPU and RSS cannot be attributed to one implementation and are not published here.",
                 "",
-                "| Workload | Route | Payload | Rust p50 | Python p50 | Rust/Python | Rust p95 | Python p95 | Rust CPU | Python CPU | Rust RSS | Python RSS | Rust variability | Python variability |",
-                "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+                "| Workload | Route | Payload | Rust p50 | Python p50 | Rust/Python | Rust p95 | Python p95 | Rust variability | Python variability |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for row in e2e:
             lines.append(
-                "| {label} | {route} | {payload} | {rust50} | {python50} | {ratio:.2f}x | {rust95} | {python95} | {rust_cpu:.3f}s | {python_cpu:.3f}s | {rust_rss:.1f} MiB | {python_rss:.1f} MiB | {rust_var:.2%} | {python_var:.2%} |".format(
+                "| {label} | {route} | {payload} | {rust50} | {python50} | {ratio:.2f}x | {rust95} | {python95} | {rust_var:.2%} | {python_var:.2%} |".format(
                     label=row["label"],
                     route=row["route_state"],
                     payload=row["payload_size_bytes"],
@@ -314,10 +319,6 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
                     ratio=row["rust_p50_speedup_vs_python"],
                     rust95=fmt_ns(row["rust"]["p95_ns"]),
                     python95=fmt_ns(row["python"]["p95_ns"]),
-                    rust_cpu=row["rust"]["median_cpu_seconds"],
-                    python_cpu=row["python"]["median_cpu_seconds"],
-                    rust_rss=row["rust"]["median_peak_rss_bytes"] / 1_048_576,
-                    python_rss=row["python"]["median_peak_rss_bytes"] / 1_048_576,
                     rust_var=row["rust"]["dispersion"]["p50_relative_mad"],
                     python_var=row["python"]["dispersion"]["p50_relative_mad"],
                 )

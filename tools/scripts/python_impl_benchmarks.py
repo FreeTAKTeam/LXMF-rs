@@ -219,9 +219,16 @@ def build_rns_fixtures():
     def identity_decrypt():
         return identity.decrypt(ciphertext)
 
+    # validate_announce caches a passed signature on the packet object; clear it
+    # so every timed call verifies, as the Rust validator does.
+    def announce_validate():
+        announce_packet.announce_signature_validated = None
+        return RNS.Identity.validate_announce(announce_packet)
+
     def announce_validate_batch():
         total = 0
         for packet in announce_batch_packets:
+            packet.announce_signature_validated = None
             total += 1 if RNS.Identity.validate_announce(packet) else 0
         return total
 
@@ -313,7 +320,7 @@ def build_rns_fixtures():
 
     return (
         announce_create,
-        announce_packet,
+        announce_validate,
         announce_validate_batch,
         resource_request_window,
         identity_sign,
@@ -374,6 +381,15 @@ def main() -> int:
     except ImportError as exc:
         raise SystemExit(f"python benchmark prerequisites missing: {exc}") from exc
 
+    # Without `cryptography`, RNS falls back to pure-Python Ed25519/X25519,
+    # which is not what a normal install runs and is orders of magnitude slower.
+    from RNS.Cryptography import Provider as crypto_provider
+
+    if crypto_provider.PROVIDER != crypto_provider.PROVIDER_PYCA:
+        raise SystemExit(
+            f"RNS crypto backend is {crypto_provider.backend()!r}; install `cryptography` "
+            "so Python is measured with the PyCA backend a normal install uses"
+        )
     verify_module_revision("RNS", Path(RNS.__file__).resolve(), args.expected_rns_ref)
     verify_module_revision("LXMF", Path(LXMF.__file__).resolve(), args.expected_lxmf_ref)
 
@@ -427,7 +443,7 @@ def main() -> int:
         elif args.benchmark.startswith("python_rns/"):
             (
                 announce_create,
-                announce_packet,
+                announce_validate,
                 announce_validate_batch,
                 resource_request_window,
                 identity_sign,
@@ -446,7 +462,7 @@ def main() -> int:
                 "python_rns/announce_validate": lambda: run_benchmark(
                     "python_rns/announce_validate",
                     args.iterations,
-                    lambda: RNS.Identity.validate_announce(announce_packet),
+                    announce_validate,
                 ),
                 "python_rns/announce_validate_batch_64": lambda: run_benchmark(
                     "python_rns/announce_validate_batch_64",
@@ -502,7 +518,7 @@ def main() -> int:
         print("building Reticulum benchmark fixtures", flush=True)
         (
             announce_create,
-            announce_packet,
+            announce_validate,
             announce_validate_batch,
             resource_request_window,
             identity_sign,
@@ -546,7 +562,7 @@ def main() -> int:
             "python_rns/announce_validate": lambda: run_benchmark(
                 "python_rns/announce_validate",
                 args.iterations,
-                lambda: RNS.Identity.validate_announce(announce_packet),
+                announce_validate,
             ),
             "python_rns/announce_validate_batch_64": lambda: run_benchmark(
                 "python_rns/announce_validate_batch_64",
@@ -587,6 +603,7 @@ def main() -> int:
     payload = {
         "generated_at_epoch_s": time.time(),
         "iterations": args.iterations,
+        "crypto_backend": crypto_provider.backend(),
         "benchmarks": results,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
