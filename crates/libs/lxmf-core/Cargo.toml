@@ -1,6 +1,6 @@
 [package]
 name = "lxmf-wire"
-version = "0.16.0"
+version = "0.16.1-rc.1-linux"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ name = "lxmf_core"
 
 
 [dependencies]
-rns-core = { package = "reticulum-rs-core", version = "0.16.0", path = "../rns-core", default-features = false, features = ["alloc"] }
+rns-core = { package = "reticulum-rs-core", version = "0.16.1-rc.1-linux", path = "../rns-core", default-features = false, features = ["alloc"] }
 base64.workspace = true
 hex.workspace = true
 hkdf.workspace = true
