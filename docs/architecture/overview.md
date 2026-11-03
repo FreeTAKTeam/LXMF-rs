@@ -52,7 +52,7 @@ checks continue to govern first-party library/application dependency edges.
 
 ## Layering Rules
 - `crates/libs/*` must not depend on `crates/apps/*`.
-- `lxmf-wire` (`crates/libs/lxmf-core`) must not directly depend on `tokio`, `clap`, `ureq`, or `serde_json`.
+- `lxmf-wire` (`crates/libs/lxmf-core`) must not directly depend on `tokio`, `clap`, or `ureq`; its JSON/file helpers are optional under `std`.
 - `reticulum-rs-core` (`crates/libs/rns-core`) must not directly depend on `tokio` or `clap`.
 - CLI/daemon concerns live in `crates/apps/*`.
 - Module size policy and exception registry:
@@ -63,6 +63,43 @@ checks continue to govern first-party library/application dependency edges.
 - Architecture lint gate:
   - `cargo xtask ci --stage architecture-lint`
   - report artifact: `target/architecture/boundary-report.txt`
+
+## Protocol core boundary (#625)
+
+`[workspace.metadata.boundaries]` in `Cargo.toml` is authoritative for the
+`no_std_core` crate set and each crate's `no_std_features` build configurations:
+
+| Crate | Bare-metal features | Responsibility |
+| --- | --- | --- |
+| `reticulum-rs-core` | `alloc`; `alloc,fernet-aes128` | packets, identities, crypto and ratchets |
+| `rns-embedded-core` | `alloc`; `alloc,serde` | constrained packet/message primitives and store/transport ports |
+| `rns-embedded-runtime` | `alloc` | alloc-backed scheduling and dispatch over those ports |
+| `lxmf-embedded-mini` | none | fixed-capacity, no-alloc LXMF primitives |
+
+Dependencies point inward: applications/SDK/FFI use runtime/transport adapters,
+which use protocol primitives. The designated core must not import daemon policy,
+Tokio orchestration, CLI, HTTP, TAK/CoT or ZeroMQ APIs. Existing store/transport
+traits, caller-provided RNGs and clocks keep external services outside this
+boundary; no new service abstraction is needed for this change. `lxmf-wire`,
+`lxmf-propagation`, the full transport and `rns-embedded-mininode` remain
+`std-first`; the `alloc` compatibility feature is not a bare-metal guarantee.
+
+`check-boundaries.sh` inspects dependency declarations of every kind, including
+inactive optional and target-specific dependencies, against
+`forbidden_core_deps`, and checks source imports and the existing exact workspace
+edge allowlists. Host dev-only JSON fixtures are allowed; production/build JSON
+is rejected. `check-no-std-core.sh` builds each feature set separately for
+`thumbv7em-none-eabi`, including the optional embedded Serde path, and checks
+active transitive normal/build dependencies. Host proc macros and host test
+helpers may use std; they are not part of the target protocol graph. Separate
+Cargo invocations prevent workspace feature unification from masking a std
+requirement. A host feature-tree check also rejects accidental
+`reticulum-rs-core/std` activation from the mininode without defaults.
+
+The existing per-PR `architecture-checks` job runs these checks, seeded forbidden
+optional/dev/build dependencies, a seeded unlisted workspace edge, and the host
+embedded adapter tests. Default desktop features continue to enable core/std
+explicitly. This is compile and dependency-boundary evidence, not device HIL.
 
 ## Security Architecture
 - Threat model source of truth: `docs/adr/0004-sdk-v25-threat-model.md`.

@@ -167,6 +167,8 @@ jobs:
         with:
           cache-targets: true
           cache-on-failure: false
+      - name: Seeded architecture boundary regressions
+        run: python3 tools/scripts/test_check_boundaries.py -v
       - name: Architecture checks
         run: cargo xtask ci --stage architecture-checks
 
