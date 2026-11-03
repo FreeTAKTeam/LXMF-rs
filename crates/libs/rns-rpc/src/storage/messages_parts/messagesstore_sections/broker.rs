@@ -1,3 +1,11 @@
+// The due-time index excludes deferred jobs before loading message rows. Keep
+// oldest-message ordering among eligible jobs, rather than ordering by retry time.
+const BROKER_PENDING_DISPATCH_SQL: &str =
+    "SELECT m.id,m.source,m.destination,m.title,m.content,m.timestamp,m.direction,m.fields,m.receipt_status,o.options
+     FROM broker_operations o JOIN messages m ON m.id=o.message_id
+     WHERE o.state='queued' AND o.next_attempt_at<=unixepoch()
+     ORDER BY m.timestamp,m.id LIMIT 1";
+
 impl MessagesStore {
     /// Must be called at startup before accepting traffic. Reopening preserves the profile.
     pub fn enable_durable_broker(&self, budget_bytes: i64) -> rusqlite::Result<()> {
@@ -50,7 +58,7 @@ impl MessagesStore {
     pub fn broker_pending_dispatch(&self)->rusqlite::Result<Vec<(MessageRecord,crate::rpc::OutboundDeliveryOptions)>> {
         if !self.durable_broker_enabled()? {return Ok(Vec::new());}
         self.with_read_conn(|conn| {
-            let mut stmt=conn.prepare("SELECT m.id,m.source,m.destination,m.title,m.content,m.timestamp,m.direction,m.fields,m.receipt_status,o.options FROM broker_operations o JOIN messages m ON m.id=o.message_id WHERE o.state='queued' AND o.next_attempt_at<=unixepoch() ORDER BY m.timestamp,m.id LIMIT 1")?;
+            let mut stmt=conn.prepare(BROKER_PENDING_DISPATCH_SQL)?;
             let result=stmt.query_map([],|row| {
                 let options:String=row.get(9)?;
                 Ok((super::broker::record_from_row(row)?,serde_json::from_str(&options).map_err(|e|rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?))

@@ -1075,3 +1075,42 @@ pass, 23 MB for 856,000 rows. Rejected alternatives:
   spill), and its per-peer deletes ran 9.3–10.2 s with 5× the I/O.
 - Deleting peer by peer through the new index without the window function
   showed the same 5× I/O.
+
+
+## Deferred durable-dispatch polling, 2026-11-03
+
+The durable dispatcher selected one eligible message through
+`broker_dispatch_pending (state, message_id)`. When every queued operation was
+deferred by `next_attempt_at`, each empty poll still visited every queued
+operation to reject its retry time. An idle backoff reduced poll frequency but
+did not bound the work of each poll. This is a separate demonstrated read/CPU
+amplification path; it does not identify the statement responsible for the
+operator's observed SQLite temporary-file writes.
+
+The startup broker-profile transaction now creates
+`broker_dispatch_due (state, next_attempt_at, message_id)` and removes the old
+index. SQLite can seek only queued operations whose retry deadline has arrived
+before fetching message rows. Eligibility, the inclusive due-time comparison,
+oldest-message timestamp/id ordering, delivery claims, retry delays and custody
+semantics are unchanged. Existing durable databases receive the same index
+migration when reopened. The one-time index build runs before traffic admission
+and can require startup time and disk space; failures roll back the transaction.
+
+The focused regression uses the production query and bundled SQLite statement
+counters on a file-backed WAL store. With no due messages, an empty table takes
+13 VM steps. A queue of 4,096 future-deferred operations took **24,589 VM steps
+before** the index change and **19 after**. The test requires empty-poll work to
+remain within 20 VM steps of the empty-table result, rather than using a wall-clock
+timeout. Separate regressions preserve timestamp/id selection across due,
+deferred, scheduled and terminal operations and verify an old-index database
+upgrades on reopen without changing the next selected message.
+
+Validation: all 888 runnable RPC library tests pass (nine pre-existing ignored),
+including the three new regressions. Package all-target/all-feature Clippy,
+workspace formatting, dependency boundaries and module-size checks pass.
+
+This local result covers deferred queues. Selecting among many due operations
+still examines and orders eligible candidates. It does not establish a
+production CPU reduction, file-cache or anonymous-memory plateau, absence of
+SQLite sort spills in other queries, or end-to-end delivery stability. #663 and
+#709 remain open; no synthetic soak or production experiment was run.

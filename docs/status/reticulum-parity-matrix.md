@@ -63,6 +63,11 @@ ZeroMQ binds; SIGINT/SIGTERM send STOPPING before graceful shutdown. Datagram
 regressions cover filesystem/abstract sockets, delayed readiness and cancellation.
 Direct daemon service ordering is separate from combined-launcher behavior.
 
+The #663 durable-dispatch retry index excludes future-deferred operations before
+message loading. Native SQLite tests cover bounded empty-poll work, unchanged
+due-message timestamp/id ordering and old-profile startup migration. This local
+software check does not certify sustained production resource or delivery gates.
+
 The #709 daemon provider publishes outstanding requested Rust allocation bytes
 at `providers.heap.rust_allocated_bytes`, including startup without transport or
 ZeroMQ. Safe unlimited Cap wraps the existing daemon-only mimalloc allocator;
