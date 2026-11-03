@@ -44,7 +44,7 @@ The integrated high-priority fixes additionally include:
 
 Static-musl archives and Linux packages are built for these targets:
 
-| Architecture | Rust target | Archive suffix | Package architecture |
+| Architecture | Rust target | Archive suffix | Package filename architecture |
 | --- | --- | --- | --- |
 | x86-64 | `x86_64-unknown-linux-musl` | `linux-x86_64.tar.gz` | `amd64` |
 | AArch64 | `aarch64-unknown-linux-musl` | `linux-aarch64.tar.gz` | `arm64` |
@@ -53,6 +53,9 @@ Static-musl archives and Linux packages are built for these targets:
 Archives use the prefix `lxmf-rs_0.16.1-rc.1-linux_`; `.deb` and `.rpm` assets
 use that prefix followed by their package architecture. The versioned OCI image
 is `ghcr.io/freetakteam/lxmf-rs:0.16.1-rc.1-linux`.
+Package metadata normalizes the SemVer prerelease for distro ordering: Debian
+uses `0.16.1~rc.1-linux`; RPM uses version `0.16.1~rc.1_linux`, release `1`.
+Asset filenames retain the release version shown above.
 
 The release record identifies the annotated tag `v0.16.1-rc.1-linux` and the
 build workflow run. Attached `release-build-source.json` records `release_tag`,
