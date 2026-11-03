@@ -326,6 +326,28 @@ fn legacy_refill_state_without_floor_does_full_rescan_once() {
 
 #[test]
 fn priority_writer_lock_wait_stays_bounded_during_multi_page_refill() {
+    const WAIT_BOUND: std::time::Duration = std::time::Duration::from_millis(500);
+    fn wait_until(mut condition: impl FnMut() -> bool, context: &str) {
+        let started = std::time::Instant::now();
+        while !condition() {
+            assert!(started.elapsed() < WAIT_BOUND, "{context}");
+            std::thread::yield_now();
+        }
+    }
+    fn priority_message(index: i64) -> MessageRecord {
+        MessageRecord {
+            id: format!("fairness-{index}"),
+            source: "aa".repeat(16),
+            destination: "bb".repeat(16),
+            title: String::new(),
+            content: String::new(),
+            timestamp: index,
+            direction: "in".to_string(),
+            fields: None,
+            receipt_status: None,
+        }
+    }
+
     let (_temp, store) = refill_store_on_disk();
     let store = std::sync::Arc::new(store);
     let peer = "peer-fairness";
@@ -336,30 +358,79 @@ fn priority_writer_lock_wait_stays_bounded_during_multi_page_refill() {
             conn.execute("DELETE FROM propagation_peer_entries", []).map(|_| ())
         })
         .expect("clear marks");
+
+    // Short writes can all finish between pages without the refill ever parking.
+    // Pause its first commit until real priority writers are waiting on its lock.
+    let (page_ready_tx, page_ready_rx) = std::sync::mpsc::channel();
+    let (resume_page_tx, resume_page_rx) = std::sync::mpsc::channel();
+    store
+        .with_write_conn(|conn| {
+            let mut first_commit = true;
+            conn.commit_hook(Some(move || {
+                if !first_commit {
+                    return false;
+                }
+                first_commit = false;
+                // On fixture failure/disconnection, abort instead of parking a
+                // connection forever or panicking while its mutex is held.
+                page_ready_tx.send(()).is_err()
+                    || resume_page_rx.recv_timeout(WAIT_BOUND).is_err()
+            }))
+        })
+        .expect("install first-page rendezvous");
     let refill_store = std::sync::Arc::clone(&store);
     let refill = std::thread::spawn(move || {
         refill_store.mark_recent_propagation_unhandled_for_peer(peer, 50_000, u64::MAX).expect("refill")
     });
-    let mut max_wait = std::time::Duration::ZERO;
-    for index in 0..50 {
+    page_ready_rx.recv_timeout(WAIT_BOUND).expect("refill reached its first commit");
+
+    // Whichever holder wins the unfair mutex, the other remains a real pending
+    // priority writer. Keep them queued until the page-boundary yield is recorded.
+    let mut holders = Vec::new();
+    let mut release_holders = Vec::new();
+    for _ in 0..2 {
+        let holder_store = std::sync::Arc::clone(&store);
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        release_holders.push(release_tx);
+        holders.push(std::thread::spawn(move || {
+            let conn = MessagesStore::write_lock_priority(&holder_store.write_state);
+            let released = release_rx.recv_timeout(WAIT_BOUND);
+            drop(conn);
+            released.expect("priority holder released");
+        }));
+    }
+    let priority_store = std::sync::Arc::clone(&store);
+    let first_write = std::thread::spawn(move || {
         let started = std::time::Instant::now();
-        store
-            .insert_message(&MessageRecord {
-                id: format!("fairness-{index}"),
-                source: "aa".repeat(16),
-                destination: "bb".repeat(16),
-                title: String::new(),
-                content: String::new(),
-                timestamp: index,
-                direction: "in".to_string(),
-                fields: None,
-                receipt_status: None,
-            })
-            .expect("priority write");
+        priority_store.insert_message(&priority_message(0)).expect("priority write");
+        started.elapsed()
+    });
+    wait_until(
+        || store.write_state.priority_waiters.load(Ordering::Acquire) == 3,
+        "priority holders and insert did not queue behind the refill page",
+    );
+    resume_page_tx.send(()).expect("resume first refill commit");
+    wait_until(
+        || store.write_state.refill_metrics.priority_yields_total.load(Ordering::Relaxed) > 0,
+        "refill did not yield to the queued priority writers",
+    );
+    for release in release_holders {
+        release.send(()).expect("release priority holder");
+    }
+    for holder in holders {
+        holder.join().expect("priority holder");
+    }
+
+    let mut max_wait = first_write.join().expect("first priority write");
+    for index in 1..50 {
+        let started = std::time::Instant::now();
+        store.insert_message(&priority_message(index)).expect("priority write");
         max_wait = max_wait.max(started.elapsed());
-        std::thread::sleep(std::time::Duration::from_millis(2));
     }
     assert_eq!(refill.join().expect("refill thread"), 20_000);
-    assert!(max_wait < std::time::Duration::from_millis(500), "priority write waited {max_wait:?}");
+    store
+        .with_write_conn(|conn| conn.commit_hook(None::<fn() -> bool>))
+        .expect("remove first-page rendezvous");
+    assert!(max_wait < WAIT_BOUND, "priority write waited {max_wait:?}");
     assert!(refill_counters(&store)["priority_yields_total"].as_u64().unwrap_or(0) > 0);
 }
