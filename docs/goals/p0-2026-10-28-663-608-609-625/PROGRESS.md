@@ -429,3 +429,10 @@ and all 24 messages in 166.58 s at exact RNS `99de23c` / LXMF `c3ff2d6` pins;
 its daemon hash and bounded packet/Resource scope are recorded in #609 evidence.
 Formatting, boundaries, module-size, architecture checks and workspace
 all-target/all-feature Clippy (`-D warnings`) pass.
+
+PR #727 CI exposed implicit shared-instance attachment between concurrent replay
+process fixtures: the default parallel local run reproduced two filter-counter
+timeouts. The fixture now explicitly disables sharing and asserts public
+standalone status on startup/restart. Default-parallel and four-thread replay
+executions pass all three classes without changing assertions or deadlines;
+focused Clippy, formatting and the #369 scanner pass.

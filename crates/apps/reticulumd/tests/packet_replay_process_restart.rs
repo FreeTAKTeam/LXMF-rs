@@ -33,8 +33,10 @@ fn assert_replay_filter_survives_restart(packet_type: PacketType) {
     let storage = temp.path().join("storage");
     std::fs::create_dir_all(&storage).expect("create storage directory");
     let config = temp.path().join("reticulum.toml");
-    std::fs::write(&config, "[reticulum]\nenable_transport = true\n")
-        .expect("write transport config");
+    // Each concurrently running case must own its replay cache rather than
+    // attaching to another fixture through the implicit shared-instance socket.
+    std::fs::write(&config, "[reticulum]\nenable_transport = true\nshare_instance = false\n")
+        .expect("write standalone transport config");
     let (transport_port, rpc_port) = reserve_two_ports();
     let packet = replay_packet(packet_type);
     let packet_hash = packet.hash().as_slice().to_vec();
@@ -132,7 +134,13 @@ fn start_daemon(
 }
 
 fn wait_for_rpc(port: u16, child: &mut Daemon) -> Value {
-    wait_until(child, "daemon RPC readiness", || rpc_status(port).ok())
+    let status = wait_until(child, "daemon RPC readiness", || rpc_status(port).ok());
+    assert_eq!(
+        status["reticulum"]["shared_instance"]["mode"].as_str(),
+        Some("disabled"),
+        "standalone replay fixture must neither own nor attach to a shared instance"
+    );
+    status
 }
 
 fn wait_for_status<F>(port: u16, child: &mut Daemon, mut predicate: F) -> Value

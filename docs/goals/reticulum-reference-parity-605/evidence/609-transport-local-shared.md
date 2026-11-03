@@ -1256,3 +1256,20 @@ Validation on the behavior candidate:
   The environment supplied DBus development headers through pkg-config selectors
   and `LXMF_RS_BASH` preserved the managed Rust PATH for architecture subprocesses;
   neither required a repository workaround.
+
+### Concurrent standalone process-fixture correction
+
+PR #727's first hosted integration run exposed that the three new replay cases
+shared the implicit local instance when Cargo ran them concurrently. One daemon
+owned duplicate membership while the attached fixtures correctly delegated it;
+two cases therefore timed out waiting for their own filter-hit counters. The
+serialized Verify lane passed and the default parallel local run reproduced the
+1-pass/2-failure result, so the earlier serialized observation was insufficient.
+
+The fixture now sets `share_instance=false` and positively asserts the public
+shared-instance status mode is `disabled` at both process starts. Every case
+therefore owns its own replay cache and persistence file. The original packet
+counts, persistence assertions and deadlines remain intact; no test serialization
+or production behavior changed. Default-parallel local execution and CI's
+explicit four-thread invocation both pass all three cases, and the #369 scanner,
+formatting and focused all-feature Clippy pass.
