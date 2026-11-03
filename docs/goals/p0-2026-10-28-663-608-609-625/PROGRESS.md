@@ -16,8 +16,8 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | 1b. Heap-owner gauge and 60-minute allocator soak | #709 / #663 | Resident attribution verified; tagged RSS gate open | [#710](https://github.com/FreeTAKTeam/LXMF-rs/pull/710), [#711](https://github.com/FreeTAKTeam/LXMF-rs/pull/711) | Tagged full hour: all 593 post-second-pass captures >=91.203%; RSS +2.328 MiB fails; cache-release soak canceled by user; Linux field-test draft prepared |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
-| 6. Designated no_std core and seeded checks | #625 | Locally verified; hosted CI pending | `codex/p0-625-core` | Four designated crates/six bare-metal feature configurations; seeded boundary and feature-unification regressions; host adapter and core/wire/mininode suites |
-| 7. Duplicate-filter differentials into CI | #609 | Not started | | |
+| 6. Designated no_std core and seeded checks | #625 | Software CI verified | `codex/p0-625-core` | Four designated crates/six bare-metal feature configurations; seeded boundary and feature-unification regressions; host adapter and core/wire/mininode suites |
+| 7. Duplicate-filter differentials into CI | #609 | Implemented; focused verification recorded below | `codex/p0-609-transport` | Named frozen Verify lanes; real native rotation comparison; rejected outbound membership fix; three packet-class daemon restart tests |
 | 8. Two-relay reverse delivery diagnosis | #609 | Not started | | |
 | 9. Shared-instance and restart matrix | #609 | Not started | | |
 
@@ -467,3 +467,29 @@ The architecture command used an external `LXMF_RS_BASH` wrapper only to preserv
 the installed Cargo PATH through this environment's login shell. Hosted checks
 and device HIL have not been observed; full LXMF/propagation/transport/mininode
 portability remains std-first under #646.
+
+## #609 outbound replay and duplicate-filter follow-up (2026-11-03)
+
+Ordinary and prepared no-carrier dispatch regressions reproduced premature
+duplicate remembering before the fix. Proof binding still precedes handoff;
+membership now requires carrier acceptance on ordinary, recursive and prepared
+paths. Native rotation is exercised at its production threshold, all existing
+frozen duplicate differentials are named in Verify, and standalone daemon restart
+replay now includes Data and LinkRequest. See the updated #609 evidence for the
+bounded contract and validation. Broader issue closure remains open.
+
+The focused native cache suite passes 9/9 after the retry-preservation assertion;
+full transport library passes 1,071 tests (13 ignored). All five named frozen
+differentials, Data/LinkRequest/Proof daemon process restart and the #369 scanner
+pass. The existing three-relay recovery matrix also passes three fresh topologies
+and all 24 messages in 166.58 s at exact RNS `99de23c` / LXMF `c3ff2d6` pins;
+its daemon hash and bounded packet/Resource scope are recorded in #609 evidence.
+Formatting, boundaries, module-size, architecture checks and workspace
+all-target/all-feature Clippy (`-D warnings`) pass.
+
+PR #727 CI exposed implicit shared-instance attachment between concurrent replay
+process fixtures: the default parallel local run reproduced two filter-counter
+timeouts. The fixture now explicitly disables sharing and asserts public
+standalone status on startup/restart. Default-parallel and four-thread replay
+executions pass all three classes without changing assertions or deadlines;
+focused Clippy, formatting and the #369 scanner pass.

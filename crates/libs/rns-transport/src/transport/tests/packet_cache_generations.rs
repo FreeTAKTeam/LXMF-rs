@@ -157,3 +157,91 @@ async fn native_membership_job_rotates_without_waiting_for_proof_ttl_cleanup() {
     assert!(cache.lock().await.contains_hash(&counter_hash(0)));
     transport.cancel.cancel();
 }
+
+#[tokio::test]
+async fn rejected_outbound_dispatch_does_not_poison_duplicate_membership() {
+    use crate::iface::{TxMessage, TxMessageType};
+    use crate::transport::{Transport, TransportConfig};
+
+    for recursive in [false, true] {
+        for closed_queue in [false, true] {
+            let transport = Transport::new(TransportConfig::default());
+            if closed_queue {
+                let channel = transport.iface_manager().lock().await.new_channel(1);
+                drop(channel);
+            }
+            let packet = packet(b"failed outbound must remain eligible for ingress");
+            let handler = transport.get_handler();
+            let handler = handler.lock().await;
+            let message =
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() };
+            let dispatch = if recursive {
+                handler.send_recursive_path_request_with_modes(message, None).await
+            } else {
+                handler.send(message).await
+            };
+            assert_eq!(dispatch.sent_ifaces, 0);
+            assert_eq!(dispatch.queued_ifaces, 0);
+            {
+                let cache = handler.packet_cache.lock().await;
+                assert!(
+                    !cache.contains_hash(&packet.hash()),
+                    "an outbound attempt rejected by every carrier cannot suppress later ingress; recursive={recursive}, closed_queue={closed_queue}"
+                );
+                assert!(
+                    cache
+                        .proof_context_for_destination(&AddressHash::new_from_hash(&packet.hash()))
+                        .is_some(),
+                    "destination-bound proof context remains independent of dispatch membership"
+                );
+            }
+            assert!(
+                handler.filter_duplicate_packets(&packet).await,
+                "first real ingress must still be admitted after rejected outbound"
+            );
+            assert!(
+                !handler.filter_duplicate_packets(&packet).await,
+                "accepted ingress must continue to reject replays"
+            );
+            let retry = handler
+                .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() })
+                .await;
+            assert_eq!(retry.sent_ifaces + retry.queued_ifaces, 0);
+            assert!(
+                handler.packet_cache.lock().await.contains_hash(&packet.hash()),
+                "a rejected retry cannot erase membership from an earlier accepted ingress"
+            );
+            transport.cancel.cancel();
+        }
+    }
+}
+
+#[tokio::test]
+async fn rejected_prepared_dispatch_does_not_remember_membership() {
+    use crate::destination::{DestinationName, SingleOutputDestination};
+    use crate::identity::PrivateIdentity;
+    use crate::transport::{SendPacketOutcome, Transport, TransportConfig};
+
+    let transport = Transport::new(TransportConfig::default());
+    let recipient = PrivateIdentity::new_from_name("unsent-prepared-recipient");
+    let name = DestinationName::new("lxmf", "delivery");
+    let destination =
+        SingleOutputDestination::new(*recipient.as_identity(), name).desc.address_hash;
+    let packet = Packet { destination, ..packet(b"unsent prepared ciphertext") };
+    let trace = transport
+        .send_prepared_single_packet_observed_with_trace(
+            packet.clone(),
+            *recipient.as_identity(),
+            name,
+            |_| {},
+        )
+        .await
+        .expect("valid prepared packet");
+    assert_eq!(trace.outcome, SendPacketOutcome::DroppedNoRoute);
+    let cache = transport.get_handler().lock().await.packet_cache.clone();
+    assert!(
+        !cache.lock().await.contains_hash(&packet.hash()),
+        "a prepared packet rejected by every carrier cannot suppress later ingress"
+    );
+    transport.cancel.cancel();
+}
