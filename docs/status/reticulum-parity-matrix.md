@@ -927,9 +927,11 @@ extend the physical or public-network evidence boundary.
   with a shortened test duration, and Verify runs that focused test. Local
   software only; real-router behavior and the broad #614 family/platform matrix
   remain unverified.
-  The config parser recognises I2P-local IFAC aliases `ifac_netname` and
-  `ifac_netkey`, but rejects them until Reticulum IFAC authentication is
-  implemented.
+  The config parser accepts I2P-local IFAC aliases `ifac_netname` and
+  `ifac_netkey`, preserves nonempty whitespace literally, and uses them when
+  canonical credential aliases are empty. A configured fake-SAM regression
+  checks first-traffic plaintext rejection and authenticated ingress/egress;
+  public-router and remaining carrier-family lifecycle acceptance stay open.
 - Feature-gated native RNode BLE and VR-N76 KISS-over-BLE. The VR-N76 native
   interface now exposes live daemon/RPC `_runtime.vrn76.status` metadata with
   connection, subscription, readiness, startup-write failure, and queued packet

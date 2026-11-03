@@ -1,5 +1,81 @@
 # Issue #608 — IFAC carrier wiring evidence
 
+## I2P legacy aliases and continuous mixed-peer coverage
+
+The I2P startup normalizer used the generic trimmed-empty string rule for
+`ifac_netname` and `ifac_netkey`. Whitespace-only credentials therefore selected
+plaintext, unlike canonical credentials and the frozen Reticulum startup rule
+(`RNS/Reticulum.py` at `99de23c040d507e3fefca19e87b182302902725d`, which compares
+credentials to `""` without trimming). Empty but present canonical fields also
+prevented fallback to populated I2P aliases. Startup now uses its existing
+effective-credential resolvers for precedence and preserves alias strings
+literally. Empty strings still leave authentication disabled when no other
+credential is present; populated canonical credentials retain precedence.
+
+`configured_i2p_whitespace_ifac_aliases_authenticate_first_traffic` starts the
+configured daemon interface through the production startup/mutation owner and
+native I2P worker against a loopback fake SAM server. It covers whitespace name
+only, key only, and both, plus empty-canonical fallback. Each case checks
+counted plaintext/wrong-key rejection before authenticated ingress, exact
+authenticated egress at the default sixteen-byte tag size, unrelated TCP traffic and joined
+stream shutdown. The pre-fix run admits the plaintext probe and fails. Four
+`config_i2p_ifac` tests cover literal values, fallback, canonical precedence and
+the empty-alias plaintext default. Fake SAM is software-carrier evidence, not
+public-router interoperability.
+
+Verify's interfaces suite now explicitly runs
+`python_tcp_ifac_accepted_child_rotation_and_restart_fail_closed` and
+`python_rust_ifac_kiss_serial_channel_roundtrip_over_pty` against the same frozen
+Reticulum pin used by its existing IFAC UDP lane. The TCP/KISS traces below were
+already present; naming them in CI prevents their `#[ignore]` attributes from
+silently excluding this coverage. Hosted results on a future PR head remain
+separate from local results.
+
+The existing family qualification inventory is owned by
+[`TRANSPORT.md`](../../open-issues-2026-10/TRANSPORT.md). Its fourteen qualified
+software rows map to the following daemon regression groups; they do not imply
+that this increment re-ran or completed the whole matrix:
+
+| Existing family rows | Regression module |
+| --- | --- |
+| TCP/Backbone server and client | `tests/bootstrap_tcp_family.rs` |
+| UDP unicast and multicast | `tests/bootstrap_udp_family.rs` |
+| Pipe | `tests/bootstrap_pipe_family.rs` |
+| Serial, KISS/AX.25 serial and KISS TCP | `tests/bootstrap_serial_family.rs` |
+| I2P outgoing and incoming | `tests/bootstrap_i2p_family.rs` |
+| AutoInterface | `bootstrap_interface_startup_parts/tests/configured_auto_family.rs` |
+| Meshtastic | `tests/bootstrap_meshtastic_family.rs` |
+| Weave | `tests/bootstrap_weave_family.rs` |
+| LoRa/RNode serial, TCP and bearer paths | `tests/bootstrap_lora_family.rs` |
+
+RNodeMulti, RNode BLE, generic BLE GATT, VR-N76 KISS BLE, Local Unix and Local
+TCP still need their declared broader lifecycle compositions. `reticulum_ble`
+remains degraded under #650. This increment does not close #608 or qualify
+physical equipment, radio, public networks or additional platforms.
+
+Local validation for this increment:
+
+```text
+cargo test -p reticulumd --test config --test config_i2p_ifac
+# 123 existing config tests and 4 new alias controls pass
+cargo test -p reticulumd --bin reticulumd i2p_family -- --nocapture
+# 7 pass, including alias credential combinations and native shutdown/lifecycle cases
+RETICULUM_PY_REPO=/workspace/references/Reticulum \
+LXMF_PYTHON_BIN=/workspace/references/venv/bin/python \
+cargo test -p reticulumd --test python_tcp_ifac_lifecycle \
+  python_tcp_ifac_accepted_child_rotation_and_restart_fail_closed \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 pass at the frozen RNS 99de23c0 pin
+RETICULUM_PY_REPO=/workspace/references/Reticulum \
+LXMF_PYTHON_BIN=/workspace/references/venv/bin/python \
+cargo test -p reticulumd --test python_channel_interop \
+  python_rust_ifac_kiss_serial_channel_roundtrip_over_pty \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 pass at the same pin
+cargo test -p reticulumd --test code_quality_issue_369
+# 1 pass
+```
+
 ## Malformed IFAC startup status
 
 `bootstrap_reports_invalid_ifac_config_without_creating_interface` verifies that

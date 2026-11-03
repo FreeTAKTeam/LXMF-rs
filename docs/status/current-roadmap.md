@@ -1,5 +1,13 @@
 # Current Roadmap Status
 
+The #608 I2P startup path now preserves nonempty legacy IFAC aliases literally,
+including whitespace, and falls back to them when canonical credentials are
+empty. A configured fake-SAM regression checks plaintext rejection before first
+authenticated ingress and exact authenticated egress. Verify also selects the
+existing pinned-Python TCP lifecycle and KISS PTY IFAC tests explicitly. This
+closes the alias/CI gap only; six software carrier-family lifecycle rows and
+whole-issue acceptance remain open in the transport execution contract.
+
 The durable ZeroMQ announce projection now supports bounded latest-per-peer
 keyset sweeps. Repeated announces from busy peers cannot evict quiet peers from
 the consumer view; completed sweeps reconcile intervening updates and replay

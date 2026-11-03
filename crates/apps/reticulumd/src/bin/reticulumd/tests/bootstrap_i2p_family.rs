@@ -15,6 +15,9 @@ use tokio::time::{sleep, timeout, Duration};
 #[path = "bootstrap_i2p_shutdown.rs"]
 mod shutdown_tests;
 
+#[path = "bootstrap_i2p_ifac_aliases.rs"]
+mod alias_tests;
+
 const INITIAL: &str = "i2p-family-initial-credential";
 const ROTATED: &str = "i2p-family-rotated-credential";
 const FINAL: &str = "i2p-family-final-credential";
