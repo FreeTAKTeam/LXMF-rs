@@ -17,7 +17,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
 | 6. Designated no_std core and seeded checks | #625 | Not started | | |
-| 7. Duplicate-filter differentials into CI | #609 | Not started | | |
+| 7. Duplicate-filter differentials into CI | #609 | Implemented; focused verification recorded below | `codex/p0-609-transport` | Named frozen Verify lanes; real native rotation comparison; rejected outbound membership fix; three packet-class daemon restart tests |
 | 8. Two-relay reverse delivery diagnosis | #609 | Not started | | |
 | 9. Shared-instance and restart matrix | #609 | Not started | | |
 
@@ -409,3 +409,23 @@ startup passes help/health/readiness, positive heap requests, zero release calls
 with propagation disabled, clean SIGINT exit and socket cleanup. All 27 runnable
 hosted source checks pass, with one intentional publish skip. Real-system load,
 delivery and sustained RSS/performance remain unverified; no deployment occurred.
+
+
+## #609 outbound replay and duplicate-filter follow-up (2026-11-03)
+
+Ordinary and prepared no-carrier dispatch regressions reproduced premature
+duplicate remembering before the fix. Proof binding still precedes handoff;
+membership now requires carrier acceptance on ordinary, recursive and prepared
+paths. Native rotation is exercised at its production threshold, all existing
+frozen duplicate differentials are named in Verify, and standalone daemon restart
+replay now includes Data and LinkRequest. See the updated #609 evidence for the
+bounded contract and validation. Broader issue closure remains open.
+
+The focused native cache suite passes 9/9 after the retry-preservation assertion;
+full transport library passes 1,071 tests (13 ignored). All five named frozen
+differentials, Data/LinkRequest/Proof daemon process restart and the #369 scanner
+pass. The existing three-relay recovery matrix also passes three fresh topologies
+and all 24 messages in 166.58 s at exact RNS `99de23c` / LXMF `c3ff2d6` pins;
+its daemon hash and bounded packet/Resource scope are recorded in #609 evidence.
+Formatting, boundaries, module-size, architecture checks and workspace
+all-target/all-feature Clippy (`-D warnings`) pass.

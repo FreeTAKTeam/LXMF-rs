@@ -1,9 +1,16 @@
 impl TransportHandler {
-    /// Keep destination-bound proof context before handoff even when the shared
-    /// owner alone maintains duplicate membership for this attached process.
-    pub(super) fn register_outbound_packet(&self, cache: &mut PacketCache, packet: &Packet) {
-        cache.track_packet(packet);
-        if !self.config.connected_to_shared_instance {
+    /// Remember only a carrier-accepted outbound packet. A failed attempt must
+    /// not suppress the first real ingress copy. Proof context is tracked before
+    /// handoff independently, and shared clients leave membership to their owner.
+    pub(super) fn remember_dispatched_outbound_packet(
+        &self,
+        cache: &mut PacketCache,
+        packet: &Packet,
+        dispatch: &TxDispatchTrace,
+    ) {
+        if !self.config.connected_to_shared_instance
+            && (dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0)
+        {
             cache.remember_hash(packet.hash());
         }
     }
@@ -17,11 +24,15 @@ impl TransportHandler {
         message: TxMessage,
         handoff: impl FnOnce(&TxDispatchTrace),
     ) -> TxDispatchTrace {
-        {
-            let mut cache = self.packet_cache.lock().await;
-            self.register_outbound_packet(&mut cache, &message.packet);
-        }
-        self.dispatch_observed(message, handoff).await
+        let packet = message.packet.clone();
+        self.packet_cache.lock().await.track_packet(&packet);
+        let dispatch = self.dispatch_observed(message, handoff).await;
+        self.remember_dispatched_outbound_packet(
+            &mut *self.packet_cache.lock().await,
+            &packet,
+            &dispatch,
+        );
+        dispatch
     }
 
     /// The validated relay path mirrors Python's raw LRPROOF transmit: retain

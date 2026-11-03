@@ -294,6 +294,15 @@ announce-persistence counters to the daemon metrics snapshot. The third item
 bounds the refill scan, yields the SQLite writer to broker commands and moves
 WAL truncation to a daemon timer.
 
+The #609 outbound replay fix now keeps duplicate membership only when a carrier
+accepts the frame or paced announce, while retaining destination-bound proof
+context before handoff. Rejected ordinary, recursive and prepared sends remain
+eligible for their first ingress copy. Verify now names the frozen 21-context,
+packet-class, Plain/Group, ordinary Proof and generation tests; the rotation
+differential exercises native maintenance at its real size threshold. Daemon
+restart coverage includes Data and LinkRequest as well as Proof. These bounded
+software checks leave the wider shared-instance/routing matrix open.
+
 The 2026-10-28 #663 closure increment prunes remote recipient and daemon peer
 identity caches after route expiry while preserving pending SINGLE receipts,
 local destinations and live links. It bounds retained random-blob capacity and
@@ -601,9 +610,9 @@ and sender-visible completion.
 
 The standalone transport restart path now restores and persists exact packet
 hashes in the pinned-Python-compatible `packet_hashlist.raw`. A production
-ingress regression additionally starts `reticulumd` as a subprocess, admits a
-proof and counts its duplicate, gracefully stops it, then restarts on the same
-storage and confirms the exact proof is filtered again. This is separate from
+ingress suite additionally starts `reticulumd` as a subprocess for each of
+Proof, Data and LinkRequest, admits a packet and counts its duplicate, gracefully
+stops it, then restarts on the same storage and confirms exact replay is filtered. This is separate from
 the LXMF `LXMRouter` delivered-ID cache. A deterministic failure-injection
 regression also confirms a failed hashlist save does not suppress path-table
 writes, while persistence errors remain surfaced. This applies only to
@@ -613,9 +622,9 @@ hash filter; Rust now admits repeated ResourceProof packets to the resource
 state machine with a focused production-filter regression. A further source
 comparison found the same pinned exception for `RESOURCE`; Rust now also admits
 repeated Link Resource packets through the production filter, covered by a
-regression that failed before the fix. Other Python-exempt contexts,
-retransmission classes, cache rotation/size parity, and the broader #609
-recovery matrix remain open.
+regression that failed before the fix. Frozen Cartesian/context differentials
+and native generation rotation now have named Verify coverage. Other production
+retransmission/routing combinations and the broader #609 recovery matrix remain open.
 
 The previously intermittent B-to-A LXMF delivery was traced to relay A
 rejecting the shared-owner `LinkRequestProof` because it lacked the
@@ -1962,8 +1971,8 @@ direction.
   attachments). Production-ingress regressions and pinned-Python differential
   cover repeated copies and mismatched transport IDs for both classes.
   Transported packets and invalid announces remain rejected earlier; other
-  duplicate classes, cache rotation/size behavior, and broad #609 acceptance
-  remain open. See `evidence/609-transport-local-shared.md`.
+  production duplicate/routing combinations and broad #609 acceptance remain
+  open; native cache rotation/size now has the separate evidence noted above. See `evidence/609-transport-local-shared.md`.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.

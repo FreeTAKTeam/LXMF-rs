@@ -15,6 +15,20 @@ const PINNED_RETICULUM: &str = "99de23c040d507e3fefca19e87b182302902725d";
 
 #[test]
 fn standalone_daemon_shutdown_persists_proof_replay_filter_across_restart() {
+    assert_replay_filter_survives_restart(PacketType::Proof);
+}
+
+#[test]
+fn standalone_daemon_shutdown_persists_data_replay_filter_across_restart() {
+    assert_replay_filter_survives_restart(PacketType::Data);
+}
+
+#[test]
+fn standalone_daemon_shutdown_persists_link_request_replay_filter_across_restart() {
+    assert_replay_filter_survives_restart(PacketType::LinkRequest);
+}
+
+fn assert_replay_filter_survives_restart(packet_type: PacketType) {
     let temp = tempfile::tempdir().expect("temporary daemon storage");
     let storage = temp.path().join("storage");
     std::fs::create_dir_all(&storage).expect("create storage directory");
@@ -22,10 +36,10 @@ fn standalone_daemon_shutdown_persists_proof_replay_filter_across_restart() {
     std::fs::write(&config, "[reticulum]\nenable_transport = true\n")
         .expect("write transport config");
     let (transport_port, rpc_port) = reserve_two_ports();
-    let packet = proof_packet();
+    let packet = replay_packet(packet_type);
     let packet_hash = packet.hash().as_slice().to_vec();
-    let frame = Hdlc::frame(&packet.to_bytes().expect("serialize proof packet"))
-        .expect("HDLC-frame proof packet");
+    let frame = Hdlc::frame(&packet.to_bytes().expect("serialize replay packet"))
+        .expect("HDLC-frame replay packet");
 
     let mut first = start_daemon(temp.path(), &storage, &config, transport_port, rpc_port);
     wait_for_rpc(rpc_port, &mut first);
@@ -40,7 +54,7 @@ fn standalone_daemon_shutdown_persists_proof_replay_filter_across_restart() {
         .expect("first daemon shutdown must persist the replay hashlist");
     assert!(
         persisted.chunks_exact(packet_hash.len()).any(|hash| hash == packet_hash),
-        "packet_hashlist.raw did not contain the accepted proof hash"
+        "packet_hashlist.raw did not contain the accepted {packet_type:?} hash"
     );
 
     let mut second = start_daemon(temp.path(), &storage, &config, transport_port, rpc_port);
@@ -58,12 +72,12 @@ fn standalone_daemon_shutdown_persists_proof_replay_filter_across_restart() {
     stop_gracefully(&mut second);
 }
 
-fn proof_packet() -> Packet {
+fn replay_packet(packet_type: PacketType) -> Packet {
     Packet {
-        header: Header { packet_type: PacketType::Proof, ..Header::default() },
+        header: Header { packet_type, ..Header::default() },
         context: PacketContext::None,
         destination: rns_transport::hash::AddressHash::new_from_slice(&[0x91; 16]),
-        data: PacketDataBuffer::new_from_slice(&[0x37; 32]),
+        data: PacketDataBuffer::new_from_slice(&[0x37; 64]),
         ..Packet::default()
     }
 }

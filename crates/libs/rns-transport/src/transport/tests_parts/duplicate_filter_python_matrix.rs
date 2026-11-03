@@ -41,6 +41,14 @@ for name, packet_type, context in cases:
     Transport.add_packet_hash(packet_hash)
     second = Transport.packet_filter(packet)
     results.append(f"{name}={int(first)},{int(second)}")
+Transport.path_table = {}
+Transport.interfaces = []
+unsent = SimpleNamespace(hops=0, create_receipt=False,
+    destination=SimpleNamespace(type=RNS.Destination.SINGLE),
+    destination_hash=b"unrouted", attached_interface=None,
+    packet_type=RNS.Packet.DATA, context=RNS.Packet.NONE, packet_hash=b"unsent")
+sent = Transport.outbound(unsent)
+results.append(f"unsent={int(sent)},{int(unsent.packet_hash in Transport.packet_hashlist)}")
 print(";".join(results))
 "#;
     let python = std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
@@ -59,10 +67,27 @@ print(";".join(results))
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "data=1,0;link_request=1,0;proof=1,0;keepalive=1,1;resource_request=1,1;resource_proof=1,1;resource=1,1;cache_request=1,1;channel=1,1;announce=1,1"
+        "data=1,0;link_request=1,0;proof=1,0;keepalive=1,1;resource_request=1,1;resource_proof=1,1;resource=1,1;cache_request=1,1;channel=1,1;announce=1,1;unsent=0,0"
     );
 
     use crate::packet::{Packet, PacketContext, PacketType};
+    let transport = Transport::new(TransportConfig::default());
+    let handler = transport.get_handler();
+    let packet = Packet::default();
+    let guard = handler.lock().await;
+    let dispatch = guard
+        .send(crate::iface::TxMessage {
+            tx_type: crate::iface::TxMessageType::Broadcast(None),
+            packet: packet.clone(),
+        })
+        .await;
+    assert_eq!(dispatch.sent_ifaces + dispatch.queued_ifaces, 0);
+    assert!(
+        !guard.packet_cache.lock().await.contains_hash(&packet.hash()),
+        "Rust must match Python's unsent-packet membership decision"
+    );
+    drop(guard);
+    transport.cancel.cancel();
     let rust_cases = [
         (PacketType::Data, PacketContext::None, false),
         (PacketType::LinkRequest, PacketContext::None, false),
@@ -156,18 +181,35 @@ print(f"max={Transport.hashlist_maxsize};generations={first_generation[0]},{firs
         "max=4;generations=3,0|3,0;checks=0,0,1"
     );
 
-    // A small native cache stays below the production one-million threshold.
-    // Exact native threshold/displacement and independent proof TTL are covered
-    // by packet_cache::tests without weakening that production threshold.
+    // Exercise the same transitions at the native production threshold. Compare
+    // membership decisions, not absolute lengths: Python's deterministic fixture
+    // uses a four-hash budget, while native maintenance retains the real budget.
     let mut rust_cache = super::packet_cache::PacketCache::new();
-    let packets: Vec<_> = (0..6)
-        .map(|index| crate::packet::Packet {
-            data: crate::packet::PacketDataBuffer::new_from_slice(&[index]),
-            ..Default::default()
-        })
-        .collect();
-    for packet in &packets {
-        assert!(rust_cache.update(packet));
+    let hash = |value: u64| {
+        let mut bytes = [0; crate::hash::HASH_SIZE];
+        bytes[..8].copy_from_slice(&value.to_be_bytes());
+        Hash::new(bytes)
+    };
+    for value in 0..500_000 {
+        rust_cache.remember_hash(hash(value));
     }
-    assert_eq!(rust_cache.hashes().len(), 6);
+    assert!(!rust_cache.maintain_duplicate_generations(), "exact half budget cannot rotate");
+    rust_cache.remember_hash(hash(500_000));
+    assert!(rust_cache.maintain_duplicate_generations());
+    assert_eq!(rust_cache.hashes().len(), 0);
+    assert_eq!(rust_cache.hash_count(), 500_001);
+    let old_hash_admitted = !rust_cache.contains_hash(&hash(0));
+    for value in 500_001..1_000_002 {
+        rust_cache.remember_hash(hash(value));
+    }
+    assert!(rust_cache.maintain_duplicate_generations());
+    assert_eq!(rust_cache.hashes().len(), 0);
+    assert_eq!(rust_cache.hash_count(), 500_001);
+    let previous_generation_admitted = !rust_cache.contains_hash(&hash(500_001));
+    let expired_generation_admitted = !rust_cache.contains_hash(&hash(0));
+    assert_eq!(
+        (old_hash_admitted, previous_generation_admitted, expired_generation_admitted),
+        (false, false, true),
+        "native rotation must match the pinned Python membership decisions"
+    );
 }

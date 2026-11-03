@@ -608,7 +608,64 @@ jobs:
           python_to_python_duplicate_link_request_is_filtered_by_rust_transport
           -- --ignored --nocapture --test-threads=1
 
-      - name: Verify packet replay filtering across standalone daemon restart
+      - name: Verify all 21 duplicate-filter contexts against frozen Python
+        if: ${{ matrix.suite == 'interfaces' }}
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          frozen_python_all_21_contexts_match_ordered_generation_filter
+          -- --ignored --nocapture --test-threads=1
+
+      - name: Verify pinned Python packet-class duplicate-filter matrix
+        if: ${{ matrix.suite == 'interfaces' }}
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          transport::tests::pinned_python_duplicate_filter
+          -- --ignored --nocapture --test-threads=1
+
+      - name: Verify pinned Python hash-cache rotation and size contract
+        if: ${{ matrix.suite == 'interfaces' }}
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          pinned_python_packet_hash_rotation_and_size_contract
+          -- --ignored --nocapture --test-threads=1
+
+      - name: Verify pinned Python Plain and Group duplicate exceptions
+        if: ${{ matrix.suite == 'interfaces' }}
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          pinned_python_plain_group_duplicate_filter_matches_production_ingress
+          -- --ignored --nocapture --test-threads=1
+
+      - name: Verify pinned Python ordinary Proof duplicate suppression
+        if: ${{ matrix.suite == 'interfaces' }}
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          pinned_python_ordinary_proof_filter_matches_production_ingress
+          -- --ignored --nocapture --test-threads=1
+
+      - name: Verify native hash generations and accepted outbound remembering
+        if: ${{ matrix.suite == 'interfaces' }}
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          transport::packet_cache::tests
+          -- --nocapture --test-threads=1
+
+      - name: Verify Proof Data and LinkRequest replay filtering across daemon restart
         if: ${{ matrix.suite == 'interfaces' }}
         run: >-
           cargo test -p reticulumd --test packet_replay_process_restart
