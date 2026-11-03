@@ -79,6 +79,10 @@ growth keeps #709 open. The user canceled synthetic pager-cache candidate valida
 and requested real Linux testing. Source `132c692e` is packaged as a draft Linux
 x86-64 daemon-only release; candidate RSS/performance and production resource
 acceptance stay open. PR #711 is unmerged; do not restart the canceled soak.
+Offline replay now rejects nonfinite/boolean timing, overlapping captures and
+maintenance-counter resets, and anchors on successful phase completions; all
+717 stored captures reproduce the existing resident summary under these checks.
+This evidence-validation correction does not change the RSS/stability verdict.
 
 Durable-broker-only daemon bootstrap initializes the identity-capable transport
 without opening a Reticulum listener or creating network interfaces. A focused

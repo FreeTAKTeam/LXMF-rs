@@ -349,7 +349,10 @@ for that failure. The user canceled synthetic candidate validation and requested
 real Linux testing; the safe SQLite pager-cache candidate is packaged in a draft
 Linux x86-64 daemon-only release from `132c692e`. Its RSS/performance remains
 unverified, PR #711 is unmerged, and no synthetic restart is planned.
-Production memory acceptance remains open.
+Production memory acceptance remains open. Offline resident-replay regressions
+now reject nonfinite/boolean timing, overlapping captures and maintenance-counter
+resets; the stricter replay reproduces all 717 stored captures and the unchanged
+ownership result. This validation correction supplies no new stability evidence.
 
 The next resource increment connects reference-aware announce-cache collection
 for #678 to successful route/tunnel persistence, with bounded idle maintenance

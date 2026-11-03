@@ -1,6 +1,7 @@
 """Opt-in Linux resident-page attribution for the existing local soak harness."""
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -112,13 +113,43 @@ def capture_resident(pid, out, index, descriptor):
             "raw_capture_sha256": hashlib.sha256(data).hexdigest(), "pause_secs": pause}
 
 
+def _finite_nonnegative(value, name):
+    """JSON booleans and nonfinite numbers cannot establish timing coverage."""
+    if type(value) not in (int, float) or value < 0 or not math.isfinite(value):
+        raise ValueError(f"invalid {name}: expected a finite nonnegative number")
+    return value
+
+
 def verify_resident_run(root):
     """Replay every capture; no invalid or missing observation can be skipped."""
     root = Path(root)
     run = json.loads((root / "run.json").read_text())
     rows = [json.loads(line) for line in (root / "samples.jsonl").read_text().splitlines()]
-    if not rows or [row["index"] for row in rows] != list(range(len(rows))):
+    if (not rows or any(type(row.get("index")) is not int for row in rows)
+            or [row["index"] for row in rows] != list(range(len(rows)))):
         raise ValueError("missing or duplicate sample index")
+    duration = _finite_nonnegative(run.get("measured_duration_secs", 0), "measured duration")
+    requested_duration = _finite_nonnegative(run.get("duration_secs", 0), "requested duration")
+    sample_times = [_finite_nonnegative(row["monotonic"], "sample time") for row in rows]
+    if any(b <= a for a, b in zip(sample_times, sample_times[1:])):
+        raise ValueError("invalid sample timing")
+    phases = ("expiry", "quota", "payload")
+    previous_counts = {}
+    anchor = None
+    for index, row in enumerate(rows):
+        successes = []
+        for phase in phases:
+            counts = row["metrics"]["storage"]["maintenance"][phase]
+            for name in ("runs_total", "errors_total"):
+                value = counts[name]
+                if type(value) is not int or value < previous_counts.get((phase, name), 0):
+                    raise ValueError("invalid or regressing maintenance counter")
+                previous_counts[phase, name] = value
+            if counts["errors_total"] > counts["runs_total"]:
+                raise ValueError("maintenance errors exceed completed runs")
+            successes.append(counts["runs_total"] - counts["errors_total"])
+        if anchor is None and min(successes) >= 2:
+            anchor = index
     expected = {f"resident/{i:06}.json" for i in range(len(rows))}
     if {str(path.relative_to(root)) for path in (root / "resident").glob("*.json")} != expected:
         raise ValueError("missing or unexpected raw resident capture")
@@ -129,6 +160,13 @@ def verify_resident_run(root):
         if counts["raw_capture_path"] != path or hashlib.sha256(data).hexdigest() != counts["raw_capture_sha256"]:
             raise ValueError("raw capture identity/hash mismatch")
         raw = json.loads(data)
+        for field in ("started_monotonic", "resumed_monotonic", "pause_secs"):
+            _finite_nonnegative(raw[field], f"capture {field}")
+        _finite_nonnegative(counts["pause_secs"], "sample capture pause")
+        end = (sample_times[row["index"] + 1] if row["index"] + 1 < len(rows)
+               else sample_times[0] + duration)
+        if raw["resumed_monotonic"] > end:
+            raise ValueError("capture overlaps next sample or measured run end")
         if (raw["schema"] != "lxmf-rs-resident-capture-v1"
                 or raw["index"] != row["index"] or raw["pid"] != run["daemon_pid"]
                 or raw["started_monotonic"] < row["monotonic"]
@@ -141,18 +179,13 @@ def verify_resident_run(root):
         replay = analyze_smaps(raw["smaps"], raw["rollup_before"], raw["rollup_after"])
         if any(counts.get(key) != value for key, value in replay.items()):
             raise ValueError("resident accounting replay mismatch")
-    times = [row["monotonic"] - rows[0]["monotonic"] for row in rows]
+    times = [stamp - sample_times[0] for stamp in sample_times]
     gaps = [b - a for a, b in zip(times, times[1:])]
     if not gaps or any(gap <= 0 for gap in gaps):
         raise ValueError("invalid sample timing")
-    phases = ("expiry", "quota", "payload")
-    anchor = next((i for i, row in enumerate(rows)
-                   if min(row["metrics"]["storage"]["maintenance"][name]["runs_total"]
-                          for name in phases) >= 2), None)
-    errors = sum(rows[-1]["metrics"]["storage"]["maintenance"][name]["errors_total"] for name in phases)
-    duration = run.get("measured_duration_secs", 0)
+    errors = sum(previous_counts[phase, "errors_total"] for phase in phases)
     valid = (run.get("completed") is True and run.get("resident_memory") is True
-             and run.get("duration_secs", 0) >= 3600 and duration >= 3600
+             and requested_duration >= 3600 and duration >= 3600
              and max(gaps) <= 10 and 0 <= duration - times[-1] <= 10 and errors == 0)
     post = rows[anchor:] if anchor is not None else []
     minimum = min(post, key=lambda row: row["resident_memory"]["attributed_fraction"]) if post else None
