@@ -337,6 +337,11 @@ instead of a per-pass join, and phases report logical read bytes
 Quota no longer ranks every unhandled mark each pass. A partial rank index serves a
 read-only gate and the over-quota ranking, so an idle pass takes no writer and
 does no sort (`docs/migrations/propagation-peer-entry-quota-index.md`).
+The durable-dispatch retry index now includes `next_attempt_at`, so an empty
+poll skips future-deferred queued operations instead of examining each one.
+Native SQLite regressions cover queue-independent idle work, unchanged due-message
+ordering and old-profile restart migration; production resource acceptance stays
+open (see the [resource regression record](../performance/rch-resource-fixes-663.md)).
 Refill now respects the global peer-entry limit. A trigger-maintained count is
 checked inside the insert transaction, and at the limit the pass is deferred
 rather than skipped. Quota and refill therefore no longer delete and recreate

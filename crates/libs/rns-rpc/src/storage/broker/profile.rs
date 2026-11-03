@@ -92,7 +92,8 @@ pub fn enable(conn: &Connection, budget: i64) -> rusqlite::Result<()> {
         owner TEXT NOT NULL,source TEXT NOT NULL,operation_id TEXT NOT NULL,fingerprint TEXT NOT NULL,
         message_id TEXT UNIQUE NOT NULL,state TEXT NOT NULL,options TEXT NOT NULL,prepared TEXT,prepared_reserve INTEGER NOT NULL,next_attempt_at INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY(owner,source,operation_id));
-        CREATE INDEX IF NOT EXISTS broker_dispatch_pending ON broker_operations(state,message_id);
+        CREATE INDEX IF NOT EXISTS broker_dispatch_due ON broker_operations(state,next_attempt_at,message_id);
+        DROP INDEX IF EXISTS broker_dispatch_pending;
         CREATE TABLE IF NOT EXISTS broker_completions (message_id TEXT PRIMARY KEY,bytes INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS broker_message_keys (message_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
         CREATE UNIQUE INDEX IF NOT EXISTS broker_consumer_owner_scope ON broker_consumers(owner,destination);
