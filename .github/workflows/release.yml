@@ -510,6 +510,8 @@ jobs:
       OCI_IMAGE_DIGEST: ${{ needs.container.outputs.image_digest }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Require successful release dependencies
         env:
           RELEASE_NEEDS: ${{ toJSON(needs) }}
@@ -529,6 +531,16 @@ jobs:
             -name '*.rpm' -o -name '*.msi' -o -name '*.json' \
           \) -exec cp {} release-assets/ \;
           test "$(find release-assets -type f | wc -l)" -gt 0
+      - name: Stage tagged release notes
+        id: release-notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="refs/tags/${RELEASE_TAG}:docs/release-notes-v${RELEASE_VERSION}.md"
+          if git cat-file -e "${notes}"; then
+            git show "${notes}" > release-assets/RELEASE_NOTES.md
+            echo 'path=release-assets/RELEASE_NOTES.md' >> "${GITHUB_OUTPUT}"
+          fi
       - name: Record product source and packaging workflow
         run: |
           set -euo pipefail
@@ -577,6 +589,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          body_path: ${{ steps.release-notes.outputs.path }}
           files: release-assets/*
           fail_on_unmatched_files: true
           generate_release_notes: true
