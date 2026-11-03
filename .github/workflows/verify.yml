@@ -356,6 +356,26 @@ jobs:
           ifac -- --ignored --nocapture
           --test-threads=1
 
+      - name: Run Python and Rust IFAC TCP lifecycle interoperability
+        if: ${{ matrix.suite == 'interfaces' }}
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_tcp_ifac_lifecycle
+          python_tcp_ifac_accepted_child_rotation_and_restart_fail_closed
+          -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Run Python and Rust IFAC KISS PTY interoperability
+        if: ${{ matrix.suite == 'interfaces' }}
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_channel_interop
+          python_rust_ifac_kiss_serial_channel_roundtrip_over_pty
+          -- --ignored --exact --nocapture --test-threads=1
+
       - name: Run PR HIL channel cases
         if: ${{ matrix.suite == 'controller-channel' }}
         run: >-
