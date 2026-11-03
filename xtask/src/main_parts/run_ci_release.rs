@@ -59,7 +59,6 @@ pub(super) fn run_release_check() -> Result<()> {
     run_sdk_matrix_check()?;
     run_embedded_link_check()?;
     run_embedded_native_lock_check()?;
-    run_embedded_core_check()?;
     run_embedded_node_build()?;
     run_embedded_node_contract()?;
     run_embedded_node_failure_matrix()?;

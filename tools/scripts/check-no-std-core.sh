@@ -1,32 +1,35 @@
 #!/usr/bin/env bash
-# Verifies that reticulum-rs-core builds for a bare-metal no_std target.
-#
-# Issue #676 reported that the crate's conditional `no_std` attribute was not
-# backed by its dependency graph. This gate keeps the claim honest: a host
-# build with `--no-default-features` is not evidence of no_std support, only a
-# build for a target without `std` is.
+# Build every designated protocol core in isolation on a target without std.
 set -euo pipefail
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
-
 NO_STD_TARGET="${NO_STD_TARGET:-thumbv7em-none-eabi}"
-PACKAGE="reticulum-rs-core"
-
 if ! rustup target list --installed 2>/dev/null | grep -Fxq "$NO_STD_TARGET"; then
-  echo "error: Rust target ${NO_STD_TARGET} is not installed." >&2
-  echo "       Install it with: rustup target add ${NO_STD_TARGET}" >&2
+  echo "error: Rust target ${NO_STD_TARGET} is not installed; run rustup target add ${NO_STD_TARGET}" >&2
   exit 1
 fi
-
-for features in "alloc" "alloc,fernet-aes128"; do
-  echo "no_std check: ${PACKAGE} --features ${features} --target ${NO_STD_TARGET}"
-  cargo check \
-    --locked \
-    -p "$PACKAGE" \
-    --no-default-features \
-    --features "$features" \
-    --target "$NO_STD_TARGET"
+metadata="$(mktemp)"
+trap 'rm -f "$metadata"' EXIT
+cargo metadata --locked --no-deps --format-version 1 > "$metadata"
+mapfile -t packages < <(jq -r '(.workspace_metadata // .metadata).boundaries.no_std_core[]' "$metadata")
+((${#packages[@]} > 0)) || { echo 'no_std core policy is empty' >&2; exit 1; }
+for package in "${packages[@]}"; do
+  mapfile -t feature_sets < <(jq -er --arg package "$package" '(.workspace_metadata // .metadata).boundaries.no_std_features[$package][]' "$metadata")
+  ((${#feature_sets[@]} > 0)) || { echo "missing feature contract for $package" >&2; exit 1; }
+  for features in "${feature_sets[@]}"; do
+    args=(--locked -p "$package" --no-default-features --target "$NO_STD_TARGET")
+    [[ -z "$features" ]] || args+=(--features "$features")
+    echo "no_std check: ${package} features='${features}' target=${NO_STD_TARGET}"
+    cargo check "${args[@]}"
+    # Includes active transitive normal/build dependencies, excluding host tests.
+    # The bare-metal build rejects any other transitive std requirement as well.
+    tree="$(cargo tree "${args[@]}" -e normal,build --prefix none)"
+    while IFS= read -r dependency; do
+      if grep -Eq "^${dependency} v" <<<"$tree"; then
+        echo "no_std core '${package}' transitively depends on forbidden crate '${dependency}'" >&2
+        exit 1
+      fi
+    done < <(jq -r '(.workspace_metadata // .metadata).boundaries.forbidden_core_deps[]' "$metadata")
+  done
 done
-
-echo "no_std core check passed for ${PACKAGE} on ${NO_STD_TARGET}"
+echo "no_std core checks passed on ${NO_STD_TARGET}"

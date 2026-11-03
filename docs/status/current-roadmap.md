@@ -462,10 +462,24 @@ gate and runs inside `cargo xtask ci --stage architecture-checks`. This is a
 compile gate for one target, not device evidence, and it does not change the
 `lxmf-wire` posture below.
 
+## Designated protocol core boundary (#625, 2026-11-03)
+
+The existing architecture gate now builds the four metadata-designated protocol
+crates separately for `thumbv7em-none-eabi`, including core Fernet and embedded
+Serde feature variants. `lxmf-wire` no longer activates `reticulum-rs-core/std`
+when its own std feature is disabled; default desktop builds forward std
+explicitly. Embedded Serde also disables dependency std defaults. Seeded
+optional/dev/build forbidden dependencies and an unlisted workspace edge prove
+the boundary gate rejects violations. The gate checks active transitive target
+build dependencies and the mininode's no-default feature graph, and runs existing
+host embedded adapter checks. See the [authoritative core contract](../architecture/overview.md#protocol-core-boundary-625).
+`lxmf-wire`, mininode, propagation and full transport remain std-first; no new
+wire parity, device HIL or production claim follows from these compile checks.
+
 ## Core-library portability (#646, 2026-09-28)
 
 `lxmf-wire` currently requires `std`, including when built with
-`--no-default-features --features alloc`. Its MessagePack and Reticulum dependency
+`--no-default-features --features alloc`. Its MessagePack dependency
 graph is not suitable for `no_std`-only targets. The support declaration and
 [capability audit](../contracts/sdk-v2-feature-matrix.md#no_std--alloc-capability-audit)
 state this explicitly without changing default APIs or wire behavior. Full

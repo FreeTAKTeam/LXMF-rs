@@ -63,6 +63,21 @@ notices = ["LICENSE.md"]
 reason = "Vendored zeromq retains its upstream MIT license and copyright notice; see vendor/zeromq/LXMF_PATCHES.md."
 
 [workspace.metadata.boundaries]
+# Authoritative bare-metal protocol boundary; feature sets are checked in isolation.
+no_std_core = [
+  "reticulum-rs-core",
+  "rns-embedded-core",
+  "rns-embedded-runtime",
+  "lxmf-embedded-mini",
+]
+no_std_features = { reticulum-rs-core = ["alloc", "alloc,fernet-aes128"], rns-embedded-core = ["alloc", "alloc,serde"], rns-embedded-runtime = ["alloc"], lxmf-embedded-mini = [""] }
+forbidden_core_deps = [
+  "tokio", "tokio-util", "tokio-serial", "clap", "ureq", "rusqlite",
+  "reticulum-rs-zeromq", "axum", "socket2", "if-addrs", "serde_json",
+  "reticulumd", "lxmf-cli", "rns-tools", "lxmf-sdk", "meshchat-api",
+  "reticulum-rs-rpc", "reticulum-rs-transport", "reticulum-rs-bluetooth",
+  "rns-embedded-ffi", "rns-embedded-mininode", "lxmf-runtime", "lxmf-propagation",
+]
 # Exact workspace-local dependency edges allowed between crates.
 # `tools/scripts/check-boundaries.sh` treats this as a strict allowlist.
 allowed_library_edges = [

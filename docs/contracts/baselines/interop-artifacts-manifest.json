@@ -228,8 +228,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-feature-matrix.md",
-      "bytes": 12057,
-      "sha256": "96b71ec66dd1c09f4895ceb3eb074a237b6bf582a898eab7366a72f3a3c89342"
+      "bytes": 13263,
+      "sha256": "ad1336f6395cc77e511361ce836a65a0cede7a635fc18ba14f8d3ec75a74777f"
     },
     {
       "path": "docs/contracts/sdk-v2-identity.md",

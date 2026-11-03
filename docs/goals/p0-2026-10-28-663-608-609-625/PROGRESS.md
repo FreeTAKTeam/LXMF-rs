@@ -16,7 +16,7 @@ Started 2026-10-28 from main `45b5f565`. One PR per [PLAN.md](PLAN.md) item.
 | 1b. Heap-owner gauge and 60-minute allocator soak | #709 / #663 | Resident attribution verified; tagged RSS gate open | [#710](https://github.com/FreeTAKTeam/LXMF-rs/pull/710), [#711](https://github.com/FreeTAKTeam/LXMF-rs/pull/711) | Tagged full hour: all 593 post-second-pass captures >=91.203%; RSS +2.328 MiB fails; cache-release soak canceled by user; Linux field-test draft prepared |
 | 4. IFAC alias fix, CI wiring, evidence refresh | #608 | Not started | | |
 | 5. IFAC remaining carrier-family traces | #608 | Not started | | |
-| 6. Designated no_std core and seeded checks | #625 | Not started | | |
+| 6. Designated no_std core and seeded checks | #625 | Locally verified; hosted CI pending | `codex/p0-625-core` | Four designated crates/six bare-metal feature configurations; seeded boundary and feature-unification regressions; host adapter and core/wire/mininode suites |
 | 7. Duplicate-filter differentials into CI | #609 | Not started | | |
 | 8. Two-relay reverse delivery diagnosis | #609 | Not started | | |
 | 9. Shared-instance and restart matrix | #609 | Not started | | |
@@ -439,3 +439,31 @@ PR #711 subsequently merged on 2026-10-30 at
 `ac7fc4b1e678a6b22467fdf7a4e9a1a77b193ac7`. This updates the current code
 posture, not the historical stopped-candidate record or memory acceptance:
 the RSS/stability verdict remains open and the canceled soak must not restart.
+
+## #625 designated protocol core (2026-11-03)
+
+Metadata now names the four core crates and their six bare-metal feature
+configurations. The existing dependency allowlists remain in force; a separate
+forbidden-core set checks optional, target-specific, dev and build declarations.
+Host dev-only JSON fixtures remain intentional. Target builds and active
+transitive normal/build dependency checks run separately per feature set, and a
+host feature-tree check detects mininode enabling core/std through LXMF.
+
+The real pre-change mininode tree enabled `reticulum-rs-core/std` even without
+its default features. Five initial regressions failed before the implementation:
+optional/runtime, build and dev forbidden dependencies, an unlisted workspace
+edge, and the real feature-unification assertion. LXMF now forwards core/std
+only with its own std feature. The optional embedded Serde dependency also
+turns off std defaults and forwards std explicitly. No new trait or crate is
+needed: existing transport/store/RNG/clock boundaries already serve the target.
+
+Local validation: eight boundary regressions pass (including current-graph
+acceptance, target-specific and production-JSON checks); six isolated
+`thumbv7em-none-eabi` checks pass; `cargo xtask architecture-checks` passes,
+including 60 existing host embedded adapter tests. Core, LXMF wire and mininode
+package suites pass (118 tests); focused all-target/all-feature Clippy,
+formatting, shell syntax and diff checks pass.
+The architecture command used an external `LXMF_RS_BASH` wrapper only to preserve
+the installed Cargo PATH through this environment's login shell. Hosted checks
+and device HIL have not been observed; full LXMF/propagation/transport/mininode
+portability remains std-first under #646.

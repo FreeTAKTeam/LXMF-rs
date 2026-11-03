@@ -1382,10 +1382,12 @@ display/status payload, and operator-workflow combinations remains pending.
 - Nightly mesh, soak, and embedded HIL workflows provide additional operational
   evidence, but do not promote unsupported interface families to `done`.
 - `tools/scripts/check-no-std-core.sh` (run by `cargo xtask ci --stage
-  architecture-checks`) compiles `reticulum-rs-core` for `thumbv7em-none-eabi`
-  without `std` ([#676](https://github.com/FreeTAKTeam/LXMF-rs/issues/676)). It
-  is a bare-metal compile gate for the core primitives only, not device
-  evidence, and `lxmf-wire` remains `std`-only (#646).
+  architecture-checks`) compiles the four metadata-designated core crates for
+  `thumbv7em-none-eabi`, including optional Fernet and embedded Serde variants
+  (#625/#676). The same job seeds optional/dev/build dependency and unlisted-edge
+  violations, checks target transitive dependencies and mininode feature unification,
+  and runs host embedded adapter checks. This is a compile/boundary gate, not
+  device evidence; full `lxmf-wire` remains `std`-only (#646).
 
 | Scope | Owner / evidence source | Status | Evidence type | Verified behavior | Remaining scope / limits |
 | --- | --- | --- | --- | --- | --- |
