@@ -434,3 +434,8 @@ stored resident summary (anchor 124, 593 post-anchor observations, minimum
 it does not resolve the remaining RSS/stability acceptance or identify a memory
 owner. No synthetic soak was restarted, and no daemon/allocator/deployment
 change was made.
+
+PR #711 subsequently merged on 2026-10-30 at
+`ac7fc4b1e678a6b22467fdf7a4e9a1a77b193ac7`. This updates the current code
+posture, not the historical stopped-candidate record or memory acceptance:
+the RSS/stability verdict remains open and the canceled soak must not restart.
