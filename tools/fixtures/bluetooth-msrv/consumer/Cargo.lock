@@ -11,4 +11,4 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-bluetooth"
-version = "0.16.0"
+version = "0.16.1-rc.1-linux"

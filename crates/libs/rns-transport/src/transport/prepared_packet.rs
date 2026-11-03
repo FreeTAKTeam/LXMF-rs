@@ -79,14 +79,14 @@ impl TransportHandler {
         if !accept_packet_hash(packet_hash) {
             return None;
         }
-        self.register_outbound_packet(&mut cache, &packet);
-        drop(cache);
+        cache.track_packet(&packet);
         let dispatch = interfaces
             .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() },
                 None,
             )
             .await;
+        self.remember_dispatched_outbound_packet(&mut cache, &packet, &dispatch);
         let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
             SendPacketOutcome::SentBroadcast
         } else {

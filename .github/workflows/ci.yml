@@ -51,6 +51,7 @@ jobs:
           python3 -m unittest discover -s tools/scripts -p 'test_ci_*.py' -v
           python3 -m unittest discover -s tools/scripts -p 'test_branch_protection.py' -v
           python3 -m unittest discover -s tools/scripts -p 'test_module_includes.py' -v
+          python3 -m unittest discover -s tools/scripts -p 'test_release_workflow.py' -v
       - name: Select applicable checks
         id: select
         run: python3 tools/scripts/ci_selection.py
@@ -167,6 +168,8 @@ jobs:
         with:
           cache-targets: true
           cache-on-failure: false
+      - name: Seeded architecture boundary regressions
+        run: python3 tools/scripts/test_check_boundaries.py -v
       - name: Architecture checks
         run: cargo xtask ci --stage architecture-checks
 

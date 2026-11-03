@@ -15,17 +15,33 @@ const PINNED_RETICULUM: &str = "99de23c040d507e3fefca19e87b182302902725d";
 
 #[test]
 fn standalone_daemon_shutdown_persists_proof_replay_filter_across_restart() {
+    assert_replay_filter_survives_restart(PacketType::Proof);
+}
+
+#[test]
+fn standalone_daemon_shutdown_persists_data_replay_filter_across_restart() {
+    assert_replay_filter_survives_restart(PacketType::Data);
+}
+
+#[test]
+fn standalone_daemon_shutdown_persists_link_request_replay_filter_across_restart() {
+    assert_replay_filter_survives_restart(PacketType::LinkRequest);
+}
+
+fn assert_replay_filter_survives_restart(packet_type: PacketType) {
     let temp = tempfile::tempdir().expect("temporary daemon storage");
     let storage = temp.path().join("storage");
     std::fs::create_dir_all(&storage).expect("create storage directory");
     let config = temp.path().join("reticulum.toml");
-    std::fs::write(&config, "[reticulum]\nenable_transport = true\n")
-        .expect("write transport config");
+    // Each concurrently running case must own its replay cache rather than
+    // attaching to another fixture through the implicit shared-instance socket.
+    std::fs::write(&config, "[reticulum]\nenable_transport = true\nshare_instance = false\n")
+        .expect("write standalone transport config");
     let (transport_port, rpc_port) = reserve_two_ports();
-    let packet = proof_packet();
+    let packet = replay_packet(packet_type);
     let packet_hash = packet.hash().as_slice().to_vec();
-    let frame = Hdlc::frame(&packet.to_bytes().expect("serialize proof packet"))
-        .expect("HDLC-frame proof packet");
+    let frame = Hdlc::frame(&packet.to_bytes().expect("serialize replay packet"))
+        .expect("HDLC-frame replay packet");
 
     let mut first = start_daemon(temp.path(), &storage, &config, transport_port, rpc_port);
     wait_for_rpc(rpc_port, &mut first);
@@ -40,7 +56,7 @@ fn standalone_daemon_shutdown_persists_proof_replay_filter_across_restart() {
         .expect("first daemon shutdown must persist the replay hashlist");
     assert!(
         persisted.chunks_exact(packet_hash.len()).any(|hash| hash == packet_hash),
-        "packet_hashlist.raw did not contain the accepted proof hash"
+        "packet_hashlist.raw did not contain the accepted {packet_type:?} hash"
     );
 
     let mut second = start_daemon(temp.path(), &storage, &config, transport_port, rpc_port);
@@ -58,12 +74,12 @@ fn standalone_daemon_shutdown_persists_proof_replay_filter_across_restart() {
     stop_gracefully(&mut second);
 }
 
-fn proof_packet() -> Packet {
+fn replay_packet(packet_type: PacketType) -> Packet {
     Packet {
-        header: Header { packet_type: PacketType::Proof, ..Header::default() },
+        header: Header { packet_type, ..Header::default() },
         context: PacketContext::None,
         destination: rns_transport::hash::AddressHash::new_from_slice(&[0x91; 16]),
-        data: PacketDataBuffer::new_from_slice(&[0x37; 32]),
+        data: PacketDataBuffer::new_from_slice(&[0x37; 64]),
         ..Packet::default()
     }
 }
@@ -118,7 +134,13 @@ fn start_daemon(
 }
 
 fn wait_for_rpc(port: u16, child: &mut Daemon) -> Value {
-    wait_until(child, "daemon RPC readiness", || rpc_status(port).ok())
+    let status = wait_until(child, "daemon RPC readiness", || rpc_status(port).ok());
+    assert_eq!(
+        status["reticulum"]["shared_instance"]["mode"].as_str(),
+        Some("disabled"),
+        "standalone replay fixture must neither own nor attach to a shared instance"
+    );
+    status
 }
 
 fn wait_for_status<F>(port: u16, child: &mut Daemon, mut predicate: F) -> Value

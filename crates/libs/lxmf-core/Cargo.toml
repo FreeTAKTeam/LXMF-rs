@@ -1,6 +1,6 @@
 [package]
 name = "lxmf-wire"
-version = "0.16.0"
+version = "0.16.1-rc.1-linux"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ name = "lxmf_core"
 
 
 [dependencies]
-rns-core.workspace = true
+rns-core = { package = "reticulum-rs-core", version = "0.16.1-rc.1-linux", path = "../rns-core", default-features = false, features = ["alloc"] }
 base64.workspace = true
 hex.workspace = true
 hkdf.workspace = true
@@ -35,7 +35,7 @@ x25519-dalek.workspace = true
 default = ["std"]
 # Controls JSON/file helpers, system-clock timestamps, and standard error impls.
 # The crate still requires the standard library when this feature is disabled.
-std = ["dep:serde_json", "serde_json/std"]
+std = ["dep:serde_json", "serde_json/std", "rns-core/std"]
 # Empty compatibility flag; does not provide alloc-only or no_std support.
 alloc = []
 
