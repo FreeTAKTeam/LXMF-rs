@@ -4,7 +4,7 @@ use std::process::{Child, Command, ExitCode};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::{python_compat::apply_python_compat_config, rpc_client};
+use super::{event_stream, python_compat::apply_python_compat_config, rpc_client};
 
 pub(crate) fn requires_supervised_launch(args: &crate::EffectiveArgs) -> bool {
     args.propagation_node || args.on_inbound.is_some()
@@ -51,7 +51,7 @@ pub(crate) fn launch_supervised(
     }
 
     if let Some(command) = args.on_inbound.clone() {
-        rpc_client::spawn_on_inbound_watcher(
+        event_stream::spawn_on_inbound_watcher(
             rpc_addr.to_string(),
             command,
             args.messages_dir.clone(),

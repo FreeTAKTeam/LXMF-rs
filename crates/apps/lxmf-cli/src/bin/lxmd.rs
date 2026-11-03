@@ -6,6 +6,9 @@ mod config;
 #[path = "lxmd/config_python.rs"]
 mod config_python;
 
+#[path = "lxmd/event_stream.rs"]
+mod event_stream;
+
 #[path = "lxmd/inbound.rs"]
 mod inbound;
 

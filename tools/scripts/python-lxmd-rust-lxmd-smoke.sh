@@ -17,7 +17,12 @@ PERFORMANCE_PAYLOAD_BYTES="${PERFORMANCE_PAYLOAD_BYTES:-0}"
 if [[ "${PERFORMANCE_MODE}" == "1" ]]; then
   PERFORMANCE_POLL_SECS="${PERFORMANCE_POLL_SECS:-0.02}"
   PERFORMANCE_POLL_ATTEMPTS="$((TIMEOUT_SECS * 50))"
+  # Timing the unoptimized daemon would compare a debug build with Python.
+  RUST_DAEMON_PROFILE=(--release)
+  RUST_DAEMON_DIR="release"
 else
+  RUST_DAEMON_PROFILE=()
+  RUST_DAEMON_DIR="debug"
   PERFORMANCE_POLL_SECS="${PERFORMANCE_POLL_SECS:-1}"
   PERFORMANCE_POLL_ATTEMPTS="${TIMEOUT_SECS}"
 fi
@@ -215,6 +220,7 @@ rpc_call() {
   "${PYTHON_BIN}" - <<'PY' "${rpc_addr}" "${method}" "${params_json}"
 import json
 import errno
+import os
 import socket
 import sys
 import time
@@ -233,6 +239,13 @@ def is_rate_limited(error):
     if isinstance(error, dict):
         return error.get("code") == "SDK_SECURITY_RATE_LIMITED"
     return False
+
+def write_rpc_timing(started_ns, finished_ns):
+    # Performance boundaries exclude this helper's interpreter startup.
+    timing_path = os.environ.get("RPC_TIMING_FILE")
+    if timing_path:
+        with open(timing_path, "w", encoding="utf-8") as handle:
+            handle.write(f"{started_ns} {finished_ns}\n")
 
 def is_retryable_socket_error(exc):
     if isinstance(exc, (ConnectionRefusedError, TimeoutError, socket.timeout)):
@@ -255,6 +268,7 @@ for attempt in range(60):
         f"Connection: close\r\n\r\n"
     ).encode("utf-8") + frame
     try:
+        started_ns = time.time_ns()
         with socket.create_connection((host, int(port)), timeout=30) as sock:
             sock.sendall(request)
             response = bytearray()
@@ -263,6 +277,7 @@ for attempt in range(60):
                 if not chunk:
                     break
                 response.extend(chunk)
+        finished_ns = time.time_ns()
     except OSError as exc:
         if is_retryable_socket_error(exc) and attempt + 1 < 60:
             time.sleep(1)
@@ -306,6 +321,7 @@ for attempt in range(60):
         continue
     if error:
         raise SystemExit(json.dumps(error))
+    write_rpc_timing(started_ns, finished_ns)
     print(json.dumps(result))
     raise SystemExit(0)
 
@@ -520,6 +536,16 @@ raise SystemExit(f"no Python propagation payload for {destination_hash_hex} in {
 PY
 }
 
+# Receiver evidence time: when the file was written, not when polling noticed it.
+# With a directory, the newest file in it.
+evidence_mtime_ns() {
+  "${PYTHON_BIN}" -c 'import os,sys
+p=sys.argv[1]
+if os.path.isdir(p):
+    p=max((os.path.join(p,n) for n in os.listdir(p)), key=lambda f: os.stat(f).st_mtime_ns)
+print(os.stat(p).st_mtime_ns)' "$1"
+}
+
 python_control_call() {
   local control_port="$1"
   local method="$2"
@@ -529,8 +555,10 @@ python_control_call() {
   fi
   "${PYTHON_BIN}" - <<'PY' "${control_port}" "${method}" "${params_json}"
 import json
+import os
 import socket
 import sys
+import time
 
 control_port = int(sys.argv[1])
 method = sys.argv[2]
@@ -544,6 +572,7 @@ if isinstance(params, dict) and "timeout" in params:
     socket_timeout = max(socket_timeout, float(params["timeout"]) + 5.0)
 
 request = json.dumps({"method": method, "params": params}).encode("utf-8") + b"\n"
+started_ns = time.time_ns()
 with socket.create_connection(("127.0.0.1", control_port), timeout=socket_timeout) as sock:
     sock.settimeout(socket_timeout)
     sock.sendall(request)
@@ -565,6 +594,10 @@ except json.JSONDecodeError as exc:
     raise SystemExit(f"invalid control response: {decoded!r}: {exc}")
 if not payload.get("ok"):
     raise SystemExit(payload.get("error") or "python endpoint control call failed")
+# Performance boundaries exclude this helper's interpreter startup.
+if os.environ.get("RPC_TIMING_FILE"):
+    with open(os.environ["RPC_TIMING_FILE"], "w", encoding="utf-8") as handle:
+        handle.write(f"{started_ns} {time.time_ns()}\n")
 
 print(json.dumps(payload.get("result")))
 PY
@@ -732,12 +765,17 @@ while time.time() < quiet_deadline:
     time.sleep(0.25)
 
 started = time.time()
+started_ns = time.time_ns()
 before = RNS.Transport.has_path(destination_hash)
 requested = False
+next_request = started
 deadline = started + timeout_secs
 while time.time() < deadline:
     if RNS.Transport.has_path(destination_hash):
+        found_ns = time.time_ns()
         print(json.dumps({
+            "started_unix_ns": started_ns,
+            "found_unix_ns": found_ns,
             "destination_hash": destination_hash_hex,
             "path_found_before": before,
             "path_found": True,
@@ -748,9 +786,12 @@ while time.time() < deadline:
             "elapsed_seconds": round(time.time() - started, 3),
         }, sort_keys=True))
         raise SystemExit(0)
-    RNS.Transport.request_path(destination_hash)
-    requested = True
-    time.sleep(0.5)
+    # Check at the Rust request_path RPC's poll interval; re-request as before.
+    if time.time() >= next_request:
+        RNS.Transport.request_path(destination_hash)
+        requested = True
+        next_request = time.time() + 0.5
+    time.sleep(0.025)
 
 print(json.dumps({
     "destination_hash": destination_hash_hex,
@@ -1156,10 +1197,10 @@ cat > "${PY_SENDER_RNS_DIR}/config" <<EOF
     target_port = ${RUST_TRANSPORT_PORT}
 EOF
 
-cargo build -p reticulumd --bin reticulumd --quiet
-cargo build -p lxmf-cli --bin lxmd --quiet
+cargo build "${RUST_DAEMON_PROFILE[@]}" -p reticulumd --bin reticulumd --quiet
+cargo build "${RUST_DAEMON_PROFILE[@]}" -p lxmf-cli --bin lxmd --quiet
 
-RUST_LOG="${RUST_LOG}" SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
+RUST_LOG="${RUST_LOG}" SHELL="${HOST_BASH}" "${REPO_ROOT}/target/${RUST_DAEMON_DIR}/lxmd" \
   --config "${RUST_DIR}/launcher.toml" >"${RUST_LXMD_LOG}" 2>&1 &
 RUST_PID=$!
 
@@ -1227,21 +1268,19 @@ PY
         echo "Rust did not learn Python endpoint announce for ${COMPAT_CASE}" >&2
         exit 1
       fi
-      if [[ "${COMPAT_CASE}" == "link_setup_rust_to_python" ]]; then
-        PERFORMANCE_START_NS="$(date +%s%N)"
-      fi
       rust_message_id="rust-link-${COMPAT_CASE}-$(date +%s)"
-      rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
+      RPC_TIMING_FILE="${TMP_ROOT}/link-send.timing" rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
 {"id":"${rust_message_id}","source":"${RUST_DELIVERY_HASH}","destination":"${py_delivery_hash}","title":"","content":"${smoke_message_content}","method":"direct"}
 EOF
 )" >"${PY_SEND_LOG}"
-      active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
+      active_snapshot="$(RPC_TIMING_FILE="${TMP_ROOT}/link-active.timing" python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
 {"state":"active","timeout":${TIMEOUT_SECS}}
 EOF
 )")"
       echo "active_snapshot=${active_snapshot}" >>"${PY_LOG}"
       if [[ "${COMPAT_CASE}" == "link_setup_rust_to_python" ]]; then
-        PERFORMANCE_END_NS="$(date +%s%N)"
+        read -r PERFORMANCE_START_NS _ <"${TMP_ROOT}/link-send.timing"
+        read -r _ PERFORMANCE_END_NS <"${TMP_ROOT}/link-active.timing"
       fi
       message_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_message" "$(cat <<EOF
 {"content":"${smoke_message_content}","timeout":${TIMEOUT_SECS}}
@@ -1255,15 +1294,14 @@ EOF
 {"destination":"${RUST_DELIVERY_HASH}","timeout":${TIMEOUT_SECS}}
 EOF
 )" >/dev/null
-        PERFORMANCE_START_NS="$(date +%s%N)"
       fi
-      active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "open_link" "$(cat <<EOF
+      active_snapshot="$(RPC_TIMING_FILE="${TMP_ROOT}/link-open.timing" python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "open_link" "$(cat <<EOF
 {"destination":"${RUST_DELIVERY_HASH}","timeout":${TIMEOUT_SECS}}
 EOF
 )")"
       echo "active_snapshot=${active_snapshot}" >>"${PY_LOG}"
       if [[ "${COMPAT_CASE}" == "link_setup_python_to_rust" ]]; then
-        PERFORMANCE_END_NS="$(date +%s%N)"
+        read -r PERFORMANCE_START_NS PERFORMANCE_END_NS <"${TMP_ROOT}/link-open.timing"
       fi
       ;;
     *)
@@ -1506,9 +1544,11 @@ if [[ "${COMPAT_CASE}" == "rns_path_request_python_to_rust" ]]; then
     exit 1
   fi
 
-  PATH_DISCOVERY_START_NS="$(date +%s%N)"
   PYTHON_PATH_REQUEST_RESULT="$(request_python_destination_path_json "${RUST_DELIVERY_HASH}" "${PATH_DISCOVERY_TIMEOUT_SECS}" "${PATH_DISCOVERY_QUIET_SECS}")"
-  PATH_DISCOVERY_END_NS="$(date +%s%N)"
+  # The helper stamps request and arrival itself, excluding its Reticulum startup.
+  read -r PATH_DISCOVERY_START_NS PATH_DISCOVERY_END_NS < <(
+    "${PYTHON_BIN}" -c 'import json,sys; r=json.loads(sys.argv[1]); print(r.get("started_unix_ns", 0), r.get("found_unix_ns", 0))' "${PYTHON_PATH_REQUEST_RESULT}"
+  )
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
@@ -1594,9 +1634,8 @@ assert status.get("known") is False, status
 assert status.get("status") == "unknown", status
 PY
 
-  PATH_DISCOVERY_START_NS="$(date +%s%N)"
-  PATH_REQUEST_RESULT="$(rpc_call "${RUST_RPC_ADDR}" "request_path" "{\"destination_hash\":\"${PY_DELIVERY_HASH}\",\"timeout_secs\":${PATH_DISCOVERY_TIMEOUT_SECS}}")"
-  PATH_DISCOVERY_END_NS="$(date +%s%N)"
+  PATH_REQUEST_RESULT="$(RPC_TIMING_FILE="${TMP_ROOT}/path-request.timing" rpc_call "${RUST_RPC_ADDR}" "request_path" "{\"destination_hash\":\"${PY_DELIVERY_HASH}\",\"timeout_secs\":${PATH_DISCOVERY_TIMEOUT_SECS}}")"
+  read -r PATH_DISCOVERY_START_NS PATH_DISCOVERY_END_NS <"${TMP_ROOT}/path-request.timing"
   PATH_STATUS_AFTER="$(rpc_call "${RUST_RPC_ADDR}" "path_status" "{\"destination\":\"${PY_DELIVERY_HASH}\"}")"
   RNPATH_JSON="${TMP_ROOT}/rnpath-rs.json"
   "${REPO_ROOT}/target/debug/rnpath-rs" \
@@ -1859,7 +1898,7 @@ if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_pyt
 
   RUST_REMOTE_STATUS_OK=0
   for _ in $(seq 1 "${REMOTE_STATUS_ATTEMPTS}"); do
-    if SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
+    if SHELL="${HOST_BASH}" "${REPO_ROOT}/target/${RUST_DAEMON_DIR}/lxmd" \
         --config "${RUST_DIR}/launcher.toml" \
         --timeout "${REMOTE_STATUS_TIMEOUT_SECS}" \
         --remote "${PY_PROPAGATION_HASH}" \
@@ -3038,7 +3077,8 @@ PY
 
   assert_contains "${RUST_HOOK_LOG}" "${SMOKE_MESSAGE_CONTENT}" "Rust lxmd on-inbound hook content"
   assert_contains "${RUST_HOOK_LOG}" "${PY_SENDER_SOURCE_HASH}" "Rust lxmd on-inbound hook source hash"
-  PERFORMANCE_END_NS="$(date +%s%N)"
+  # The shell only starts polling after the Python sender process exits.
+  PERFORMANCE_END_NS="$(evidence_mtime_ns "${RUST_HOOK_LOG}")"
 
   HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${RUST_HOOK_LOG}"
 import sys
@@ -3090,21 +3130,37 @@ else
     fi
   fi
 
-  PERFORMANCE_START_NS="$(date +%s%N)"
-  rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
+  py_stored_before="$(find "${PY_DIR}/storage/messages" -type f 2>/dev/null | wc -l)"
+  RPC_TIMING_FILE="${TMP_ROOT}/send.timing" rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
 {"id":"${RUST_MESSAGE_ID}","source":"${RUST_DELIVERY_HASH}","destination":"${PY_DELIVERY_HASH}","title":"","content":"${SMOKE_MESSAGE_CONTENT}","method":"${RUST_SEND_METHOD}"}
 EOF
 )" >"${PY_SEND_LOG}"
+  # Like the Python sender's started_unix_ns: stamped by the client, not its startup.
+  read -r PERFORMANCE_START_NS _ <"${TMP_ROOT}/send.timing"
 
-  capture_rust_message_evidence "${RUST_MESSAGE_ID}"
+  # Detect arrival cheaply; parsing the stored LXMF file imports LXMF.
   for _ in $(seq 1 "${PERFORMANCE_POLL_ATTEMPTS}"); do
+    if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
+      break
+    fi
+    if (( "$(find "${PY_DIR}/storage/messages" -type f 2>/dev/null | wc -l)" > py_stored_before )); then
+      break
+    fi
+    sleep "${PERFORMANCE_POLL_SECS}"
+  done
+  # Decide before the fallback below appends its own lines to the hook log.
+  RUST_SENDER_EVIDENCE="${PY_DIR}/storage/messages"
+  if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
+    RUST_SENDER_EVIDENCE="${PY_HOOK_LOG}"
+  fi
+  for _ in $(seq 1 50); do
     if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
       break
     fi
     if record_python_stored_message "${PY_DIR}/storage/messages" "${SMOKE_MESSAGE_CONTENT}" "${PY_STORED_MESSAGE_JSON}" >/dev/null 2>&1; then
       break
     fi
-    sleep "${PERFORMANCE_POLL_SECS}"
+    sleep 0.1
   done
 
   if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
@@ -3129,7 +3185,8 @@ PY
     assert_contains "${PY_STORED_MESSAGE_JSON}" "\"exact_content_match\": *true" "Python stored LXMF exact content"
     assert_contains "${PY_STORED_MESSAGE_JSON}" "\"destination\": *\"${PY_DELIVERY_HASH}\"" "Python stored LXMF destination hash"
   fi
-  PERFORMANCE_END_NS="$(date +%s%N)"
+  PERFORMANCE_END_NS="$(evidence_mtime_ns "${RUST_SENDER_EVIDENCE}")"
+  capture_rust_message_evidence "${RUST_MESSAGE_ID}"
   if [[ -z "${HOOK_MESSAGE_FILE}" && -f "${PY_STORED_MESSAGE_JSON}" ]]; then
     HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${PY_STORED_MESSAGE_JSON}"
 import json
