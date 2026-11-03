@@ -11,8 +11,14 @@ pub(super) fn spawn_control_worker(
     tokio::spawn(async move {
         let mut rx = transport.in_link_events();
         loop {
-            let Ok(event) = rx.recv().await else {
-                break;
+            // Lagging must not end the worker: every later request would go unanswered.
+            let event = match rx.recv().await {
+                Ok(event) => event,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    log::warn!("[daemon-control] link event channel lagged; skipped {skipped} events");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             };
             let payload = match event.event {
                 LinkEvent::Closed => {

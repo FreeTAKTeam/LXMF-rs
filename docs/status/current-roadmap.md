@@ -258,6 +258,19 @@ Fourteen of twenty declared software family rows are locally qualified. Remainin
 carrier lifecycle composition and whole-item integration/hosted work remain open in the
 [execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
 
+## Propagation `/get` responses above the Link MDU (2026-11-01)
+
+The high-load daemon preflight showed Rust accepting all 600 messages but a
+Python receiver retrieving only 3. The daemon's propagation/control responses
+bypassed `Transport::send_response` and sent any envelope up to 256 KiB as one
+packet; Python drops frames above the negotiated Link MTU, so every list or
+message batch over about 16 KiB on TCP (or about 431 bytes on legacy-MTU links)
+was lost and the receiver timed out. These responses now follow the pinned
+`RNS/Link.py::handle_request` packet/Resource rule. The control and resource
+event workers also no longer exit or drop silently on broadcast lag. A local
+Python RNS 1.5.7 / LXMF 1.2.1 sync of 600 stored messages went from 0 to 600
+delivered; the guest high-load profile still needs a fresh run.
+
 ## RCH resource regressions: issues 663, 657 and 655
 
 The current increment bounds propagation-refill writer transactions, uses
