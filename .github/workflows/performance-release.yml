@@ -155,6 +155,14 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Classify release tag
+        id: release-metadata
+        env:
+          RELEASE_INPUT_TAG: ${{ github.ref_name }}
+        run: |
+          python3 tools/scripts/release_config.py classify \
+            --tag "$RELEASE_INPUT_TAG" --version-file VERSION --output "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           name: performance-release-${{ github.run_id }}
@@ -178,3 +186,5 @@ jobs:
           files: release-assets/*
           fail_on_unmatched_files: true
           generate_release_notes: false
+          prerelease: ${{ steps.release-metadata.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.release-metadata.outputs.prerelease == 'true' && 'false' || 'legacy' }}

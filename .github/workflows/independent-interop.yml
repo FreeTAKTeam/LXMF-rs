@@ -122,10 +122,16 @@ jobs:
         with:
           name: independent-public-evidence
           path: target/public-evidence/*
-      - name: Publish standalone release evidence
+      - name: Classify release tag
         if: github.ref_type == 'tag'
+        id: release-metadata
         env:
-          GH_TOKEN: ${{ github.token }}
+          RELEASE_INPUT_TAG: ${{ github.ref_name }}
+        run: |
+          python3 tools/scripts/release_config.py classify \
+            --tag "$RELEASE_INPUT_TAG" --version-file VERSION --output "$GITHUB_OUTPUT"
+      - name: Stage standalone release evidence
+        if: github.ref_type == 'tag'
         run: |
           cp target/public-input/independent-rns-rs/independent-interop.json target/public-evidence/independent-rns-rs.json
           cp target/public-input/independent-rns-rs/independent-interop.md target/public-evidence/independent-rns-rs.md
@@ -133,4 +139,13 @@ jobs:
           cp target/public-input/independent-reticulum-go/independent-interop.md target/public-evidence/independent-reticulum-go.md
           cp target/public-input/independent-rns-rs-raw.tar.gz* target/public-evidence/
           cp target/public-input/independent-reticulum-go-raw.tar.gz* target/public-evidence/
-          gh release upload "${{ github.ref_name }}" --clobber target/public-evidence/*
+      - name: Attach standalone release evidence
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: target/public-evidence/*
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          prerelease: ${{ steps.release-metadata.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.release-metadata.outputs.prerelease == 'true' && 'false' || 'legacy' }}

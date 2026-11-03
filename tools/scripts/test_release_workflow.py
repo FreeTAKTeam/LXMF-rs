@@ -1,0 +1,145 @@
+"""Exercise release selection, literal refs and the publication dependency gate."""
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+from release_config import classify_tag, release_metadata, validate_needs
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class ReleaseConfigurationTests(unittest.TestCase):
+    def test_linux_candidate_selects_only_three_linux_architectures(self):
+        metadata = release_metadata("v0.16.1-rc.1-linux", "0.16.1-rc.1-linux")
+        self.assertEqual(metadata["prerelease"], "true")
+        self.assertEqual(metadata["linux_only"], "true")
+        targets = json.loads(metadata["build_matrix"])["include"]
+        self.assertEqual([t["id"] for t in targets], ["linux-x86_64", "linux-aarch64", "linux-armv7"])
+        self.assertTrue(all(t["os"].startswith("ubuntu-") for t in targets))
+        packages = json.loads(metadata["linux_package_matrix"])["include"]
+        self.assertEqual([p["build_id"] for p in packages], [t["id"] for t in targets])
+        self.assertEqual([p["arch"] for p in packages], ["amd64", "arm64", "armhf"])
+
+    def test_full_release_preserves_all_six_targets(self):
+        metadata = release_metadata("v1.2.3", "1.2.3")
+        self.assertEqual(metadata["prerelease"], "false")
+        self.assertEqual(metadata["linux_only"], "false")
+        self.assertEqual(len(json.loads(metadata["build_matrix"])["include"]), 6)
+
+    def test_every_supported_semver_prerelease_is_nonstable(self):
+        for tag in ["v1.2.3-rc.1-linux", "1.2.3-preview.4", "v1.2.3-canary.7", "v1.2.3-0", "v1.2.3-linux", "v1.2.3--"]:
+            with self.subTest(tag=tag):
+                self.assertTrue(classify_tag(tag)["prerelease"] == "true")
+
+    def test_invalid_and_shell_active_tags_are_rejected(self):
+        for tag in ["v01.2.3", "v1.2", "v1.2.3-01", "v1.2.3-rc.01", "v1.2.3+build", "v1.2.3\n", "v1.2.3;echo bad", "v1.2.3$(id)"]:
+            with self.subTest(tag=tag), self.assertRaises(ValueError):
+                classify_tag(tag)
+
+    def test_version_mismatch_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "VERSION"):
+            release_metadata("v0.16.1-rc.1-linux", "0.16.0")
+
+    def needs(self, linux_only=True):
+        needs = {name: {"result": "success"} for name in [
+            "prepare", "sdk-wrapper-parity", "build", "package-linux", "sbom", "container",
+            "package-windows", "package-macos",
+        ]}
+        needs["prepare"]["outputs"] = {"linux_only": str(linux_only).lower()}
+        if linux_only:
+            for name in ["package-windows", "package-macos"]:
+                needs[name]["result"] = "skipped"
+        return needs
+
+    def test_only_intentional_platform_skips_are_accepted(self):
+        validate_needs(self.needs())
+        validate_needs(self.needs(False))
+        for linux_only in [True, False]:
+            for name in self.needs(linux_only):
+                expected = self.needs(linux_only)[name]["result"]
+                for result in ["success", "skipped", "failure", "cancelled", "pending", ""]:
+                    if result == expected:
+                        continue
+                    needs = self.needs(linux_only)
+                    needs[name]["result"] = result
+                    with self.subTest(linux_only=linux_only, name=name, result=result), self.assertRaises(ValueError):
+                        validate_needs(needs)
+
+    def test_missing_unknown_or_malformed_dependency_results_fail_closed(self):
+        for name in self.needs():
+            needs = self.needs()
+            del needs[name]
+            with self.subTest(missing=name), self.assertRaises(ValueError):
+                validate_needs(needs)
+        for value in [None, {}, [], "false", "", {"linux_only": True}]:
+            needs = self.needs()
+            needs["prepare"]["outputs"] = value
+            with self.subTest(outputs=value), self.assertRaises(ValueError):
+                validate_needs(needs)
+        needs = self.needs()
+        needs["surprise"] = {"result": "success"}
+        with self.assertRaises(ValueError):
+            validate_needs(needs)
+
+    def test_prepare_reads_version_from_literal_tag_not_workflow_checkout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
+            git("init", "-q")
+            git("config", "user.name", "Release Test")
+            git("config", "user.email", "release@example.invalid")
+            (root / "VERSION").write_text("1.2.3-rc.1-linux\n")
+            git("add", "VERSION")
+            git("commit", "-qm", "release source")
+            source = git("rev-parse", "HEAD")
+            git("tag", "v1.2.3-rc.1-linux")
+            (root / "VERSION").write_text("9.9.9\n")
+            result = subprocess.run(["python3", str(ROOT / "tools/scripts/release_config.py"), "prepare",
+                                     "--tag", "v1.2.3-rc.1-linux", "--publish", "true"], cwd=root,
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = dict(line.split("=", 1) for line in result.stdout.splitlines())
+            self.assertEqual(output["source_commit"], source)
+            self.assertEqual(output["checkout_ref"], "v1.2.3-rc.1-linux")
+            self.assertEqual(output["version"], "1.2.3-rc.1-linux")
+            for tag in ["v9.9.9", "v1.2.3$(id)"]:
+                result = subprocess.run(["python3", str(ROOT / "tools/scripts/release_config.py"), "prepare",
+                                         "--tag", tag, "--publish", "true"], cwd=root,
+                                        text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+
+
+class ReleaseWorkflowWiringTests(unittest.TestCase):
+    def test_workflows_use_shared_policy_and_publish_only_after_guard(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertIn("matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}", release)
+        self.assertIn("matrix: ${{ fromJSON(needs.prepare.outputs.linux_package_matrix) }}", release)
+        build = release.split("\n  build:\n", 1)[1].split("\n  package-linux:\n", 1)[0]
+        self.assertIn("needs: [prepare, sdk-wrapper-parity]", build)
+        self.assertNotIn("          - id:", build)
+        for job in ["package-windows", "package-macos"]:
+            block = release.split(f"\n  {job}:\n", 1)[1].split("\n  ", 1)[0]
+            self.assertIn("if: needs.prepare.outputs.linux_only != 'true'", block)
+        publish = release.split("\n  release:\n", 1)[1].split("\n  homebrew:\n", 1)[0]
+        self.assertIn("always() && !cancelled()", publish)
+        self.assertLess(publish.index("release_config.py check-needs"), publish.index("actions/download-artifact"))
+        self.assertIn("RELEASE_NEEDS: ${{ toJSON(needs) }}", publish)
+        self.assertIn('"$RELEASE_INPUT_TAG"', release)
+        self.assertNotIn('tag="${{ inputs.version }}"', release)
+        for workflow in ["release.yml", "performance-release.yml", "independent-interop.yml"]:
+            text = (ROOT / ".github/workflows" / workflow).read_text()
+            self.assertIn("release_config.py", text)
+            self.assertIn("prerelease:", text)
+            self.assertIn("make_latest:", text)
+        independent = (ROOT / ".github/workflows/independent-interop.yml").read_text()
+        attachment = independent.split("name: Attach standalone release evidence", 1)[1]
+        self.assertIn("if: github.ref_type == 'tag'", attachment)
+        self.assertIn("if: github.event_name != 'pull_request'", independent)
+
+
+if __name__ == "__main__":
+    unittest.main()
