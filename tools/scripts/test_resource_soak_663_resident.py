@@ -163,5 +163,115 @@ class OwnershipTests(unittest.TestCase):
             child.stdout.close()
 
 
+class ReplayValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        (self.root / "resident").mkdir()
+        self.rows = []
+        self.run = {"daemon_pid": 123, "completed": True, "resident_memory": True,
+                    "duration_secs": 3600, "measured_duration_secs": 3600}
+        for index in range(720):
+            smaps = mapping(0x1000, "[anon:mimalloc]", 16) + mapping(0x5000, "", 4)
+            raw = {"schema": "lxmf-rs-resident-capture-v1", "index": index, "pid": 123,
+                   "started_monotonic": index * 5 + .1,
+                   "resumed_monotonic": index * 5 + .102, "pause_secs": .002,
+                   "threads_before": {"123": "T"}, "threads_after": {"123": "T"},
+                   "smaps": smaps, "rollup_before": "Anonymous: 20 kB\n",
+                   "rollup_after": "Anonymous: 20 kB\n"}
+            self.rows.append({"index": index, "monotonic": index * 5,
+                              "metrics": {"storage": {"maintenance": {
+                                  phase: {"runs_total": 1 if index < 120 else 2, "errors_total": 0}
+                                  for phase in ("expiry", "quota", "payload")}}},
+                              "resident_memory": resident.analyze_smaps(
+                                  smaps, raw["rollup_before"], raw["rollup_after"])})
+            self.write_capture(index, raw)
+        self.save()
+
+    def write_capture(self, index, raw):
+        path = f"resident/{index:06}.json"
+        data = json.dumps(raw).encode()
+        (self.root / path).write_bytes(data)
+        self.rows[index]["resident_memory"].update({"raw_capture_path": path,
+            "raw_capture_sha256": hashlib.sha256(data).hexdigest(), "pause_secs": raw["pause_secs"]})
+
+    def save(self):
+        (self.root / "run.json").write_text(json.dumps(self.run))
+        (self.root / "samples.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in self.rows))
+
+    def test_nonfinite_sample_and_capture_times_are_rejected(self):
+        for value in (float("nan"), float("inf"), float("-inf"), True, -1):
+            for field in ("monotonic", "started_monotonic", "resumed_monotonic", "pause_secs"):
+                with self.subTest(field=field, value=value):
+                    raw = json.loads((self.root / "resident/000200.json").read_text())
+                    original = self.rows[200]["monotonic"] if field == "monotonic" else raw[field]
+                    if field == "monotonic":
+                        self.rows[200][field] = value
+                    else:
+                        raw[field] = value
+                        self.write_capture(200, raw)
+                    self.save()
+                    with self.assertRaises(ValueError):
+                        resident.verify_resident_run(self.root)
+                    if field == "monotonic":
+                        self.rows[200][field] = original
+                    else:
+                        raw[field] = original
+                        self.write_capture(200, raw)
+
+    def test_counter_resets_and_invalid_counts_are_rejected(self):
+        phase = self.rows[200]["metrics"]["storage"]["maintenance"]["expiry"]
+        for field, value in (("runs_total", 0), ("errors_total", 1), ("errors_total", -1),
+                             ("errors_total", True), ("runs_total", 2.5),
+                             ("runs_total", float("nan"))):
+            with self.subTest(field=field, value=value):
+                original = phase[field]
+                phase[field] = value
+                self.save()
+                with self.assertRaises(ValueError):
+                    resident.verify_resident_run(self.root)
+                phase[field] = original
+
+    def test_nonfinite_run_durations_are_rejected(self):
+        for field in ("duration_secs", "measured_duration_secs"):
+            for value in (float("nan"), float("inf"), True, -1):
+                with self.subTest(field=field, value=value):
+                    self.run[field] = value
+                    self.save()
+                    with self.assertRaises(ValueError):
+                        resident.verify_resident_run(self.root)
+            self.run[field] = 3600
+
+    def test_successful_phase_passes_define_anchor_and_errors_block_gate(self):
+        for index, row in enumerate(self.rows):
+            for phase in row["metrics"]["storage"]["maintenance"].values():
+                phase["runs_total"] = 1 if index < 120 else 3
+                phase["errors_total"] = 1
+        self.save()
+        gate = resident.verify_resident_run(self.root)
+        self.assertEqual(gate["anchor_index"], 120)
+        self.assertFalse(gate["capture_duration_coverage_valid"])
+        self.assertFalse(gate["resident_owner_80_percent_gate"])
+
+    def test_boolean_sample_index_is_rejected(self):
+        self.rows[1]["index"] = True
+        self.save()
+        with self.assertRaisesRegex(ValueError, "sample index"):
+            resident.verify_resident_run(self.root)
+
+    def test_capture_cannot_overlap_the_next_sample_or_run_end(self):
+        for index in (200, 719):
+            with self.subTest(index=index):
+                raw = json.loads((self.root / f"resident/{index:06}.json").read_text())
+                raw["pause_secs"] = 20
+                raw["resumed_monotonic"] = raw["started_monotonic"] + 20
+                self.write_capture(index, raw)
+                self.save()
+                with self.assertRaises(ValueError):
+                    resident.verify_resident_run(self.root)
+
+
 if __name__ == "__main__":
     unittest.main()

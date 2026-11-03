@@ -409,3 +409,33 @@ startup passes help/health/readiness, positive heap requests, zero release calls
 with propagation disabled, clean SIGINT exit and socket cleanup. All 27 runnable
 hosted source checks pass, with one intentional publish skip. Real-system load,
 delivery and sustained RSS/performance remain unverified; no deployment occurred.
+
+
+### Resident replay validation correction (2026-11-03)
+
+Offline adversarial regressions found that the resident verifier could pass
+ownership evidence containing nonfinite capture/sample timestamps, overlapping
+capture intervals, or maintenance counter resets. Python's NaN comparisons do
+not establish ordering, and reading only the final error count could hide a
+previous error that disappeared from the trace. The replay now requires finite,
+nonnegative numeric timings (excluding booleans), increasing sample times,
+captures completed before the next sample/end bound, and nonnegative integer
+maintenance counters that never regress. The anchor counts successful phase
+completions (`runs_total - errors_total`); a valid trace containing any phase
+error still fails the gate.
+
+The new cases failed before the fix. All 25 focused harness/resident tests pass,
+including real short-lived child stop/resume/cancellation checks. A fresh
+extraction of the existing `709-resident-attribution.tar.gz` passes all 736
+manifest hashes; the stricter verifier replays all 717 captures to exactly the
+stored resident summary (anchor 124, 593 post-anchor observations, minimum
+91.2030664323%). The frozen bundle is unchanged. Its RSS stability failure and
+`closure_acceptance=false` remain unchanged. This corrects evidence validation;
+it does not resolve the remaining RSS/stability acceptance or identify a memory
+owner. No synthetic soak was restarted, and no daemon/allocator/deployment
+change was made.
+
+PR #711 subsequently merged on 2026-10-30 at
+`ac7fc4b1e678a6b22467fdf7a4e9a1a77b193ac7`. This updates the current code
+posture, not the historical stopped-candidate record or memory acceptance:
+the RSS/stability verdict remains open and the canceled soak must not restart.
