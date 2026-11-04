@@ -2589,6 +2589,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
+name = "r3akt-event-broker"
+version = "0.16.1-rc.1-linux"
+dependencies = [
+ "hex",
+ "hmac",
+ "log",
+ "rand_core 0.6.4",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "rand"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2739,6 +2754,7 @@ dependencies = [
  "log",
  "lxmf-propagation",
  "lxmf-reference",
+ "r3akt-event-broker",
  "rand_core 0.6.4",
  "rmp-serde",
  "rmpv",

@@ -32,7 +32,7 @@ fn fits(database: u64, wal: u64, transaction: u64, budget: u64, ordinary: bool) 
         })
         .is_some_and(|n| n <= budget)
 }
-pub(super) fn install(conn: &Connection, budget: u64) -> rusqlite::Result<()> {
+pub fn install(conn: &Connection, budget: u64) -> rusqlite::Result<()> {
     let (database, transaction) = limits(conn)?;
     let path = conn
         .path()
@@ -82,7 +82,7 @@ fn install_hook(conn: &Connection, budget: u64, multiple: bool) -> rusqlite::Res
         .unwrap_or(true)
     }))
 }
-pub(crate) fn single_transaction<T>(
+pub fn single_transaction<T>(
     conn: &Connection,
     f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
 ) -> rusqlite::Result<T> {
@@ -95,7 +95,7 @@ pub(crate) fn single_transaction<T>(
     install_hook(conn, budget as u64, true)?;
     result
 }
-pub(crate) fn mutation(conn: &Connection, ordinary: bool) -> rusqlite::Result<()> {
+pub fn mutation(conn: &Connection, ordinary: bool) -> rusqlite::Result<()> {
     if !enabled(conn)? {
         return Ok(());
     }
@@ -111,7 +111,7 @@ pub(crate) fn mutation(conn: &Connection, ordinary: bool) -> rusqlite::Result<()
     }
     Ok(())
 }
-pub(crate) fn map_commit_error(error: rusqlite::Error) -> rusqlite::Error {
+pub fn map_commit_error(error: rusqlite::Error) -> rusqlite::Error {
     if matches!(&error,rusqlite::Error::SqliteFailure(code,_) if code.extended_code==rusqlite::ffi::SQLITE_CONSTRAINT_COMMITHOOK)
     {
         super::error(
@@ -129,9 +129,12 @@ mod tests {
     fn native_spills_and_legacy_autocommits_remain_bounded_with_pinned_reader() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("spill.db");
-        let store = crate::storage::messages::MessagesStore::open(&path).unwrap();
+        let mut setup = Connection::open(&path).unwrap();
         let budget = 32 * 1024 * 1024;
-        store.enable_durable_broker(budget).unwrap();
+        super::super::configure_profile(&setup, budget).unwrap();
+        let setup_tx = setup.transaction().unwrap();
+        super::super::initialize_schema(&setup_tx, budget).unwrap();
+        setup_tx.commit().unwrap();
         let conn = Connection::open(&path).unwrap();
         conn.pragma_update(None, "max_page_count", budget / 4 / 4096).unwrap();
         conn.execute_batch("PRAGMA synchronous=FULL;PRAGMA wal_autocheckpoint=0;PRAGMA cache_size=4;CREATE TABLE spill(value BLOB);INSERT INTO spill VALUES(zeroblob(2000000));PRAGMA wal_checkpoint(TRUNCATE);").unwrap();
@@ -173,7 +176,7 @@ mod tests {
         reader.execute_batch("ROLLBACK").unwrap();
         assert_eq!(
             super::wal_maintenance::checkpoint_truncate_nonblocking(&conn).unwrap().0,
-            crate::storage::operation_metrics::WalCheckpointOutcome::Truncated
+            crate::storage::wal_maintenance::WalCheckpointOutcome::Truncated
         );
         mutation(&conn, true).unwrap();
         conn.execute("UPDATE spill SET value=zeroblob(2000000)", []).unwrap();

@@ -43,6 +43,20 @@ class BoundaryTests(unittest.TestCase):
         self.check_seed("rns-embedded-runtime", {"name": "tokio", "optional": True, "kind": None},
                         "package 'rns-embedded-runtime' depends on forbidden crate 'tokio'")
 
+    def test_shared_broker_rejects_domain_and_transport_dependencies(self):
+        for name in ("reticulum-rs-zeromq", "axum"):
+            with self.subTest(dependency=name):
+                self.check_seed("r3akt-event-broker",
+                                {"name": name, "optional": True, "kind": None},
+                                f"package 'r3akt-event-broker' depends on forbidden crate '{name}'")
+
+    def test_shared_broker_rejects_every_workspace_dependency(self):
+        for name in ("reticulum-rs-rpc", "lxmf-wire", "lxmf-reference", "test-support"):
+            with self.subTest(dependency=name):
+                self.check_seed("r3akt-event-broker",
+                                {"name": name, "optional": True, "kind": "dev"},
+                                f"shared broker depends on workspace crate: {name}")
+
     def test_build_dependency_is_rejected(self):
         self.check_seed("rns-embedded-core", {"name": "axum", "optional": False, "kind": "build"},
                         "package 'rns-embedded-core' depends on forbidden crate 'axum'")

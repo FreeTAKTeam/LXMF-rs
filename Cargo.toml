@@ -19,6 +19,7 @@ members = [
   "crates/libs/rns-transport",
   "crates/libs/rns-bluetooth",
   "crates/libs/rns-rpc",
+  "crates/libs/r3akt-event-broker",
   "crates/libs/test-support",
   "crates/apps/lxmf-cli",
   "crates/apps/reticulumd",
@@ -42,6 +43,7 @@ default-members = [
   "crates/libs/rns-transport",
   "crates/libs/rns-bluetooth",
   "crates/libs/rns-rpc",
+  "crates/libs/r3akt-event-broker",
   "crates/libs/test-support",
   "crates/apps/lxmf-cli",
   "crates/apps/reticulumd",
@@ -97,6 +99,7 @@ allowed_library_edges = [
   "reticulum-rs->reticulum-rs-rpc",
   "reticulum-rs->reticulum-rs-transport",
   "reticulum-rs-rpc->lxmf-reference",
+  "reticulum-rs-rpc->r3akt-event-broker",
   "reticulum-rs-rpc->lxmf-propagation",
   "lxmf-propagation->lxmf-wire",
   "lxmf-propagation->reticulum-rs-core",
@@ -129,6 +132,7 @@ allowed_app_edges = [
 ]
 
 [workspace.dependencies]
+r3akt-event-broker = { version = "0.16.1-rc.1-linux", path = "crates/libs/r3akt-event-broker" }
 lxmf-propagation = { version = "0.16.1-rc.1-linux", path = "crates/libs/lxmf-propagation", default-features = false }
 lxmf-reference = { version = "0.16.1-rc.1-linux", path = "crates/libs/lxmf-reference" }
 rns-embedded-core = { version = "0.16.1-rc.1-linux", path = "crates/libs/rns-embedded-core" }
