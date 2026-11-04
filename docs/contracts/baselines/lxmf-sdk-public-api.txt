@@ -3640,12 +3640,12 @@ pub lxmf_sdk::WorkflowPeerReadyResult::identity: lxmf_sdk::domain::IdentityRef
 pub lxmf_sdk::WorkflowPeerReadyResult::was_created: bool
 pub struct lxmf_sdk::ZmqPipelineBackendClient
 impl lxmf_sdk::ZmqPipelineBackendClient
-pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_ack_stored(&self, request: rns_rpc::broker::AckStoredRequest) -> core::result::Result<rns_rpc::broker::EventPosition, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_ack_stored(&self, request: r3akt_event_broker::contracts::AckStoredRequest) -> core::result::Result<r3akt_event_broker::contracts::EventPosition, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_admit(&self, request: rns_rpc::broker::AdmitRequest) -> core::result::Result<rns_rpc::broker::OperationReceipt, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_announces(&self, request: rns_rpc::broker::AnnounceProjectionRequest) -> core::result::Result<serde_json::value::Value, lxmf_sdk::SdkError>
-pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_fetch(&self, request: rns_rpc::broker::FetchRequest) -> core::result::Result<rns_rpc::broker::BrokerBatch, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_fetch(&self, request: r3akt_event_broker::contracts::FetchRequest) -> core::result::Result<r3akt_event_broker::contracts::BrokerBatch, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_reconcile(&self, request: rns_rpc::broker::ReconcileRequest) -> core::result::Result<core::option::Option<rns_rpc::broker::OperationReceipt>, lxmf_sdk::SdkError>
-pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_resume(&self, request: rns_rpc::broker::ResumeRequest) -> core::result::Result<rns_rpc::broker::BrokerCheckpoint, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::broker_resume(&self, request: r3akt_event_broker::contracts::ResumeRequest) -> core::result::Result<r3akt_event_broker::contracts::BrokerCheckpoint, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::negotiate_durable_broker(&self) -> core::result::Result<lxmf_sdk::capability::NegotiationResponse, lxmf_sdk::SdkError>
 impl lxmf_sdk::ZmqPipelineBackendClient
 pub fn lxmf_sdk::ZmqPipelineBackendClient::delivery_stamp_policy_get(&self) -> core::result::Result<lxmf_sdk::domain::DeliveryStampPolicyResult, lxmf_sdk::SdkError>

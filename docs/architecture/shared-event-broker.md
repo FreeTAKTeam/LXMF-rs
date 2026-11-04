@@ -163,3 +163,15 @@ history at the current tail (`Latest`). The operation refuses to reset an
 existing consumer, preserves owner/scope binding, charges metadata, and uses the
 same capacity limit. Legacy LXMF resume still requires explicit recovery after
 pruning, with no automatic bootstrap or history skip.
+
+## SDK API baseline review
+
+The extraction changes canonical ownership of three SDK broker method signatures
+(`broker_ack_stored`, `broker_fetch`, `broker_resume`) as rendered by
+`cargo-public-api`: the request/result types now originate in
+`r3akt_event_broker::contracts`. The baseline records only those three name
+changes. `rns_rpc::broker` continues to re-export the same concrete types;
+a compile-time SDK regression assigns each method to a function pointer using
+its previous `rns_rpc::broker` parameter and result paths. The existing legacy
+JSON and authenticated receipt fixtures remain unchanged. This is a reviewed
+ownership change, with no wire or caller type conversion added.
