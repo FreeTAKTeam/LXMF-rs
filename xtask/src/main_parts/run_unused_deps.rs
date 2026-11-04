@@ -290,6 +290,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
         PublishWave::All => {
             static ALL_PUBLIC_CRATES: &[PublishedCrate] = &[
                 PublishedCrate {
+                    package: "r3akt-event-broker",
+                    manifest_path: "crates/libs/r3akt-event-broker/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "reticulum-rs-zeromq",
                     manifest_path: "vendor/zeromq/Cargo.toml",
                 },

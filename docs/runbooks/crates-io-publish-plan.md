@@ -31,6 +31,7 @@ Use a two-tier public model:
   - `lxmf`
   - `reticulum-rs`
 - Component crates:
+  - `r3akt-event-broker` (transport-independent durable event journal)
   - `reticulum-rs-zeromq` (the patched Tokio/TCP transport dependency)
   - `lxmf-reference`
   - `lxmf-wire`
@@ -74,6 +75,7 @@ not have to rewrite `use` paths just to complete the package rename.
 
 | Current workspace package | crates.io package | Rust crate name | Version target | Publish |
 | --- | --- | --- | --- | --- |
+| `r3akt-event-broker` | `r3akt-event-broker` | `r3akt_event_broker` | GitHub release version | yes |
 | `lxmf-reference` | `lxmf-reference` | `lxmf_reference` | GitHub release version | yes |
 | `vendor/zeromq` | `reticulum-rs-zeromq` | `zeromq` | GitHub release version | yes |
 | `lxmf-core` | `lxmf-wire` | `lxmf_core` | GitHub release version | yes |
@@ -196,27 +198,28 @@ Publish in dependency order, not with a blanket `cargo publish --workspace`.
 
 Recommended order:
 
-1. `reticulum-rs-zeromq`
-2. `lxmf-reference`
-3. `reticulum-rs-core`
-4. `lxmf-wire`
-5. `lxmf-propagation`
-6. `rns-embedded-core`
-7. `rns-embedded-runtime`
-8. `rns-embedded-ffi`
-9. `reticulum-rs-bluetooth`
-10. `reticulum-rs-transport`
-11. `reticulum-rs-rpc`
-12. `meshchat-api`
-13. `lxmf-sdk`
-14. `lxmf-runtime`
-15. `rns-embedded-mininode`
-16. `lxmf-embedded-mini`
-17. `reticulum-rs`
-18. `lxmf`
-19. `lxmf-cli`
-20. `reticulumd`
-21. `rns-tools`
+1. `r3akt-event-broker`
+2. `reticulum-rs-zeromq`
+3. `lxmf-reference`
+4. `reticulum-rs-core`
+5. `lxmf-wire`
+6. `lxmf-propagation`
+7. `rns-embedded-core`
+8. `rns-embedded-runtime`
+9. `rns-embedded-ffi`
+10. `reticulum-rs-bluetooth`
+11. `reticulum-rs-transport`
+12. `reticulum-rs-rpc`
+13. `meshchat-api`
+14. `lxmf-sdk`
+15. `lxmf-runtime`
+16. `rns-embedded-mininode`
+17. `lxmf-embedded-mini`
+18. `reticulum-rs`
+19. `lxmf`
+20. `lxmf-cli`
+21. `reticulumd`
+22. `rns-tools`
 
 The fork retains upstream MIT attribution and the `zeromq` Rust import name.
 Its distinct package name is required: publishing a path dependency named

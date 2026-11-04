@@ -200,6 +200,16 @@ for package in "${no_std_core[@]}"; do
 done
 
 # 1) Core dependency constraints (hard policy).
+# The canonical broker must also remain reusable outside this workspace.
+broker_workspace_dependencies="$(jq -r '
+  .workspace_members as $members
+  | [.packages[] | . as $package | select($members | index($package.id)) | .name] as $names
+  | .packages[] | select(.name == "r3akt-event-broker")
+  | .dependencies[]? | .name as $dependency | select($names | index($dependency)) | .name
+' "$METADATA_FILE")"
+[[ -z "$broker_workspace_dependencies" ]] || fail "shared broker depends on workspace crate: ${broker_workspace_dependencies}"
+check_forbidden_dependency "r3akt-event-broker" "reticulum-rs-rpc" "reticulum-rs-core" "reticulum-rs-transport" "lxmf-wire" "lxmf-sdk" "lxmf-runtime" "zeromq" "reticulum-rs-zeromq" "axum" "ureq" "reqwest"
+check_no_app_dependencies "r3akt-event-broker" "lxmf-cli" "rns-tools" "reticulumd"
 check_forbidden_dependency "lxmf-wire" "tokio" "clap" "ureq"
 check_forbidden_dependency "reticulum-rs-core" "tokio" "clap"
 check_forbidden_dependency "reticulum-rs-transport" "clap"
