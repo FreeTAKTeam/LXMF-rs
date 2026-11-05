@@ -651,7 +651,13 @@ impl NativeRnodeBleKissInterface {
                     }
                 }
                 if let Some(monitor) = command_monitor.as_mut() {
-                    if let Err(err) = monitor.validate_startup_deadline() {
+                    let validation = monitor.validate_startup_deadline();
+                    if let Some(status) = rnode_status.as_ref() {
+                        RnodeBleRuntimeStatusHandle::new(status.clone()).update_runtime_status(
+                            monitor.runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str()),
+                        );
+                    }
+                    if let Err(err) = validation {
                         log::warn!(
                             "RNode BLE startup response validation failed iface={} err={}",
                             label,
@@ -659,11 +665,6 @@ impl NativeRnodeBleKissInterface {
                         );
                         reconnect_needed = true;
                         break;
-                    }
-                    if let Some(status) = rnode_status.as_ref() {
-                        RnodeBleRuntimeStatusHandle::new(status.clone()).update_runtime_status(
-                            monitor.runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str()),
-                        );
                     }
                 }
             }

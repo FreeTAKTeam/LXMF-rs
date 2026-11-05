@@ -149,9 +149,7 @@ fn startup_accepts_only_missing_radio_state_for_compatible_firmware() {
         .is_some_and(|warning| warning.contains("omitted the startup radio-state response")));
 }
 
-#[test]
-fn startup_compatibility_rejects_other_radio_mismatches() {
-    let config = LoraConfig::us915_default();
+fn startup_notification_with_bandwidth_mismatch(config: LoraConfig) -> RnodeBleNotification {
     let mut notification = startup_notification_without_radio_state(config);
     let (_, bandwidth) = notification
         .commands
@@ -159,6 +157,13 @@ fn startup_compatibility_rejects_other_radio_mismatches() {
         .find(|(command, _)| *command == CMD_BANDWIDTH)
         .expect("bandwidth response");
     *bandwidth = (config.bandwidth_hz + 1).to_be_bytes().to_vec();
+    notification
+}
+
+#[test]
+fn startup_compatibility_rejects_other_radio_mismatches() {
+    let config = LoraConfig::us915_default();
+    let notification = startup_notification_with_bandwidth_mismatch(config);
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
     monitor.accept_notification(&notification).expect("accept startup responses");
 
@@ -172,6 +177,23 @@ fn startup_compatibility_rejects_other_radio_mismatches() {
         monitor.runtime_status_json("ble://wrong-rnode")["startup_compatibility_warning"],
         serde_json::Value::Null
     );
+}
+
+#[test]
+fn startup_validation_failure_is_recorded_in_runtime_status() {
+    let config = LoraConfig::us915_default();
+    let notification = startup_notification_with_bandwidth_mismatch(config);
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+    monitor.accept_notification(&notification).expect("accept startup responses");
+
+    let error = monitor
+        .validate_startup_deadline()
+        .expect_err("bandwidth mismatch must remain fatal");
+
+    let status = monitor.runtime_status_json("ble://wrong-rnode");
+    assert_eq!(status["last_command_error"].as_str(), Some(error.as_str()));
+    assert_eq!(status["online"], serde_json::Value::Bool(false));
+    assert_eq!(monitor.last_command_error(), Some(error.as_str()));
 }
 
 #[test]

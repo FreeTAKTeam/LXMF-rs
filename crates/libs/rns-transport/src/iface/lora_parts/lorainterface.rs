@@ -203,6 +203,12 @@ impl LoraInterface {
         self.online = false;
     }
 
+    /// Stop reporting the radio as online and keep the reason in `last_command_error`.
+    pub(crate) fn mark_link_error(&mut self, error: String) {
+        self.online = false;
+        self.last_command_error = Some(error);
+    }
+
     #[must_use]
     pub fn flow_control(&self) -> bool {
         self.flow_control

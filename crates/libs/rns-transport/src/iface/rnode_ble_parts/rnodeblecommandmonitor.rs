@@ -142,9 +142,12 @@ impl RnodeBleCommandMonitor {
                 Ok(false) | Err(_) => Err(error),
             },
         };
-        if validation.is_ok() {
-            self.startup_validated = true;
-            self.startup_payload_writes_enabled = true;
+        match &validation {
+            Ok(()) => {
+                self.startup_validated = true;
+                self.startup_payload_writes_enabled = true;
+            }
+            Err(error) => self.lora.mark_link_error(error.clone()),
         }
         validation
     }
