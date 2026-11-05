@@ -187,7 +187,5 @@ fn mark_lora_link_offline(inner: &Arc<std::sync::Mutex<LoraInterface>>) {
 
 fn mark_lora_link_error(inner: &Arc<std::sync::Mutex<LoraInterface>>, error: String) {
     log::warn!("{error}");
-    let mut interface = inner.lock().expect("lora interface mutex poisoned");
-    interface.mark_link_offline();
-    interface.last_command_error = Some(error);
+    inner.lock().expect("lora interface mutex poisoned").mark_link_error(error);
 }
