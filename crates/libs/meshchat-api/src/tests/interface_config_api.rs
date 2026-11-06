@@ -9,7 +9,7 @@ fn config_router(path: PathBuf) -> Router {
         persist: None,
         config: Some(Arc::new(interface_control::ConfigStore::new(path))),
     });
-    build_router(state, None)
+    build_router(state, None, crate::request_policy::RequestPolicy::loopback())
 }
 
 #[tokio::test]
@@ -119,6 +119,7 @@ async fn interface_export_selection_and_invalid_write_preserve_config() {
     let request = Request::builder()
         .method("POST")
         .uri("/api/v1/reticulum/interfaces/export")
+        .header("host", "127.0.0.1:8000")
         .header("content-type", "application/json")
         .body(Body::from(json!({"selected_interface_names":["first"]}).to_string()))
         .expect("request");
@@ -211,6 +212,7 @@ async fn discovered_interfaces_and_discovery_policy_roundtrip() {
             config: Some(Arc::new(interface_control::ConfigStore::new(path.clone()))),
         }),
         None,
+        crate::request_policy::RequestPolicy::loopback(),
     );
 
     let (status, listed) =
