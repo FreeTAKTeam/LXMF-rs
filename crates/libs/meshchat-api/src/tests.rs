@@ -6,9 +6,10 @@ use axum::{
 use tower::ServiceExt;
 
 mod interface_config_api;
+mod request_policy;
 
 async fn call(app: Router, method: &str, path: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let mut request = Request::builder().method(method).uri(path);
+    let mut request = Request::builder().method(method).uri(path).header("host", "127.0.0.1:8000");
     if body.is_some() {
         request = request.header("content-type", "application/json");
     }
