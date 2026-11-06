@@ -1,12 +1,16 @@
 [package]
 name = "r3akt-event-broker"
-version = "0.16.1-rc.1-linux"
+version = "0.16.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 license-file.workspace = true
 repository.workspace = true
 description = "Transport-independent durable SQLite event journal and authenticated consumer checkpoints"
+readme = "README.md"
+documentation = "https://docs.rs/r3akt-event-broker"
+keywords = ["event-broker", "sqlite", "journal", "durability", "messaging"]
+categories = ["database", "data-structures"]
 
 [dependencies]
 rusqlite.workspace = true

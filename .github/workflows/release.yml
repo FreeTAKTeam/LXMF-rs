@@ -596,6 +596,29 @@ jobs:
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.prepare.outputs.prerelease == 'true' && 'false' || 'legacy' }}
 
+  publish-crates:
+    name: Queue crates.io publication
+    needs: [prepare, release]
+    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Dispatch public crate publication for the released tag
+        # GITHUB_TOKEN release events do not trigger another workflow, but
+        # workflow_dispatch does. Keep the tag prefix in version so both
+        # entrypoints share the publisher's concurrency group.
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run crates-io-publish.yml \
+            --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_TAG" \
+            -f ref="$RELEASE_TAG" -f version="$RELEASE_TAG" -f dry_run=false
+
   homebrew:
     name: Update Homebrew tap
     needs: [prepare, release]

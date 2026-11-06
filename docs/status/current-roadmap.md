@@ -1,5 +1,16 @@
 # Current Roadmap Status
 
+The 2026-11-06 full release preparation aligns the daemon, SDK and 22 public
+packages on `0.16.1`, adding the shared `r3akt-event-broker` package while
+preserving legacy RPC/SDK broker imports. The release train includes the Linux
+candidate changes and the subsequent MeshChat host/origin policy, admitted
+delivery proofs, shared-client proof returns, rejected IFAC startup records,
+propagation quota indexes and BLE startup diagnostics. See the
+[v0.16.1 release notes](../release-notes-v0.16.1.md) for the full platform
+inventory and upgrade requirements. Exact-source release validation and
+publication remain to be recorded; preparing this train does not promote any
+parity row or close the operational and external-client acceptance work below.
+
 The #608 rejected-startup RPC view now retains credential-only IFAC interfaces
 and I2P-local credential aliases when a carrier field prevents configuration
 parsing. Negative IFAC sizes retain the pinned carrier-default semantics in

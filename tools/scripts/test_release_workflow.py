@@ -1,8 +1,10 @@
 """Exercise release selection, literal refs and the publication dependency gate."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
+import textwrap
 import unittest
 
 from release_config import classify_tag, release_metadata, validate_needs
@@ -114,6 +116,46 @@ class ReleaseConfigurationTests(unittest.TestCase):
 
 
 class ReleaseWorkflowWiringTests(unittest.TestCase):
+    def test_stable_crate_publication_requires_a_successful_published_release(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        job = release.split("\n  publish-crates:\n", 1)[1].split("\n  homebrew:\n", 1)[0]
+        self.assertIn("needs: [prepare, release]", job)
+        self.assertIn("if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.prerelease == 'false'", job)
+        self.assertNotIn("always()", job)
+        self.assertIn("actions: write", job)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", job)
+        self.assertIn("RELEASE_TAG: ${{ needs.prepare.outputs.tag }}", job)
+
+    def test_crate_dispatch_uses_the_tag_for_source_and_concurrency_and_propagates_failure(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        job = release.split("\n  publish-crates:\n", 1)[1].split("\n  homebrew:\n", 1)[0]
+        script = textwrap.dedent(job.split("        run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gh = root / "gh"
+            gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "with open(os.environ['GH_ARGUMENTS'], 'w') as destination:\n"
+                "    json.dump(sys.argv[1:], destination)\n"
+                "sys.exit(int(os.environ['GH_EXIT_CODE']))\n"
+            )
+            gh.chmod(0o755)
+            arguments = root / "arguments.json"
+            for exit_code in [0, 1]:
+                with self.subTest(exit_code=exit_code):
+                    env = dict(os.environ, PATH=f"{root}{os.pathsep}{os.environ['PATH']}",
+                               GITHUB_REPOSITORY="FreeTAKTeam/LXMF-rs", RELEASE_TAG="v0.16.1",
+                               GH_ARGUMENTS=str(arguments), GH_EXIT_CODE=str(exit_code))
+                    result = subprocess.run(["bash", "-c", script], env=env,
+                                            text=True, capture_output=True)
+                    self.assertEqual(result.returncode, exit_code, result.stderr)
+                    self.assertEqual(json.loads(arguments.read_text()), [
+                        "workflow", "run", "crates-io-publish.yml",
+                        "--repo", "FreeTAKTeam/LXMF-rs", "--ref", "v0.16.1",
+                        "-f", "ref=v0.16.1", "-f", "version=v0.16.1", "-f", "dry_run=false",
+                    ])
+
     def test_workflows_use_shared_policy_and_publish_only_after_guard(self):
         release = (ROOT / ".github/workflows/release.yml").read_text()
         self.assertIn("matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}", release)
