@@ -229,30 +229,34 @@ pub(super) async fn handle_data<'a>(
                 );
                 return;
             }
-            if handler
-                .received_data_tx
-                .send(ReceivedData {
-                    destination: packet.destination,
-                    data: buffer,
-                    payload_mode: ReceivedPayloadMode::DestinationStripped,
-                    ratchet_used,
-                    context: Some(packet.context),
-                    request_id: if matches!(
-                        packet.context,
-                        PacketContext::Request | PacketContext::Response
-                    ) {
-                        let hash = packet.hash().to_bytes();
-                        let mut request_id = [0u8; 16];
-                        request_id.copy_from_slice(&hash[..16]);
-                        Some(request_id)
-                    } else {
-                        None
-                    },
-                    hops: Some(packet.header.hops),
-                    interface: packet.transport.map(|value| value.as_slice().to_vec()),
-                })
-                .is_err()
-            {
+            let deferred = destination.lock().await.deferred_proofs;
+            let received = ReceivedData {
+                destination: packet.destination,
+                data: buffer,
+                payload_mode: ReceivedPayloadMode::DestinationStripped,
+                ratchet_used,
+                context: Some(packet.context),
+                request_id: if matches!(
+                    packet.context,
+                    PacketContext::Request | PacketContext::Response
+                ) {
+                    let hash = packet.hash().to_bytes();
+                    let mut request_id = [0u8; 16];
+                    request_id.copy_from_slice(&hash[..16]);
+                    Some(request_id)
+                } else {
+                    None
+                },
+                hops: Some(packet.header.hops),
+                interface: packet.transport.map(|value| value.as_slice().to_vec()),
+            };
+            let proof = (deferred && packet.context == PacketContext::None)
+                .then(|| DestinationProof::new(packet, iface));
+            let proof_consumer = handler
+                .received_data_with_proof_tx
+                .send(ReceivedDataWithProof { received: received.clone(), proof })
+                .is_ok();
+            if handler.received_data_tx.send(received).is_err() && !proof_consumer {
                 // A broadcast sender has no durable queue. No subscribers is
                 // valid when the transport is used without an application
                 // event consumer, but it must remain observable while
@@ -300,7 +304,7 @@ pub(super) async fn handle_data<'a>(
             // crate. Proving those too would be redundant at best and
             // could plausibly confuse a peer expecting exactly one
             // specific ack shape per context.
-            if packet.context == PacketContext::None {
+            if !deferred && packet.context == PacketContext::None {
                 let packet_hash = packet.hash();
                 let signature = {
                     let destination_guard = destination.lock().await;

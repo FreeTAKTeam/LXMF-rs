@@ -1,5 +1,17 @@
 # Current Roadmap Status
 
+The #719 receive-side proof policy defers opportunistic LXMF proofs until
+existing delivery admission and durable storage succeed. Default, imported and
+restored delivery identities opt in; ordinary Reticulum destinations retain their
+proof policy. Accepted duplicates can regenerate the original wire-hash proof
+without another inbound delivery. A transport proof confirms receipt, separately
+from signature metadata, durable broker ACKs and application responses. Local
+regressions cover blocked commit, broker contention rejection, exact retry, reconnect and
+reopened storage. Pinned RNS 1.5.2 / LXMF 0.9.6 senders reach native `DELIVERED`
+for opportunistic packets, direct packets and a 16 KB direct Resource.
+Columba/Pixel and Ratspeak/Windows acceptance and the original unlocalized direct
+report remain open; this increment does not establish those live outcomes.
+
 The #608 I2P startup path now preserves nonempty legacy IFAC aliases literally,
 including whitespace, and falls back to them when canonical credentials are
 empty. A configured fake-SAM regression checks plaintext rejection before first

@@ -12,6 +12,7 @@ impl Destination<PrivateIdentity, Input, Single> {
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
             path_response_queue: VecDeque::new(),
+            deferred_proofs: false,
             proof_strategy: ProofStrategy::default(),
             proof_requested_callback: None,
         }
@@ -24,6 +25,17 @@ impl Destination<PrivateIdentity, Input, Single> {
     /// delivery confirmation. See `ProofStrategy`'s own doc comment.
     pub fn set_proof_strategy(&mut self, strategy: ProofStrategy) {
         self.proof_strategy = strategy;
+    }
+
+    /// Defer opportunistic proofs to application admission. While enabled, automatic
+    /// proof strategy callbacks are bypassed. Consume the proof-capable transport
+    /// event stream and explicitly complete a proof only after accepting its data.
+    pub fn set_deferred_proofs(&mut self, enabled: bool) {
+        self.deferred_proofs = enabled;
+    }
+
+    pub fn deferred_proofs(&self) -> bool {
+        self.deferred_proofs
     }
 
     /// Registers the callback consulted when `proof_strategy ==
@@ -266,6 +278,7 @@ impl Destination<Identity, Output, Single> {
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
             path_response_queue: VecDeque::new(),
+            deferred_proofs: false,
             proof_strategy: ProofStrategy::default(),
             proof_requested_callback: None,
         }
@@ -284,6 +297,7 @@ impl<D: Direction> Destination<EmptyIdentity, D, Plain> {
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
             path_response_queue: VecDeque::new(),
+            deferred_proofs: false,
             proof_strategy: ProofStrategy::default(),
             proof_requested_callback: None,
         }

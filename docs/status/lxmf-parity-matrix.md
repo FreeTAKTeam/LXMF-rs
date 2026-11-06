@@ -220,6 +220,28 @@ unchanged. See the [MeshChat API runbook](../runbooks/meshchat-api.md) and
 
 ### Integrated delivery and router compatibility
 
+- Issue #719 scopes deferred opportunistic receipts to daemon LXMF delivery
+  identities, including imported and restored identities. The transport exposes
+  a separate bounded proof-capable event stream while preserving `ReceivedData`
+  and `ProofStrategy` source compatibility. A proof handle expires after 180
+  seconds and binds the original encrypted packet hash to its ingress interface.
+  Decode, stamp, ignored-source and storage failures remain unproved. Existing
+  signature metadata admission remains unchanged: a receipt confirms accepted
+  storage, not sender-signature attestation. This deliberately waits longer than
+  pinned Python `LXMRouter.delivery_packet`, which proves before parsing.
+  `tests/delivery_proofs.rs` exercises the production worker, blocked SQLite
+  commitment, contention rejection with durable broker enabled, one retained journal delivery event,
+  rejected intake, exact ciphertext retries, new ingress interfaces and reopened
+  storage with a new transport. Identity registration tests cover
+  bootstrap, import, create and restoration. The Python-to-Rust smoke lane now
+  requires native LXMF `DELIVERED` plus a validated PacketReceipt/Resource proof
+  and records message ID, method, proof binding and Python versions. Live pinned
+  RNS 1.5.2 / LXMF 0.9.6 senders reached `DELIVERED` for opportunistic packets,
+  direct packets and a 16 KB direct Resource. Durable
+  broker ACKs and command responses are separate signals. Physical Columba/Pixel
+  and Ratspeak/Windows evidence and the original direct-link symptom remain
+  unverified; direct Link/Resource mechanisms retain their own native receipts.
+
 - Direct delivery can reuse an identified inbound backchannel link for the
   same LXMF delivery destination, while closed or failed cached links are
   removed before normal link establishment resumes.

@@ -1798,7 +1798,8 @@ write_report() {
     "${PERFORMANCE_END_NS}" \
     "${PERFORMANCE_PAYLOAD_BYTES}" \
     "${PY_PN_METADATA_JSON}" \
-    "${RUST_PN_METADATA_JSON}"
+    "${RUST_PN_METADATA_JSON}" \
+    "${PY_SEND_LOG}"
 import json
 import sys
 from pathlib import Path
@@ -1826,6 +1827,16 @@ from pathlib import Path
     performance_payload_bytes,
 ) = sys.argv[1:21]
 py_pn_metadata, rust_pn_metadata = sys.argv[21:23]
+python_sender_log = Path(sys.argv[23])
+
+python_sender = (json.loads(python_sender_log.read_text())
+                 if compat_case.endswith("_python_to_rust") and python_sender_log.is_file() else None)
+if python_sender is not None:
+    assert Path(hook_message_file).name == python_sender["message_id"], "stored LXMF ID differs from sender"
+    if compat_case == "opportunistic_python_to_rust":
+        for proof in python_sender["validated_proofs"]:
+            assert proof["proof_destination"] == proof["packet_hash"][:32], "proof reverse-routing destination mismatch"
+            assert proof["proof_data_hex"][:64] == proof["packet_hash"], "proof hash mismatch"
 
 report = {
     "status": "pass",
@@ -1838,6 +1849,7 @@ report = {
         "hook_message_file": hook_message_file,
         "python_stored_message": py_stored_message_json,
         "rust_evidence_dir": rust_evidence_dir,
+        "python_sender": python_sender,
         "python_pn_metadata_at_rust": json.loads(Path(py_pn_metadata).read_text()) if Path(py_pn_metadata).is_file() else None,
         "rust_pn_metadata_at_python": json.loads(Path(rust_pn_metadata).read_text()) if Path(rust_pn_metadata).is_file() else None,
     },
@@ -2946,6 +2958,38 @@ timeout_secs = max(float(timeout_secs), 1.0)
 destination_hash = bytes.fromhex(destination_hash_hex)
 propagation_hash = bytes.fromhex(propagation_hash_hex)
 
+# Preserve Python's native cryptographic validation and delivery callback.
+# Capture the receipt only after that validator accepts the returned wire proof.
+validated_proofs = []
+validated_resource_proofs = []
+original_resource_validate = RNS.Resource.validate_proof
+
+def validate_resource_proof(resource, proof_data):
+    result = original_resource_validate(resource, proof_data)
+    if resource.status == RNS.Resource.COMPLETE:
+        validated_resource_proofs.append({
+            "resource_hash": resource.get_hash().hex(),
+            "proof_data_hex": proof_data.hex(),
+            "resource_status": int(resource.status),
+        })
+    return result
+
+RNS.Resource.validate_proof = validate_resource_proof
+original_validate = RNS.PacketReceipt.validate_proof_packet
+
+def validate_proof_packet(receipt, proof_packet):
+    accepted = original_validate(receipt, proof_packet)
+    if accepted:
+        validated_proofs.append({
+            "packet_hash": receipt.hash.hex(),
+            "proof_destination": proof_packet.destination_hash.hex(),
+            "proof_data_hex": proof_packet.data.hex(),
+            "receipt_status": int(receipt.status),
+            "proved": receipt.proved,
+        })
+    return accepted
+
+RNS.PacketReceipt.validate_proof_packet = validate_proof_packet
 RNS.Reticulum(configdir=rns_config, loglevel=0)
 identity = RNS.Identity()
 router = LXMF.LXMRouter(identity=identity, storagepath=storage_dir)
@@ -3033,11 +3077,21 @@ router.handle_outbound(message)
 
 deadline = time.time() + timeout_secs
 while time.time() < deadline:
-    if message.state in (LXMF.LXMessage.DELIVERED, LXMF.LXMessage.SENT):
+    # Propagation SENT is custody at the forwarding node. Direct and
+    # opportunistic delivery require the final receiver's native proof.
+    completed = (message.state == LXMF.LXMessage.SENT if case_id == "propagated_python_to_rust"
+                 else message.state == LXMF.LXMessage.DELIVERED and bool(validated_proofs or validated_resource_proofs))
+    if completed:
         print(
             json.dumps(
                 {
                     "state": int(message.state),
+                    "method": int(message.method),
+                    "message_id": message.hash.hex(),
+                    "python_reticulum_version": RNS.__version__,
+                    "python_lxmf_version": LXMF.__version__,
+                    "validated_proofs": validated_proofs,
+                    "validated_resource_proofs": validated_resource_proofs,
                     "case": case_id,
                     "destination": destination_hash_hex,
                     "source": RNS.hexrep(source.hash, delimit=False).lower(),

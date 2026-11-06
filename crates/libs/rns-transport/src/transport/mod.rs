@@ -74,6 +74,8 @@ mod link_table;
 mod packet_cache;
 pub use link_packet_receipt::LinkPacketReceipt;
 mod destination_cache;
+mod destination_proof;
+pub use destination_proof::{DestinationProof, ReceivedDataWithProof};
 mod packet_disk_cache;
 mod path_requests;
 mod path_table;
@@ -148,7 +150,6 @@ pub mod test_bridge {
 // Transport-wide packet tracing remains off by default to keep runtime noise low.
 const PACKET_TRACE: bool = false;
 pub const PATHFINDER_M: usize = 128; // Max hops
-
 #[allow(dead_code)]
 const INTERVAL_LINKS_CHECK: Duration = Duration::from_secs(1);
 #[allow(dead_code)]
@@ -161,17 +162,14 @@ const INTERVAL_KEEP_PACKET_CACHED: Duration = Duration::from_secs(180);
 const INTERVAL_PACKET_CACHE_CLEANUP: Duration = Duration::from_secs(90);
 const INTERVAL_PACKET_MEMBERSHIP_MAINTENANCE: Duration = Duration::from_millis(250);
 const LOCAL_PATH_RESPONSE_COOLDOWN: Duration = Duration::from_millis(750);
-
 /// How long an auto-spawned per-peer unicast UDP iface may sit idle
 /// before `handle_cleanup` tears it down. Sized so typical peers'
 /// announce cadences (default 300s) refresh it several times over.
 const UNICAST_IFACE_IDLE_TIMEOUT: Duration = Duration::from_secs(1800);
-
 // Other constants
 #[allow(dead_code)]
 const KEEP_ALIVE_REQUEST: u8 = 0xFF;
 const KEEP_ALIVE_RESPONSE: u8 = 0xFE;
-
 #[derive(Clone)]
 pub struct ReceivedData {
     pub destination: AddressHash,
@@ -277,6 +275,7 @@ pub(crate) struct TransportHandler {
 
     link_in_event_tx: broadcast::Sender<LinkEventData>,
     received_data_tx: broadcast::Sender<ReceivedData>,
+    received_data_with_proof_tx: broadcast::Sender<ReceivedDataWithProof>,
     ratchet_store: Option<RatchetStore>,
 
     resource_manager: ResourceManager,
@@ -341,6 +340,7 @@ pub struct Transport {
     link_in_event_tx: broadcast::Sender<LinkEventData>,
     link_out_event_tx: broadcast::Sender<LinkEventData>,
     received_data_tx: broadcast::Sender<ReceivedData>,
+    received_data_with_proof_tx: broadcast::Sender<ReceivedDataWithProof>,
     iface_messages_tx: broadcast::Sender<RxMessage>,
     resource_events_tx: broadcast::Sender<ResourceEvent>,
     handler: Arc<Mutex<TransportHandler>>,
