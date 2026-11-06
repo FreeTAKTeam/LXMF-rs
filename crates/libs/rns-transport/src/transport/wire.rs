@@ -71,8 +71,15 @@ pub(super) async fn handle_proof(
                 None
             }
         };
-        if let (true, Some(source_iface)) = (handler.config.transport_enabled, source_iface) {
-            if source_iface != iface {
+        if let Some(source_iface) = source_iface {
+            // Returning proofs for local clients is local service even when
+            // this shared daemon does not offer network transit (RNS 1.5.4).
+            let allow_return = handler.config.transport_enabled || {
+                let manager = handler.iface_manager.lock().await;
+                manager.is_local_client_interface(&source_iface)
+                    || manager.is_local_client_interface(&iface)
+            };
+            if allow_return && source_iface != iface {
                 log::debug!(
                     "[tp-diag] destination_proof_reverse_forward node={} proof_dst={} source_iface={} ingress_iface={}",
                     handler.config.name,

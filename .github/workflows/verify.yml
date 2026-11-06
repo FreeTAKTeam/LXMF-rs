@@ -678,6 +678,16 @@ jobs:
           pinned_python_ordinary_proof_filter_matches_production_ingress
           -- --ignored --nocapture --test-threads=1
 
+      - name: Verify pinned Python disabled-transport local proof policy
+        if: ${{ matrix.suite == 'interfaces' }}
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulum-rs-transport --lib
+          pinned_python_disabled_transport_local_proof_forwarding_policy
+          -- --ignored --nocapture --test-threads=1
+
       - name: Verify native hash generations and accepted outbound remembering
         if: ${{ matrix.suite == 'interfaces' }}
         run: >-

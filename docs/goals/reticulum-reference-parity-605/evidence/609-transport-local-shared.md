@@ -1273,3 +1273,46 @@ counts, persistence assertions and deadlines remain intact; no test serializatio
 or production behavior changed. Default-parallel local execution and CI's
 explicit four-thread invocation both pass all three cases, and the #369 scanner,
 formatting and focused all-feature Clippy pass.
+
+
+## Disabled shared-daemon destination-proof return (2026-11-06)
+
+A remaining production gate admitted ordinary destination-proof return only when
+transport was enabled. Frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Transport.py:2734` also admits return when either the original Data source or
+proof ingress is a local client. This is local service, not ordinary transit.
+The fix uses the existing parent-authoritative `is_local_client_interface`
+classification for both ends, keeping the same-interface no-echo guard.
+
+The native regression captures source context through production `handle_data`
+and invokes production `handle_proof` across eight implicit/explicit × source
+child/ordinary × proof-ingress child/ordinary cells. It asserts exact bytes,
+exact Direct destination and exactly one output for each local-boundary case;
+ordinary disabled transit and a same-ingress proof emit nothing. Signatures are
+intentionally opaque: this exercises relay policy, not recipient authentication.
+The pinned regression executes the exact AST-selected reverse-proof block from
+the frozen source for all four policy cells, with exact output assertions. This
+is isolated source-block evidence, not Python live-socket or route-creation
+coverage; Verify's interfaces lane explicitly runs it.
+
+The pre-existing reverse-route model remains incomplete: Rust records source
+context but does not retain Python's expected outbound interface or consume the
+route after its first proof. Wrong-ingress rejection and one-shot reverse-route
+consumption remain tracked under #609. These limitations require their own
+production regression and send/return lifecycle change; this gate correction
+makes no claim of full ordinary-proof or shared-instance parity.
+
+Validation:
+
+- Native local-proof matrix: failed before the gate change with an empty return
+  queue; passed after (eight policy/shape cells, plus same-interface no echo).
+- Frozen Python source-block regression: passed at `99de23c040d507e3fefca19e87b182302902725d`.
+- Full transport library: 1,072 passed, 14 explicitly ignored reference tests.
+- Formatting, boundaries, module-size and diff checks passed.
+- Strict package all-target/all-feature Clippy and the required daemon #369
+  scanner passed. Clippy used the environment's DBus pkg-config selectors.
+
+The native case captures source through `handle_data` without asserting remote
+Data dispatch. Disabled-transport ordinary Single Data forwarding across a child
+boundary remains an unqualified, separate cell; this is not an end-to-end
+Data/proof round-trip claim.
