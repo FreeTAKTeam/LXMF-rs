@@ -1,5 +1,12 @@
 # Current Roadmap Status
 
+The #608 rejected-startup RPC view now retains credential-only IFAC interfaces
+and I2P-local credential aliases when a carrier field prevents configuration
+parsing. Negative IFAC sizes retain the pinned carrier-default semantics in
+error classification. The daemon regression checks a sanitized failed row
+exactly once for all five configurations; broad startup/error, carrier-family,
+and physical acceptance remain open.
+
 The #608 I2P startup path now preserves nonempty legacy IFAC aliases literally,
 including whitespace, and falls back to them when canonical credentials are
 empty. A configured fake-SAM regression checks plaintext rejection before first

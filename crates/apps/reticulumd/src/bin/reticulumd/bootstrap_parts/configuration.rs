@@ -124,19 +124,27 @@ fn rejected_ifac_interface_records(source: &str) -> Vec<InterfaceRecord> {
         .enumerate()
         .filter_map(|(index, (section_name, value))| {
             let table = value.as_table()?;
-            let ifac_size = table.get("ifac_size")?;
-            let valid_ifac_size = ifac_size
-                .as_integer()
-                .and_then(|value| u64::try_from(value).ok())
-                .is_some_and(|bits| bits / 8 <= 64);
-            let credential_present = ["network_name", "networkname", "passphrase", "pass_phrase"]
-                .iter()
-                .filter_map(|key| table.get(*key).and_then(toml::Value::as_str))
-                .any(|credential| !credential.is_empty());
             let name = table.get("name").and_then(toml::Value::as_str).or(section_name)
                 .map(str::to_owned).or_else(|| Some(format!("interfaces[{index}]")));
             let kind = table.get("type").and_then(toml::Value::as_str).or(section_name)
                 .unwrap_or("unknown").to_owned();
+            let credential_keys: &[&str] = if matches!(kind.as_str(), "i2p" | "I2PInterface") {
+                &["network_name", "networkname", "passphrase", "pass_phrase", "ifac_netname", "ifac_netkey"]
+            } else {
+                &["network_name", "networkname", "passphrase", "pass_phrase"]
+            };
+            // Credentials alone enable IFAC with the carrier default. Retain
+            // their rejected startup record even without an explicit size.
+            let ifac_size = table.get("ifac_size");
+            if ifac_size.is_none() && !credential_keys.iter().any(|key| table.contains_key(*key)) {
+                return None;
+            }
+            let valid_ifac_size = ifac_size.is_none_or(|size| {
+                size.as_integer().is_some_and(|bits| bits < 8 || bits / 8 <= 64)
+            });
+            let credential_present = credential_keys.iter()
+                .filter_map(|key| table.get(*key).and_then(toml::Value::as_str))
+                .any(|credential| !credential.is_empty());
             let startup_error = if valid_ifac_size && credential_present {
                 "daemon configuration rejected before interface startup; inspect daemon log"
             } else {
@@ -166,6 +174,33 @@ mod tests {
 
     fn configured(override_value: &str) -> String {
         format!("[reticulum]\nshare_instance=false\nenable_transport=true\ndiscover_interfaces=true\nautoconnect_discovered_interfaces=3\nenable_interface_management=false\n{override_value}\n[[interfaces]]\ntype='tcp_client'\nname='snapshot-first'\nhost='127.0.0.2'\nport=4242\nenabled=true\n")
+    }
+
+    #[test]
+    fn rejected_ifac_records_recognize_only_applicable_aliases_and_redact_secrets() {
+        for settings in [
+            "network_name='secret'",
+            "pass_phrase='secret'",
+            "networkname='secret'",
+            "passphrase='secret'",
+            "ifac_netname='secret'",
+            "ifac_netkey='secret'",
+            "ifac_size=-1\nifac_netkey='secret'",
+        ] {
+            let input = format!(
+                "[interfaces.named]\ntype='I2PInterface'\nenabled=true\nport=70000\n{settings}"
+            );
+            let rows = rejected_ifac_interface_records(&input);
+            assert_eq!(rows.len(), 1, "{settings}");
+            assert_eq!(rows[0].name.as_deref(), Some("named"));
+            let serialized = serde_json::to_string(&rows).expect("serialize sanitized rows");
+            assert!(!serialized.contains("secret"));
+            assert!(serialized.contains("daemon configuration rejected before interface startup"));
+        }
+        for settings in ["", ",ifac_netname='not-an-i2p-credential'"] {
+            let input = format!("interfaces=[{{type='udp',port=70000{settings}}}]");
+            assert!(rejected_ifac_interface_records(&input).is_empty());
+        }
     }
 
     #[test]
