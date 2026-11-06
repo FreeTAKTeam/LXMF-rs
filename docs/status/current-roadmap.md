@@ -6,6 +6,11 @@ parsing. Negative IFAC sizes retain the pinned carrier-default semantics in
 error classification. The daemon regression checks a sanitized failed row
 exactly once for all five configurations; broad startup/error, carrier-family,
 and physical acceptance remain open.
+The #663 global peer-entry quota selection now uses shared order-covering partial
+indexes instead of sorting retained history for small excesses. Local actual-SQL
+regressions preserve exact quota ordering and database reopening; production
+resource/delivery acceptance remains open. See the
+[migration and costs](../migrations/propagation-global-quota-order-indexes.md).
 
 The #608 I2P startup path now preserves nonempty legacy IFAC aliases literally,
 including whitespace, and falls back to them when canonical credentials are
