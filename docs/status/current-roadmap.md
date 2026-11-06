@@ -1,5 +1,11 @@
 # Current Roadmap Status
 
+The #663 global peer-entry quota selection now uses shared order-covering partial
+indexes instead of sorting retained history for small excesses. Local actual-SQL
+regressions preserve exact quota ordering and database reopening; production
+resource/delivery acceptance remains open. See the
+[migration and costs](../migrations/propagation-global-quota-order-indexes.md).
+
 The #608 I2P startup path now preserves nonempty legacy IFAC aliases literally,
 including whitespace, and falls back to them when canonical credentials are
 empty. A configured fake-SAM regression checks plaintext rejection before first
