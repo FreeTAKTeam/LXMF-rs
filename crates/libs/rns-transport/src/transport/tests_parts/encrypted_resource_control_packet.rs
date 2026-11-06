@@ -254,7 +254,7 @@ async fn routed_destination_proof_forwards_back_to_packet_source() {
     data.safe_write(&signature);
     let proof = Packet {
         header: Header { packet_type: PacketType::Proof, ..Default::default() },
-        destination: announce.destination,
+        destination: AddressHash::new_from_hash(&Hash::new(packet_hash)),
         context: PacketContext::None,
         data,
         ..Default::default()
@@ -268,7 +268,7 @@ async fn routed_destination_proof_forwards_back_to_packet_source() {
         .expect("tx channel open");
     assert_eq!(sent.tx_type, TxMessageType::Direct(source_iface.address));
     assert_eq!(sent.packet.header.packet_type, PacketType::Proof);
-    assert_eq!(sent.packet.destination, announce.destination);
+    assert_eq!(sent.packet.destination, AddressHash::new_from_hash(&Hash::new(packet_hash)));
 }
 
 #[tokio::test]
