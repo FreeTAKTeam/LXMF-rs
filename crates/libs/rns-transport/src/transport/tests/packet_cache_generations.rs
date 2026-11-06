@@ -245,3 +245,31 @@ async fn rejected_prepared_dispatch_does_not_remember_membership() {
     );
     transport.cancel.cancel();
 }
+
+#[test]
+fn reverse_route_authority_requires_forwarding_and_expires_with_source_context() {
+    let mut cache = PacketCache::new();
+    let packet = packet(b"reverse route lifetime");
+    let hash = packet.hash();
+    let destination = AddressHash::new_from_hash(&hash);
+    let source = AddressHash::new_from_slice(&[3; 16]);
+    let outbound = AddressHash::new_from_slice(&[4; 16]);
+    cache.note_source(&packet, source);
+    assert_eq!(
+        cache.take_proof_source(&destination, outbound),
+        None,
+        "source observation alone cannot authorize a reverse route"
+    );
+    cache.note_forwarded_data(hash, outbound);
+    assert_eq!(cache.tracked_count(), 3);
+    assert_eq!(cache.take_proof_source(&destination, outbound), Some(source));
+    assert_eq!(cache.take_proof_source(&destination, outbound), None);
+    assert!(cache.reverse_routes.is_empty(), "consumption frees route metadata");
+    assert_eq!(cache.tracked_count(), 2);
+    cache.note_forwarded_data(hash, outbound);
+    cache.map.get_mut(&hash).expect("source context").time =
+        Instant::now() - Duration::from_secs(181);
+    cache.release(Duration::from_secs(180));
+    assert_eq!(cache.tracked_count(), 0);
+    assert!(cache.reverse_routes.is_empty(), "pending reverse routes share source TTL");
+}

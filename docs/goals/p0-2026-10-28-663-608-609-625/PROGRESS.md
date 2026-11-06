@@ -494,6 +494,17 @@ standalone status on startup/restart. Default-parallel and four-thread replay
 executions pass all three classes without changing assertions or deadlines;
 focused Clippy, formatting and the #369 scanner pass.
 
+## #609 disabled shared-daemon Data/proof return (2026-11-06)
+
+Production regressions independently exposed disabled-mode local-child Single
+Data and proof-return gates. Both now admit local service while preserving
+ordinary-transit rejection. Accepted Data dispatch records expected reverse
+proof ingress; eligible proof attempts consume it once, with gate-before-pop
+ordering. Failed sends/source observation grant no reverse authority. Pending
+metadata shares source-context expiry and contributes to occupancy. Native
+roundtrip and lifetime tests plus a named frozen-source Verify fixture advance
+item 9 without claiming full #609 closure. Final validation is recorded in the
+#609 evidence file.
 ## 2026-11-06: remaining global quota sorts (#663)
 
 A focused failing regression on main `e6f4e945` demonstrated global peer-entry
