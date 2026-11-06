@@ -1272,3 +1272,40 @@ TMPDIR=/dev/shm cargo test -p reticulumd --bin reticulumd \
   bootstrap_accepts_whitespace_ifac_credentials_like_pinned_python -- --nocapture
 # 1 passed; production UDP listener bound with both whitespace credentials
 ```
+
+## Rejected credential-only startup retains a sanitized RPC record (2026-11-06)
+
+The fallback rejected-config projection previously required `ifac_size`, so an
+IFAC-protected interface using its carrier default vanished from
+`list_interfaces` when a carrier field failed parsing. It also omitted I2P-local
+`ifac_netname`/`ifac_netkey` credentials and incorrectly classified a negative
+size as an IFAC error rather than preserving the pinned default-size rule.
+Frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Reticulum.py:801-815`, leaves the size unspecified below eight bits and
+enables credential derivation independently of an explicit size. This change
+repairs Rust's failure-reporting projection; no wire codec change is needed.
+
+The real daemon bootstrap regression failed before the fix because the rejected
+credential-only UDP interface was absent. It now checks five invalid-port
+configurations: credential-only UDP, each I2P-local credential alias, negative
+size with a credential, and explicit size with whitespace. Every rejected row
+is enabled, appears exactly once, reports `startup_status = "failed"` with the
+fixed generic configuration error, and discloses no credential secret anywhere
+in the RPC result. Table-layout controls check all credential aliases and ensure
+I2P-local aliases do not mark UDP interfaces as IFAC-configured. No new carrier
+starts from these rejected configurations. This is bounded startup/error-reporting
+evidence, not a Python/Rust packet differential or completion of #608's broader
+carrier-family/platform/physical acceptance.
+
+Validation commands (shared build target, debug info and incremental disabled):
+
+```text
+cargo test -p reticulumd --bin reticulumd ifac -- --nocapture
+# 47 passed
+cargo test -p reticulumd --test code_quality_issue_369
+# 1 passed
+cargo clippy -p reticulumd --bin reticulumd --no-deps -- -D warnings
+cargo fmt --all -- --check
+bash tools/scripts/check-module-size.sh
+git diff --check
+```

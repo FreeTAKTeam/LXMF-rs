@@ -1,5 +1,12 @@
 # Current Roadmap Status
 
+The #608 rejected-startup RPC view now retains credential-only IFAC interfaces
+and I2P-local credential aliases when a carrier field prevents configuration
+parsing. Negative IFAC sizes retain the pinned carrier-default semantics in
+error classification. The daemon regression checks a sanitized failed row
+exactly once for all five configurations; broad startup/error, carrier-family,
+and physical acceptance remain open.
+
 The #719 receive-side proof policy defers opportunistic LXMF proofs until
 existing delivery admission and durable storage succeed. Default, imported and
 restored delivery identities opt in; ordinary Reticulum destinations retain their
@@ -11,6 +18,7 @@ reopened storage. Pinned RNS 1.5.2 / LXMF 0.9.6 senders reach native `DELIVERED`
 for opportunistic packets, direct packets and a 16 KB direct Resource.
 Columba/Pixel and Ratspeak/Windows acceptance and the original unlocalized direct
 report remain open; this increment does not establish those live outcomes.
+
 The #663 global peer-entry quota selection now uses shared order-covering partial
 indexes instead of sorting retained history for small excesses. Local actual-SQL
 regressions preserve exact quota ordering and database reopening; production

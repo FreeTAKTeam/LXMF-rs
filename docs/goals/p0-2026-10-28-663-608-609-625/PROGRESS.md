@@ -494,6 +494,24 @@ standalone status on startup/restart. Default-parallel and four-thread replay
 executions pass all three classes without changing assertions or deadlines;
 focused Clippy, formatting and the #369 scanner pass.
 
+## #608 rejected-startup diagnostic follow-up (2026-11-06)
+
+Branch `codex/nov6-608`, based on main `e6f4e945`, fixes a remaining
+startup/error-reporting case after the earlier IFAC alias and lifecycle work.
+A daemon regression first failed because credential-only IFAC UDP vanished
+from `list_interfaces` after a carrier-port parse failure. The rejected-config
+projection now retains that row, recognizes I2P-local credential aliases only
+for I2P, and treats negative sizes as carrier-default values when classifying
+the error. Five real-bootstrap variants assert one sanitized failed RPC row;
+table-layout controls cover all credential aliases and non-I2P exclusion.
+The full RPC response is checked for credential-secret disclosure. Final focused
+validation passed 47 daemon IFAC tests and the issue-369 scanner; scoped Clippy,
+formatting, module-size, and diff checks passed.
+
+This is a bounded failure-reporting increment. It does not complete the six
+carrier-family acceptance rows, establish physical interoperability, or close
+#608. Validation is recorded in the matching
+[IFAC evidence](../reticulum-reference-parity-605/evidence/608-ifac.md#rejected-credential-only-startup-retains-a-sanitized-rpc-record-2026-11-06).
 ## #609 disabled shared-daemon Data/proof return (2026-11-06)
 
 Production regressions independently exposed disabled-mode local-child Single
