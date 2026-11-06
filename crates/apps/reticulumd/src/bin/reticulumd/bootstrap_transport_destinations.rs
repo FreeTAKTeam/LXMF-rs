@@ -32,7 +32,10 @@ pub(super) async fn register_transport_destinations(
     propagation_announce_config: PropagationNodeAnnounceConfig,
 ) -> RegisteredTransportDestinations {
     let delivery = transport
-        .add_destination(transport_identity.clone(), DestinationName::new("lxmf", "delivery"))
+        .add_destination_with_deferred_proofs(
+            transport_identity.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        )
         .await;
     let (delivery_source_hash, delivery_destination_hash_hex) =
         destination_hash("delivery", &delivery).await;
@@ -169,7 +172,9 @@ mod tests {
         )
         .await;
 
+        assert!(destinations.delivery.lock().await.deferred_proofs());
         let probe = destinations.probe.expect("probe destination");
+        assert!(!probe.lock().await.deferred_proofs());
         assert_eq!(probe.lock().await.desc.address_hash, expected.desc.address_hash);
 
         let identity = PrivateIdentity::new_from_name("probe-destination-disabled-test");

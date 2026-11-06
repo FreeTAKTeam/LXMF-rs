@@ -34,3 +34,6 @@ include!("tests_parts/propagation_default_stamp_cost_is_the_python_target.rs");
 
 #[path = "tests/sqlite_cache_release.rs"]
 mod sqlite_cache_release;
+
+#[path = "tests/delivery_proofs.rs"]
+mod delivery_proofs;

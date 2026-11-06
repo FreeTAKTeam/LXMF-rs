@@ -141,7 +141,7 @@ pub(super) async fn accept_delivery_packet(
     destination: [u8; 16],
     data: &[u8],
     payload_mode: ReceivedPayloadMode,
-) {
+) -> bool {
     let payload_mode = inbound_payload_mode(payload_mode);
     let (record, diagnostics) =
         decode_inbound_payload_with_diagnostics(destination, data, payload_mode);
@@ -175,7 +175,7 @@ pub(super) async fn accept_delivery_packet(
                 record: None,
             },
         );
-        return;
+        return false;
     }
     let mut record = record.expect("decode success checked before policy evaluation");
     let stamp_status = match evaluate_inbound_stamp_policy(daemon, destination, data, payload_mode)
@@ -200,7 +200,7 @@ pub(super) async fn accept_delivery_packet(
                     record: Some(&record),
                 },
             );
-            return;
+            return false;
         }
     };
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
@@ -231,9 +231,9 @@ pub(super) async fn accept_delivery_packet(
                 record: Some(&record),
             },
         );
-        return;
+        return false;
     }
-    if !persist_inbound_record(
+    let admission = persist_inbound_record(
         daemon,
         &record,
         data,
@@ -244,10 +244,20 @@ pub(super) async fn accept_delivery_packet(
             destination,
             payload_mode,
         },
-    ) {
-        return;
+    );
+    if admission == InboundAdmission::Stored {
+        daemon.record_inbound_peer_activity(&record.source, data.len());
     }
-    daemon.record_inbound_peer_activity(&record.source, data.len());
+    // A transport receipt acknowledges accepted storage, not sender-signature
+    // attestation. Preserve existing admission for unknown/invalid signatures.
+    admission != InboundAdmission::Rejected
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InboundAdmission {
+    Stored,
+    Duplicate,
+    Rejected,
 }
 
 #[derive(Clone, Copy)]
@@ -264,11 +274,11 @@ fn persist_inbound_record(
     record: &MessageRecord,
     data: &[u8],
     context: InboundPersistenceContext<'_>,
-) -> bool {
+) -> InboundAdmission {
     let (reason, detail) = match daemon.message_exists(record.id.as_str()) {
         Ok(true) => ("duplicate", "message already stored".to_string()),
         Ok(false) => match daemon.accept_inbound_with_raw(record.clone(), data) {
-            Ok(()) => return true,
+            Ok(()) => return InboundAdmission::Stored,
             Err(err) => {
                 log::error!(
                     "[daemon-rx] inbound {} persistence failed id={}: {err}",
@@ -300,7 +310,11 @@ fn persist_inbound_record(
             record: Some(record),
         },
     );
-    false
+    if reason == "duplicate" {
+        InboundAdmission::Duplicate
+    } else {
+        InboundAdmission::Rejected
+    }
 }
 
 pub(super) fn log_resolved_packet(

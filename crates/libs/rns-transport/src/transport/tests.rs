@@ -92,6 +92,9 @@ mod live_child_policy;
 #[path = "tests_parts/interface_retirement_fence.rs"]
 mod interface_retirement_fence;
 
+#[path = "tests_parts/deferred_destination_proof.rs"]
+mod deferred_destination_proof;
+
 #[path = "tests/shared_child_destination_proof.rs"]
 mod shared_child_destination_proof;
 

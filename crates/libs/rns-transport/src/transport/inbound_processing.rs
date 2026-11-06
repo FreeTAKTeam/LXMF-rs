@@ -129,14 +129,16 @@ pub(super) async fn preprocess_inbound_message(
 
     let allowed = {
         let handler = handler_arc.lock().await;
+        let deferred_retry = handler.allows_deferred_destination_retry(&message.packet).await;
         let cache = handler.packet_cache.lock().await;
-        filter_duplicate_packet(
-            &cache,
-            &message.packet,
-            received_hops,
-            handler.config.connected_to_shared_instance,
-            *handler.config.identity.address_hash(),
-        )
+        deferred_retry
+            || filter_duplicate_packet(
+                &cache,
+                &message.packet,
+                received_hops,
+                handler.config.connected_to_shared_instance,
+                *handler.config.identity.address_hash(),
+            )
     };
     if !allowed {
         record_filtered_packet(handler_arc, &message).await;
