@@ -94,3 +94,9 @@ mod interface_retirement_fence;
 
 #[path = "tests_parts/deferred_destination_proof.rs"]
 mod deferred_destination_proof;
+
+#[path = "tests/shared_child_destination_proof.rs"]
+mod shared_child_destination_proof;
+
+#[path = "tests/shared_child_data_return.rs"]
+mod shared_child_data_return;

@@ -28,6 +28,7 @@ pub struct PacketCache {
     map: HashMap<Hash, PacketTrack>,
     by_proof_destination: HashMap<AddressHash, Hash>,
     remove_cache: Vec<Hash>,
+    reverse_routes: HashMap<Hash, AddressHash>,
 }
 
 impl PacketCache {
@@ -39,6 +40,7 @@ impl PacketCache {
             map: HashMap::new(),
             by_proof_destination: HashMap::new(),
             remove_cache: Vec::new(),
+            reverse_routes: HashMap::new(),
         }
     }
 
@@ -53,6 +55,7 @@ impl PacketCache {
         for hash in &self.remove_cache {
             if self.map.remove(hash).is_some() {
                 self.by_proof_destination.remove(&AddressHash::new_from_hash(hash));
+                self.reverse_routes.remove(hash);
             }
         }
 
@@ -90,7 +93,7 @@ impl PacketCache {
 
     /// Packets tracked for receipts, proofs and retransmission bookkeeping.
     pub fn tracked_count(&self) -> usize {
-        self.map.len() + self.by_proof_destination.len()
+        self.map.len() + self.by_proof_destination.len() + self.reverse_routes.len()
     }
 
     pub(super) fn maintain_duplicate_generations(&mut self) -> bool {
@@ -163,6 +166,27 @@ impl PacketCache {
                 },
             );
         }
+    }
+
+    pub(super) fn note_forwarded_data(&mut self, hash: Hash, outbound: AddressHash) {
+        if self.map.contains_key(&hash) {
+            self.reverse_routes.insert(hash, outbound);
+        }
+    }
+
+    pub(super) fn take_proof_source(
+        &mut self,
+        destination: &AddressHash,
+        ingress: AddressHash,
+    ) -> Option<AddressHash> {
+        let hash = self.by_proof_destination.get(destination)?;
+        let source = self.map.get(hash)?.source_iface?;
+        // Only an accepted Data dispatch creates reverse-routing authority.
+        // Frozen Transport pops before checking the incoming interface.
+        if self.reverse_routes.remove(hash)? != ingress {
+            return None;
+        }
+        Some(source)
     }
 
     pub fn source_iface_for_hash(&self, hash: &Hash) -> Option<AddressHash> {

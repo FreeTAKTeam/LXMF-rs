@@ -1,4 +1,5 @@
-use super::path::send_to_next_hop;
+#[path = "wire_parts/destination_data.rs"]
+mod destination_data;
 use super::resource_wire;
 use super::wire_encryption::should_encrypt_packet;
 use super::wire_receipt::validated_receipt_hash;
@@ -58,21 +59,26 @@ pub(super) async fn handle_proof(
 
     if packet.header.destination_type != DestinationType::Link {
         let source_iface = {
-            let packet_cache = handler.packet_cache.lock().await;
-            if packet.data.len() == ed25519_dalek::SIGNATURE_LENGTH {
-                packet_cache
-                    .source_iface_for_proof_destination(&packet.destination)
-                    .map(|(_, source_iface)| source_iface)
-            } else if packet.data.len() >= HASH_SIZE {
-                let mut proof_hash = [0u8; HASH_SIZE];
-                proof_hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
-                packet_cache.source_iface_for_hash(&Hash::new(proof_hash))
-            } else {
-                None
-            }
+            handler
+                .packet_cache
+                .lock()
+                .await
+                .source_iface_for_proof_destination(&packet.destination)
+                .map(|(_, source)| source)
         };
-        if let (true, Some(source_iface)) = (handler.config.transport_enabled, source_iface) {
-            if source_iface != iface {
+        if let Some(source_iface) = source_iface {
+            // Returning proofs for local clients is local service even when
+            // this shared daemon does not offer network transit (RNS 1.5.4).
+            let allow_return = handler.config.transport_enabled || {
+                let manager = handler.iface_manager.lock().await;
+                manager.is_local_client_interface(&source_iface)
+                    || manager.is_local_client_interface(&iface)
+            };
+            if allow_return
+                && handler.packet_cache.lock().await.take_proof_source(&packet.destination, iface)
+                    == Some(source_iface)
+                && source_iface != iface
+            {
                 log::debug!(
                     "[tp-diag] destination_proof_reverse_forward node={} proof_dst={} source_iface={} ingress_iface={}",
                     handler.config.name,
@@ -374,8 +380,9 @@ pub(super) async fn handle_data<'a>(
                     }
                 }
             }
-        } else if handler.config.transport_enabled {
-            data_handled = send_to_next_hop(packet, &handler, None).await;
+        } else {
+            data_handled =
+                destination_data::forward_destination_data(packet, iface, &handler).await;
         }
     }
 
