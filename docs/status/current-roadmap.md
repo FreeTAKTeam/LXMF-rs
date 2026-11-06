@@ -324,14 +324,13 @@ differential exercises native maintenance at its real size threshold. Daemon
 restart coverage includes Data and LinkRequest as well as Proof. These bounded
 software checks leave the wider shared-instance/routing matrix open.
 
-A focused #609 follow-up restores destination-proof return across the local-client
-boundary when transport is disabled. The gate recognizes both the original Data
-source and proof ingress through the parent's shared-instance classification;
-ordinary network-to-network transit stays disabled. Native implicit/explicit
-proof cases cover exact output, both directions and no ingress echo. A frozen
-Python source-block regression checks the policy separately. Reverse-route
-outbound-interface validation and one-shot consumption remain an independently
-tracked gap; this increment does not close #609.
+A focused #609 follow-up restores ordinary Single Data and destination-proof
+return across local-client boundaries with transport disabled. Native roundtrip
+cases preserve ordinary-transit rejection, exact routes and one-shot proof
+return. Only accepted Data dispatch grants return authority, bound to the expected
+proof ingress; cache expiry removes pending metadata. A frozen Python source-block
+regression independently checks Data/proof gates and mode-before-pop behavior.
+These checks do not close the broader #609 routing/shared-instance matrix.
 
 The 2026-10-28 #663 closure increment prunes remote recipient and daemon peer
 identity caches after route expiry while preserving pending SINGLE receipts,

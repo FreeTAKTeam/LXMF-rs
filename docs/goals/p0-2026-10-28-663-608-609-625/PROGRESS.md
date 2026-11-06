@@ -494,15 +494,14 @@ standalone status on startup/restart. Default-parallel and four-thread replay
 executions pass all three classes without changing assertions or deadlines;
 focused Clippy, formatting and the #369 scanner pass.
 
-## #609 disabled shared-daemon destination-proof return (2026-11-06)
+## #609 disabled shared-daemon Data/proof return (2026-11-06)
 
-A remaining ordinary-proof gate dropped local-client return traffic when transport
-was disabled. Production `handle_data`/`handle_proof` regression first failed with
-an empty return queue. The minimal gate now permits either local-child boundary
-while preserving ordinary network transit rejection and same-interface no echo.
-Eight native implicit/explicit policy cells pass, and the Verify interfaces lane
-names a frozen `99de23c` source-block regression. Full transport library: 1,072
-passed, 14 explicitly ignored reference tests; the new ignored reference test
-was separately executed and passed. This advances item 9 without completing it.
-The evidence and matrix retain the existing expected outbound-interface and
-one-shot reverse-route deficiencies under #609; no full parity claim is made.
+Production regressions independently exposed disabled-mode local-child Single
+Data and proof-return gates. Both now admit local service while preserving
+ordinary-transit rejection. Accepted Data dispatch records expected reverse
+proof ingress; eligible proof attempts consume it once, with gate-before-pop
+ordering. Failed sends/source observation grant no reverse authority. Pending
+metadata shares source-context expiry and contributes to occupancy. Native
+roundtrip and lifetime tests plus a named frozen-source Verify fixture advance
+item 9 without claiming full #609 closure. Final validation is recorded in the
+#609 evidence file.

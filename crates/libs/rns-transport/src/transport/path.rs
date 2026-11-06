@@ -119,14 +119,6 @@ pub(super) fn route_outbound_packet(
     }
 }
 
-pub(super) async fn send_to_next_hop<'a>(
-    packet: &Packet,
-    handler: &MutexGuard<'a, TransportHandler>,
-    lookup: Option<AddressHash>,
-) -> bool {
-    send_to_next_hop_with_policy(packet, handler, lookup, false).await
-}
-
 async fn send_to_next_hop_with_policy<'a>(
     packet: &Packet,
     handler: &MutexGuard<'a, TransportHandler>,

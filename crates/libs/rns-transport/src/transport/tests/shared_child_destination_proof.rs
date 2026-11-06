@@ -32,14 +32,26 @@ async fn disabled_transport_returns_destination_proofs_across_local_client_bound
                     // Keep the unrelated receiver alive to avoid making dispatch depend on it.
                     (source_channel, source_iface, (ingress_iface, ingress))
                 };
-                let (ingress_iface, _ingress_channel) = ingress_iface;
+                let (ingress_iface, mut ingress_channel) = ingress_iface;
                 let data = Packet {
                     destination: AddressHash::new_from_slice(&[42; 16]),
                     data: PacketDataBuffer::new_from_slice(b"original destination data"),
                     ..Packet::default()
                 };
                 let hash = data.hash();
+                transport.handler.lock().await.path_table.restore_tunnel_path(
+                    data.destination,
+                    data.destination,
+                    if proof_local { 0 } else { 1 },
+                    ingress_iface,
+                    Hash::new_from_slice(b"proof-route"),
+                    std::time::Instant::now(),
+                );
                 handle_data(&data, source_iface, transport.get_handler().lock().await).await;
+                assert_eq!(
+                    ingress_channel.tx_channel.try_recv().is_ok(),
+                    source_local || proof_local
+                );
                 let mut proof_data = Vec::new();
                 if explicit {
                     proof_data.extend_from_slice(hash.as_slice());
@@ -111,6 +123,15 @@ tree = ast.parse(source)
 blocks = [node for node in ast.walk(tree) if isinstance(node, ast.If)
           and ast.unparse(node.test) == '(RNS.Reticulum.transport_enabled() or from_local_client or proof_for_local_client) and packet.destination_hash in Transport.reverse_table']
 assert len(blocks) == 1
+data_gates = [node.test for node in ast.walk(tree) if isinstance(node, ast.If)
+              and ast.unparse(node.test) == 'RNS.Reticulum.transport_enabled() or from_local_client or for_local_client or for_local_client_link']
+assert len(data_gates) == 1
+for from_child in (False, True):
+    for to_child in (False, True):
+        allowed = eval(compile(ast.Expression(data_gates[0]), '<frozen Data gate>', 'eval'),
+                       dict(RNS=SimpleNamespace(Reticulum=SimpleNamespace(transport_enabled=lambda: False)),
+                            from_local_client=from_child, for_local_client=to_child, for_local_client_link=False))
+        assert allowed == (from_child or to_child)
 code = compile(ast.fix_missing_locations(ast.Module(body=blocks, type_ignores=[])), '<frozen reverse-proof block>', 'exec')
 for source_local in (False, True):
     for proof_local in (False, True):
@@ -122,6 +143,13 @@ for source_local in (False, True):
         exec(code, dict(RNS=rns, Transport=transport, packet=packet, from_local_client=proof_local,
              proof_for_local_client=source_local, IDX_RT_RCVD_IF=0, IDX_RT_OUTB_IF=1, struct=struct))
         assert sent == ([('source', packet.raw)] if source_local or proof_local else [])
+        assert (b'dst' in transport.reverse_table) == (not (source_local or proof_local))
+        transport.reverse_table = {b'dst': ['source', 'expected-other-interface', 0]}
+        sent.clear()
+        exec(code, dict(RNS=rns, Transport=transport, packet=packet, from_local_client=proof_local,
+             proof_for_local_client=source_local, IDX_RT_RCVD_IF=0, IDX_RT_OUTB_IF=1, struct=struct))
+        assert sent == []
+        assert (b'dst' in transport.reverse_table) == (not (source_local or proof_local))
 print('local-proof-policy=0,1,1,1')
 "#;
     let output = std::process::Command::new(

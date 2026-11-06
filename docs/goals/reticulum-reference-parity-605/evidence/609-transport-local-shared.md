@@ -1275,44 +1275,54 @@ explicit four-thread invocation both pass all three cases, and the #369 scanner,
 formatting and focused all-feature Clippy pass.
 
 
-## Disabled shared-daemon destination-proof return (2026-11-06)
+## Disabled shared-daemon ordinary Data and proof return (2026-11-06)
 
-A remaining production gate admitted ordinary destination-proof return only when
-transport was enabled. Frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`
-`RNS/Transport.py:2734` also admits return when either the original Data source or
-proof ingress is a local client. This is local service, not ordinary transit.
-The fix uses the existing parent-authoritative `is_local_client_interface`
-classification for both ends, keeping the same-interface no-echo guard.
+Frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Transport.py:1968,1997,2734` permits ordinary Data and returning proofs
+across a local-client boundary even when network transport is disabled. Both
+Rust production gates originally required transport to be enabled. Independent
+native Data and proof regressions failed before their respective fixes.
 
-The native regression captures source context through production `handle_data`
-and invokes production `handle_proof` across eight implicit/explicit × source
-child/ordinary × proof-ingress child/ordinary cells. It asserts exact bytes,
-exact Direct destination and exactly one output for each local-boundary case;
-ordinary disabled transit and a same-ingress proof emit nothing. Signatures are
-intentionally opaque: this exercises relay policy, not recipient authentication.
-The pinned regression executes the exact AST-selected reverse-proof block from
-the frozen source for all four policy cells, with exact output assertions. This
-is isolated source-block evidence, not Python live-socket or route-creation
-coverage; Verify's interfaces lane explicitly runs it.
+The ordinary Single Data helper now permits ingress from an actual local child
+or delivery to an actual local child on a zero-hop route, using existing
+parent-authoritative classification. Ordinary network-to-network transit stays disabled. Existing enabled-mode
+same-interface Data routes remain supported. Accepted Data handoff records the expected
+proof ingress. Reverse proofs resolve by their destination, require that accepted
+route, and consume it once after the mode gate passes. A wrong eligible ingress
+consumes without forwarding, matching Python; an ingress rejected by the mode
+gate leaves the route intact. Source observation alone, failed Data handoff and
+replayed proofs confer no return authority. Receipt signature validation remains
+independent; opaque relay signatures are intentional in these tests.
 
-The pre-existing reverse-route model remains incomplete: Rust records source
-context but does not retain Python's expected outbound interface or consume the
-route after its first proof. Wrong-ingress rejection and one-shot reverse-route
-consumption remain tracked under #609. These limitations require their own
-production regression and send/return lifecycle change; this gate correction
-makes no claim of full ordinary-proof or shared-instance parity.
+The native roundtrip fixture covers sixteen source/destination local flags ×
+implicit/explicit × wrong-first-return cells, exact Direct targets, Data contents,
+proof bytes, negative ordinary transit and one-shot return. A failed-handoff case
+proves no reverse route is created. A cache test counts pending route metadata,
+checks immediate removal on proof consumption and expires an unconsumed route
+with its authoritative source context. This introduces no separate lifetime or
+public API. Existing source-only proof-context APIs still support local receipt
+validation without granting reverse routing authority.
 
-Validation:
+The pinned regression executes the exact AST-selected Data gate and reverse-proof
+block, including correct/wrong ingress and gate-before-pop behavior. Verify's
+interfaces lane explicitly names this regression. This is isolated source-block
+evidence, not live Python socket, receipt verification or arbitrary packet-class
+coverage. Broader #609 shared-instance/recovery acceptance remains open.
 
-- Native local-proof matrix: failed before the gate change with an empty return
-  queue; passed after (eight policy/shape cells, plus same-interface no echo).
-- Frozen Python source-block regression: passed at `99de23c040d507e3fefca19e87b182302902725d`.
-- Full transport library: 1,072 passed, 14 explicitly ignored reference tests.
-- Formatting, boundaries, module-size and diff checks passed.
-- Strict package all-target/all-feature Clippy and the required daemon #369
-  scanner passed. Clippy used the environment's DBus pkg-config selectors.
+Final candidate validation:
 
-The native case captures source through `handle_data` without asserting remote
-Data dispatch. Disabled-transport ordinary Single Data forwarding across a child
-boundary remains an unqualified, separate cell; this is not an end-to-end
-Data/proof round-trip claim.
+- Full native transport library: 1,076 passed, 14 explicitly ignored reference
+  tests after the final same-interface compatibility regression.
+- Named frozen-source Data/proof policy regression: passed separately at
+  `99de23c040d507e3fefca19e87b182302902725d`.
+- Required daemon #369 scanner passed from this checkout.
+- Strict package all-target/all-feature Clippy, formatting, boundaries,
+  module-size and diff checks passed. Clippy used the environment's DBus
+  pkg-config selectors.
+
+The existing explicit proof relay fixture had used the recipient's destination
+address while carrying the proved packet's hash. It now constructs the frozen
+wire destination (the truncated proved-packet hash), preserving its exact return
+route assertion. A new negative explicitly confirms that a correct embedded hash
+cannot route a proof bearing a different destination; a subsequent correctly
+addressed proof still returns.
