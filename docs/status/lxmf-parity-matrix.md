@@ -59,6 +59,11 @@ A later increment serves the per-peer quota from a partial
 skips the writer when no quota is exceeded, and the original ranking runs only
 for over-quota peers, with the same limits and ordering
 (`docs/migrations/propagation-peer-entry-quota-index.md`).
+Global quota selection also uses partial `(updated_at, transient_id, peer)`
+indexes for unhandled and completed marks, avoiding retained-history sorts for a
+small excess while preserving deletion order and transactional recovery. The
+[migration note](../migrations/propagation-global-quota-order-indexes.md) records
+startup/index costs; production #663 acceptance remains open.
 Refill now respects the global peer-entry limit. A trigger-maintained count is
 checked inside the insert transaction, and at the limit the pass is deferred
 rather than skipped. Quota and refill therefore no longer delete and recreate
