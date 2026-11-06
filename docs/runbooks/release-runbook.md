@@ -38,7 +38,11 @@
 
 ## crates.io Automation
 
-Publishing a final GitHub Release triggers `.github/workflows/crates-io-publish.yml`.
+After publishing a final GitHub Release, `release.yml` explicitly dispatches
+`.github/workflows/crates-io-publish.yml` for the same tag. GitHub suppresses
+recursive release events created with the default `GITHUB_TOKEN`, while
+`workflow_dispatch` remains supported. Releases published outside that workflow
+also retain the existing `release: published` trigger.
 Prereleases are intentionally skipped so RC tags can publish simulation and
 bundle evidence without publishing crates. For a final release, the workflow
 publishes the public library crates listed in
@@ -46,11 +50,16 @@ publishes the public library crates listed in
 The workflow rejects the release if any public crate version differs from the
 GitHub release tag after removing the leading `v`.
 
-After publication, verify that a `Publish crates.io` run exists for the exact
-tag and commit. GitHub suppresses recursive workflow events created with the
-default `GITHUB_TOKEN`; if the release event did not create a crates run,
-dispatch the workflow manually with `ref=<tag>`, `version=<version>`, and
-`dry_run=false`, then verify every package through the crates.io API. The
+The dispatch job requires successful release publication and skips prereleases
+and validation-only builds. It passes the literal tag as both `ref` and `version`
+(including a leading `v`) so explicit dispatches and release events share one
+publisher concurrency group. Its success means the run was queued, not that
+packages have been published.
+
+After publication, verify that a `Publish crates.io` run succeeds for the exact
+tag and commit, then verify every package through the crates.io API. If dispatch
+fails, rerun the failed dispatch job or dispatch the workflow manually with
+workflow ref `<tag>`, `ref=<tag>`, `version=<tag>`, and `dry_run=false`. The
 v0.10.1 train required this explicit dispatch as run
 [33255408925](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33255408925).
 

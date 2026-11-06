@@ -43,13 +43,14 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 
 ## Current status
 
-The latest stable release is
-[`v0.16.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.16.0).
-It aligns 21 public packages and includes delivery receipt, announce-cache,
-ZeroMQ readiness and WAL maintenance fixes. Production resource and retention
-acceptance remain open; see the release notes. Rust 1.88 or newer is required. A source checkout of
-`main` can contain changes after the release; use the release tag to reproduce
-its published artifacts.
+The `v0.16.1` release train aligns 22 public packages, including
+the shared event-broker library, delivery-proof fixes, MeshChat host/origin
+validation and propagation quota improvements. Its release workflow covers
+Linux, macOS, Windows, OCI images and crates.io. See the
+[release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.16.1)
+for publication status, downloads and exact-build validation. Production resource
+and retention acceptance remain open. Rust 1.88 or newer is required; use an
+exact release tag to reproduce published artifacts.
 
 The canonical release reference remains Python Reticulum 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`, with Python LXMF 0.9.6 at
@@ -68,7 +69,7 @@ it does not establish full forward behavioral parity.
 | Remaining operational matrix | Permanent HIL, the full declared hardware/platform matrix, public-network rows, long soak, and current-release client reruns remain separate from the completed software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
-project posture, the [v0.16.0 release notes](docs/release-notes-v0.16.0.md),
+project posture, the [v0.16.1 release notes](docs/release-notes-v0.16.1.md),
 the [v0.14.0 migration guide](docs/migrations/v0.14.0-zmq.md), and the
 [Reticulum](docs/status/reticulum-parity-matrix.md) and
 [LXMF](docs/status/lxmf-parity-matrix.md) parity matrices for row-level detail.
@@ -107,8 +108,8 @@ Library consumers can start with the umbrella crates:
 
 ```toml
 [dependencies]
-lxmf = "0.14.0"
-reticulum-rs = "0.14.0"
+lxmf = "0.16.1"
+reticulum-rs = "0.16.1"
 ```
 
 See [Getting started](docs/getting-started.md) for release downloads, checksum

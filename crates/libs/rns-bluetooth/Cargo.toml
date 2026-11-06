@@ -1,6 +1,6 @@
 [package]
 name = "reticulum-rs-bluetooth"
-version = "0.16.1-rc.1-linux"
+version = "0.16.1"
 edition = "2024"
 rust-version = "1.85"
 license.workspace = true

@@ -501,7 +501,7 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "lxmf-propagation"
-version = "0.16.1-rc.1-linux"
+version = "0.16.1"
 dependencies = [
  "hex",
  "hkdf",
@@ -517,14 +517,14 @@ dependencies = [
 
 [[package]]
 name = "lxmf-reference"
-version = "0.16.1-rc.1-linux"
+version = "0.16.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "lxmf-wire"
-version = "0.16.1-rc.1-linux"
+version = "0.16.1"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -643,6 +643,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
+name = "r3akt-event-broker"
+version = "0.16.1"
+dependencies = [
+ "hex",
+ "hmac",
+ "log",
+ "rand_core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -662,7 +676,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-core"
-version = "0.16.1-rc.1-linux"
+version = "0.16.1"
 dependencies = [
  "aes",
  "atomicwrites",
@@ -682,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-rpc"
-version = "0.16.1-rc.1-linux"
+version = "0.16.1"
 dependencies = [
  "base64",
  "ciborium",
@@ -693,6 +707,7 @@ dependencies = [
  "log",
  "lxmf-propagation",
  "lxmf-reference",
+ "r3akt-event-broker",
  "rand_core",
  "rmp-serde",
  "rmpv",
