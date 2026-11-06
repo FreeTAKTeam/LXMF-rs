@@ -505,3 +505,27 @@ metadata shares source-context expiry and contributes to occupancy. Native
 roundtrip and lifetime tests plus a named frozen-source Verify fixture advance
 item 9 without claiming full #609 closure. Final validation is recorded in the
 #609 evidence file.
+## 2026-11-06: remaining global quota sorts (#663)
+
+A focused failing regression on main `e6f4e945` demonstrated global peer-entry
+quota amplification even after the per-peer rank-index fix: deleting a single
+excess mark from a tie-rich 8,400-mark file-backed WAL fixture cost 63,121 VM
+steps/one sort for unhandled and 42,158 steps/one sort for completed marks.
+Two canonical shared-schema partial ordering indexes reduce the actual DELETE
+costs to 141/133 VM steps with zero sorts. The indexes add one entry per
+recognized mark and a transactional startup migration; no durability, quota
+ordering or refill semantics change. Details and limits live in
+[the performance record](../../performance/rch-resource-fixes-663.md) and
+[the migration note](../../migrations/propagation-global-quota-order-indexes.md).
+
+All ten quota regressions pass, including exact retained-row comparison against
+the prior policy, timestamp/key ties, case variants, concurrent mutation and
+old-schema reopen/prune/reopen recovery. Scoped RPC/propagation all-target,
+all-feature Clippy, workspace formatting, module-size and boundary checks pass.
+No synthetic soak, cache eviction or production experiment was performed. This
+fix establishes local selection cost only; #663 and #709 resource/delivery
+acceptance remain open.
+
+Final local validation: RPC library suite **889 passed, 9 pre-existing ignored**
+(50.05 seconds); scoped RPC/propagation all-target/all-feature Clippy passed.
+Workspace formatting, dependency boundaries, module-size and diff checks passed.

@@ -39,7 +39,7 @@ const GLOBAL_UNHANDLED_QUOTA_DELETE_SQL: &str = "DELETE FROM propagation_peer_en
      WHERE rowid IN (
          SELECT rowid
          FROM propagation_peer_entries
-         INDEXED BY idx_propagation_peer_entries_expiry
+         INDEXED BY idx_propagation_peer_entries_global_unhandled
          WHERE state = 'unhandled'
          ORDER BY updated_at ASC, transient_id ASC, peer ASC
          LIMIT ?1
@@ -48,6 +48,7 @@ const GLOBAL_COMPLETED_QUOTA_DELETE_SQL: &str = "DELETE FROM propagation_peer_en
      WHERE rowid IN (
          SELECT rowid
          FROM propagation_peer_entries
+         INDEXED BY idx_propagation_peer_entries_global_completed
          WHERE state IN ('handled', 'transferred', 'received', 'transfer_limited')
          ORDER BY updated_at ASC, transient_id ASC, peer ASC
          LIMIT ?1

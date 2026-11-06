@@ -231,8 +231,14 @@ fn peer_quota_statements_use_the_rank_index_without_temp_btrees() {
             assert!(scan.contains("USING COVERING INDEX"), "{plan}");
         }
     }
-    let global = explain(GLOBAL_UNHANDLED_QUOTA_DELETE_SQL);
-    assert!(global.contains("USING INDEX idx_propagation_peer_entries_expiry (state=?)"), "{global}");
+    for (sql, index) in [
+        (GLOBAL_UNHANDLED_QUOTA_DELETE_SQL, "idx_propagation_peer_entries_global_unhandled"),
+        (GLOBAL_COMPLETED_QUOTA_DELETE_SQL, "idx_propagation_peer_entries_global_completed"),
+    ] {
+        let plan = explain(sql);
+        assert!(plan.contains(index), "{plan}");
+        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+    }
     // The pre-index ranking sorted every unhandled mark on each pass.
     let reference = explain(
         "SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (PARTITION BY peer ORDER BY updated_at DESC, transient_id DESC) AS r
@@ -335,4 +341,61 @@ fn peer_quota_rank_index_is_built_for_existing_databases() {
         .prune_propagation_peer_entries_to_policy(QUOTA_NOW, QUOTA_TTL, QUOTA_TTL, 1_000_000, 10)
         .expect("prune migrated store");
     assert_eq!(deleted, 3 * (40 - 10));
+}
+
+#[test]
+fn peer_quota_global_small_excess_never_sorts_retained_history() {
+    use rusqlite::StatementStatus;
+    let (_temp, store) = refill_store_on_disk();
+    seed_quota_marks(&store, &quota_marks(&MIXED_CASE_PEERS, &[700], 700, 1));
+    let mut results = Vec::new();
+    for (name, sql) in [
+        ("unhandled", GLOBAL_UNHANDLED_QUOTA_DELETE_SQL),
+        ("completed", GLOBAL_COMPLETED_QUOTA_DELETE_SQL),
+    ] {
+        let (sorts, steps) = store.with_write_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            let mut statement = tx.prepare(sql)?;
+            assert_eq!(statement.execute([1])?, 1);
+            let counters = (statement.get_status(StatementStatus::Sort),
+                            statement.get_status(StatementStatus::VmStep));
+            drop(statement);
+            tx.rollback()?;
+            Ok(counters)
+        }).expect("global quota counters");
+        eprintln!("global {name}: sorts={sorts}, vm_steps={steps}");
+        results.push((name, sorts, steps));
+    }
+    for (name, sorts, steps) in results {
+        assert_eq!(sorts, 0, "global {name} must not sort retained history");
+        assert!(steps < 500, "global {name} small excess costs {steps} VM steps");
+    }
+}
+
+#[test]
+fn peer_quota_global_order_indexes_upgrade_existing_database() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let path = temp.path().join("pre-global-order.db");
+    let marks = quota_marks(&MIXED_CASE_PEERS, &[20], 30, 1);
+    {
+        let store = MessagesStore::open(&path).expect("open store");
+        seed_quota_marks(&store, &marks);
+        store.with_write_conn(|conn| conn.execute_batch(
+            "DROP INDEX idx_propagation_peer_entries_global_unhandled;
+             DROP INDEX idx_propagation_peer_entries_global_completed;"
+        )).expect("simulate old schema");
+    }
+    let store = MessagesStore::open(&path).expect("upgrade existing store");
+    let (_reference_temp, reference) = refill_store_on_disk();
+    seed_quota_marks(&reference, &marks);
+    let expected = reference.with_write_conn(|conn| Ok(reference_quota_prune(conn, 100, 50)))
+        .expect("reference quota");
+    let deleted = store.prune_propagation_peer_entries_to_policy(
+        QUOTA_NOW, QUOTA_TTL, QUOTA_TTL, 100, 50
+    ).expect("prune upgraded store using both indexes");
+    assert_eq!(deleted, expected);
+    assert_eq!(stored_quota_marks(&store), stored_quota_marks(&reference));
+    drop(store);
+    let reopened = MessagesStore::open(&path).expect("reopen pruned store");
+    assert_eq!(stored_quota_marks(&reopened), stored_quota_marks(&reference));
 }
