@@ -16,6 +16,25 @@ The bind is opt-in and must be loopback. The frontend assets must be a built
 Configure at least one network interface for live peers; see the
 [UDP interface runbook](reticulumd-udp-interface.md) for a local example.
 With no assets path, the API still runs but there is no browser entry page.
+
+HTTP requests, static assets, and WebSocket upgrades require a single `Host`
+matching the listener's IP or `localhost`, at its actual port (including an
+assigned port when binding to port zero). IPv6 literals use brackets. Browser
+`Origin`, when present, must be `http://` with the same hostname and effective
+port as the request; `localhost` and an IP literal are separate origins.
+Cross-site and same-site browser requests are denied through `Sec-Fetch-Site`,
+including image/navigation requests without `Origin`. Requests rejected by this
+policy return HTTP 403 before routing or a WebSocket upgrade. Forwarded headers
+do not override this policy; reverse-proxy and cross-origin UI deployments are
+not supported. Direct navigation and local non-browser clients can omit browser
+headers, but must send a valid `Host` (or HTTP/2 `:authority`). A client that sends
+neither `Origin` nor Fetch Metadata is treated as a non-browser client; this is
+not authentication against other local processes.
+
+The public `meshchat_api::router` constructor has no listener address and accepts
+loopback IP literals or `localhost` at any port, with the same browser checks.
+Its caller must bind the listener to loopback. The daemon's `serve` path also
+checks the configured IP and actual listening port.
 Local UI settings, favourites, name overrides, and read timestamps persist to
 `/path/to/reticulum.meshchat.json` beside the selected daemon database. A
 corrupt state file stops the API at startup instead of silently discarding it.
