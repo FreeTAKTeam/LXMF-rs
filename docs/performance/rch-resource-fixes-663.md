@@ -1114,3 +1114,43 @@ still examines and orders eligible candidates. It does not establish a
 production CPU reduction, file-cache or anonymous-memory plateau, absence of
 SQLite sort spills in other queries, or end-to-end delivery stability. #663 and
 #709 remain open; no synthetic soak or production experiment was run.
+
+
+## Global quota small-excess sort removal, 2026-11-06
+
+Current main still forced the expiry index for global unhandled eviction and
+sorted completed marks from a table scan. A one-row excess could sort the entire
+retained candidate set under the existing writer transaction. Two order-covering
+partial indexes now live in the canonical `lxmf-propagation` schema; the daemon
+uses them for its unchanged `(updated_at, transient_id, peer)` global order.
+See [migration and overhead](../migrations/propagation-global-quota-order-indexes.md).
+
+A file-backed WAL regression executes the actual production DELETE statements
+inside rolled-back transactions, seeded with 8,400 marks (six exact peer keys,
+including case variants; 700 unhandled and 700 completed per peer). All timestamps
+are tied, exposing the old partial-sort worst case. With excess=1 and bundled
+SQLite, before/after `sqlite3_stmt_status` results are:
+
+| Actual DELETE | Before VM steps / sorts | After VM steps / sorts |
+| --- | --- | --- |
+| Global unhandled | 63,121 / 1 | 141 / 0 |
+| Global completed | 42,158 / 1 | 133 / 0 |
+
+The regression fails on the original SQL/schema, then passes with zero sorts and
+fewer than 500 VM steps per statement. Counters include the real row deletion,
+existing budget triggers and index maintenance; these are not just SELECT plans.
+Ten quota regressions pass, including both-stage policy oracles with tied keys,
+concurrent inserts/state transitions, and old-schema upgrade followed by pruning
+and reopening with exact retained rows. The old schema is simulated by dropping
+the two new indexes before reopening, preserving existing rows and budget state.
+
+This bounds candidate selection by the excess; large deletions still maintain
+all affected indexes in the existing atomic transaction. Count and per-peer gate
+scans remain, and added indexes consume disk and write work. These counters do
+not measure production temporary-file bytes, CPU, cache pressure or delivery.
+No production change, cache eviction, synthetic soak or #709 work was performed;
+#663 remains open.
+
+Final local validation: RPC library suite **889 passed, 9 pre-existing ignored**
+(50.05 seconds); scoped RPC/propagation all-target/all-feature Clippy passed.
+Workspace formatting, dependency boundaries, module-size and diff checks passed.
