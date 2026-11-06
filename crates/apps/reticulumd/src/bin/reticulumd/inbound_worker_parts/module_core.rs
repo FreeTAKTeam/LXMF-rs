@@ -252,13 +252,14 @@ fn spawn_packet_inbound_worker(
 ) {
     let daemon_inbound = daemon;
     let inbound_transport = transport;
+    let mut rx = inbound_transport.received_data_events_with_proofs();
     tokio::spawn(async move {
         let local_delivery_destination =
             routing::local_delivery_destination_hash(control.delivery_destination.as_ref()).await;
-        let mut rx = inbound_transport.received_data_events();
         loop {
             match rx.recv().await {
-                Ok(event) => {
+                Ok(received) => {
+                    let event = received.received;
                     if routing::should_skip_control_payload(&event, &control) {
                         continue;
                     }
@@ -316,7 +317,7 @@ fn spawn_packet_inbound_worker(
                             continue;
                         }
                         InboundLxmfDestination::Delivery(destination) => {
-                            delivery_events::accept_delivery_packet(
+                            let admitted = delivery_events::accept_delivery_packet(
                                 daemon_inbound.as_ref(),
                                 inbound_transport.as_ref(),
                                 &raw_destination_hex,
@@ -325,11 +326,18 @@ fn spawn_packet_inbound_worker(
                                 event.payload_mode,
                             )
                             .await;
+                            if admitted {
+                                if let Some(proof) = received.proof {
+                                    if !inbound_transport.prove_destination_packet(proof).await {
+                                        log::warn!("[daemon-rx] accepted LXMF packet proof dispatch failed dst={}", raw_destination_hex);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    // Skipped events were already proved to their senders.
+                    // Deferred packets skipped here remain unproved and may be retried.
                     log::warn!(
                         "[daemon-rx] received-data channel lagged; skipped {} events",
                         skipped

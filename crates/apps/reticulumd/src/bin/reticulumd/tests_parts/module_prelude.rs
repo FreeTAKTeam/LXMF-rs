@@ -209,7 +209,7 @@ fn propagated_delivery_requires_selected_node() {
         .expect("selected node should satisfy propagated delivery");
 }
 
-async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge>) {
+pub(crate) async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge>) {
     let (daemon, bridge, _, _) = test_transport_bridge_fixture_with_peer().await;
     (daemon, bridge)
 }
@@ -225,7 +225,7 @@ async fn test_transport_bridge_fixture_with_peer(
     test_transport_bridge_fixture_with_peer_at(service_identity_dir).await
 }
 
-async fn test_transport_bridge_fixture_with_peer_at(
+pub(crate) async fn test_transport_bridge_fixture_with_peer_at(
     service_identity_dir: PathBuf,
 ) -> (Arc<RpcDaemon>, Arc<TransportBridge>, PrivateIdentity, String) {
     let signer = PrivateIdentity::new_from_rand(rand_core::OsRng);

@@ -223,7 +223,10 @@ impl TransportBridge {
         })?;
         let destination = self
             .transport
-            .add_destination(transport_identity, DestinationName::new("lxmf", "delivery"))
+            .add_destination_with_deferred_proofs(
+                transport_identity,
+                DestinationName::new("lxmf", "delivery"),
+            )
             .await;
         let delivery_destination = {
             let destination = destination.lock().await;
@@ -291,7 +294,7 @@ impl TransportBridge {
                             )
                         })?;
                     let destination = transport
-                        .add_destination(
+                        .add_destination_with_deferred_proofs(
                             transport_identity,
                             DestinationName::new("lxmf", "delivery"),
                         )
@@ -492,3 +495,6 @@ fn write_json_atomic(path: &Path, value: &impl Serialize) -> io::Result<()> {
     }
     fs::rename(temporary, path)
 }
+#[cfg(test)]
+#[path = "tests/service_identity_proofs.rs"]
+mod proof_tests;

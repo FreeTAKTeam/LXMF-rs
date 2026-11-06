@@ -12,6 +12,8 @@ impl Transport {
             tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
         let (received_data_tx, _) =
             tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (received_data_with_proof_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
         let (iface_messages_tx, _) =
             tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
         let (resource_events_tx, _) =
@@ -80,6 +82,7 @@ impl Transport {
             announce_tx,
             link_in_event_tx: link_in_event_tx.clone(),
             received_data_tx: received_data_tx.clone(),
+            received_data_with_proof_tx: received_data_with_proof_tx.clone(),
             ratchet_store,
             resource_manager: ResourceManager::new_with_config(
                 Duration::from_secs(resource_retry_interval_secs),
@@ -103,6 +106,7 @@ impl Transport {
         fn spawn_link_data_forwarder(
             mut link_rx: broadcast::Receiver<LinkEventData>,
             received_data_tx: broadcast::Sender<ReceivedData>,
+            received_data_with_proof_tx: broadcast::Sender<ReceivedDataWithProof>,
         ) {
             tokio::spawn(async move {
                 loop {
@@ -116,19 +120,23 @@ impl Transport {
                                     payload.context() as u8,
                                     payload.len()
                                 );
-                                if received_data_tx
-                                    .send(ReceivedData {
-                                        destination: event.id,
-                                        data: PacketDataBuffer::new_from_slice(payload.as_slice()),
-                                        payload_mode: ReceivedPayloadMode::FullWire,
-                                        ratchet_used: false,
-                                        context: Some(payload.context()),
-                                        request_id: payload.request_id(),
-                                        hops: None,
-                                        interface: None,
+                                let received = ReceivedData {
+                                    destination: event.id,
+                                    data: PacketDataBuffer::new_from_slice(payload.as_slice()),
+                                    payload_mode: ReceivedPayloadMode::FullWire,
+                                    ratchet_used: false,
+                                    context: Some(payload.context()),
+                                    request_id: payload.request_id(),
+                                    hops: None,
+                                    interface: None,
+                                };
+                                let proof_consumer = received_data_with_proof_tx
+                                    .send(ReceivedDataWithProof {
+                                        received: received.clone(),
+                                        proof: None,
                                     })
-                                    .is_err()
-                                {
+                                    .is_ok();
+                                if received_data_tx.send(received).is_err() && !proof_consumer {
                                     log::trace!(
                                         "[tp-diag] received data has no active subscribers link_id=/{}//",
                                         event.id
@@ -143,8 +151,16 @@ impl Transport {
             });
         }
         {
-            spawn_link_data_forwarder(link_in_event_tx.subscribe(), received_data_tx.clone());
-            spawn_link_data_forwarder(link_out_event_tx.subscribe(), received_data_tx.clone());
+            spawn_link_data_forwarder(
+                link_in_event_tx.subscribe(),
+                received_data_tx.clone(),
+                received_data_with_proof_tx.clone(),
+            );
+            spawn_link_data_forwarder(
+                link_out_event_tx.subscribe(),
+                received_data_tx.clone(),
+                received_data_with_proof_tx.clone(),
+            );
         }
 
         Self {
@@ -153,6 +169,7 @@ impl Transport {
             link_in_event_tx,
             link_out_event_tx,
             received_data_tx,
+            received_data_with_proof_tx,
             iface_messages_tx,
             resource_events_tx,
             handler,

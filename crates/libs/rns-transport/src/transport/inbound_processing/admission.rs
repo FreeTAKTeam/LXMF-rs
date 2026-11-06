@@ -56,14 +56,17 @@ pub(in crate::transport) async fn try_enqueue_inbound_message(
     class: InboundTrafficClass,
     candidate: QueuedInbound,
 ) -> Result<(), AdmissionFailure> {
+    let deferred_retry = handler.allows_deferred_destination_retry(&candidate.message.packet).await;
     let mut cache = handler.packet_cache.lock().await;
-    if !filter_duplicate_packet(
-        &cache,
-        &candidate.message.packet,
-        candidate.wire_hops,
-        handler.config.connected_to_shared_instance,
-        *handler.config.identity.address_hash(),
-    ) {
+    if !deferred_retry
+        && !filter_duplicate_packet(
+            &cache,
+            &candidate.message.packet,
+            candidate.wire_hops,
+            handler.config.connected_to_shared_instance,
+            *handler.config.identity.address_hash(),
+        )
+    {
         return Err(AdmissionFailure::Filtered(Box::new(candidate)));
     }
     let remember = !handler.config.connected_to_shared_instance

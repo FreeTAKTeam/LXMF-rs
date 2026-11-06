@@ -1,5 +1,16 @@
 # Current Roadmap Status
 
+The #719 receive-side proof policy defers opportunistic LXMF proofs until
+existing delivery admission and durable storage succeed. Default, imported and
+restored delivery identities opt in; ordinary Reticulum destinations retain their
+proof policy. Accepted duplicates can regenerate the original wire-hash proof
+without another inbound delivery. A transport proof confirms receipt, separately
+from signature metadata, durable broker ACKs and application responses. Local
+regressions cover blocked commit, broker contention rejection, exact retry, reconnect and
+reopened storage. Pinned RNS 1.5.2 / LXMF 0.9.6 senders reach native `DELIVERED`
+for opportunistic packets, direct packets and a 16 KB direct Resource.
+Columba/Pixel and Ratspeak/Windows acceptance and the original unlocalized direct
+report remain open; this increment does not establish those live outcomes.
 The #663 global peer-entry quota selection now uses shared order-covering partial
 indexes instead of sorting retained history for small excesses. Local actual-SQL
 regressions preserve exact quota ordering and database reopening; production
