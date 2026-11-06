@@ -3,6 +3,7 @@
 mod chat;
 mod control;
 mod interface_control;
+mod request_policy;
 #[cfg(test)]
 mod tests;
 
@@ -109,6 +110,8 @@ impl AppState {
     }
 }
 
+/// Builds a loopback-only router. The caller must bind its listener to loopback.
+/// Requests require a loopback Host and, for browsers, the same HTTP origin.
 pub fn router(daemon: Arc<RpcDaemon>, assets: Option<PathBuf>) -> Router {
     let (events, _) = broadcast::channel(256);
     let state = Arc::new(AppState {
@@ -118,10 +121,14 @@ pub fn router(daemon: Arc<RpcDaemon>, assets: Option<PathBuf>) -> Router {
         persist: None,
         config: None,
     });
-    build_router(state, assets)
+    build_router(state, assets, request_policy::RequestPolicy::loopback())
 }
 
-fn build_router(state: Arc<AppState>, assets: Option<PathBuf>) -> Router {
+fn build_router(
+    state: Arc<AppState>,
+    assets: Option<PathBuf>,
+    policy: request_policy::RequestPolicy,
+) -> Router {
     let mut app = Router::new()
         .route("/api/v1/status", get(status))
         .route("/api/v1/app/info", get(control::app_info))
@@ -193,7 +200,8 @@ fn build_router(state: Arc<AppState>, assets: Option<PathBuf>) -> Router {
     if let Some(assets) = assets {
         app = app.fallback_service(ServeDir::new(assets));
     }
-    app.with_state(state)
+    app.layer(axum::middleware::from_fn_with_state(policy, request_policy::validate))
+        .with_state(state)
 }
 
 pub async fn serve(
@@ -253,8 +261,10 @@ pub async fn serve(
             .map_err(|error| std::io::Error::other(error.1))?;
     }
     let listener = tokio::net::TcpListener::bind(bind).await?;
-    log::info!("MeshChat API listening on http://{}", listener.local_addr()?);
-    axum::serve(listener, build_router(state, assets)).await
+    let local_addr = listener.local_addr()?;
+    log::info!("MeshChat API listening on http://{local_addr}");
+    let policy = request_policy::RequestPolicy::for_bind(local_addr);
+    axum::serve(listener, build_router(state, assets, policy)).await
 }
 
 async fn persist_state(path: &std::path::Path, state: &LocalState) -> std::io::Result<()> {
