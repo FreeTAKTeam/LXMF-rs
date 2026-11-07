@@ -6,6 +6,9 @@ use alloc::vec::Vec;
 
 use crate::hash::Hash;
 
+/// What one AutoInterface datagram carries, the reference's `AutoInterface.HW_MTU`.
+pub const AUTO_INTERFACE_HW_MTU: usize = 1196;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoInterfaceConfig {
     pub group_id: String,
