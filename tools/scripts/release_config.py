@@ -25,7 +25,7 @@ TARGETS = [
     dict(id="macos-x86_64", label="macOS x86_64", os="macos-15-intel",
          target="x86_64-apple-darwin", artifact_arch="macos-x86_64",
          use_cross=False, suffix=""),
-    dict(id="macos-aarch64", label="macOS aarch64", os="macos-14",
+    dict(id="macos-aarch64", label="macOS aarch64", os="macos-15",
          target="aarch64-apple-darwin", artifact_arch="macos-aarch64",
          use_cross=False, suffix=""),
 ]
