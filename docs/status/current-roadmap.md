@@ -3636,3 +3636,11 @@ allocation evidence, not cgroup acceptance: c37's constrained regular stage adde
 four high events; exact-build retained-state recovery and hours-long no-continuing-
 reclaim acceptance remain open. See
 [the scoped measurements](../performance/path-snapshot-exact-output-663.md).
+
+The #663 restart authentication correction retains validated source identities
+while detached tunnel paths still reference them, and releases them after final
+tunnel expiry. A signed-cache regression fails before the fix; an independent
+actual TCP/service restart control preserves exact public keys and verifies fresh
+bidirectional messages without scoped reannouncement after cleanup. This is a
+focused debug-binary correctness result; final retained-state resource acceptance
+remains open. See [the evidence](../performance/tunnel-identity-cleanup-663.md).

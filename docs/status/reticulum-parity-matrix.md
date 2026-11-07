@@ -1469,3 +1469,12 @@ cached announce and same-interface route restoration after SIGINT, including
 without ZeroMQ. This preserves the snapshot-capture boundary and does not claim
 capture of subsequent native arrivals or new file atomicity. See
 [the shutdown regression evidence](../performance/path-shutdown-checkpoint-663.md).
+
+The #663 detached-tunnel identity lifetime correction includes tunnel paths in
+destination-cache references until their existing expiry. A signed-cache restore
+regression covers two tunnel references and release after the last expires. A
+focused real TCP/service restart comparison fails on the old source-map pruning
+and passes with exact persisted public keys and fresh verified bidirectional
+messages, without scoped reannouncement. This is local debug-binary evidence;
+full retained-state resource acceptance remains open. See
+[the authentication regression](../performance/tunnel-identity-cleanup-663.md).

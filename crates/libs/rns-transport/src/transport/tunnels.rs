@@ -107,6 +107,10 @@ impl TunnelTable {
         Self::default()
     }
 
+    pub(super) fn destinations(&self) -> impl Iterator<Item = AddressHash> + '_ {
+        self.tunnels.values().flat_map(|tunnel| tunnel.paths.keys().copied())
+    }
+
     fn handle_tunnel(
         &mut self,
         tunnel_id: Hash,

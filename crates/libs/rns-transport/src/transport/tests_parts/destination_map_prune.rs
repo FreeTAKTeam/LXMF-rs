@@ -95,3 +95,69 @@ async fn destination_cleanup_preserves_identified_inbound_backchannel() {
     handler.prune_destination_cache().await;
     assert!(!handler.single_out_destinations.contains_key(&peer_destination));
 }
+
+#[tokio::test]
+async fn restored_tunnel_identity_survives_cleanup_until_last_tunnel_expires() {
+    use crate::transport::tunnels::{PythonTunnelEntry, PythonTunnelPathEntry};
+
+    let storage = tempfile::tempdir().expect("tunnel identity storage");
+    let local = PrivateIdentity::new_from_name("tunnel-identity-cleanup");
+    let transport = Transport::new(TransportConfig::new("before", &local, true));
+    let iface = *transport.iface_manager().lock().await.new_channel(32).address();
+    let learned = learn_cached_path(&transport, iface, "delivery").await;
+    let expected = transport.destination_identity(&learned.destination).await.expect("learned key");
+    let now = std::time::Instant::now();
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs_f64();
+    let tunnel_ids = [Hash::new_from_slice(&[1; 32]), Hash::new_from_slice(&[2; 32])];
+    let tunnels = tunnel_ids
+        .iter()
+        .map(|tunnel_id| PythonTunnelEntry {
+            tunnel_id: *tunnel_id,
+            interface_hash: None,
+            expires_secs: unix + 3600.0,
+            paths: vec![PythonTunnelPathEntry {
+                destination: learned.destination,
+                timestamp_secs: unix,
+                received_from: learned.destination,
+                hops: 1,
+                expires_secs: unix + 3600.0,
+                random_blobs: vec![],
+                interface_hash: None,
+                packet_hash: learned.packet.hash(),
+            }],
+        })
+        .collect();
+    transport.get_handler().lock().await.tunnel_table.restore_python_entries(tunnels, now, unix);
+    transport.save_reticulum_path_table(storage.path()).await.expect("persist valid announce");
+
+    // No interface is registered in the replacement transport. The active row
+    // cannot map, but the validated cached announce restores the detached key.
+    let restored = Transport::new(TransportConfig::new("after", &local, true));
+    let report =
+        restored.restore_reticulum_path_table_report(storage.path()).await.expect("restore");
+    assert_eq!(report.restored_active_paths, 0);
+    assert_eq!(report.skipped.active_unmapped_interface, 1);
+    assert_eq!(report.restored_identities.len(), 1);
+    assert_eq!(report.skipped.tunnel_duplicate_packet_hash, 1);
+    assert_eq!(restored.table_occupancy().await.tunnel_path_entries, 2);
+    assert!(!restored.has_path(&learned.destination).await);
+    let handler = restored.get_handler();
+    handler.lock().await.prune_destination_cache().await;
+    let actual =
+        restored.destination_identity(&learned.destination).await.expect("retained tunnel key");
+    assert_eq!(actual.public_key_bytes(), expected.public_key_bytes());
+    assert_eq!(actual.verifying_key_bytes(), expected.verifying_key_bytes());
+    {
+        let mut handler = handler.lock().await;
+        handler.tunnel_table.tunnels.remove(&tunnel_ids[0]).expect("first tunnel");
+        handler.prune_destination_cache().await;
+        assert!(handler.single_out_destinations.contains_key(&learned.destination));
+        handler.tunnel_table.remove_stale(now + Duration::from_secs(9 * 3600));
+        handler.prune_destination_cache().await;
+        assert!(!handler.single_out_destinations.contains_key(&learned.destination));
+        assert_eq!(handler.single_out_destinations_removed_total, 1);
+    }
+}
