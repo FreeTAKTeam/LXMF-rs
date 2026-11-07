@@ -134,14 +134,15 @@ fn snapshot_array_headers_use_checked_messagepack_lengths() {
         (0, vec![0x90]),
         (15, vec![0x9f]),
         (16, vec![0xdc, 0, 16]),
+        (65535, vec![0xdc, 0xff, 0xff]),
         (65536, vec![0xdd, 0, 1, 0, 0]),
     ] {
-        let mut encoder = Encoder::default();
+        let mut encoder = Encoder::<Vec<u8>>::default();
         encoder.array(len).expect("array header");
         assert_eq!(encoder.0, expected);
     }
     if let Some(overflow) = (u32::MAX as usize).checked_add(1) {
-        assert!(Encoder::default().array(overflow).is_err());
+        assert!(Encoder::<Vec<u8>>::default().array(overflow).is_err());
     }
 }
 
@@ -163,4 +164,44 @@ fn nested_tunnel_path_array_preserves_order_and_mixed_interfaces() {
         encode_tunnels(&entries).expect("direct"),
         legacy_tunnels(&entries).expect("legacy")
     );
+}
+
+#[test]
+fn counted_paths_use_the_reserved_buffer_without_reallocation() {
+    let entries =
+        (0..256).map(|index| path_entry(index, [0, 1, 64, 65, 70][index % 5])).collect::<Vec<_>>();
+    let mut count = Encoder(ByteCount::default());
+    write_paths(&mut count, &entries).expect("count");
+    let mut output = Encoder::reserved(count.0.bytes).expect("reserve");
+    let (ptr, capacity) = (output.0.as_ptr(), output.0.capacity());
+    write_paths(&mut output, &entries).expect("write");
+    assert_eq!(output.0.len(), count.0.bytes);
+    assert_eq!(output.0.as_ptr(), ptr);
+    assert_eq!(output.0.capacity(), capacity);
+    assert_eq!(
+        output.finish(count.0.bytes).expect("finish"),
+        legacy_paths(&entries).expect("legacy")
+    );
+}
+
+#[test]
+fn counted_tunnels_use_the_reserved_buffer_without_reallocation() {
+    let entries = (0..16).map(|index| tunnel_entry(index, index * 5)).collect::<Vec<_>>();
+    let mut count = Encoder(ByteCount::default());
+    write_tunnels(&mut count, &entries).expect("count");
+    let mut output = Encoder::reserved(count.0.bytes).expect("reserve");
+    let (ptr, capacity) = (output.0.as_ptr(), output.0.capacity());
+    write_tunnels(&mut output, &entries).expect("write");
+    assert_eq!(output.0.len(), count.0.bytes);
+    assert_eq!(output.0.as_ptr(), ptr);
+    assert_eq!(output.0.capacity(), capacity);
+}
+
+#[test]
+fn snapshot_count_overflow_and_unrepresentable_reservation_are_errors() {
+    let mut count = ByteCount { bytes: usize::MAX };
+    assert!(count.write(&[0]).is_err());
+    assert_eq!(count.bytes, usize::MAX);
+    assert!(matches!(Encoder::reserved(usize::MAX), Err(RnsError::OutOfMemory)));
+    assert!(Encoder::reserved(0).expect("empty").finish(1).is_err());
 }

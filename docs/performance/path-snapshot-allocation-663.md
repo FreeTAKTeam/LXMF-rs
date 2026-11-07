@@ -1,5 +1,9 @@
 # Path snapshot allocation amplification (#663)
 
+This record measures the initial direct-codec increment. The subsequent
+[exact-output increment](path-snapshot-exact-output-663.md) removes growable-buffer
+slack and records the later constrained-run limitations.
+
 A constrained synthetic run with actual RCH retained 100,000 cached announces.
 At 19:31:56 UTC on 2026-11-07, a persistence pass coincided with anonymous memory
 rising from 242.16 MB to 368.94 MB, RSS from 265.76 MB to 391.50 MB, and cgroup

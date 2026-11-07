@@ -3627,3 +3627,12 @@ fail on the prior shutdown ordering and restore successfully with the same live
 interface after the correction, in both daemon feature configurations. The
 checkpoint covers snapshot capture rather than later native arrivals; see
 [shutdown evidence](../performance/path-shutdown-checkpoint-663.md).
+
+The #663 snapshot codec preserves exact Python bytes while eliminating the
+whole-table MessagePack object tree and reserving counted output once. A
+100,000-route native-export probe reduces remaining scratch peak from 54.48 MB
+to 43.01 MB, with an extra metadata pass and a measured debug-time cost. This is
+allocation evidence, not cgroup acceptance: c37's constrained regular stage added
+four high events; exact-build retained-state recovery and hours-long no-continuing-
+reclaim acceptance remain open. See
+[the scoped measurements](../performance/path-snapshot-exact-output-663.md).
