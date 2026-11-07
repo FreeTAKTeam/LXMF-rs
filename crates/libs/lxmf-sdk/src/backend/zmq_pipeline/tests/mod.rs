@@ -7,6 +7,7 @@ use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage}
 
 mod batch;
 mod cancel;
+mod config;
 mod connection_deadline;
 mod delivery_stamp_policy;
 mod delivery_trace;
@@ -48,15 +49,6 @@ fn config_accepts_loopback_without_auth() {
         ZmqPipelineBackendConfig::local_tcp("tcp://127.0.0.1:9000", "tcp://localhost:9001");
 
     config.validate().expect("loopback accepted");
-}
-
-#[test]
-fn config_normalizes_ipv4_loopback_for_windows_tcp_bind() {
-    let config =
-        ZmqPipelineBackendConfig::local_tcp("tcp://127.0.0.1:9000", "tcp://127.0.0.1:9001");
-
-    assert_eq!(config.command_endpoint, "tcp://localhost:9000");
-    assert_eq!(config.response_endpoint, "tcp://localhost:9001");
 }
 
 #[test]

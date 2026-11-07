@@ -284,3 +284,53 @@ fn broker_reply_classifier_handles_success_errors_and_malformed_frames() {
         ZmqStageOutcome::Succeeded
     ));
 }
+
+#[cfg(not(windows))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn public_sdk_local_tcp_negotiates_and_polls_literal_ipv4_callback() {
+    use lxmf_sdk::{
+        NegotiationRequest, SdkBackend, ZmqPipelineBackendClient, ZmqPipelineBackendConfig,
+    };
+
+    let reserved_command = std::net::TcpListener::bind("127.0.0.1:0").expect("command port");
+    let reserved_response = std::net::TcpListener::bind("127.0.0.1:0").expect("response port");
+    let command_endpoint =
+        format!("tcp://{}", reserved_command.local_addr().expect("command address"));
+    let response_endpoint =
+        format!("tcp://{}", reserved_response.local_addr().expect("response address"));
+    drop((reserved_command, reserved_response));
+    let daemon = Arc::new(RpcDaemon::test_instance());
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let server = tokio::spawn(super::super::run_zmq_rpc_loop_until(
+        super::super::ZmqRpcLoopConfig {
+            command_endpoint: command_endpoint.clone(),
+            require_auth_for_remote: true,
+        },
+        daemon,
+        shutdown_rx,
+    ));
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let result = tokio::task::spawn_blocking(move || {
+        // Exercise public defaults, including their five-second deadline. No
+        // manual endpoint assignments may mask address-family normalization.
+        let backend = ZmqPipelineBackendClient::new(ZmqPipelineBackendConfig::local_tcp(
+            command_endpoint, response_endpoint,
+        ))?;
+        let request: NegotiationRequest = serde_json::from_value(serde_json::json!({
+            "supported_contract_versions": [2],
+            "requested_capabilities": ["sdk.capability.async_events", "sdk.capability.cursor_replay"],
+            "profile": "desktop-local-runtime", "bind_mode": "local_only",
+            "auth_mode": "local_trusted", "overflow_policy": "reject",
+            "block_timeout_ms": null, "rpc_backend": null, "extensions": {}
+        })).expect("negotiation request");
+        let negotiated = backend.negotiate(request)?;
+        assert_eq!(negotiated.active_contract_version, 2);
+        for _ in 0..3 {
+            backend.poll_events(None, 1)?;
+        }
+        Ok::<_, lxmf_sdk::SdkError>(())
+    }).await.expect("SDK client thread");
+    shutdown_tx.send(true).expect("command loop shutdown");
+    server.await.expect("command loop task").expect("command loop shutdown");
+    result.expect("public SDK constructor must negotiate and receive repeated callback replies");
+}

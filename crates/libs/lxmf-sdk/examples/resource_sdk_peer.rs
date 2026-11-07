@@ -48,8 +48,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("local test endpoints only".into());
     }
     let mut config = ZmqPipelineBackendConfig::local_tcp(endpoint.clone(), response.clone());
-    config.command_endpoint = endpoint;
-    config.response_endpoint = response;
     config.request_timeout = Duration::from_secs(5);
     let client = Client::new(ZmqPipelineBackendClient::new(config)?);
     let handle = client.start(

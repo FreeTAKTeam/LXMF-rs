@@ -87,10 +87,15 @@ impl ZmqPipelineBackendConfig {
 }
 
 fn normalize_loopback_endpoint(endpoint: String) -> String {
-    endpoint
+    // Preserve the Windows TCP-bind workaround without changing an explicit
+    // address family elsewhere: localhost can bind ::1 while the daemon's
+    // legacy callback connector uses IPv4 loopback.
+    #[cfg(windows)]
+    let endpoint = endpoint
         .strip_prefix("tcp://127.0.0.1:")
         .map(|port| format!("tcp://localhost:{port}"))
-        .unwrap_or(endpoint)
+        .unwrap_or(endpoint);
+    endpoint
 }
 
 fn validate_endpoint_security(endpoint: &str, has_auth: bool) -> Result<(), SdkError> {

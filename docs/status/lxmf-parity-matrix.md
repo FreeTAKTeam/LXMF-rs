@@ -46,6 +46,11 @@ unknown states, orphan exclusion and deterministic ordering after reopening;
 query counters support production attribution. See
 [the focused query evidence](../performance/unhandled-peer-ids-663.md). This
 resource increment does not change wire behavior or promote production acceptance.
+A related SDK endpoint correction preserves explicit numeric loopback addresses
+outside Windows while retaining the Windows bind workaround. Native daemon-loop
+coverage negotiates v2 and receives callback poll replies through the public
+constructor; [endpoint evidence](../performance/zmq-literal-loopback-663.md)
+separates this from sustained production delivery acceptance.
 
 The 2026-10-28 #663 maintenance attribution increment adds separate expiry,
 quota and payload durations, successful deletion counts, failure totals and
