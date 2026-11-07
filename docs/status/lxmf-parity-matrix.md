@@ -251,11 +251,20 @@ unchanged. See the [MeshChat API runbook](../runbooks/meshchat-api.md) and
   commitment, contention rejection with durable broker enabled, one retained journal delivery event,
   rejected intake, exact ciphertext retries, new ingress interfaces and reopened
   storage with a new transport. Identity registration tests cover
-  bootstrap, import, create and restoration. The Python-to-Rust smoke lane now
+  bootstrap, import, create and restoration. The service-identity wire regression
+  runs imported/created destinations and their persisted-key restorations through
+  the production intake worker, rejects malformed packets without a proof,
+  preserves service destination/content during duplicate retries and reconnect,
+  and verifies the original encrypted packet hash with the addressed service key
+  while rejecting the default and other service keys. This channel-level test
+  restores keys into a fresh in-memory message store; the separate durable-store
+  regression covers reopened-message deduplication. The Python-to-Rust smoke lane now
   requires native LXMF `DELIVERED` plus a validated PacketReceipt/Resource proof
   and records message ID, method, proof binding and Python versions. Live pinned
   RNS 1.5.2 / LXMF 0.9.6 senders reached `DELIVERED` for opportunistic packets,
-  direct packets and a 16 KB direct Resource. Durable
+  direct packets and a 16 KB direct Resource. The
+  [2026-11-07 software evidence](../interop/issue-719-delivery-proofs.json)
+  retains the reference revisions and validated proof bindings. Durable
   broker ACKs and command responses are separate signals. Physical Columba/Pixel
   and Ratspeak/Windows evidence and the original direct-link symptom remain
   unverified; direct Link/Resource mechanisms retain their own native receipts.
