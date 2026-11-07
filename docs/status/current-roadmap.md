@@ -325,6 +325,20 @@ delivered; the guest high-load profile still needs a fresh run.
 
 ## RCH resource regressions: issues 663, 657 and 655
 
+The 2026-11-07 #663 increment streams peer-status unhandled IDs through the
+existing folded covering index. Fusing state aggregation with ID ordering removes
+the previous temporary result sort; mixed-case completed-state precedence,
+unknown-state fallback and orphan exclusion survive reopening. Fixed
+`storage.propagation_queries.unhandled_ids` counters expose query time, VM steps,
+sorts, full scans and automatic-index rows without retaining SQL parameters.
+See [the focused query evidence](../performance/unhandled-peer-ids-663.md);
+production cgroup and fresh-delivery acceptance remain separate.
+The resource harness also exposed an SDK callback address-family mismatch:
+IPv4-to-`localhost` normalization is now restricted to its original Windows
+workaround, preserving explicit IPv4 endpoints on Linux. Public-constructor
+negotiation and callback polling are covered by a real daemon-loop regression;
+see [the endpoint correction](../performance/zmq-literal-loopback-663.md).
+
 The current increment bounds propagation-refill writer transactions, uses
 indexed inventory and pending-only lookups, and avoids reopening unchanged
 announce-cache files on each path save. Existing SDK cancellation, timeout-stage

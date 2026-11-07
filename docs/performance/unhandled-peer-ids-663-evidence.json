@@ -1,0 +1,125 @@
+{
+  "schema": "lxmf-rs-unhandled-peer-ids-663-v1",
+  "date_utc": "2026-11-07",
+  "baseline_commit": "5455ec30",
+  "candidate_production_source_commit": "6858828f584f4043b1f99fef38ae55baea83ee59",
+  "build_profile": "test (unoptimized + debuginfo)",
+  "rustc": "1.99.1 stable",
+  "bundled_sqlite": "3.53.2",
+  "binary_sha256": "3dc1ead3ce501af1f22f4b7b1b32d0cdde6f3dd8f4b70327163fe201ca70602c",
+  "test_source_note": "Measured test binary precedes final ignored-test label correction (1.1 to 1.24 GiB) and extra sort-count assertion. Production query, fixture and measured loops are identical to 6858828f. Subsequently renamed the test module to soak_tests so source-only policy scanners recognize its test-only status; the measured workload is unchanged.",
+  "fixture": {
+    "fixture_db_bytes": 1334317056,
+    "payload_hex_bytes_per_row": 10240,
+    "payload_rows": 100000
+  },
+  "phases": [
+    {
+      "elapsed_ms": 61884,
+      "io_delta": {
+        "cancelled_write_bytes": 814833664,
+        "rchar": 3040775431,
+        "read_bytes": 0,
+        "syscr": 743894,
+        "syscw": 199801,
+        "wchar": 816001928,
+        "write_bytes": 816496640
+      },
+      "phase": "baseline",
+      "query_max_ns": 887579620,
+      "query_ns_total": 45253600609,
+      "rounds": 120,
+      "rss_kib": 33436,
+      "rss_max_kib": 33436,
+      "rss_min_kib": 28708,
+      "sorts": 120,
+      "swap_kib": 0,
+      "vm_steps": 780004320,
+      "cpu_ticks": 3653,
+      "cpu_seconds": 36.53
+    },
+    {
+      "elapsed_ms": 59820,
+      "io_delta": {
+        "cancelled_write_bytes": 0,
+        "rchar": 2224761346,
+        "read_bytes": 0,
+        "syscr": 544091,
+        "syscw": 0,
+        "wchar": 0,
+        "write_bytes": 0
+      },
+      "phase": "candidate",
+      "query_max_ns": 420805803,
+      "query_ns_total": 30767372531,
+      "rounds": 120,
+      "rss_kib": 33436,
+      "rss_max_kib": 33436,
+      "rss_min_kib": 33436,
+      "sorts": 0,
+      "swap_kib": 0,
+      "vm_steps": 564004560,
+      "cpu_ticks": 3039,
+      "cpu_seconds": 30.39
+    },
+    {
+      "elapsed_ms": 59775,
+      "io_delta": {
+        "cancelled_write_bytes": 0,
+        "rchar": 2224761346,
+        "read_bytes": 0,
+        "syscr": 544091,
+        "syscw": 0,
+        "wchar": 0,
+        "write_bytes": 0
+      },
+      "phase": "candidate",
+      "query_max_ns": 376211770,
+      "query_ns_total": 30098144158,
+      "rounds": 120,
+      "rss_kib": 33436,
+      "rss_max_kib": 33436,
+      "rss_min_kib": 33436,
+      "sorts": 0,
+      "swap_kib": 0,
+      "vm_steps": 564004560,
+      "cpu_ticks": 3008,
+      "cpu_seconds": 30.08
+    },
+    {
+      "elapsed_ms": 60150,
+      "io_delta": {
+        "cancelled_write_bytes": 816414720,
+        "rchar": 3040763148,
+        "read_bytes": 0,
+        "syscr": 743891,
+        "syscw": 199800,
+        "wchar": 816001800,
+        "write_bytes": 816451584
+      },
+      "phase": "baseline",
+      "query_max_ns": 671220005,
+      "query_ns_total": 38366460729,
+      "rounds": 120,
+      "rss_kib": 33444,
+      "rss_max_kib": 33444,
+      "rss_min_kib": 33440,
+      "sorts": 120,
+      "swap_kib": 0,
+      "vm_steps": 780004320,
+      "cpu_ticks": 3719,
+      "cpu_seconds": 37.19
+    }
+  ],
+  "result": "passed including completed-mark ingress and public-API read after reopen",
+  "total_test_seconds": 257.29,
+  "constraints": {
+    "dedicated_cgroup": false,
+    "other_builds_active": true,
+    "phase_offered_interval_ms": 500,
+    "cache_eviction": false,
+    "temp_store_override": false,
+    "large_wal_fixture": false,
+    "real_mesh_delivery": false
+  }
+}
