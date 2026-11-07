@@ -1,0 +1,99 @@
+{
+  "issue": 719,
+  "observed_utc": "2026-11-07",
+  "runtime_base_revision": "5455ec30de7fe144e9d8cf2d4f0fba12f2dd1840",
+  "scope": "Localhost TCP with pinned Python sender and unmodified main runtime; added regression changes only tests and documentation.",
+  "references": {
+    "reticulum": "ea98db4f53dcf0defc0e71a16e60d28b1229c4e6",
+    "lxmf": "727830cefda83d9c6e3982b48675425f3f988f9c"
+  },
+  "regression": {
+    "source": "crates/apps/reticulumd/src/bin/reticulumd/tests/service_identity_proofs.rs",
+    "sha256": "da0ec99f03926dee6d9ced5637ad46bfd47d2308126e0fef3ca4243686522383",
+    "command": "cargo test -p reticulumd --bin reticulumd delivery_proofs",
+    "passed": 7,
+    "failed": 0,
+    "new_test": "bridge::service_identity::proof_tests::imported_created_and_restored_services_return_bound_delivery_proofs",
+    "identity_restore_scope": "Persisted service keys restored into a fresh in-memory message store; reopened durable-message deduplication is covered separately by the existing delivery_proofs regression."
+  },
+  "opportunistic_dispatch": {
+    "packet_hash": "71710045a7cf753a8b024bd699c33396c794a9d20b0d1ab309a0b9e8fa88beba",
+    "interface": "35be322d094f9d154a8aba4733b8497f",
+    "sent": 1,
+    "queued": 0,
+    "failed": 0
+  },
+  "interop_command": "COMPAT_CASE=<opportunistic_python_to_rust|direct_python_to_rust> [PERFORMANCE_PAYLOAD_BYTES=16384] bash tools/scripts/python-lxmd-rust-lxmd-smoke.sh",
+  "cases": [
+    {
+      "kind": "opportunistic_packet",
+      "status": "pass",
+      "payload_size_bytes": 53,
+      "sender": {
+        "state": 8,
+        "method": 1,
+        "message_id": "6e52a85a754bee524601d08cdd4050abb4180ab23df06c4c018de149242eab04",
+        "python_reticulum_version": "1.5.2",
+        "python_lxmf_version": "0.9.6",
+        "validated_proofs": [
+          {
+            "packet_hash": "71710045a7cf753a8b024bd699c33396c794a9d20b0d1ab309a0b9e8fa88beba",
+            "proof_destination": "71710045a7cf753a8b024bd699c33396",
+            "proof_data_hex": "71710045a7cf753a8b024bd699c33396c794a9d20b0d1ab309a0b9e8fa88beba1af7e94012698b41d19bed4407a1894fa5068cf95e49e121325f80a87452d969a15ed41e09b31e21e31363fc24a6f7e41db00db92d8ef5b287242412ff16ae01",
+            "receipt_status": 2,
+            "proved": true
+          }
+        ],
+        "validated_resource_proofs": []
+      }
+    },
+    {
+      "kind": "direct_packet",
+      "status": "pass",
+      "payload_size_bytes": 46,
+      "sender": {
+        "state": 8,
+        "method": 2,
+        "message_id": "7f01d57bebed0c6eb51ca1f384818a1d05b06bd09d5c853738cf39633f11c88b",
+        "python_reticulum_version": "1.5.2",
+        "python_lxmf_version": "0.9.6",
+        "validated_proofs": [
+          {
+            "packet_hash": "0c58d647ffaf358b12281595b48ece77cabcc8cb255949277475f41bce78aea0",
+            "proof_destination": "472fabf345af3ff77b9c7a65b5c47f4a",
+            "proof_data_hex": "0c58d647ffaf358b12281595b48ece77cabcc8cb255949277475f41bce78aea0b37bea31dd6a02ff00616801561fbdd6b7d8deef418d27f45875a5d20dd9aa1d96de43860dc7ff41fb9054274c6923686634fc4b36e08a5af1fedac9a66e310c",
+            "receipt_status": 2,
+            "proved": true
+          }
+        ],
+        "validated_resource_proofs": []
+      }
+    },
+    {
+      "kind": "direct_resource_16_kib",
+      "status": "pass",
+      "payload_size_bytes": 16384,
+      "sender": {
+        "state": 8,
+        "method": 2,
+        "message_id": "d50018d26264598bec15ee7326c93144db4285adbefc102f42906302e783961d",
+        "python_reticulum_version": "1.5.2",
+        "python_lxmf_version": "0.9.6",
+        "validated_proofs": [],
+        "validated_resource_proofs": [
+          {
+            "resource_hash": "8e3fa885df2e2a65c902e3ea92e7e508af9f75132bc020b4e182edc052719884",
+            "proof_data_hex": "8e3fa885df2e2a65c902e3ea92e7e508af9f75132bc020b4e182edc0527198840f926467ee618d514f662586799ee83c4b4dcd67005724c25f99209c6ad39837",
+            "resource_status": 6
+          }
+        ]
+      }
+    }
+  ],
+  "limits": [
+    "No Columba/Pixel or Ratspeak/Windows device/version reproduction; the original direct-link report remains unlocalized.",
+    "Successful direct packet/Resource samples retain native transport receipts; their application-admission ordering and rejection behavior are not changed or established here.",
+    "Service regression uses transport channels and production intake; pinned Python TCP cases use the default delivery identity.",
+    "Durable broker ACKs and application command responses are not sender transport proofs."
+  ]
+}
