@@ -11,6 +11,18 @@ inventory and upgrade requirements. Exact-source release validation and
 publication remain to be recorded; preparing this train does not promote any
 parity row or close the operational and external-client acceptance work below.
 
+The [#746 local LinkRequest MTU increment](https://github.com/FreeTAKTeam/LXMF-rs/pull/746)
+caps signalled MTU at the receiving interface's MTU before constructing and
+proving a local Link. AutoInterface host channels now register the reference's
+1196-byte MTU, which their virtual peers inherit. Two native regressions cover
+262144-to-500 clamping and preservation of a supported 1196-byte request.
+The PR author reports that a Pixel 8 Rust host and a Python RNS 1.5.4 Mac mini
+on the same Wi-Fi delivered a 1327-byte page after this correction, replacing
+the previous Resource-advertisement decode failure. This live result is
+author-reported evidence from the PR description, not an independently repeated
+test in this documentation change. Other platform/carrier combinations, larger
+Resources, reconnects and sustained operation remain separate acceptance work.
+
 The #608 rejected-startup RPC view now retains credential-only IFAC interfaces
 and I2P-local credential aliases when a carrier field prevents configuration
 parsing. Negative IFAC sizes retain the pinned carrier-default semantics in

@@ -340,8 +340,15 @@ pub(super) async fn handle_link_request_as_destination<'a>(
             if !handler.in_links.contains_key(&link_id) {
                 log::trace!("tp({}): send proof to {}", handler.config.name, packet.destination);
 
+                // The proof confirms this MTU and every send on the link is
+                // sized by it, so it is capped at what the ingress interface
+                // carries, as the reference does for a local destination.
+                let mut request = packet.clone();
+                if let Some(mtu) = handler.iface_manager.lock().await.mtu(&iface) {
+                    clamp_link_request_signalling_mtu(&mut request, mtu);
+                }
                 let link = Link::new_from_request(
-                    packet,
+                    &request,
                     destination.sign_key().clone(),
                     destination.desc,
                     handler.link_in_event_tx.clone(),

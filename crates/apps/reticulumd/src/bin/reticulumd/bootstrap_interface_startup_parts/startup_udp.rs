@@ -182,7 +182,12 @@ async fn activate_auto_plan(
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
     let (host_iface, transport_runtime) = {
         let mut manager = iface_manager.lock().await;
-        let channel = manager.new_channel_with_role_and_mode(128, IfaceRole::Multicast, mode);
+        let channel = manager.new_channel_with_role_mode_mtu(
+            128,
+            IfaceRole::Multicast,
+            mode,
+            rns_transport::iface::auto::AUTO_INTERFACE_HW_MTU,
+        );
         let host_iface = channel.address;
         if let Err(error) = apply_interface_runtime_config(&mut manager, host_iface, iface) {
             manager.stop_interface(host_iface);
