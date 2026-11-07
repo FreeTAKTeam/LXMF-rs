@@ -271,44 +271,7 @@ impl TunnelTable {
     }
 
     pub fn encode_python_entries(entries: &[PythonTunnelEntry]) -> Result<Vec<u8>, RnsError> {
-        let value = RmpValue::Array(
-            entries
-                .iter()
-                .map(|entry| {
-                    RmpValue::Array(vec![
-                        RmpValue::Binary(entry.tunnel_id.as_slice().to_vec()),
-                        optional_hash_value(entry.interface_hash),
-                        RmpValue::Array(
-                            entry
-                                .paths
-                                .iter()
-                                .map(|path| {
-                                    RmpValue::Array(vec![
-                                        RmpValue::Binary(path.destination.as_slice().to_vec()),
-                                        RmpValue::F64(path.timestamp_secs),
-                                        RmpValue::Binary(path.received_from.as_slice().to_vec()),
-                                        RmpValue::from(u64::from(path.hops)),
-                                        RmpValue::F64(path.expires_secs),
-                                        RmpValue::Array(
-                                            path.random_blobs
-                                                .iter()
-                                                .map(|blob| RmpValue::Binary(blob.to_vec()))
-                                                .collect(),
-                                        ),
-                                        optional_hash_value(path.interface_hash),
-                                        RmpValue::Binary(path.packet_hash.as_slice().to_vec()),
-                                    ])
-                                })
-                                .collect(),
-                        ),
-                        RmpValue::F64(entry.expires_secs),
-                    ])
-                })
-                .collect(),
-        );
-        let mut out = Vec::new();
-        rmpv::encode::write_value(&mut out, &value).map_err(|_| RnsError::InvalidArgument)?;
-        Ok(out)
+        super::reticulum_path_store::python_snapshot_codec::encode_tunnels(entries)
     }
 
     pub fn decode_python_entries(bytes: &[u8]) -> Result<Vec<PythonTunnelEntry>, RnsError> {
@@ -398,10 +361,6 @@ fn validate_tunnel_synthesize(data: &[u8]) -> Result<Hash, RnsError> {
     identity.verify(signed_data, &signature).map_err(|_| RnsError::IncorrectSignature)?;
 
     Ok(Hash::new_from_slice(&data[..random_hash_start]))
-}
-
-fn optional_hash_value(hash: Option<Hash>) -> RmpValue {
-    hash.map(|hash| RmpValue::Binary(hash.as_slice().to_vec())).unwrap_or(RmpValue::Nil)
 }
 
 fn decode_python_tunnel_entry(value: &RmpValue) -> Result<PythonTunnelEntry, RnsError> {

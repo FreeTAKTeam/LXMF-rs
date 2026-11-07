@@ -2777,6 +2777,7 @@ dependencies = [
  "base64 0.22.1",
  "btleplug",
  "bzip2",
+ "cap",
  "cbc",
  "criterion",
  "crypto-common",

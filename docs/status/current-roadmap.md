@@ -325,6 +325,14 @@ delivered; the guest high-load profile still needs a fresh run.
 
 ## RCH resource regressions: issues 663, 657 and 655
 
+The 2026-11-07 persistence allocation follow-up removes full-table MessagePack
+value trees and duplicate path metadata vectors during checkpoint saves while
+retaining shared packet references and existing publication/cleanup rules.
+Fresh-process 100k-entry probes preserve exact bytes and reduce peak codec
+scratch from 75.8 MB to 25.2 MB (paths), and 93.2 MB to 21.0 MB (tunnels).
+See [allocation evidence and limits](../performance/path-snapshot-allocation-663.md);
+constrained daemon acceptance remains a separate gate.
+
 The 2026-11-07 #663 increment streams peer-status unhandled IDs through the
 existing folded covering index. Fusing state aggregation with ID ordering removes
 the previous temporary result sort; mixed-case completed-state precedence,

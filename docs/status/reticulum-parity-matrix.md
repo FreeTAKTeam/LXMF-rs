@@ -1442,3 +1442,14 @@ verifications 2→0; control stress p99 was 1.087 ms during 41 saves / 23 WAL
 attempts. Retention memory/read/wait and production acceptance remain open;
 no parity row or issue is promoted to complete from these short runs. The
 conditional allocator/paging increment is deferred pending attribution.
+
+## Issue 663 persistence allocation follow-up (2026-11-07)
+
+Path/tunnel checkpoints now encode borrowed metadata directly into the existing
+MessagePack output buffers, retaining the exact Python representation and
+reference-aware cleanup contract. Byte-oracle tests cover numeric/binary tags,
+random-blob policies and nested tunnel ordering; isolated 100k-entry allocation
+probes remove the old full-table value-tree amplification. Full metadata
+checkpoints remain proportional to retained state, and production memory
+acceptance is not promoted. See
+[the allocation evidence](../performance/path-snapshot-allocation-663.md).

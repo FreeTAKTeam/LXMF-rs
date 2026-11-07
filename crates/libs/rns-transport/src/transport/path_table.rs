@@ -15,7 +15,7 @@ use rmpv::Value as RmpValue;
 const DESTINATION_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24 * 7);
 const AP_PATH_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 const ROAMING_PATH_TIME: Duration = Duration::from_secs(60 * 60 * 6);
-const MAX_RANDOM_BLOBS: usize = 64;
+pub(super) const MAX_RANDOM_BLOBS: usize = 64;
 
 pub(super) type RandomBlob = [u8; RAND_HASH_LENGTH];
 
@@ -405,33 +405,7 @@ impl PathTable {
     }
 
     pub fn encode_python_entries(entries: &[PythonPathEntry]) -> Result<Vec<u8>, RnsError> {
-        let value = RmpValue::Array(
-            entries
-                .iter()
-                .map(|entry| {
-                    RmpValue::Array(vec![
-                        RmpValue::Binary(entry.destination.as_slice().to_vec()),
-                        RmpValue::F64(entry.timestamp_secs),
-                        RmpValue::Binary(entry.received_from.as_slice().to_vec()),
-                        RmpValue::from(u64::from(entry.hops)),
-                        RmpValue::F64(entry.expires_secs),
-                        RmpValue::Array(
-                            entry
-                                .random_blobs
-                                .iter()
-                                .skip(entry.random_blobs.len().saturating_sub(MAX_RANDOM_BLOBS))
-                                .map(|blob| RmpValue::Binary(blob.to_vec()))
-                                .collect(),
-                        ),
-                        RmpValue::Binary(entry.interface_hash.as_slice().to_vec()),
-                        RmpValue::Binary(entry.packet_hash.as_slice().to_vec()),
-                    ])
-                })
-                .collect(),
-        );
-        let mut out = Vec::new();
-        rmpv::encode::write_value(&mut out, &value).map_err(|_| RnsError::InvalidArgument)?;
-        Ok(out)
+        super::reticulum_path_store::python_snapshot_codec::encode_paths(entries)
     }
 
     pub fn decode_python_entries(bytes: &[u8]) -> Result<Vec<PythonPathEntry>, RnsError> {
