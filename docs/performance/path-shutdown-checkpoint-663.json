@@ -54,5 +54,78 @@
     "format": true,
     "include_ratchet": true,
     "diff_check": true
+  },
+  "late_replay_checkpoint_followup": {
+    "baseline_source_commit": "ba8fc23535cf97747ec54e5083825ab596367833",
+    "scope": "Preserve the existing post-retirement replay-hash cutoff while keeping route snapshots before interface retirement; no route re-export, gate reopening or new quiescence/atomicity guarantee.",
+    "fixture": "Standalone transport enabled; complete early checkpoint, inject unique ordinary Single Proof through live interface, confirm hash absent from early disk snapshot and accepted/remembered via ingress, retire interface, finalize hashes only, assert exact late hash on disk and replacement restore plus unchanged route bytes/runs and closed worker.",
+    "red": {
+      "result": "fails exact late-hash disk assertion",
+      "log": "/workspace/scratch/663-late-replay-red.log",
+      "frozen_unit_binary": "/workspace/scratch/late-replay-bin/red-reticulumd-unit",
+      "sha256": "8670446c568bd614e62b5c930f4ee1a50ab13a2ced2db3ede468c6ac0828465f"
+    },
+    "green": {
+      "result": "passes; late hash restored and route checkpoint unchanged",
+      "log": "/workspace/scratch/663-late-replay-green.log",
+      "frozen_unit_binary": "/workspace/scratch/late-replay-bin/green-reticulumd-unit",
+      "sha256": "921f3968b8fc45f18735670721b78d57fead3945f57eaf608eb8cc82b0d2a636"
+    },
+    "build_profile": "release, canonical homes, CARGO_BUILD_JOBS=2, CARGO_INCREMENTAL=0, CPU affinity 2,3",
+    "regression_command": "cargo test -p reticulumd --release --bin reticulumd final_checkpoint_fences_queued_saves_after_interface_retirement -- --nocapture",
+    "setup_failure_not_product_red": "The first test fixture had transport_enabled=false; the correctly absent hashlist file exposed setup only. Preserved in /workspace/scratch/663-late-replay-red-disabled-fixture.log. Both initial/replacement fixtures now explicitly enable standalone transport.",
+    "source_sha256": {
+      "crates/apps/reticulumd/src/bin/reticulumd/main.rs": "41581978dfa5f2cf977eb8dcbb4972948893dbc40d489e5a1a6504519149ac06",
+      "crates/apps/reticulumd/src/bin/reticulumd/announce_persistence.rs": "4bd9d7c9efd227f6bc3eb75f7241b4be4b81e886a057c2db37c5c43ad3f6c6c7",
+      "crates/apps/reticulumd/src/bin/reticulumd/tests/shutdown_persistence.rs": "9e3877890f98622c8b853c2e083fff4ec9d6d539509446fdc1cc086404362960"
+    },
+    "focused_warm_unit_results": {
+      "lifecycle_fence": 1,
+      "shutdown_flush_and_failure": 2,
+      "custody": 10
+    },
+    "resource_acceptance": "open; ba8 retained-state correctness does not establish the late-arrival window or hours-long pressure acceptance; this is a focused daemon correctness increment.",
+    "final_validation": {
+      "process_default": {
+        "passed": 4,
+        "command": "cargo test -p reticulumd --release --test packet_replay_process_restart -- --test-threads=2"
+      },
+      "process_without_zmq": {
+        "passed": 4,
+        "command": "cargo test -p reticulumd --release --no-default-features --test packet_replay_process_restart -- --test-threads=2"
+      },
+      "diagnostics_scanner": {
+        "passed": 1,
+        "command": "cargo test -p reticulumd --release --test code_quality_issue_369"
+      },
+      "scoped_clippy": {
+        "passed": true,
+        "command": "cargo clippy -p reticulumd --release --bin reticulumd --test packet_replay_process_restart --no-deps -- -D warnings"
+      },
+      "format_module_size_includes_boundaries_diff": "passed",
+      "upstream_main_checked": "4c9c2d1b; already integrated, no drift",
+      "free_disk_gib_after_checks": 8.8,
+      "cache_cleanup": "not needed; no artifacts removed"
+    },
+    "logs": {
+      "process_default": "/workspace/scratch/663-late-replay-process-default.log",
+      "process_without_zmq": "/workspace/scratch/663-late-replay-process-nozmq.log",
+      "diagnostics_scanner": "/workspace/scratch/663-late-replay-scanner.log",
+      "scoped_clippy": "/workspace/scratch/663-late-replay-clippy.log",
+      "lifecycle_red": "/workspace/scratch/663-late-replay-red.log",
+      "lifecycle_green": "/workspace/scratch/663-late-replay-green.log",
+      "existing_flush": "/workspace/scratch/663-late-replay-existing-flush.log",
+      "custody": "/workspace/scratch/663-late-replay-custody.log"
+    },
+    "artifact_sha256": {
+      "/workspace/scratch/663-late-replay-process-default.log": "6bca6f32e32d1a132642a38d022705903e49198423ed0f4f225f0db6e3f00978",
+      "/workspace/scratch/663-late-replay-process-nozmq.log": "51a55c9b0d12bb43ad9425a30e6448857c0da05b9ffc43254b64f361fc9efa16",
+      "/workspace/scratch/663-late-replay-scanner.log": "7342bcca7b7ffeb398db19361bd0fdddbc29b072ca24c96b96e326ba94d09999",
+      "/workspace/scratch/663-late-replay-clippy.log": "d90356877975a05b8e9141d5ed96833f5e0c2db27f2bd3c35059381877aca97d",
+      "/workspace/scratch/663-late-replay-red.log": "48b03185fe90d9482ef54295b09f42fbf044af22a39e00630adbc91895995058",
+      "/workspace/scratch/663-late-replay-green.log": "ca37954f2b6b9ad8cc635c51141f65fa8855c80e66765decbe9c5f504cff8a8d",
+      "/workspace/scratch/663-late-replay-existing-flush.log": "301f479624ae7a38500fda0543ecc60a71f5dec8e44ba3294a6e1b63255ab10e",
+      "/workspace/scratch/663-late-replay-custody.log": "d3eee6118443a017c2be67b4f3a6ae817bf9eeadfc2da5100c8ac72b5f335238"
+    }
   }
 }

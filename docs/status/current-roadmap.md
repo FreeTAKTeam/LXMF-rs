@@ -3640,6 +3640,12 @@ interface after the correction, in both daemon feature configurations. The
 checkpoint covers snapshot capture rather than later native arrivals; see
 [shutdown evidence](../performance/path-shutdown-checkpoint-663.md).
 
+The shutdown checkpoint also preserves replay hashes accepted after the route
+snapshot: a separate hash-list-only save runs after native interface shutdown
+and receipt draining, with background route persistence still fenced. The
+deterministic late-Proof regression retains the original route snapshot bytes;
+the accepted pre-retirement route boundary does not weaken replay persistence.
+
 The #663 snapshot codec preserves exact Python bytes while eliminating the
 whole-table MessagePack object tree and reserving counted output once. A
 100,000-route native-export probe reduces remaining scratch peak from 54.48 MB

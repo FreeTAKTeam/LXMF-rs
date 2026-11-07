@@ -109,7 +109,8 @@ pub(super) async fn maintain_announce_cache(context: &PathTablePersistenceContex
 
 /// Checkpoint before interface retirement removes the export identities. This
 /// preserves routes at snapshot capture; later native arrivals are not guaranteed
-/// to appear in the final route cache.
+/// to appear in the final route cache. Replay hashes are checkpointed separately
+/// after native interface retirement and receipt draining.
 pub(super) async fn finish_reticulum_path_table_persistence(
     context: Option<PathTablePersistenceContext>,
 ) {
@@ -120,6 +121,19 @@ pub(super) async fn finish_reticulum_path_table_persistence(
         context.closed.store(true, Ordering::Release);
         if let Err(err) = persist_reticulum_path_table(&context).await {
             log::error!("[daemon] failed to persist Reticulum path table: {err}");
+        }
+    }
+}
+
+/// Preserve hashes remembered during the earlier route checkpoint. Call only
+/// after native interfaces and receipt work have drained; never re-export routes
+/// using the retired interface map or reopen the closed background save gate.
+pub(super) async fn finish_packet_hashlist_persistence(
+    context: Option<PathTablePersistenceContext>,
+) {
+    if let Some(context) = context {
+        if let Err(error) = context.transport.save_packet_hashlist(&context.path).await {
+            log::error!("[daemon] failed to persist final packet hashlist: {error}");
         }
     }
 }

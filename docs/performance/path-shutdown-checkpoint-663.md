@@ -7,7 +7,7 @@ therefore be written as an empty `destination_table` on graceful shutdown.
 This invalidated restart qualification even though the ordinary checkpoint
 encoder and cached announce remained valid.
 
-Both daemon shutdown branches now finish persistence before destructive
+Both daemon shutdown branches now finish route persistence before destructive
 interface retirement. A context-owned asynchronous semaphore serializes regular
 saves, cleanup and the final checkpoint; a shared close flag fences delayed
 background work after that checkpoint. The regular worker exits instead of
@@ -20,6 +20,24 @@ that native arrivals after snapshot capture appear in the final route cache.
 There is no new transport-quiescence API, file-rename atomicity, custody meaning,
 retained-history limit or deadline change. Existing persistence errors remain
 logged according to the existing shutdown contract.
+
+Replay protection has a separate shutdown boundary. Moving the combined flush
+before retirement also moved the packet-hash snapshot earlier: native ingress
+could still accept and remember ordinary packets while route/cache I/O ran.
+Those late hashes were absent from the saved list after restart. The daemon now
+retains the closed context and saves only `packet_hashlist.raw` after native
+interface shutdown and receipt draining, in both feature configurations. This
+does not reopen background persistence or re-export routes with retired identities.
+
+The deterministic late-arrival regression enables standalone transport, completes
+the early route checkpoint, sends a fresh ordinary Proof through the still-live
+interface and confirms its hash was remembered but absent from the early disk
+snapshot. After retirement, the hash-only checkpoint must preserve that exact
+hash on disk and restore the list into a replacement transport. It also checks
+that the route snapshot bytes and closed background-save fence remain unchanged.
+The pre-fix code fails at the late-hash disk assertion. This fixture exercises
+transport packet admission/replay persistence; it is not an application signature
+or durable-custody acceptance claim.
 
 The [recorded regression evidence](path-shutdown-checkpoint-663.json) uses a real
 daemon with a named, enabled UDP interface and a valid signed announce. It checks
