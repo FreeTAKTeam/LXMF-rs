@@ -60,6 +60,7 @@ struct WriteState {
     wal_metrics: super::operation_metrics::WalMetrics,
     maintenance_metrics: super::operation_metrics::MaintenanceMetrics,
     announce_metrics: super::announce_metrics::AnnounceMetrics,
+    unhandled_propagation_metrics: super::announce_metrics::QueryMetrics,
     handled_propagation_metrics: super::announce_metrics::QueryMetrics,
     /// Broker/control writers currently waiting for `conn`; refill pages yield to them.
     priority_waiters: AtomicUsize,

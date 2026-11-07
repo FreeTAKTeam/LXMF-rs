@@ -25,8 +25,16 @@ proof policy. Accepted duplicates can regenerate the original wire-hash proof
 without another inbound delivery. A transport proof confirms receipt, separately
 from signature metadata, durable broker ACKs and application responses. Local
 regressions cover blocked commit, broker contention rejection, exact retry, reconnect and
-reopened storage. Pinned RNS 1.5.2 / LXMF 0.9.6 senders reach native `DELIVERED`
+reopened storage. The service-identity wire regression also exercises actual
+imported, created and restored destinations through the production intake worker:
+malformed packets remain unproved, retries retain one message per service, and
+each proof validates only against the addressed service key, with the original
+encrypted packet hash and correct stored destination. Identity restoration uses
+a fresh in-memory message store; durable-message reopening is covered separately.
+Pinned RNS 1.5.2 / LXMF 0.9.6 senders reach native `DELIVERED`
 for opportunistic packets, direct packets and a 16 KB direct Resource.
+The [2026-11-07 software evidence](../interop/issue-719-delivery-proofs.json)
+records the exact references, message IDs and validated packet/Resource proofs.
 Columba/Pixel and Ratspeak/Windows acceptance and the original unlocalized direct
 report remain open; this increment does not establish those live outcomes.
 
@@ -316,6 +324,20 @@ Python RNS 1.5.7 / LXMF 1.2.1 sync of 600 stored messages went from 0 to 600
 delivered; the guest high-load profile still needs a fresh run.
 
 ## RCH resource regressions: issues 663, 657 and 655
+
+The 2026-11-07 #663 increment streams peer-status unhandled IDs through the
+existing folded covering index. Fusing state aggregation with ID ordering removes
+the previous temporary result sort; mixed-case completed-state precedence,
+unknown-state fallback and orphan exclusion survive reopening. Fixed
+`storage.propagation_queries.unhandled_ids` counters expose query time, VM steps,
+sorts, full scans and automatic-index rows without retaining SQL parameters.
+See [the focused query evidence](../performance/unhandled-peer-ids-663.md);
+production cgroup and fresh-delivery acceptance remain separate.
+The resource harness also exposed an SDK callback address-family mismatch:
+IPv4-to-`localhost` normalization is now restricted to its original Windows
+workaround, preserving explicit IPv4 endpoints on Linux. Public-constructor
+negotiation and callback polling are covered by a real daemon-loop regression;
+see [the endpoint correction](../performance/zmq-literal-loopback-663.md).
 
 The current increment bounds propagation-refill writer transactions, uses
 indexed inventory and pending-only lookups, and avoids reopening unchanged
