@@ -1,0 +1,58 @@
+{
+  "issue": 663,
+  "scope": "Consistent final route checkpoint before destructive interface retirement; no guarantee for native arrivals after snapshot capture and no new file atomicity claim.",
+  "baseline_binary": {
+    "path": "/workspace/target-719/debug/reticulumd",
+    "sha256": "aa363aa13fd209299f4fb2bef43f94c8e2d59232603731c714644c10da611730",
+    "regression": "failed: learned valid signed UDP route erased on SIGINT; destination_table Array([])",
+    "log": "/workspace/scratch/663-shutdown-route-red.log"
+  },
+  "candidate_binary": {
+    "path": "/workspace/target-663/debug/reticulumd",
+    "sha256": "0c4fc6d0f5b39f0085ab7f02e61d0ae7aa8dd40a831312138152f89bbdf35896"
+  },
+  "source_sha256": {
+    "crates/apps/reticulumd/src/bin/reticulumd/main.rs": "132318ccbe8771ea0c76327d45821da1f3ea2e2cf9f61cc849e2902296284e23",
+    "crates/apps/reticulumd/src/bin/reticulumd/announce_persistence.rs": "fe3467f551d70167c6231bd8242fb814f364b19264b7c8510bcf8ffd0d057258",
+    "crates/apps/reticulumd/src/bin/reticulumd/tests/shutdown_persistence.rs": "85ec18fe6994910c5db63516fb4b610dc135e556f813eae2a20d1bffdc07fd7c",
+    "crates/apps/reticulumd/tests/packet_replay_process_restart.rs": "65950b585719bb9bb16a540a0d3b7fdf679786697a5cf7ad84b86a7da3acfb1d"
+  },
+  "results": {
+    "default_feature_process_replay_and_route_restart": {
+      "passed": 4,
+      "log": "/workspace/scratch/663-shutdown-process-final.log"
+    },
+    "without_zmq_process_replay_and_route_restart": {
+      "passed": 4,
+      "log": "/workspace/scratch/663-shutdown-nozmq-process-suite.log"
+    },
+    "queued_save_fence": {
+      "passed": 1,
+      "log": "/workspace/scratch/663-shutdown-gate-final.log"
+    },
+    "existing_maintenance": {
+      "passed": 2,
+      "log": "/workspace/scratch/663-shutdown-maintenance-tests.log"
+    },
+    "existing_shutdown_flush_and_failure": {
+      "passed": 2,
+      "log": "/workspace/scratch/663-shutdown-existing-flush-tests.log"
+    },
+    "existing_custody": {
+      "passed": 10,
+      "log": "/workspace/scratch/663-shutdown-custody-tests.log"
+    },
+    "diagnostics_scanner": {
+      "passed": 1,
+      "log": "/workspace/scratch/663-shutdown-process-final.log"
+    },
+    "scoped_clippy": {
+      "passed": true,
+      "command": "cargo clippy -p reticulumd --bin reticulumd --test packet_replay_process_restart --no-deps -- -D warnings",
+      "log": "/workspace/scratch/663-shutdown-clippy.log"
+    },
+    "format": true,
+    "include_ratchet": true,
+    "diff_check": true
+  }
+}

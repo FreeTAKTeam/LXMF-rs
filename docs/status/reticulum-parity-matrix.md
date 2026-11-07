@@ -1453,3 +1453,11 @@ probes remove the old full-table value-tree amplification. Full metadata
 checkpoints remain proportional to retained state, and production memory
 acceptance is not promoted. See
 [the allocation evidence](../performance/path-snapshot-allocation-663.md).
+
+Daemon shutdown now preserves that checkpoint before configured interface
+retirement and prevents delayed background saves from replacing it afterward.
+A real signed-UDP process regression verifies the saved Python representation,
+cached announce and same-interface route restoration after SIGINT, including
+without ZeroMQ. This preserves the snapshot-capture boundary and does not claim
+capture of subsequent native arrivals or new file atomicity. See
+[the shutdown regression evidence](../performance/path-shutdown-checkpoint-663.md).

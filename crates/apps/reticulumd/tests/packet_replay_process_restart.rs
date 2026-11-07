@@ -14,6 +14,91 @@ use std::time::{Duration, Instant};
 const PINNED_RETICULUM: &str = "99de23c040d507e3fefca19e87b182302902725d";
 
 #[test]
+fn graceful_shutdown_preserves_learned_route_for_same_live_interface_after_restart() {
+    use rns_transport::destination::{DestinationName, SingleInputDestination};
+    use rns_transport::identity::PrivateIdentity;
+    use std::net::UdpSocket;
+
+    let temp = tempfile::tempdir().expect("route restart storage");
+    let storage = temp.path().join("storage");
+    std::fs::create_dir_all(&storage).expect("create route storage");
+    let peer = UdpSocket::bind("127.0.0.1:0").expect("live UDP peer");
+    let reserved = UdpSocket::bind("127.0.0.1:0").expect("reserve configured UDP port");
+    let udp_port = reserved.local_addr().expect("UDP endpoint").port();
+    drop(reserved);
+    let config = temp.path().join("reticulum.toml");
+    std::fs::write(&config, format!(
+        "interfaces=[{{type='udp',enabled=true,name='persisted-live-udp',host='127.0.0.1',port={udp_port},target_host='127.0.0.1',target_port={}}}]\n[reticulum]\nenable_transport=true\nshare_instance=false\n",
+        peer.local_addr().expect("peer endpoint").port(),
+    )).expect("configured live interface");
+    let (transport_port, rpc_port) = reserve_two_ports();
+    let mut remote = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(rand_core::OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let announce = remote.announce(rand_core::OsRng, None).expect("signed remote announce");
+    let destination = hex::encode(announce.destination.as_slice());
+    let mut first = start_daemon(temp.path(), &storage, &config, transport_port, rpc_port);
+    wait_for_rpc(rpc_port, &mut first);
+    peer.send_to(&announce.to_bytes().expect("announce bytes"), ("127.0.0.1", udp_port))
+        .expect("real configured-interface ingress");
+    let learned = wait_until(&mut first, "learned UDP route", || {
+        rpc_result(rpc_port, "get_path_table").ok().filter(|rows| has_route(rows, &destination))
+    });
+    let interface_hash = learned
+        .as_array()
+        .expect("path table")
+        .iter()
+        .find(|row| row["hash"] == destination)
+        .expect("learned route")["interface_hash"]
+        .as_str()
+        .expect("stable interface hash")
+        .to_string();
+    stop_gracefully(&mut first);
+
+    let persisted = std::fs::read(storage.join("destination_table")).expect("shutdown snapshot");
+    let rows = rmpv::decode::read_value(&mut std::io::Cursor::new(&persisted))
+        .expect("Python-compatible path snapshot");
+    let row = rows
+        .as_array()
+        .expect("path rows")
+        .iter()
+        .find(|row| {
+            row.as_array()
+                .is_some_and(|fields| fields[0].as_slice() == Some(announce.destination.as_slice()))
+        })
+        .unwrap_or_else(|| {
+            panic!("graceful shutdown erased live learned route; snapshot={rows:?}")
+        });
+    assert_eq!(
+        row.as_array().expect("path fields")[6].as_slice(),
+        Some(hex::decode(&interface_hash).expect("interface hex").as_slice())
+    );
+    assert!(storage
+        .join("cache/announces")
+        .join(hex::encode(announce.hash().as_slice()))
+        .is_file());
+
+    let mut second = start_daemon(temp.path(), &storage, &config, transport_port, rpc_port);
+    wait_for_rpc(rpc_port, &mut second);
+    // No second announce: this must be restored from the final shutdown snapshot.
+    let restored = rpc_result(rpc_port, "get_path_table").expect("restored path table");
+    assert!(has_route(&restored, &destination), "route was not restored: {restored}");
+    let row = restored
+        .as_array()
+        .expect("restored paths")
+        .iter()
+        .find(|row| row["hash"] == destination)
+        .expect("restored route");
+    assert_eq!(row["interface_hash"], interface_hash);
+    stop_gracefully(&mut second);
+}
+
+fn has_route(rows: &Value, destination: &str) -> bool {
+    rows.as_array().is_some_and(|rows| rows.iter().any(|row| row["hash"] == destination))
+}
+
+#[test]
 fn standalone_daemon_shutdown_persists_proof_replay_filter_across_restart() {
     assert_replay_filter_survives_restart(PacketType::Proof);
 }
@@ -111,7 +196,9 @@ fn start_daemon(
     transport_port: u16,
     rpc_port: u16,
 ) -> Daemon {
-    let child = Command::new(env!("CARGO_BIN_EXE_reticulumd"))
+    let binary = std::env::var_os("LXMF_TEST_DAEMON")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_reticulumd").into());
+    let child = Command::new(binary)
         .arg("--db")
         .arg(storage.join("reticulum.db"))
         .arg("--identity")
@@ -189,14 +276,14 @@ fn send_frames_and_keep_open(port: u16, frame: &[u8], copies: usize) -> TcpStrea
 }
 
 fn rpc_status(port: u16) -> std::io::Result<Value> {
+    rpc_result(port, "daemon_status_ex")
+}
+
+fn rpc_result(port: u16, method: &str) -> std::io::Result<Value> {
     let address = SocketAddr::from(([127, 0, 0, 1], port));
     let mut stream = TcpStream::connect_timeout(&address, Duration::from_millis(250))?;
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-    let body = codec::encode_frame(&RpcRequest {
-        id: 1,
-        method: "daemon_status_ex".to_owned(),
-        params: None,
-    })?;
+    let body = codec::encode_frame(&RpcRequest { id: 1, method: method.to_owned(), params: None })?;
     write!(
         stream,
         "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/msgpack\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",

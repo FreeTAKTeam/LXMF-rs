@@ -3619,3 +3619,11 @@ A separate control stress achieved negotiate p99 1.087 ms during saves and
 checkpoints; failed binds truthfully keep readiness at 503. Conditional PR 4
 is deferred until repeated-cycle or phase-specific evidence establishes its
 trigger. Details and prerelease evidence are in the regression package.
+
+The #663 retained-state restart follow-up also checkpoints before configured
+interface retirement removes the export identities, and fences later background
+saves with a shared asynchronous persistence gate. Real signed-UDP route tests
+fail on the prior shutdown ordering and restore successfully with the same live
+interface after the correction, in both daemon feature configurations. The
+checkpoint covers snapshot capture rather than later native arrivals; see
+[shutdown evidence](../performance/path-shutdown-checkpoint-663.md).
