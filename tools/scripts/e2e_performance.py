@@ -66,6 +66,26 @@ def git_revision(path: Path) -> str:
     ).strip()
 
 
+def sample_timing(data: dict[str, Any], workload: str, payload_bytes: int, report: Path) -> dict[str, Any]:
+    timing = data.get("performance")
+    expected_boundary = {
+        "cold_discovery": "cold_path_request_to_route_available",
+        "link_setup": "link_request_to_active",
+    }.get(workload, "enqueue_to_receiver_evidence")
+    if not timing or timing.get("boundary") != expected_boundary:
+        raise RuntimeError(f"{report} did not contain the E2E performance boundary")
+    if timing.get("payload_size_bytes") != payload_bytes:
+        raise RuntimeError(f"{report} did not measure the requested {payload_bytes}-byte payload")
+    if payload_bytes:
+        content = data.get("proof", {}).get("smoke_message_content")
+        if (timing.get("requested_payload_size_bytes") != payload_bytes
+                or not isinstance(content, str) or len(content.encode("utf-8")) != payload_bytes):
+            raise RuntimeError(f"{report} lacks exact content-size evidence for the requested payload")
+    if timing.get("startup_included") or timing.get("route_warmup_included"):
+        raise RuntimeError(f"{report} included setup in the timed boundary")
+    return timing
+
+
 def run_sample(
     workload: str,
     implementation: str,
@@ -79,7 +99,12 @@ def run_sample(
     report = sample_root / "report.json"
     if RESUME_EXISTING and report.is_file():
         existing = json.loads(report.read_text(encoding="utf-8"))
-        timing = existing.get("performance")
+        try:
+            timing = sample_timing(existing, workload, payload_bytes, report)
+        except RuntimeError:
+            # Old reports counted padding and omitted the actual message content.
+            # Such samples cannot be reused as exact-size workload evidence.
+            timing = None
         if timing and float(timing.get("enqueue_to_delivery_ns", 0)) > 0:
             return {
                 "latency_ns": float(timing["enqueue_to_delivery_ns"]),
@@ -121,15 +146,7 @@ def run_sample(
             f"{workload} {implementation} sample {ordinal} failed; see {sample_root / 'harness.log'}"
         )
     data = json.loads(report.read_text(encoding="utf-8"))
-    timing = data.get("performance")
-    expected_boundary = {
-        "cold_discovery": "cold_path_request_to_route_available",
-        "link_setup": "link_request_to_active",
-    }.get(workload, "enqueue_to_receiver_evidence")
-    if not timing or timing.get("boundary") != expected_boundary:
-        raise RuntimeError(f"{report} did not contain the E2E performance boundary")
-    if timing.get("startup_included") or timing.get("route_warmup_included"):
-        raise RuntimeError(f"{report} included setup in the timed boundary")
+    timing = sample_timing(data, workload, payload_bytes, report)
     cpu_match = re.search(r"__LXMF_E2E_CPU_SECONDS__ ([0-9.]+) ([0-9.]+)", completed.stderr)
     rss_match = re.search(r"__LXMF_E2E_MAX_RSS_KIB__ ([0-9]+)", completed.stderr)
     if not cpu_match or not rss_match:
@@ -252,6 +269,9 @@ def main() -> int:
             "python_lxmf_revision": git_revision(LXMF_REPO),
             "e2e_comparisons": rows,
         }
+        provenance_path = ROOT / "target/performance/lxmf-rs-performance-provenance.json"
+        if provenance_path.is_file():
+            report["harness_provenance"] = json.loads(provenance_path.read_text(encoding="utf-8"))
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(f"E2E performance report: {args.output}")

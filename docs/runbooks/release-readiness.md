@@ -90,6 +90,17 @@ failures do not cancel the other suites.
   UNSUPPORTED, or FAILED; blank cells and smaller substitutes for exact
   workloads are not accepted.
 
+For benchmark-harness recovery on an existing immutable release, dispatch
+`Release performance comparison` from the reviewed workflow commit with
+`candidate_ref=<existing tag>`, `release_tag=<same tag>`,
+`harness_ref=<full reviewed harness commit SHA>` (defaults to the workflow SHA),
+and `publish_assets=true`. The candidate must resolve to that exact release tag
+before publication. Only the explicit benchmark-harness allowlist is overlaid;
+product crates and manifests remain unchanged. The dataset, raw evidence, and
+`lxmf-rs-performance-provenance.json` sidecar record both commit SHAs, overlay
+file hashes, and hosted benchmark configuration changes. Publication still
+requires the complete same-runner gate and checksummed evidence.
+
 The SDK reports the parity checkpoint as its crate version plus the pinned
 reference revisions from `.github/workflows/verify.yml`: Reticulum
 conformance `0319444b20e0815f26c6b9ceeba8fa44de037c9b`, Python Reticulum
