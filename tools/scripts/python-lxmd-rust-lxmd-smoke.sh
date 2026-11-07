@@ -1792,7 +1792,7 @@ write_report() {
     "${PY_DELIVERY_HASH}" \
     "${PY_PROPAGATION_HASH}" \
     "${HOOK_MESSAGE_FILE}" \
-    "${SMOKE_MESSAGE_MARKER}" \
+    "${SMOKE_MESSAGE_CONTENT:-${SMOKE_MESSAGE_MARKER}}" \
     "${COMPAT_CASE}" \
     "${PERFORMANCE_START_NS}" \
     "${PERFORMANCE_END_NS}" \
@@ -1829,14 +1829,14 @@ from pathlib import Path
 py_pn_metadata, rust_pn_metadata = sys.argv[21:23]
 python_sender_log = Path(sys.argv[23])
 
+from performance_fixture import validate_opportunistic_sender
+
 python_sender = (json.loads(python_sender_log.read_text())
                  if compat_case.endswith("_python_to_rust") and python_sender_log.is_file() else None)
 if python_sender is not None:
     assert Path(hook_message_file).name == python_sender["message_id"], "stored LXMF ID differs from sender"
     if compat_case == "opportunistic_python_to_rust":
-        for proof in python_sender["validated_proofs"]:
-            assert proof["proof_destination"] == proof["packet_hash"][:32], "proof reverse-routing destination mismatch"
-            assert proof["proof_data_hex"][:64] == proof["packet_hash"], "proof hash mismatch"
+        validate_opportunistic_sender(python_sender)
 
 report = {
     "status": "pass",
@@ -1877,10 +1877,14 @@ if performance_start_ns and performance_end_ns:
     end_ns = int(performance_end_ns)
     if end_ns <= start_ns:
         raise SystemExit("invalid performance timing boundary")
+    actual_payload_bytes = len(smoke_message_content.encode("utf-8"))
+    if int(performance_payload_bytes) > 0 and actual_payload_bytes != int(performance_payload_bytes):
+        raise SystemExit("actual performance payload size differs from requested size")
     report["performance"] = {
         "boundary": "enqueue_to_receiver_evidence",
         "enqueue_to_delivery_ns": end_ns - start_ns,
-        "payload_size_bytes": int(performance_payload_bytes),
+        "payload_size_bytes": actual_payload_bytes,
+        "requested_payload_size_bytes": int(performance_payload_bytes),
         "startup_included": False,
         "route_warmup_included": False,
     }
@@ -2927,7 +2931,8 @@ if [[ "${COMPAT_CASE}" == "resource_transfer" ]]; then
   SMOKE_MESSAGE_CONTENT="${SMOKE_MESSAGE_MARKER}:$(printf 'x%.0s' $(seq 1 16384))"
 fi
 if (( PERFORMANCE_PAYLOAD_BYTES > 0 )); then
-  SMOKE_MESSAGE_CONTENT="${SMOKE_MESSAGE_MARKER}:$(printf 'x%.0s' $(seq 1 "${PERFORMANCE_PAYLOAD_BYTES}"))"
+  SMOKE_MESSAGE_CONTENT="$("${PYTHON_BIN}" "${SCRIPT_DIR}/performance_fixture.py" \
+    "${SMOKE_MESSAGE_MARKER}" "${PERFORMANCE_PAYLOAD_BYTES}")"
 fi
 HOOK_MESSAGE_FILE=""
 
