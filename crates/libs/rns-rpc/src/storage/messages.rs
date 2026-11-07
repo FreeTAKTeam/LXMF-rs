@@ -3,6 +3,7 @@ include!("messages_parts/module_prelude.rs");
 mod announce_projection;
 mod announce_retention;
 mod handled_propagation;
+mod unhandled_propagation;
 
 include!("messages_parts/messagesstore.rs");
 

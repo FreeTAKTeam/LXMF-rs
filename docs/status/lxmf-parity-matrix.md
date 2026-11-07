@@ -39,6 +39,14 @@ extends resource evidence for issues 657/655 without promoting production
 memory/swap acceptance. See
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 
+The 2026-11-07 #663 peer-status query increment removes the temporary
+unhandled-ID output sort using the existing folded covering index. Native
+SQLite regressions preserve completed-state precedence across case variants,
+unknown states, orphan exclusion and deterministic ordering after reopening;
+query counters support production attribution. See
+[the focused query evidence](../performance/unhandled-peer-ids-663.md). This
+resource increment does not change wire behavior or promote production acceptance.
+
 The 2026-10-28 #663 maintenance attribution increment adds separate expiry,
 quota and payload durations, successful deletion counts, failure totals and
 process-wide physical-read deltas to `storage.maintenance` on `/metrics`.
