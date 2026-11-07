@@ -30,6 +30,15 @@ class ReleaseConfigurationTests(unittest.TestCase):
         self.assertEqual(metadata["linux_only"], "false")
         self.assertEqual(len(json.loads(metadata["build_matrix"])["include"]), 6)
 
+    def test_macos_release_jobs_use_supported_architecture_runners(self):
+        metadata = release_metadata("v1.2.3", "1.2.3")
+        targets = {target["id"]: target for target in json.loads(metadata["build_matrix"])["include"]}
+        self.assertEqual(targets["macos-x86_64"]["os"], "macos-15-intel")
+        self.assertEqual(targets["macos-aarch64"]["os"], "macos-15")
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        package = release.split("\n  package-macos:\n", 1)[1].split("\n  sbom:\n", 1)[0]
+        self.assertIn("runs-on: macos-15\n", package)
+
     def test_every_supported_semver_prerelease_is_nonstable(self):
         for tag in ["v1.2.3-rc.1-linux", "1.2.3-preview.4", "v1.2.3-canary.7", "v1.2.3-0", "v1.2.3-linux", "v1.2.3--"]:
             with self.subTest(tag=tag):
