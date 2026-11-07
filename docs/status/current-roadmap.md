@@ -25,8 +25,16 @@ proof policy. Accepted duplicates can regenerate the original wire-hash proof
 without another inbound delivery. A transport proof confirms receipt, separately
 from signature metadata, durable broker ACKs and application responses. Local
 regressions cover blocked commit, broker contention rejection, exact retry, reconnect and
-reopened storage. Pinned RNS 1.5.2 / LXMF 0.9.6 senders reach native `DELIVERED`
+reopened storage. The service-identity wire regression also exercises actual
+imported, created and restored destinations through the production intake worker:
+malformed packets remain unproved, retries retain one message per service, and
+each proof validates only against the addressed service key, with the original
+encrypted packet hash and correct stored destination. Identity restoration uses
+a fresh in-memory message store; durable-message reopening is covered separately.
+Pinned RNS 1.5.2 / LXMF 0.9.6 senders reach native `DELIVERED`
 for opportunistic packets, direct packets and a 16 KB direct Resource.
+The [2026-11-07 software evidence](../interop/issue-719-delivery-proofs.json)
+records the exact references, message IDs and validated packet/Resource proofs.
 Columba/Pixel and Ratspeak/Windows acceptance and the original unlocalized direct
 report remain open; this increment does not establish those live outcomes.
 
