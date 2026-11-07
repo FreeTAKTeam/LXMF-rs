@@ -66,7 +66,7 @@ async fn final_checkpoint_fences_queued_saves_after_interface_retirement() {
     let early_hashes = tokio::fs::read(root.path().join("packet_hashlist.raw"))
         .await
         .expect("early replay snapshot");
-    assert!(!early_hashes.chunks_exact(32).any(|hash| hash == late_hash.as_slice()));
+    assert!(!early_hashes.as_chunks::<32>().0.iter().any(|hash| hash == late_hash.as_slice()));
     iface
         .rx_channel
         .send(RxMessage { address: iface.address, packet: late, source: IfaceSource::None })
@@ -100,7 +100,7 @@ async fn final_checkpoint_fences_queued_saves_after_interface_retirement() {
         .await
         .expect("final replay snapshot");
     assert!(
-        final_hashes.chunks_exact(32).any(|hash| hash == late_hash.as_slice()),
+        final_hashes.as_chunks::<32>().0.iter().any(|hash| hash == late_hash.as_slice()),
         "packet accepted after the early checkpoint must survive final retirement"
     );
     let mut config = TransportConfig::new("replay-replacement", &identity, true);
