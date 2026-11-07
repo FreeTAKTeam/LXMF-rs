@@ -301,7 +301,7 @@ jobs:
     if: needs.prepare.outputs.linux_only != 'true'
     name: Package macOS universal
     needs: [prepare, build]
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
