@@ -1,62 +1,72 @@
+//! Matched with `tools/scripts/python_impl_benchmarks.py`: Python's
+//! `LXMessage.pack()` signs and `LXMessage.unpack_from_bytes()` validates the
+//! signature, so encode benches sign and decode benches verify.
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use lxmf_core::inbound_decode::{decode_inbound_message, InboundPayloadMode};
+use lxmf_core::message::WireMessage;
 use lxmf_core::Message;
+use rand_core::OsRng;
+use rns_core::identity::{Identity, PrivateIdentity};
 
-fn sample_wire_payload() -> (Vec<u8>, [u8; 16]) {
+fn unsigned_message(title: &str, content: &str) -> Message {
     let mut message = Message::new();
-    let destination = [0x11; 16];
-    let source = [0x22; 16];
-    message.destination_hash = Some(destination);
-    message.source_hash = Some(source);
-    message.signature = Some([0x33; 64]);
+    message.destination_hash = Some([0x11; 16]);
+    message.source_hash = Some([0x22; 16]);
     message.timestamp = Some(1_770_000_000.0);
-    message.set_title_from_string("bench-title");
-    message.set_content_from_string("bench-content-payload");
-    let wire = message.to_wire(None).expect("sample message must encode");
-    (wire, destination)
+    message.set_title_from_string(title);
+    message.set_content_from_string(content);
+    message
 }
 
-fn sample_large_wire_payload() -> (Vec<u8>, [u8; 16]) {
-    let mut message = Message::new();
-    let destination = [0x77; 16];
-    let source = [0x88; 16];
-    message.destination_hash = Some(destination);
-    message.source_hash = Some(source);
-    message.signature = Some([0x99; 64]);
-    message.timestamp = Some(1_770_000_100.0);
-    message.set_title_from_string("bench-large-title");
-    message.set_content_from_string(&"x".repeat(2048));
-    let wire = message.to_wire(None).expect("large sample message must encode");
-    (wire, destination)
+fn verified(wire: &[u8], identity: &Identity) -> bool {
+    WireMessage::unpack(wire)
+        .expect("decode should succeed")
+        .verify(identity)
+        .expect("verify should succeed")
 }
 
-fn sample_resource_wire_payload() -> Vec<u8> {
-    let mut message = Message::new();
-    message.destination_hash = Some([0xd4; 16]);
-    message.source_hash = Some([0xe5; 16]);
-    message.signature = Some([0xf6; 64]);
-    message.timestamp = Some(1_770_000_201.0);
-    message.set_title_from_string("wire-resource-title");
-    message.set_content_from_string(&"x".repeat(16_384));
-    message.to_wire(None).expect("resource-sized sample message must encode")
+fn bench_decode(c: &mut Criterion, name: &str, title: &str, content: &str) {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let wire = unsigned_message(title, content)
+        .to_wire(Some(&signer))
+        .expect("sample message must encode");
+    assert!(verified(&wire, &identity), "sample message must verify");
+    c.bench_function(name, |b| {
+        b.iter(|| black_box(verified(black_box(&wire), &identity)));
+    });
 }
 
-fn bench_message_from_wire(c: &mut Criterion) {
-    let (wire, _) = sample_wire_payload();
-    c.bench_function("lxmf_core/message_from_wire", |b| {
+fn bench_encode(c: &mut Criterion, name: &str, title: &str, content: &str) {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    c.bench_function(name, |b| {
         b.iter(|| {
-            let decoded = Message::from_wire(black_box(&wire)).expect("decode should succeed");
-            black_box(decoded);
+            let message = unsigned_message(title, black_box(content));
+            black_box(message.to_wire(Some(&signer)).expect("encode should succeed"));
         });
     });
 }
 
+fn bench_message_paths(c: &mut Criterion) {
+    let large = "x".repeat(2048);
+    let resource = "x".repeat(16_384);
+    bench_decode(c, "lxmf_core/message_from_wire", "bench-title", "bench-content-payload");
+    bench_encode(c, "lxmf_core/message_to_wire", "wire-title", "wire-content");
+    bench_decode(c, "lxmf_core/large_message_from_wire", "bench-large-title", &large);
+    bench_encode(c, "lxmf_core/large_message_to_wire", "wire-large-title", &large);
+    bench_decode(c, "lxmf_core/resource_message_from_wire", "wire-resource-title", &resource);
+    bench_encode(c, "lxmf_core/resource_message_to_wire", "wire-resource-title", &resource);
+}
+
 fn bench_decode_inbound_message(c: &mut Criterion) {
-    let (wire, fallback_destination) = sample_wire_payload();
+    let mut message = unsigned_message("bench-title", "bench-content-payload");
+    message.signature = Some([0x33; 64]);
+    let wire = message.to_wire(None).expect("sample message must encode");
     c.bench_function("lxmf_core/decode_inbound_message", |b| {
         b.iter(|| {
             let decoded = decode_inbound_message(
-                black_box(fallback_destination),
+                black_box([0x11; 16]),
                 black_box(&wire),
                 InboundPayloadMode::FullWire,
             )
@@ -66,84 +76,5 @@ fn bench_decode_inbound_message(c: &mut Criterion) {
     });
 }
 
-fn bench_message_to_wire(c: &mut Criterion) {
-    c.bench_function("lxmf_core/message_to_wire", |b| {
-        b.iter(|| {
-            let mut message = Message::new();
-            message.destination_hash = Some([0x44; 16]);
-            message.source_hash = Some([0x55; 16]);
-            message.signature = Some([0x66; 64]);
-            message.timestamp = Some(1_770_000_001.0);
-            message.set_title_from_string("wire-title");
-            message.set_content_from_string("wire-content");
-            let wire = message.to_wire(None).expect("encode should succeed");
-            black_box(wire);
-        });
-    });
-}
-
-fn bench_large_message_from_wire(c: &mut Criterion) {
-    let (wire, _) = sample_large_wire_payload();
-    c.bench_function("lxmf_core/large_message_from_wire", |b| {
-        b.iter(|| {
-            let decoded = Message::from_wire(black_box(&wire)).expect("decode should succeed");
-            black_box(decoded);
-        });
-    });
-}
-
-fn bench_large_message_to_wire(c: &mut Criterion) {
-    let content = "x".repeat(2048);
-    c.bench_function("lxmf_core/large_message_to_wire", |b| {
-        b.iter(|| {
-            let mut message = Message::new();
-            message.destination_hash = Some([0xa4; 16]);
-            message.source_hash = Some([0xb5; 16]);
-            message.signature = Some([0xc6; 64]);
-            message.timestamp = Some(1_770_000_101.0);
-            message.set_title_from_string("wire-large-title");
-            message.set_content_from_string(black_box(&content));
-            let wire = message.to_wire(None).expect("encode should succeed");
-            black_box(wire);
-        });
-    });
-}
-
-fn bench_resource_message_from_wire(c: &mut Criterion) {
-    let wire = sample_resource_wire_payload();
-    c.bench_function("lxmf_core/resource_message_from_wire", |b| {
-        b.iter(|| {
-            let decoded = Message::from_wire(black_box(&wire)).expect("decode should succeed");
-            black_box(decoded);
-        });
-    });
-}
-
-fn bench_resource_message_to_wire(c: &mut Criterion) {
-    let content = "x".repeat(16_384);
-    c.bench_function("lxmf_core/resource_message_to_wire", |b| {
-        b.iter(|| {
-            let mut message = Message::new();
-            message.destination_hash = Some([0xd4; 16]);
-            message.source_hash = Some([0xe5; 16]);
-            message.signature = Some([0xf6; 64]);
-            message.timestamp = Some(1_770_000_201.0);
-            message.set_title_from_string("wire-resource-title");
-            message.set_content_from_string(black_box(&content));
-            let wire = message.to_wire(None).expect("encode should succeed");
-            black_box(wire);
-        });
-    });
-}
-
-criterion_group!(
-    benches,
-    bench_message_from_wire,
-    bench_decode_inbound_message,
-    bench_message_to_wire,
-    bench_large_message_from_wire,
-    bench_large_message_to_wire,
-    bench_resource_message_from_wire,
-    bench_resource_message_to_wire
-);
+criterion_group!(benches, bench_message_paths, bench_decode_inbound_message);
 criterion_main!(benches);

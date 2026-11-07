@@ -23,6 +23,8 @@ pub use api::{
     LxmfSdkPaper, LxmfSdkPeerLifecycle, LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics,
     LxmfSdkVoiceSignaling,
 };
+#[cfg(feature = "mobile-ble-adapter")]
+pub use backend::mobile_ble_adapter::SharedMobileBleAdapter;
 // Stability class: internal (backend composition surface)
 pub use backend::mobile_ble::{
     validate_capabilities as validate_mobile_ble_capabilities,

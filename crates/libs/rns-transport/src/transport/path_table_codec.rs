@@ -111,6 +111,7 @@ pub(in crate::transport) fn bounded_random_blobs(
     if remove > 0 {
         random_blobs.drain(..remove);
     }
+    random_blobs.shrink_to_fit();
     random_blobs
 }
 

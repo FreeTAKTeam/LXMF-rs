@@ -119,14 +119,6 @@ pub(super) fn route_outbound_packet(
     }
 }
 
-pub(super) async fn send_to_next_hop<'a>(
-    packet: &Packet,
-    handler: &MutexGuard<'a, TransportHandler>,
-    lookup: Option<AddressHash>,
-) -> bool {
-    send_to_next_hop_with_policy(packet, handler, lookup, false).await
-}
-
 async fn send_to_next_hop_with_policy<'a>(
     packet: &Packet,
     handler: &MutexGuard<'a, TransportHandler>,
@@ -415,7 +407,15 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     );
     let mut packet = packet.clone();
     clamp_forwarded_link_request_mtu(&mut packet, &handler, received_from, next_hop_iface).await;
-    handler.link_table.add(&packet, packet.destination, received_from, next_hop, next_hop_iface);
+    let remaining_hops = handler.path_table.hops_to(&packet.destination);
+    handler.link_table.add(
+        &packet,
+        packet.destination,
+        received_from,
+        next_hop,
+        next_hop_iface,
+        remaining_hops,
+    );
 
     send_to_next_hop_with_policy(&packet, &handler, None, from_local_client).await;
 }

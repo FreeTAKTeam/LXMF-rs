@@ -49,6 +49,9 @@ udeps:
 boundaries:
 	./tools/scripts/check-boundaries.sh
 
+no-std-core:
+	tools/scripts/check-no-std-core.sh
+
 forbidden-deps:
 	cargo xtask forbidden-deps
 

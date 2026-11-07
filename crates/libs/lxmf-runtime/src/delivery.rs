@@ -78,6 +78,7 @@ pub(crate) async fn send(
     )
     .await?;
     let wire = encode_wire(context.identity, context.source_destination, &remote, request)?;
+    crate::outgoing_capture::record(&wire, remote);
     let message_id = MessageId(hex::encode(
         WireMessage::unpack(&wire)
             .map_err(|err| internal(format!("failed to decode encoded LXMF message: {err}")))?
@@ -91,7 +92,9 @@ pub(crate) async fn send(
     {
         desired_method = TransportMethod::Direct;
     }
-    let decision = decide_delivery(desired_method, false, wire.len())
+    // The selector takes serialized content excluding LXMF's fixed overhead.
+    let content_size = wire.len().saturating_sub(lxmf_core::constants::LXMF_OVERHEAD);
+    let decision = decide_delivery(desired_method, false, content_size)
         .map_err(|err| validation(format!("failed to select delivery representation: {err}")))?;
     let representation =
         forced_representation(request, decision.method, decision.representation, wire.len());
@@ -226,7 +229,7 @@ async fn send_propagated(
     .await
 }
 
-fn encode_wire(
+pub(crate) fn encode_wire(
     identity: &PrivateIdentity,
     source: AddressHash,
     remote: &DestinationDesc,
@@ -417,6 +420,10 @@ fn ensure_sent(outcome: SendPacketOutcome, action: &str) -> Result<DeliveryOutco
     match outcome {
         SendPacketOutcome::SentDirect => Ok(DeliveryOutcome::SentDirect),
         SendPacketOutcome::SentBroadcast => Ok(DeliveryOutcome::SentBroadcast),
+        SendPacketOutcome::DroppedNoRoute => {
+            Err(transport_error(format!("{action} failed: {outcome:?}"))
+                .with_cause_code("OfflineRouteUnavailable"))
+        }
         _ => Err(transport_error(format!("{action} failed: {outcome:?}"))),
     }
 }

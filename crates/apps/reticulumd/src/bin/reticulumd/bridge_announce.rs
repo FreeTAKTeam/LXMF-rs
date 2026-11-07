@@ -2,13 +2,14 @@ use super::*;
 use reticulum_daemon::announce_names::{
     encode_delivery_announce_app_data_with_capabilities,
     encode_propagation_node_app_data as encode_python_propagation_node_app_data,
-    parse_peer_name_from_app_data, PropagationNodeAnnounceConfig,
+    normalize_display_name, parse_peer_name_from_app_data, PropagationNodeAnnounceConfig,
 };
 use rns_rpc::AnnounceBridge;
 
 impl TransportBridge {
     fn current_delivery_announce_app_data(&self) -> Option<Vec<u8>> {
-        let app_data = self.announce_app_data.clone()?;
+        let app_data =
+            self.announce_app_data.read().expect("announce app data rwlock poisoned").clone()?;
         if app_data.is_empty() {
             return Some(app_data);
         }
@@ -102,6 +103,11 @@ impl TransportBridge {
     }
 
     #[cfg(test)]
+    pub(crate) fn current_delivery_announce_app_data_for_test(&self) -> Option<Vec<u8>> {
+        self.current_delivery_announce_app_data()
+    }
+
+    #[cfg(test)]
     pub(crate) fn current_propagation_announce_app_data_for_test(&self) -> Option<Vec<u8>> {
         self.current_propagation_announce_app_data()
     }
@@ -131,6 +137,29 @@ impl TransportBridge {
 }
 
 impl AnnounceBridge for TransportBridge {
+    fn set_display_name(&self, display_name: &str) -> Result<(), std::io::Error> {
+        let display_name = normalize_display_name(display_name).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "display name is empty")
+        })?;
+        let app_data = encode_delivery_announce_app_data_with_capabilities(
+            display_name.as_str(),
+            None,
+            &self.announce_capabilities,
+        )
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+        *self.announce_app_data.write().expect("announce app data rwlock poisoned") =
+            Some(app_data);
+        // keep the default service identity (SDK view of this node) in step
+        let identity_hash = hex::encode(self.signer.address_hash().as_slice());
+        let mut identities =
+            self.service_identities.write().expect("service identity registry rwlock poisoned");
+        if let Some(mut record) = identities.by_identity(identity_hash.as_str()) {
+            record.display_name = Some(display_name);
+            identities.insert(record);
+        }
+        Ok(())
+    }
+
     fn announce_now(&self) -> Result<(), std::io::Error> {
         let transport = self.transport.clone();
         let destination = self.announce_destination.clone();

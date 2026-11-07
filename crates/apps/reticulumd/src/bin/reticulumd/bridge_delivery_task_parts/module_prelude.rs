@@ -1,4 +1,5 @@
 use super::identity_resolver;
+use super::delivery_attempt::DeliveryAttemptOutcome;
 
 use super::*;
 use crate::direct_backchannel::DirectBackchannelLinks;
@@ -7,13 +8,11 @@ use rand_core::OsRng;
 
 use rns_transport::ratchets::encrypt_for_public_key;
 
-pub(super) struct LinkModeStatuses {
-    pub(super) packet: &'static str,
-    pub(super) resource: &'static str,
-    pub(super) resource_sent: &'static str,
-}
-
 pub(super) struct DeliveryTask {
+    pub(super) stopping: Option<tokio::sync::watch::Receiver<bool>>,
+    pub(super) wakeup: Arc<super::delivery_wakeup::DeliveryWakeup>,
+    pub(super) path_requests: Arc<super::delivery_paths::DeliveryPathRequests>,
+    pub(super) deferred_dispatch: Arc<std::sync::atomic::AtomicBool>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) transport: Arc<Transport>,
     pub(super) peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,

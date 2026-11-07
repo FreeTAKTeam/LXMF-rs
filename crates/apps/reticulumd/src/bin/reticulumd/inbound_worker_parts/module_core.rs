@@ -1,21 +1,15 @@
-use reticulum_daemon::receipt_bridge::ReceiptEvent;
-
-use crate::bridge::emit_receipt_event;
 use crate::direct_backchannel::DirectBackchannelLinks;
 
 use rns_rpc::{RpcDaemon, RpcRequest};
 
-use rns_transport::destination::link::{Link, LinkEvent};
+use rns_transport::destination::link::LinkEvent;
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 
-use rns_transport::hash::{AddressHash, Hash};
+use rns_transport::hash::AddressHash;
 
 use rns_transport::identity::{DecryptIdentity, Identity};
 
-use rns_transport::packet::{
-    ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
-    PacketDataBuffer, PacketType, PropagationType,
-};
+use rns_transport::packet::PacketContext;
 
 use rns_transport::resource::{ResourceEventKind, ResourceProgress};
 
@@ -29,19 +23,30 @@ use sha2::Digest;
 
 use std::sync::Arc;
 
+#[cfg(test)]
 pub(super) fn spawn_inbound_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     control: PropagationControlContext,
     direct_backchannel_links: Option<DirectBackchannelLinks>,
-    receipt_tx: impl Into<reticulum_daemon::receipt_bridge::ReceiptPublisher>,
-    outbound_resource_map: OutboundResourceMap,
+) {
+    let resource_events = transport.resource_events();
+    spawn_inbound_worker_with_resource_events(
+        daemon, transport, control, direct_backchannel_links, resource_events,
+    );
+}
+
+pub(super) fn spawn_inbound_worker_with_resource_events(
+    daemon: Arc<RpcDaemon>,
+    transport: Arc<Transport>,
+    control: PropagationControlContext,
+    direct_backchannel_links: Option<DirectBackchannelLinks>,
+    mut rx: tokio::sync::broadcast::Receiver<rns_transport::resource::ResourceEvent>,
 ) {
     if control.enabled {
         control::spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
     }
     let resource_control = control.clone();
-    let receipt_tx = receipt_tx.into();
     let resource_outbound_sources = direct_backchannel_links.clone();
     spawn_packet_inbound_worker(
         daemon.clone(),
@@ -54,167 +59,139 @@ pub(super) fn spawn_inbound_worker(
             resource_control.delivery_destination.as_ref(),
         )
         .await;
-        let mut rx = transport.resource_events();
         loop {
-            if let Ok(event) = rx.recv().await {
-                match event.kind {
-                    ResourceEventKind::Complete(complete) => {
-                        if let Some(destination) = routing::resolve_resource_destination(
-                            transport.as_ref(),
-                            &event.link_id,
-                            local_delivery_destination,
-                            resource_outbound_sources.as_ref(),
-                        )
-                        .await
-                        {
-                            match destination {
-                                InboundLxmfDestination::Delivery(destination) => {
-                                    delivery_events::accept_delivery_resource(
-                                        daemon.as_ref(),
-                                        transport.as_ref(),
-                                        destination,
-                                        &complete.data,
-                                    )
-                                    .await;
-                                }
-                                InboundLxmfDestination::Propagation => {
-                                    if complete.is_request {
-                                        match resource_request_id(&complete.request_id) {
-                                            Some(request_id) => {
-                                                if let Err(error) =
-                                                    control::handle_resource_control_request(
-                                                        daemon.as_ref(),
-                                                        transport.as_ref(),
-                                                        &resource_control,
-                                                        &event.link_id,
-                                                        &complete.data,
-                                                        request_id,
-                                                        true,
-                                                    )
-                                                    .await
-                                                {
-                                                    log::error!(
-                                                        "[daemon-control] failed to handle propagation resource request link={} error={}",
-                                                        event.link_id,
-                                                        error
-                                                    );
-                                                }
-                                            }
-                                            None => {
-                                                log::warn!(
-                                                    "[daemon-control] ignoring propagation resource request with invalid request id link={}",
-                                                    event.link_id
+            let event = match rx.recv().await {
+                Ok(event) => event,
+                // Skipped completions include inbound requests that will now time out.
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    log::warn!("[daemon-rx] resource event channel lagged; skipped {skipped} events");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            };
+            match event.kind {
+                ResourceEventKind::Complete(complete) => {
+                    if let Some(destination) = routing::resolve_resource_destination(
+                        transport.as_ref(),
+                        &event.link_id,
+                        local_delivery_destination,
+                        resource_outbound_sources.as_ref(),
+                    )
+                    .await
+                    {
+                        match destination {
+                            InboundLxmfDestination::Delivery(destination) => {
+                                delivery_events::accept_delivery_resource(
+                                    daemon.as_ref(),
+                                    transport.as_ref(),
+                                    destination,
+                                    &complete.data,
+                                )
+                                .await;
+                            }
+                            InboundLxmfDestination::Propagation => {
+                                if complete.is_request {
+                                    match resource_request_id(&complete.request_id) {
+                                        Some(request_id) => {
+                                            if let Err(error) =
+                                                control::handle_resource_control_request(
+                                                    daemon.as_ref(),
+                                                    transport.as_ref(),
+                                                    &resource_control,
+                                                    &event.link_id,
+                                                    &complete.data,
+                                                    request_id,
+                                                    true,
+                                                )
+                                                .await
+                                            {
+                                                log::error!(
+                                                    "[daemon-control] failed to handle propagation resource request link={} error={}",
+                                                    event.link_id,
+                                                    error
                                                 );
                                             }
                                         }
-                                        continue;
+                                        None => {
+                                            log::warn!(
+                                                "[daemon-control] ignoring propagation resource request with invalid request id link={}",
+                                                event.link_id
+                                            );
+                                        }
                                     }
-                                    if complete.is_response {
-                                        continue;
-                                    }
-                                    let remote_peer = remote_propagation_peer_for_link(
-                                        transport.as_ref(),
-                                        &event.link_id,
+                                    continue;
+                                }
+                                if complete.is_response {
+                                    continue;
+                                }
+                                let remote_peer = remote_propagation_peer_for_link(
+                                    transport.as_ref(),
+                                    &event.link_id,
+                                )
+                                .await;
+                                let peer_link_validated =
+                                    match resource_control.validated_peer_links.lock() {
+                                        Ok(guard) => guard.contains(&event.link_id),
+                                        Err(err) => {
+                                            log::warn!(
+                                                "[daemon-rx] failed to read validated peer links for link={}: {err}",
+                                                hex::encode(event.link_id.as_slice())
+                                            );
+                                            false
+                                        }
+                                    };
+                                if let Err(error) =
+                                    propagation::ingest_propagation_resource_from_peer_with_transport(
+                                        daemon.as_ref(),
+                                        &complete.data,
+                                        resource_control.delivery_destination.as_ref(),
+                                        remote_peer.as_deref(),
+                                        peer_link_validated,
+                                        Some(transport.as_ref()),
                                     )
-                                    .await;
-                                    let peer_link_validated =
-                                        match resource_control.validated_peer_links.lock() {
-                                            Ok(guard) => guard.contains(&event.link_id),
-                                            Err(err) => {
-                                                log::warn!(
-                                                    "[daemon-rx] failed to read validated peer links for link={}: {err}",
-                                                    hex::encode(event.link_id.as_slice())
-                                                );
-                                                false
-                                            }
-                                        };
-                                    if let Err(error) =
-                                        propagation::ingest_propagation_resource_from_peer_with_transport(
-                                            daemon.as_ref(),
-                                            &complete.data,
-                                            resource_control.delivery_destination.as_ref(),
-                                            remote_peer.as_deref(),
-                                            peer_link_validated,
-                                            Some(transport.as_ref()),
-                                        )
-                                        .await
-                                    {
-                                        log::debug!(
-                                            "[daemon-rx] dropping inbound propagation resource: {}",
-                                            error
-                                        );
-                                    }
+                                    .await
+                                {
+                                    log::debug!(
+                                        "[daemon-rx] dropping inbound propagation resource: {}",
+                                        error
+                                    );
                                 }
                             }
                         }
                     }
-                    ResourceEventKind::OutboundComplete => {
-                        handle_outbound_resource_completion(
-                            daemon.as_ref(),
-                            &outbound_resource_map,
-                            &receipt_tx,
-                            &event.hash,
-                        );
-                    }
-                    ResourceEventKind::OutboundFailed => {
-                        handle_outbound_resource_failure(
-                            daemon.as_ref(),
-                            &outbound_resource_map,
-                            &receipt_tx,
-                            &event.hash,
-                        );
-                    }
-                    ResourceEventKind::OutboundRejected => {
-                        handle_outbound_resource_rejection(
-                            &outbound_resource_map,
-                            &receipt_tx,
-                            &event.hash,
-                        );
-                    }
-                    ResourceEventKind::OutboundCancelled => {
-                        let resource_hash_hex = hex::encode(event.hash.as_slice());
-                        match take_outbound_resource_tracking(
-                            &outbound_resource_map,
-                            resource_hash_hex.as_str(),
-                        ) {
-                            Ok(_) => {}
-                            Err("resource not tracked") => log::debug!(
-                                "[daemon-rx] cancelled outbound resource already untracked hash={resource_hash_hex}"
-                            ),
-                            Err(error) => log::error!(
-                                "[daemon-rx] failed to clear cancelled outbound resource hash={resource_hash_hex}: {error}"
-                            ),
-                        }
-                    }
-                    ResourceEventKind::InboundFailed(failure) => {
-                        log::warn!(
-                            "[daemon-rx] inbound resource failed link={} hash={} reason={} received={}/{}",
-                            event.link_id,
-                            event.hash,
-                            failure.reason,
-                            failure.progress.received_parts,
-                            failure.progress.total_parts
-                        );
-                    }
-                    ResourceEventKind::SegmentComplete(segment) => {
-                        log::debug!(
-                            "[daemon-rx] resource segment complete link={} original_hash={} segment={}/{}",
-                            event.link_id,
-                            segment.original_hash,
-                            segment.segment_index,
-                            segment.total_segments
-                        );
-                    }
-                    ResourceEventKind::Progress(progress) => {
-                        log::debug!(
-                            "[daemon-rx] {}",
-                            resource_progress_status(
-                                &event.hash.to_string(),
-                                &event.link_id.to_string(),
-                                &progress
-                            )
-                        );
-                    }
+                }
+                // Retained delivery owners consume their native completion
+                // watches. Broadcast traffic cannot publish or retire them.
+                ResourceEventKind::OutboundComplete | ResourceEventKind::OutboundFailed
+                | ResourceEventKind::OutboundRejected | ResourceEventKind::OutboundCancelled => {},
+                ResourceEventKind::InboundFailed(failure) => {
+                    log::warn!(
+                        "[daemon-rx] inbound resource failed link={} hash={} reason={} received={}/{}",
+                        event.link_id,
+                        event.hash,
+                        failure.reason,
+                        failure.progress.received_parts,
+                        failure.progress.total_parts
+                    );
+                }
+                ResourceEventKind::SegmentComplete(segment) => {
+                    log::debug!(
+                        "[daemon-rx] resource segment complete link={} original_hash={} segment={}/{}",
+                        event.link_id,
+                        segment.original_hash,
+                        segment.segment_index,
+                        segment.total_segments
+                    );
+                }
+                ResourceEventKind::Progress(progress) => {
+                    log::debug!(
+                        "[daemon-rx] {}",
+                        resource_progress_status(
+                            &event.hash.to_string(),
+                            &event.link_id.to_string(),
+                            &progress
+                        )
+                    );
                 }
             }
         }
@@ -267,101 +244,22 @@ fn propagation_destination_hash_for_identity(identity: &Identity) -> String {
     hex::encode(&hash[..16])
 }
 
-fn handle_outbound_resource_completion(
-    daemon: &RpcDaemon,
-    outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
-    resource_hash: &Hash,
-) {
-    let resource_hash_hex = hex::encode(resource_hash.as_slice());
-    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
-        Ok(tracking) => {
-            daemon.record_outbound_peer_sent(&tracking.peer, tracking.bytes);
-            emit_receipt_event(
-                receipt_tx,
-                ReceiptEvent::new(tracking.message_id, tracking.sent_status)
-                    .with_resource_hash(resource_hash_hex)
-                    .with_peer(tracking.peer)
-                    .with_delivery_kind("resource-complete")
-                    .with_bytes(tracking.bytes),
-            );
-        }
-        Err(err) => {
-            log::warn!("[daemon-rx] outbound resource completion without tracking hash={}: {err}", resource_hash_hex);
-        }
-    }
-}
-
-fn handle_outbound_resource_failure(
-    daemon: &RpcDaemon,
-    outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
-    resource_hash: &Hash,
-) {
-    let resource_hash_hex = hex::encode(resource_hash.as_slice());
-    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
-        Ok(tracking) => {
-            daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
-            emit_receipt_event(
-                receipt_tx,
-                ReceiptEvent::new(tracking.message_id, "failed: resource transfer failed")
-                    .with_resource_hash(resource_hash_hex)
-                    .with_peer(tracking.peer)
-                    .with_delivery_kind("resource-failed")
-                    .with_bytes(tracking.bytes),
-            );
-        }
-        Err(err) => {
-            log::warn!("[daemon-rx] outbound resource failure without tracking hash={}: {err}", resource_hash_hex);
-        }
-    }
-}
-
-fn handle_outbound_resource_rejection(
-    outbound_resource_map: &OutboundResourceMap,
-    receipt_tx: &reticulum_daemon::receipt_bridge::ReceiptPublisher,
-    resource_hash: &Hash,
-) {
-    let resource_hash_hex = hex::encode(resource_hash.as_slice());
-    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
-        Ok(tracking) => {
-            emit_receipt_event(
-                receipt_tx,
-                ReceiptEvent::new(tracking.message_id, "rejected")
-                    .with_resource_hash(resource_hash_hex)
-                    .with_peer(tracking.peer)
-                    .with_delivery_kind("resource-rejected")
-                    .with_bytes(tracking.bytes),
-            );
-        }
-        Err(err) => {
-            log::warn!("[daemon-rx] outbound resource rejection without tracking hash={}: {err}", resource_hash_hex);
-        }
-    }
-}
-
 fn spawn_packet_inbound_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     control: PropagationControlContext,
     direct_backchannel_links: Option<DirectBackchannelLinks>,
 ) {
-    if let Some(backchannel_links) = direct_backchannel_links.as_ref() {
-        link_identification::spawn_identified_peer_workers(
-            transport.clone(),
-            backchannel_links.clone(),
-        );
-    }
-
     let daemon_inbound = daemon;
     let inbound_transport = transport;
+    let mut rx = inbound_transport.received_data_events_with_proofs();
     tokio::spawn(async move {
         let local_delivery_destination =
             routing::local_delivery_destination_hash(control.delivery_destination.as_ref()).await;
-        let mut rx = inbound_transport.received_data_events();
         loop {
             match rx.recv().await {
-                Ok(event) => {
+                Ok(received) => {
+                    let event = received.received;
                     if routing::should_skip_control_payload(&event, &control) {
                         continue;
                     }
@@ -419,7 +317,7 @@ fn spawn_packet_inbound_worker(
                             continue;
                         }
                         InboundLxmfDestination::Delivery(destination) => {
-                            delivery_events::accept_delivery_packet(
+                            let admitted = delivery_events::accept_delivery_packet(
                                 daemon_inbound.as_ref(),
                                 inbound_transport.as_ref(),
                                 &raw_destination_hex,
@@ -428,11 +326,19 @@ fn spawn_packet_inbound_worker(
                                 event.payload_mode,
                             )
                             .await;
+                            if admitted {
+                                if let Some(proof) = received.proof {
+                                    if !inbound_transport.prove_destination_packet(proof).await {
+                                        log::warn!("[daemon-rx] accepted LXMF packet proof dispatch failed dst={}", raw_destination_hex);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::debug!(
+                    // Deferred packets skipped here remain unproved and may be retried.
+                    log::warn!(
                         "[daemon-rx] received-data channel lagged; skipped {} events",
                         skipped
                     );

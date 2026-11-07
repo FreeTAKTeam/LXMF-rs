@@ -253,6 +253,7 @@ pub struct Destination<I: HashIdentity, D: Direction, T: Type> {
     ratchet_state: RatchetState,
     path_responses: BTreeMap<Vec<u8>, (Instant, Packet)>,
     path_response_queue: VecDeque<(Vec<u8>, Instant)>,
+    pub(crate) deferred_proofs: bool,
     pub(crate) proof_strategy: ProofStrategy,
     pub(crate) proof_requested_callback: Option<Arc<dyn ProofRequestedHandler>>,
 }

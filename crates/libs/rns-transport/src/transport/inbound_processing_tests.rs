@@ -136,7 +136,7 @@ async fn rns_1_5_ingress_full_queue_does_not_poison_packet_retry() {
         preprocess_inbound_message(&handler, &transport.iface_messages_tx, first)
             .await
             .expect("first packet");
-    queues.enqueue(first_class, first).expect("queue first packet");
+    assert!(enqueue_inbound_message(&handler, &queues, first_class, first).await);
 
     let mut retry = message(PacketType::Data, AddressHash::new_from_rand(OsRng));
     retry.address = iface;
@@ -145,14 +145,17 @@ async fn rns_1_5_ingress_full_queue_does_not_poison_packet_retry() {
         preprocess_inbound_message(&handler, &transport.iface_messages_tx, retry.clone())
             .await
             .expect("first retry attempt");
-    let full = queues.enqueue(retry_class, rejected).expect_err("data queue must be full");
-    rollback_rejected_inbound(&handler, &full.item).await;
+    assert!(
+        !enqueue_inbound_message(&handler, &queues, retry_class, rejected).await,
+        "data queue must be full"
+    );
     let _ = queues.try_dequeue().expect("free queue capacity");
 
-    assert!(
-        preprocess_inbound_message(&handler, &transport.iface_messages_tx, retry).await.is_some(),
-        "queue-full rejection must not poison the packet hash cache"
-    );
+    let (class, candidate) =
+        preprocess_inbound_message(&handler, &transport.iface_messages_tx, retry)
+            .await
+            .expect("queue-full rejection must not poison the packet hash cache");
+    assert!(enqueue_inbound_message(&handler, &queues, class, candidate).await);
 }
 
 #[tokio::test]

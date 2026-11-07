@@ -1,12 +1,14 @@
 impl MessagesStore {
-    /// Fill remaining pending capacity in bounded, independently committed pages.
+    /// Fill remaining pending capacity in bounded, independently committed pages,
+    /// never past `total_limit` peer entries overall (the quota pass's global limit).
     /// The durable cursor avoids restarting completed scans on unchanged inventory.
     pub fn mark_recent_propagation_unhandled_for_peer(
         &self,
         peer: &str,
         limit: u64,
+        total_limit: u64,
     ) -> rusqlite::Result<usize> {
-        self.refill_recent_peer_propagation(peer, limit)
+        self.refill_recent_peer_propagation(peer, limit, total_limit)
     }
 
     pub(crate) fn import_peer_queue_marks(

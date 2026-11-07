@@ -32,51 +32,26 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
       checkout_ref: ${{ steps.release.outputs.checkout_ref }}
+      source_commit: ${{ steps.release.outputs.source_commit }}
       prerelease: ${{ steps.release.outputs.prerelease }}
       publish: ${{ steps.release.outputs.publish }}
+      linux_only: ${{ steps.release.outputs.linux_only }}
+      build_matrix: ${{ steps.release.outputs.build_matrix }}
+      linux_package_matrix: ${{ steps.release.outputs.linux_package_matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - id: release
-        name: Validate release tag
+        name: Validate release tag and select platforms
         shell: bash
+        env:
+          RELEASE_INPUT_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+          RELEASE_INPUT_PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
         run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            tag="${GITHUB_REF_NAME}"
-            publish=true
-          else
-            tag="${{ inputs.version }}"
-            if [[ "${{ inputs.publish }}" == "true" ]]; then
-              publish=true
-            else
-              publish=false
-            fi
-          fi
-
-          [[ "${tag}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]] || {
-            echo "Invalid release tag: ${tag}" >&2
-            exit 1
-          }
-          git rev-parse --verify "refs/tags/${tag}^{commit}" >/dev/null || {
-            echo "The release tag must already exist: ${tag}" >&2
-            exit 1
-          }
-
-          version="${tag#v}"
-          prerelease=false
-          if [[ "${tag}" == *-rc* || "${tag}" == *-alpha* || "${tag}" == *-beta* || "${tag}" == *preview* ]]; then
-            prerelease=true
-          fi
-
-          {
-            echo "tag=${tag}"
-            echo "version=${version}"
-            echo "checkout_ref=${tag}"
-            echo "prerelease=${prerelease}"
-            echo "publish=${publish}"
-          } >> "${GITHUB_OUTPUT}"
+          python3 tools/scripts/release_config.py prepare \
+            --tag "$RELEASE_INPUT_TAG" --publish "$RELEASE_INPUT_PUBLISH" \
+            --output "$GITHUB_OUTPUT"
 
   sdk-wrapper-parity:
     name: SDK wrapper parity gate
@@ -100,53 +75,10 @@ jobs:
 
   build:
     name: Build ${{ matrix.label }}
-    needs: prepare
+    needs: [prepare, sdk-wrapper-parity]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - id: linux-x86_64
-            label: Linux x86_64 (musl)
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            artifact_arch: linux-x86_64
-            use_cross: false
-            suffix: ""
-          - id: linux-aarch64
-            label: Linux aarch64 (musl)
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            artifact_arch: linux-aarch64
-            use_cross: true
-            suffix: ""
-          - id: linux-armv7
-            label: Linux armv7 (musleabihf)
-            os: ubuntu-latest
-            target: armv7-unknown-linux-musleabihf
-            artifact_arch: linux-armv7
-            use_cross: true
-            suffix: ""
-          - id: windows-x86_64
-            label: Windows x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_arch: windows-x86_64
-            use_cross: false
-            suffix: ".exe"
-          - id: macos-x86_64
-            label: macOS x86_64
-            os: macos-15-intel
-            target: x86_64-apple-darwin
-            artifact_arch: macos-x86_64
-            use_cross: false
-            suffix: ""
-          - id: macos-aarch64
-            label: macOS aarch64
-            os: macos-14
-            target: aarch64-apple-darwin
-            artifact_arch: macos-aarch64
-            use_cross: false
-            suffix: ""
+      matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
     runs-on: ${{ matrix.os }}
     env:
       TARGET: ${{ matrix.target }}
@@ -222,14 +154,7 @@ jobs:
     needs: [prepare, build]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - build_id: linux-x86_64
-            arch: amd64
-          - build_id: linux-aarch64
-            arch: arm64
-          - build_id: linux-armv7
-            arch: armhf
+      matrix: ${{ fromJSON(needs.prepare.outputs.linux_package_matrix) }}
     runs-on: ubuntu-latest
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
@@ -257,6 +182,7 @@ jobs:
           sudo apt-get install -y gettext-base
           mkdir -p package-root/usr/bin target
           cp dist/bin/* package-root/usr/bin/
+          chmod 0755 package-root/usr/bin/*
           export ARCH="${PACKAGE_ARCH}"
           export VERSION="${RELEASE_VERSION}"
           export STAGE="${GITHUB_WORKSPACE}/package-root"
@@ -275,6 +201,7 @@ jobs:
           retention-days: 14
 
   package-windows:
+    if: needs.prepare.outputs.linux_only != 'true'
     name: Package Windows
     needs: [prepare, build]
     runs-on: windows-latest
@@ -371,9 +298,10 @@ jobs:
           retention-days: 14
 
   package-macos:
+    if: needs.prepare.outputs.linux_only != 'true'
     name: Package macOS universal
     needs: [prepare, build]
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -401,6 +329,7 @@ jobs:
               "artifacts/aarch64/bin/${binary}" \
               -output "dist/bin/${binary}"
           done
+          chmod 0755 dist/bin/*
           cp README.md dist/README.md
       - name: Import macOS signing certificate
         if: env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_CERTIFICATE_PASSWORD != ''
@@ -464,6 +393,8 @@ jobs:
     name: Build OCI container
     needs: [prepare, build]
     runs-on: ubuntu-latest
+    outputs:
+      image_digest: ${{ steps.build-image.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -488,6 +419,15 @@ jobs:
           mkdir -p docker/context/amd64 docker/context/arm64
           cp artifacts/linux-x86_64/bin/* docker/context/amd64/
           cp artifacts/linux-aarch64/bin/* docker/context/arm64/
+          # Artifact downloads reset plain-file modes to 0644.
+          chmod 0755 docker/context/amd64/* docker/context/arm64/*
+      - name: Verify container delivery before publication
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --build-arg TARGETARCH=amd64 \
+            --tag lxmf-rs-release-smoke --file docker/Dockerfile .
+          docker run --rm --network none --entrypoint /usr/local/bin/rnx \
+            lxmf-rs-release-smoke e2e --timeout-secs 20
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
@@ -522,6 +462,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ needs.prepare.outputs.publish == 'true' }}
           tags: ${{ steps.container-tags.outputs.tags }}
+          labels: org.opencontainers.image.revision=${{ needs.prepare.outputs.source_commit }}
       - name: Install cosign
         if: needs.prepare.outputs.publish == 'true'
         uses: sigstore/cosign-installer@v3
@@ -555,8 +496,8 @@ jobs:
 
   release:
     name: Publish release assets
-    needs: [prepare, build, package-linux, package-windows, package-macos, sbom, container]
-    if: needs.prepare.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [prepare, sdk-wrapper-parity, build, package-linux, package-windows, package-macos, sbom, container]
+    if: ${{ always() && !cancelled() && (needs.prepare.outputs.publish == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -565,7 +506,16 @@ jobs:
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+      OCI_IMAGE_DIGEST: ${{ needs.container.outputs.image_digest }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require successful release dependencies
+        env:
+          RELEASE_NEEDS: ${{ toJSON(needs) }}
+        run: python3 tools/scripts/release_config.py check-needs --needs-json "$RELEASE_NEEDS"
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
@@ -581,6 +531,29 @@ jobs:
             -name '*.rpm' -o -name '*.msi' -o -name '*.json' \
           \) -exec cp {} release-assets/ \;
           test "$(find release-assets -type f | wc -l)" -gt 0
+      - name: Stage tagged release notes
+        id: release-notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="refs/tags/${RELEASE_TAG}:docs/release-notes-v${RELEASE_VERSION}.md"
+          if git cat-file -e "${notes}"; then
+            git show "${notes}" > release-assets/RELEASE_NOTES.md
+            echo 'path=release-assets/RELEASE_NOTES.md' >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Record product source and packaging workflow
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg tag "${RELEASE_TAG}" \
+            --arg product "${RELEASE_SOURCE_COMMIT}" \
+            --arg workflow "${GITHUB_SHA}" \
+            --arg ref "${GITHUB_REF}" \
+            --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --arg image "${OCI_IMAGE_DIGEST}" \
+            '{release_tag:$tag, product_commit:$product, workflow_commit:$workflow,
+              workflow_ref:$ref, workflow_run:$run, oci_image_digest:$image}' \
+            > release-assets/release-build-source.json
       - name: Generate checksums
         shell: bash
         run: |
@@ -616,10 +589,35 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          body_path: ${{ steps.release-notes.outputs.path }}
           files: release-assets/*
           fail_on_unmatched_files: true
           generate_release_notes: true
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.prepare.outputs.prerelease == 'true' && 'false' || 'legacy' }}
+
+  publish-crates:
+    name: Queue crates.io publication
+    needs: [prepare, release]
+    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Dispatch public crate publication for the released tag
+        # GITHUB_TOKEN release events do not trigger another workflow, but
+        # workflow_dispatch does. Keep the tag prefix in version so both
+        # entrypoints share the publisher's concurrency group.
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run crates-io-publish.yml \
+            --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_TAG" \
+            -f ref="$RELEASE_TAG" -f version="$RELEASE_TAG" -f dry_run=false
 
   homebrew:
     name: Update Homebrew tap

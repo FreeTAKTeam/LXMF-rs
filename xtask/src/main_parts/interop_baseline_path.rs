@@ -214,6 +214,10 @@ struct PublishedCrate {
 
 const WAVE1_PUBLIC_CRATES: &[PublishedCrate] = &[
     PublishedCrate {
+        package: "r3akt-event-broker",
+        manifest_path: "crates/libs/r3akt-event-broker/Cargo.toml",
+    },
+    PublishedCrate {
         package: "lxmf-reference",
         manifest_path: "crates/libs/lxmf-reference/Cargo.toml",
     },

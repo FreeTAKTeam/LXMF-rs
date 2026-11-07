@@ -259,7 +259,7 @@ impl RpcDaemon {
                     let deadline =
                         std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
                     while !path_found && std::time::Instant::now() < deadline {
-                        bounded_path_poll_delay(std::time::Duration::from_millis(250));
+                        bounded_path_poll_delay(std::time::Duration::from_millis(25));
                         status_fields = match bridge.path_status(destination.as_str()) {
                             Ok(status_fields) => status_fields,
                             Err(err) => {
@@ -395,6 +395,7 @@ impl RpcDaemon {
                 })
             }
             "announce_delivery" => self.handle_announce_delivery(request),
+            "set_display_name" => self.handle_set_display_name(request),
             "announce_received" => {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")

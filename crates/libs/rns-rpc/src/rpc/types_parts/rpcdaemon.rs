@@ -1,4 +1,6 @@
 pub struct RpcDaemon {
+    zmq_expected_listeners: std::sync::atomic::AtomicUsize,
+    zmq_bound_listeners: std::sync::atomic::AtomicUsize,
     store: Arc<MessagesStore>,
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,
@@ -76,10 +78,15 @@ pub struct RpcDaemon {
     remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
     rnode_management_bridge: Mutex<Option<Arc<dyn RNodeManagementBridge>>>,
     weave_display_control_bridge: Mutex<Option<Arc<dyn WeaveDisplayControlBridge>>>,
+    metrics_providers: Mutex<Vec<(&'static str, Arc<dyn crate::rpc::daemon::MetricsProvider>)>>,
     started_at: std::time::Instant,
 }
 
 pub trait OutboundBridge: Send + Sync {
+    /// Notify an admitted owner without admitting another delivery.
+    fn notify_delivery_path(&self, _destination: &str) {}
+    fn owns_delivery(&self, _message_id: &str) -> bool { false }
+
     fn shutdown_delivery(&self) {}
     fn validate_delivery(
         &self,
@@ -117,13 +124,35 @@ pub trait AnnounceBridge: Send + Sync {
     fn announce_delivery(&self, _destination_hash: &str) -> Result<(), std::io::Error> {
         Err(std::io::Error::other("targeted delivery announce is not configured"))
     }
+
+    /// Replace the display name carried by later delivery announces.
+    fn set_display_name(&self, _display_name: &str) -> Result<(), std::io::Error> {
+        Err(std::io::Error::other("display name update is not configured"))
+    }
 }
 
 pub trait InterfaceMutationBridge: Send + Sync {
+    /// An asynchronous native owner publishes committed interface records
+    /// itself. Its return value acknowledges queue admission only. Legacy
+    /// bridges keep the default synchronous return-and-store behavior.
+    fn publishes_interface_records(&self) -> bool {
+        false
+    }
+
     fn apply_interfaces(
         &self,
         interfaces: Vec<InterfaceRecord>,
     ) -> Result<Vec<InterfaceRecord>, std::io::Error>;
+
+    /// Retain reload completion context when an asynchronous bridge defers
+    /// publication. Synchronous bridges preserve the existing apply behavior.
+    fn reload_interfaces(
+        &self,
+        interfaces: Vec<InterfaceRecord>,
+        _timestamp: i64,
+    ) -> Result<Vec<InterfaceRecord>, std::io::Error> {
+        self.apply_interfaces(interfaces)
+    }
 
     fn manage_named_interface(
         &self,

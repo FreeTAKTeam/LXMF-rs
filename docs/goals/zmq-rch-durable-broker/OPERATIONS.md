@@ -1,7 +1,8 @@
 # Durable ZeroMQ / RCH operations
 
-This implementation enables the paired path described in [PLAN.md](PLAN.md).
-The daemon and SDK expose an additive, explicitly negotiated capability.
+This runbook covers the durable ZeroMQ path shipped in v0.14.0. Read the
+[migration guide](../../migrations/v0.14.0-zmq.md) before enabling it. The
+daemon and SDK expose an additive, explicitly negotiated capability.
 RCH requires that capability and has no legacy message-history/polling fallback.
 Existing non-ZeroMQ clients retain their public SDK and network receipt contracts.
 

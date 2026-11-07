@@ -1,7 +1,11 @@
 # ZeroMQ / RCH durable message broker
 
-Status: paired local implementation candidate; deployment qualification remains open.
-See [PROGRESS.md](PROGRESS.md) for verified evidence and [OPERATIONS.md](OPERATIONS.md) for cutover and recovery.
+Status: Issue #659 is closed. The durable-broker implementation shipped in
+v0.14.0; production deployment qualification remains a separate open activity.
+See the [release notes](../../release-notes-v0.14.0.md) and
+[migration guide](../../migrations/v0.14.0-zmq.md) for shipped behavior,
+[PROGRESS.md](PROGRESS.md) for implementation evidence, and
+[OPERATIONS.md](OPERATIONS.md) for cutover and recovery.
 
 ## Outcome
 
@@ -21,23 +25,15 @@ process and one ordered consumer per configured service identity/subscription.
 Preserve RNS/LXMF wire formats, destination ownership and public RCH routes.
 Replication, competing consumers and shared-consumer clustering are excluded.
 
-## Implementation plan
+## Retired plan
 
-The [reviewed v2 Rust implementation plan](PLAN.md) defines design decisions,
-repository ownership, work packages W0-W5, migration requirements and tests.
-Repair recovery and cancellation first, then prove one durable `Test1234`
-handoff and its business application. Qualify ROUTER/DEALER independently;
-do not combine endpoint migration with storage migration.
+The implementation plan is retired. Its former URL remains available as a
+[retirement pointer](PLAN.md) for issue links.
 
-## Acceptance evidence
+## Qualification boundary
 
-Use recorded LXMF, operation and event identifiers rather than message text as
-deduplication keys. Prove replay across daemon and RCH restarts, lost replies
-and acknowledgements, and RCH failure after custody acknowledgement but before
-application. Require one durable intake record and no repeated committed local
-business effect.
-
-Verify bounded admission, workload isolation, explicit storage and recovery
-failures, native SQLite durability settings, supported-version compatibility
-and a tested paired deployment. Keep missing runtime evidence explicit; the
-plan is not evidence that the production fault is fixed.
+The release tests cover paired local SQLite and ZeroMQ behavior. They do not
+establish a production RCH deployment, physical power-cut durability,
+multi-hour load qualification, or the cause of a production incident. Follow
+the operations runbook for a deployment and retain its actual revision and
+runtime evidence.

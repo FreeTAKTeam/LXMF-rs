@@ -1,19 +1,16 @@
-# Goal: Reticulum 1.5.4-dev feature update
+# Issue #605 scope decision record
 
-Update the tested, working RNS 1.5.2-compatible LXMF-rs system for features
-and changed behavior in the pinned RNS 1.5.4 development snapshot. Follow
-[`PLAN.md`](PLAN.md) and use the existing
-[`rns-1.5.4-delta.md`](../../status/rns-1.5.4-delta.md) to identify the update.
-This goal does not require full parity with every inherited Python behavior.
+Status: closed. The selected RNS 1.5.4-dev feature update was completed on the
+RNS 1.5.2-compatible release baseline. The broader forward-behavior contract
+and physical/platform/client evidence remain separate and incomplete; this
+record does not claim full RNS 1.5.4 parity.
 
-Keep both reference revisions pinned, preserve the active release baseline,
-and avoid regressions in LXMF, SDK, ZeroMQ, daemon, and utility paths. Close
-#605 after the selected feature delta is integrated, affected-path regressions
-and normal exact-head CI pass, and remaining gaps are accurately documented.
-Open parity follow-ups #608, #609, and #611–#614 are not automatic blockers;
-#616's physical, client, and public-network evidence is outside this goal.
-No new release is required solely to close #605. A bounded child PR should
-not use `Closes #605` unless it actually completes this scope.
+This file stays at its current path because Python surface inventory tooling
+and CI use it to bind the explicit scope decision below. For current status and
+evidence, see the [feature delta](../../status/rns-1.5.4-delta.md),
+[Reticulum parity matrix](../../status/reticulum-parity-matrix.md), and
+[acceptance evidence](evidence/615-release-acceptance.md). Original issue:
+[#605](https://github.com/FreeTAKTeam/LXMF-rs/issues/605).
 
 ## Explicit user scope decision
 

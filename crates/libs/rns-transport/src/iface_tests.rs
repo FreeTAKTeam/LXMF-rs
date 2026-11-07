@@ -7,6 +7,8 @@ mod tests {
     include!("iface_tests_parts/closed_tx_queue_cleanup.rs");
     include!("iface_tests_parts/issue_609_announce_queue_limit.rs");
     include!("iface_tests_parts/inheritance_lock_poison.rs");
+    include!("iface_tests_parts/issue_608_policy_publication.rs");
+    include!("iface_tests_parts/issue_608_prepared_spawn.rs");
 
     #[test]
     fn new_channel_defaults_to_unicast_role() {

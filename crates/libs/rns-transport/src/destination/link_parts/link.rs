@@ -8,3 +8,5 @@ include!("link_sections/request_payload.rs");
 include!("link_sections/request_payload_tests.rs");
 include!("link_sections/link_mtu.rs");
 include!("link_sections/identify_packet_tests.rs");
+
+include!("link_sections/data_signal.rs");

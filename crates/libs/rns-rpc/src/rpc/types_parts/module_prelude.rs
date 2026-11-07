@@ -149,6 +149,9 @@ impl RpcError {
         if code.contains("_TRANSPORT_") {
             return Ok(Some("Transport".to_string()));
         }
+        if code == "SDK_STORAGE_BROKER_TIMEOUT" {
+            return Ok(Some("Timeout".to_string()));
+        }
         if code.contains("_STORAGE_") {
             return Ok(Some("Storage".to_string()));
         }
@@ -428,5 +431,20 @@ impl RpcLatencyHistogram {
             "overflow_count": self.overflow_count,
             "buckets": buckets,
         })
+    }
+}
+
+#[cfg(test)]
+mod broker_timeout_tests {
+    use super::RpcError;
+
+    #[test]
+    fn broker_writer_timeout_is_retryable_for_category_based_clients() {
+        let error = RpcError::new("SDK_STORAGE_BROKER_TIMEOUT", "queued operation may commit");
+        assert_eq!(error.code, "SDK_STORAGE_BROKER_TIMEOUT");
+        assert_eq!(error.machine_code.as_deref(), Some("SDK_STORAGE_BROKER_TIMEOUT"));
+        assert_eq!(error.category.as_deref(), Some("Timeout"));
+        assert_eq!(error.retryable, Some(true));
+        assert_eq!(RpcError::new("SDK_STORAGE_BUSY", "busy").category.as_deref(), Some("Storage"));
     }
 }

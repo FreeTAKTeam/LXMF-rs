@@ -19,12 +19,14 @@ pub(super) async fn app_info(State(state): State<Arc<AppState>>) -> ApiResult {
     let daemon = state.rpc("daemon_status_ex", None).await?;
     let transport =
         daemon.pointer("/reticulum/transport/enabled").cloned().unwrap_or(Value::Bool(false));
+    let config_path =
+        state.config.as_ref().map(|store| store.path().display().to_string()).unwrap_or_default();
     Ok(Json(json!({"app_info":{
         "backend":"rust-poc",
         "version": env!("CARGO_PKG_VERSION"), "lxmf_version": env!("CARGO_PKG_VERSION"),
         "rns_version": env!("CARGO_PKG_VERSION"), "python_version":"not applicable",
         "storage_path":"", "database_path":"", "database_file_size":0,
-        "reticulum_config_path":"", "is_connected_to_shared_instance":false,
+        "reticulum_config_path":config_path, "is_connected_to_shared_instance":false,
         "is_transport_enabled":transport
     }})))
 }
@@ -111,6 +113,15 @@ async fn update_config(state: &AppState, body: Value) -> Result<(), ApiError> {
         .transpose()?;
     if let Some(peer) = &preferred {
         state.rpc("set_outbound_propagation_node", Some(json!({"peer":peer}))).await?;
+    }
+    if let Some(name) = patch.get("display_name") {
+        // the daemon announces this name, so it must change there too, not only in local state
+        let name = name
+            .as_str()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| ApiError::bad("Display name must not be empty"))?;
+        state.rpc("set_display_name", Some(json!({"display_name":name}))).await?;
     }
     let mut local = state.local.write().await;
     for (key, value) in patch {

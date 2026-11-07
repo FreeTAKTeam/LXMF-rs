@@ -5,7 +5,7 @@ use crate::bootstrap::{
 };
 
 use crate::bridge::{
-    validate_delivery_request, wait_for_propagation_signal, PeerCrypto, RequestedDeliveryMethod,
+    validate_delivery_request, PeerCrypto, RequestedDeliveryMethod,
     TransportBridge,
 };
 
@@ -45,9 +45,8 @@ use rns_transport::iface::tcp_client::TcpClient;
 
 use rns_transport::iface::vrn76_kiss_ble::Vrn76FrameMode;
 
-use rns_transport::packet::{PacketContext, PacketDataBuffer};
 
-use rns_transport::transport::{ReceivedData, ReceivedPayloadMode, Transport, TransportConfig};
+use rns_transport::transport::{Transport, TransportConfig};
 
 use serde_json::json;
 
@@ -210,45 +209,7 @@ fn propagated_delivery_requires_selected_node() {
         .expect("selected node should satisfy propagated delivery");
 }
 
-#[tokio::test]
-async fn propagation_signal_waiter_detects_invalid_stamp_rejection() {
-    let (tx, mut rx) = tokio::sync::broadcast::channel(4);
-    let link_id = AddressHash::new_from_slice(&[0x11; 16]);
-    let other_link_id = AddressHash::new_from_slice(&[0x22; 16]);
-    let signal_payload = rmp_serde::to_vec(&vec![0xf5u8]).expect("signal msgpack");
-
-    assert!(tx
-        .send(ReceivedData {
-            destination: other_link_id,
-            data: PacketDataBuffer::new_from_slice(&signal_payload),
-            payload_mode: ReceivedPayloadMode::FullWire,
-            ratchet_used: false,
-            context: Some(PacketContext::None),
-            request_id: None,
-            hops: None,
-            interface: None,
-        })
-        .is_ok());
-    assert!(tx
-        .send(ReceivedData {
-            destination: link_id,
-            data: PacketDataBuffer::new_from_slice(&signal_payload),
-            payload_mode: ReceivedPayloadMode::FullWire,
-            ratchet_used: false,
-            context: Some(PacketContext::None),
-            request_id: None,
-            hops: None,
-            interface: None,
-        })
-        .is_ok());
-
-    assert_eq!(
-        wait_for_propagation_signal(&mut rx, link_id, Duration::from_millis(200)).await,
-        Ok(0xf5)
-    );
-}
-
-async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge>) {
+pub(crate) async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge>) {
     let (daemon, bridge, _, _) = test_transport_bridge_fixture_with_peer().await;
     (daemon, bridge)
 }
@@ -264,7 +225,7 @@ async fn test_transport_bridge_fixture_with_peer(
     test_transport_bridge_fixture_with_peer_at(service_identity_dir).await
 }
 
-async fn test_transport_bridge_fixture_with_peer_at(
+pub(crate) async fn test_transport_bridge_fixture_with_peer_at(
     service_identity_dir: PathBuf,
 ) -> (Arc<RpcDaemon>, Arc<TransportBridge>, PrivateIdentity, String) {
     let signer = PrivateIdentity::new_from_rand(rand_core::OsRng);
@@ -410,12 +371,28 @@ async fn sdk_paper_encode_uses_real_lxm_uri_when_peer_identity_is_known() {
     let (daemon, _bridge, recipient, recipient_hex) =
         test_transport_bridge_fixture_with_peer().await;
 
+    for persisted_only in [false, true] {
+        let message_id = format!("paper-real-uri-{persisted_only}");
+        let recipient_hex = if persisted_only {
+            let remote = rns_transport::identity_bridge::to_transport_identity(recipient.as_identity());
+            let destination = rns_transport::destination::SingleOutputDestination::new(
+                remote, DestinationName::new("lxmf", "delivery"),
+            ).desc.address_hash;
+            let destination_hex = hex::encode(destination.as_slice());
+            daemon.record_announce_identity(
+                &destination_hex, &hex::encode(remote.public_key_bytes()),
+                &hex::encode(remote.verifying_key_bytes()), 1_700_000_000,
+            ).expect("persist recipient without live destination-cache entry");
+            destination_hex
+        } else {
+            recipient_hex.clone()
+        };
     let send = daemon
         .handle_rpc(RpcRequest {
             id: 261,
             method: "send_message_v2".into(),
             params: Some(json!({
-                "id": "paper-real-uri-1",
+                "id": message_id,
                 "source": "src",
                 "destination": recipient_hex,
                 "title": "Paper URI Title",
@@ -430,7 +407,7 @@ async fn sdk_paper_encode_uses_real_lxm_uri_when_peer_identity_is_known() {
         .handle_rpc(RpcRequest {
             id: 262,
             method: "sdk_paper_encode_v2".into(),
-            params: Some(json!({ "message_id": "paper-real-uri-1" })),
+            params: Some(json!({ "message_id": message_id })),
         })
         .expect("paper encode");
     assert!(encode.error.is_none(), "paper encode should succeed");
@@ -456,6 +433,7 @@ async fn sdk_paper_encode_uses_real_lxm_uri_when_peer_identity_is_known() {
             .map(|content| String::from_utf8_lossy(content).to_string()),
         Some("paper uri body".to_string())
     );
+    }
 }
 
 #[tokio::test]
@@ -483,4 +461,17 @@ async fn transport_bridge_rejects_propagated_send_without_selected_node() {
         "unexpected error: {}",
         error.message
     );
+}
+
+#[tokio::test]
+async fn transport_bridge_announces_renamed_display_name() {
+    let (_daemon, bridge) = test_transport_bridge_fixture().await;
+    rns_rpc::AnnounceBridge::set_display_name(bridge.as_ref(), "Renamed node").expect("rename");
+
+    let app_data = bridge.current_delivery_announce_app_data_for_test().expect("delivery app data");
+    let (name, _) = reticulum_daemon::announce_names::parse_peer_name_from_app_data(app_data.as_slice())
+        .expect("parse app data")
+        .expect("announced name");
+    assert_eq!(name, "Renamed node");
+    assert!(rns_rpc::AnnounceBridge::set_display_name(bridge.as_ref(), "   ").is_err());
 }

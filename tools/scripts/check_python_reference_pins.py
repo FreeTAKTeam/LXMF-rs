@@ -79,14 +79,14 @@ def active_mirrors() -> dict[str, tuple[str, ...]]:
         ".github/workflows/hil-nightly.yml": ("ref: {revision}",),
         ".github/workflows/hil-release.yml": ("ref: {revision}",),
         "tools/benchmarks/python_impl.toml": ('reticulum = "{revision}"',),
-        "xtask/src/hil/runner.rs": ('"python_rns_version".to_string(), "{version}".to_string()', '"{revision}".to_string()'),
+        "xtask/src/hil/run_controller.rs": ('"python_rns_version".to_string(), "{version}".to_string()', '"{revision}".to_string()'),
         "crates/apps/lxmf-cli/tests/version_cli.rs": (
             'PYTHON_RETICULUM_VERSION: &str = "{version}"',
             'PYTHON_RETICULUM_REF: &str = "{revision}"',
         ),
         "README.md": (
             "release reference remains Python Reticulum {version} at",
-            "`{revision}`. The separate",
+            "`{revision}`",
         ),
         "docs/interop/README.md": ("Python Reticulum {version} at `{revision}`",),
         "docs/contracts/compatibility-contract.md": (
@@ -244,7 +244,20 @@ def self_test() -> None:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        assert not verify(fixture_root, fixture_manifest), "valid pin fixture must pass"
+        readme = fixture_root / "README.md"
+        readme_content = (
+            f"The canonical release reference remains Python Reticulum {version} at\n"
+            f"`{revision}`, with Python LXMF 0.9.6 at\n"
+            "`727830cefda83d9c6e3982b48675425f3f988f9c`. The separate forward target\n"
+            "does not replace the release baseline.\n"
+        )
+        readme.write_text(readme_content, encoding="utf-8")
+        assert not verify(fixture_root, fixture_manifest), "valid paired-reference README must pass"
+        readme.write_text(readme_content.replace(revision, "0" * 40), encoding="utf-8")
+        assert any("README.md" in error for error in verify(fixture_root, fixture_manifest)), (
+            "corrupt README reference pin must fail verification"
+        )
+        readme.write_text(readme_content, encoding="utf-8")
 
         target_mirror = fixture_root / ".github/workflows/verify.yml"
         target_content = target_mirror.read_text(encoding="utf-8")

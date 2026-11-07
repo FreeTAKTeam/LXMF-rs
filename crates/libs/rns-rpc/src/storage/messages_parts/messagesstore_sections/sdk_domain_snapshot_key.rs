@@ -25,18 +25,31 @@ impl MessagesStore {
             message_count_cache: AtomicU64::new(0),
             write_lock_wait_ns_total: AtomicU64::new(0),
             write_ops_total: AtomicU64::new(0),
+            refill_metrics: Default::default(),
+            wal_metrics: Default::default(),
+            maintenance_metrics: Default::default(),
+            announce_metrics: Default::default(),
+            handled_propagation_metrics: Default::default(),
+            priority_waiters: AtomicUsize::new(0),
+            priority_gate: (Mutex::new(()), Condvar::new()),
+            broker_budget_bytes: AtomicU64::new(0),
+            last_wal_reclaim: Mutex::new(None),
+            wal_reclaim_interval: super::broker::wal_maintenance_interval(),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
+            durable_broker_enabled: AtomicBool::new(false),
             write_state: write_state.clone(),
             outbound_write_tx,
             writer_thread: Some(Self::spawn_outbound_write_worker(write_state, outbound_write_rx)),
             read_conn: None,
+            maintenance_conn: None,
             read_lock_wait_ns_total: AtomicU64::new(0),
             read_ops_total: AtomicU64::new(0),
         };
         store.configure_connection()?;
         store.with_control_conn(super::broker::restore_profile)?;
+        store.refresh_broker_budget_cache()?;
         store.init_schema()?;
         store.refresh_message_count_cache()?;
         Ok(store)
@@ -53,18 +66,33 @@ impl MessagesStore {
             message_count_cache: AtomicU64::new(0),
             write_lock_wait_ns_total: AtomicU64::new(0),
             write_ops_total: AtomicU64::new(0),
+            refill_metrics: Default::default(),
+            wal_metrics: Default::default(),
+            maintenance_metrics: Default::default(),
+            announce_metrics: Default::default(),
+            handled_propagation_metrics: Default::default(),
+            priority_waiters: AtomicUsize::new(0),
+            priority_gate: (Mutex::new(()), Condvar::new()),
+            broker_budget_bytes: AtomicU64::new(0),
+            last_wal_reclaim: Mutex::new(None),
+            wal_reclaim_interval: super::broker::wal_maintenance_interval(),
         });
         let (outbound_write_tx, outbound_write_rx) = WriteSender::channel();
         let store = Self {
+            durable_broker_enabled: AtomicBool::new(false),
             write_state: write_state.clone(),
             outbound_write_tx,
             writer_thread: Some(Self::spawn_outbound_write_worker(write_state, outbound_write_rx)),
             read_conn: Some(Mutex::new(read_conn)),
+            maintenance_conn: Some(Mutex::new(Connection::open_with_flags(
+                path, OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI,
+            )?)),
             read_lock_wait_ns_total: AtomicU64::new(0),
             read_ops_total: AtomicU64::new(0),
         };
         store.configure_connection()?;
         store.with_control_conn(super::broker::restore_profile)?;
+        store.refresh_broker_budget_cache()?;
         store.init_schema()?;
         store.refresh_message_count_cache()?;
         Ok(store)
@@ -90,8 +118,59 @@ impl MessagesStore {
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         self.write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
-        super::broker::reclaim_wal(&conn)?;
+        Self::reclaim_wal_recorded(&self.write_state, &conn)?;
         f(&conn).map_err(super::broker::map_commit_error)
+    }
+
+    /// Counts a broker/control writer while it waits for the connection so refill
+    /// pages can yield instead of racing it for the unfair mutex.
+    fn write_lock_priority<'a>(
+        write_state: &'a WriteState,
+    ) -> std::sync::MutexGuard<'a, Connection> {
+        write_state.priority_waiters.fetch_add(1, Ordering::AcqRel);
+        let guard = write_state.conn.lock().expect("messages sqlite write mutex poisoned");
+        write_state.priority_waiters.fetch_sub(1, Ordering::AcqRel);
+        // Wake any refill parked in `yield_to_priority_writers`; the gate mutex is
+        // taken so the notification cannot slip between its check and its wait.
+        let _gate = write_state.priority_gate.0.lock().expect("priority gate mutex poisoned");
+        write_state.priority_gate.1.notify_all();
+        guard
+    }
+
+    /// Called between refill pages: while a priority writer waits, park on the
+    /// gate condvar (a bare yield lets this thread win the futex straight back)
+    /// until that writer holds the connection, in 5 ms slices for at most ~50 ms.
+    /// Returns how many waits were taken.
+    pub(super) fn yield_to_priority_writers(&self) -> u32 {
+        let steps = self.wait_for_priority_writers();
+        if steps > 0 {
+            self.write_state
+                .refill_metrics
+                .priority_yields_total
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        steps
+    }
+
+    /// Let a priority writer acquire the shared connection without attributing
+    /// maintenance waits to the propagation-refill metrics.
+    pub(super) fn wait_for_priority_writers(&self) -> u32 {
+        let (gate, signal) = &self.write_state.priority_gate;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(50);
+        let mut steps = 0u32;
+        loop {
+            let guard = gate.lock().expect("priority gate mutex poisoned");
+            if self.write_state.priority_waiters.load(Ordering::Acquire) == 0
+                || std::time::Instant::now() >= deadline
+            {
+                break;
+            }
+            let (_guard, _) = signal
+                .wait_timeout(guard, std::time::Duration::from_millis(5))
+                .expect("priority gate mutex poisoned");
+            steps += 1;
+        }
+        steps
     }
 
     fn with_read_conn<T>(
@@ -108,6 +187,17 @@ impl MessagesStore {
         } else {
             self.with_control_conn(f)
         }
+    }
+
+    /// Refill and WAL operation counters for the daemon metrics snapshot.
+    pub fn operation_metrics_snapshot(&self) -> serde_json::Value {
+        serde_json::json!({
+            "refill": self.write_state.refill_metrics.snapshot(),
+            "wal": self.write_state.wal_metrics.snapshot(),
+            "maintenance": self.write_state.maintenance_metrics.snapshot(),
+            "announces": self.write_state.announce_metrics.snapshot(),
+            "propagation_queries": {"handled_ids": self.write_state.handled_propagation_metrics.snapshot()},
+        })
     }
 
     pub fn contention_snapshot(&self) -> MessagesStoreContentionSnapshot {
@@ -133,11 +223,11 @@ impl MessagesStore {
         f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
     ) -> rusqlite::Result<T> {
         let started = std::time::Instant::now();
-        let conn = write_state.conn.lock().expect("messages sqlite write mutex poisoned");
+        let conn = Self::write_lock_priority(write_state);
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
-        super::broker::reclaim_wal(&conn)?;
+        Self::reclaim_wal_recorded(write_state, &conn)?;
         f(&conn).map_err(super::broker::map_commit_error)
     }
 
@@ -299,17 +389,7 @@ impl MessagesStore {
         updated_at: i64,
     ) -> rusqlite::Result<()> {
         Self::write_lock_and_run(write_state, |conn| {
-            conn.execute(
-                "INSERT INTO announce_identities
-                    (peer, public_key_hex, verifying_key_hex, updated_at)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(peer) DO UPDATE SET
-                    public_key_hex = excluded.public_key_hex,
-                    verifying_key_hex = excluded.verifying_key_hex,
-                    updated_at = excluded.updated_at",
-                params![peer, public_key_hex, verifying_key_hex, updated_at],
-            )?;
-            Ok(())
+            lxmf_propagation::identities::upsert(conn, peer, public_key_hex, verifying_key_hex, updated_at)
         })
     }
 

@@ -5,6 +5,9 @@ include!("tests_parts/path_table_api.rs");
 include!("tests_parts/reticulum_path_restore_bad_cache.rs");
 
 include!("tests_parts/unchanged_path_cache.rs");
+include!("tests_parts/path_save_report.rs");
+#[path = "tests_parts/destination_map_prune.rs"]
+mod destination_map_prune;
 
 include!("tests_parts/blackholed_path_restore.rs");
 
@@ -16,6 +19,7 @@ include!("tests_parts/unknown_path_request_answered_by_announce.rs");
 
 include!("tests_parts/pending_out_link_rediscovery.rs");
 include!("tests_parts/pending_out_link_establishment_timeout.rs");
+include!("tests_parts/concurrent_out_link_acquisition.rs");
 include!("tests_parts/receipt_handler_on_shared_transport.rs");
 
 include!("tests_parts/tunnel_restore_freshness.rs");
@@ -57,12 +61,42 @@ include!("tests_parts/ordinary_proof_duplicate.rs");
 include!("tests_parts/plain_group_packet_duplicates.rs");
 include!("tests_parts/duplicate_filter_python_matrix.rs");
 include!("tests_parts/packet_replay_restart.rs");
+include!("tests_parts/hashlist_save_authority.rs");
 include!("tests_parts/accepted_child_ifac_rotation.rs");
+
+#[path = "tests_parts/shared_attachment_activation.rs"]
+mod shared_attachment_activation;
 
 include!("tests_parts/reticulum_runtime_management.rs");
 
 include!("tests_parts/packet_proof_correlation.rs");
+include!("tests_parts/prepared_packet_proof.rs");
 
 include!("tests_parts/single_destination_delivery_proof.rs");
 
 include!("tests_parts/link_broadcast_helpers_route_via_bound_iface.rs");
+
+include!("tests_parts/resource_completion.rs");
+include!("tests_parts/link_lifecycle.rs");
+include!("tests_parts/cache_local_link_ingress.rs");
+include!("tests_parts/cache_transit_link_proof.rs");
+include!("tests_parts/cache_pending_link_proof.rs");
+include!("tests_parts/link_packet_receipt.rs");
+
+#[path = "tests/request_receipts.rs"]
+mod request_receipts;
+
+#[path = "tests/live_child_policy.rs"]
+mod live_child_policy;
+
+#[path = "tests_parts/interface_retirement_fence.rs"]
+mod interface_retirement_fence;
+
+#[path = "tests_parts/deferred_destination_proof.rs"]
+mod deferred_destination_proof;
+
+#[path = "tests/shared_child_destination_proof.rs"]
+mod shared_child_destination_proof;
+
+#[path = "tests/shared_child_data_return.rs"]
+mod shared_child_data_return;

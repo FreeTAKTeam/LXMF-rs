@@ -1,4 +1,5 @@
-use super::path::send_to_next_hop;
+#[path = "wire_parts/destination_data.rs"]
+mod destination_data;
 use super::resource_wire;
 use super::wire_encryption::should_encrypt_packet;
 use super::wire_receipt::validated_receipt_hash;
@@ -6,12 +7,17 @@ use super::*;
 use crate::packet::Header;
 
 include!("wire_parts/link_proof_forward.rs");
+include!("wire_parts/local_link_proof.rs");
+include!("wire_parts/transit_link_packet.rs");
 
 pub(super) async fn handle_proof(
     packet: Packet,
     handler: Arc<Mutex<TransportHandler>>,
     iface: AddressHash,
 ) {
+    if forward_transit_link_packet(&packet, &mut *handler.lock().await, iface).await {
+        return;
+    }
     if resource_wire::is_link_resource_proof(&packet) {
         resource_wire::handle_resource_proof(packet, handler, iface).await;
         return;
@@ -53,21 +59,26 @@ pub(super) async fn handle_proof(
 
     if packet.header.destination_type != DestinationType::Link {
         let source_iface = {
-            let packet_cache = handler.packet_cache.lock().await;
-            if packet.data.len() == ed25519_dalek::SIGNATURE_LENGTH {
-                packet_cache
-                    .source_iface_for_proof_destination(&packet.destination)
-                    .map(|(_, source_iface)| source_iface)
-            } else if packet.data.len() >= HASH_SIZE {
-                let mut proof_hash = [0u8; HASH_SIZE];
-                proof_hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
-                packet_cache.source_iface_for_hash(&Hash::new(proof_hash))
-            } else {
-                None
-            }
+            handler
+                .packet_cache
+                .lock()
+                .await
+                .source_iface_for_proof_destination(&packet.destination)
+                .map(|(_, source)| source)
         };
-        if let (true, Some(source_iface)) = (handler.config.transport_enabled, source_iface) {
-            if source_iface != iface {
+        if let Some(source_iface) = source_iface {
+            // Returning proofs for local clients is local service even when
+            // this shared daemon does not offer network transit (RNS 1.5.4).
+            let allow_return = handler.config.transport_enabled || {
+                let manager = handler.iface_manager.lock().await;
+                manager.is_local_client_interface(&source_iface)
+                    || manager.is_local_client_interface(&iface)
+            };
+            if allow_return
+                && handler.packet_cache.lock().await.take_proof_source(&packet.destination, iface)
+                    == Some(source_iface)
+                && source_iface != iface
+            {
                 log::debug!(
                     "[tp-diag] destination_proof_reverse_forward node={} proof_dst={} source_iface={} ingress_iface={}",
                     handler.config.name,
@@ -83,16 +94,7 @@ pub(super) async fn handle_proof(
         }
     }
 
-    let mut rtt_messages = Vec::new();
-    for link in handler.out_links.values() {
-        let mut link = link.lock().await;
-        if let LinkHandleResult::Activated = link.handle_packet(&packet, iface) {
-            rtt_messages.push(TxMessage {
-                tx_type: TxMessageType::Direct(iface),
-                packet: link.create_rtt(),
-            });
-        }
-    }
+    let rtt_messages = handle_outbound_link_proof(&packet, &mut handler, iface).await;
     for message in rtt_messages {
         let dispatch = handler.send(message).await;
         if dispatch.sent_ifaces == 0 {
@@ -105,18 +107,7 @@ pub(super) async fn handle_proof(
         }
     }
 
-    let maybe_packet = if should_forward_link_table_proof(&packet, &handler, iface).await {
-        if packet.header.destination_type == DestinationType::Link
-            && matches!(packet.context, PacketContext::None | PacketContext::LinkProof)
-        {
-            // A reply over an established Link needs its proof routed toward the responder.
-            handler.link_table.handle_link_packet(&packet, iface)
-        } else {
-            handler.link_table.handle_proof(&packet)
-        }
-    } else {
-        None
-    };
+    let maybe_packet = forward_link_request_proof(&packet, &mut handler, iface).await;
 
     if let Some((packet, iface)) = maybe_packet {
         log::debug!(
@@ -125,7 +116,8 @@ pub(super) async fn handle_proof(
             packet.destination,
             iface
         );
-        handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
+        let message = TxMessage { tx_type: TxMessageType::Direct(iface), packet };
+        handler.send_transit_link_request_proof(message).await;
     } else if packet.context == PacketContext::LinkRequestProof {
         log::debug!(
             "[tp-diag] lrproof_not_forwarded node={} link={} ingress_iface={}",
@@ -136,36 +128,14 @@ pub(super) async fn handle_proof(
     }
 }
 
-pub(super) async fn handle_keepalive_response<'a>(
-    packet: &Packet,
-    handler: &mut MutexGuard<'a, TransportHandler>,
-) -> bool {
-    if packet.context == PacketContext::KeepAlive
-        && packet.data.as_slice()[0] == KEEP_ALIVE_RESPONSE
-    {
-        let lookup = if handler.config.transport_enabled {
-            handler.link_table.handle_keepalive(packet)
-        } else {
-            None
-        };
-
-        if let Some((propagated, iface)) = lookup {
-            handler
-                .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet: propagated })
-                .await;
-        }
-
-        return true;
-    }
-
-    false
-}
-
 pub(super) async fn handle_data<'a>(
     packet: &Packet,
     iface: AddressHash,
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
+    if forward_transit_link_packet(packet, &mut handler, iface).await {
+        return;
+    }
     handler.packet_cache.lock().await.note_source(packet, iface);
     let mut data_handled = false;
 
@@ -208,26 +178,6 @@ pub(super) async fn handle_data<'a>(
         }
         for packet in proof_packets {
             handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
-        }
-
-        if handle_keepalive_response(packet, &mut handler).await {
-            return;
-        }
-
-        let forwarded_packet = if handler.config.transport_enabled {
-            handler.link_table.handle_link_packet(packet, iface)
-        } else {
-            None
-        };
-        if let Some((packet, iface)) = forwarded_packet {
-            log::debug!(
-                "[tp-diag] wire_link_forward node={} link={} iface={}",
-                handler.config.name,
-                packet.destination,
-                iface
-            );
-            handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
-            return;
         }
     }
 
@@ -285,30 +235,34 @@ pub(super) async fn handle_data<'a>(
                 );
                 return;
             }
-            if handler
-                .received_data_tx
-                .send(ReceivedData {
-                    destination: packet.destination,
-                    data: buffer,
-                    payload_mode: ReceivedPayloadMode::DestinationStripped,
-                    ratchet_used,
-                    context: Some(packet.context),
-                    request_id: if matches!(
-                        packet.context,
-                        PacketContext::Request | PacketContext::Response
-                    ) {
-                        let hash = packet.hash().to_bytes();
-                        let mut request_id = [0u8; 16];
-                        request_id.copy_from_slice(&hash[..16]);
-                        Some(request_id)
-                    } else {
-                        None
-                    },
-                    hops: Some(packet.header.hops),
-                    interface: packet.transport.map(|value| value.as_slice().to_vec()),
-                })
-                .is_err()
-            {
+            let deferred = destination.lock().await.deferred_proofs;
+            let received = ReceivedData {
+                destination: packet.destination,
+                data: buffer,
+                payload_mode: ReceivedPayloadMode::DestinationStripped,
+                ratchet_used,
+                context: Some(packet.context),
+                request_id: if matches!(
+                    packet.context,
+                    PacketContext::Request | PacketContext::Response
+                ) {
+                    let hash = packet.hash().to_bytes();
+                    let mut request_id = [0u8; 16];
+                    request_id.copy_from_slice(&hash[..16]);
+                    Some(request_id)
+                } else {
+                    None
+                },
+                hops: Some(packet.header.hops),
+                interface: packet.transport.map(|value| value.as_slice().to_vec()),
+            };
+            let proof = (deferred && packet.context == PacketContext::None)
+                .then(|| DestinationProof::new(packet, iface));
+            let proof_consumer = handler
+                .received_data_with_proof_tx
+                .send(ReceivedDataWithProof { received: received.clone(), proof })
+                .is_ok();
+            if handler.received_data_tx.send(received).is_err() && !proof_consumer {
                 // A broadcast sender has no durable queue. No subscribers is
                 // valid when the transport is used without an application
                 // event consumer, but it must remain observable while
@@ -356,7 +310,7 @@ pub(super) async fn handle_data<'a>(
             // crate. Proving those too would be redundant at best and
             // could plausibly confuse a peer expecting exactly one
             // specific ack shape per context.
-            if packet.context == PacketContext::None {
+            if !deferred && packet.context == PacketContext::None {
                 let packet_hash = packet.hash();
                 let signature = {
                     let destination_guard = destination.lock().await;
@@ -426,8 +380,9 @@ pub(super) async fn handle_data<'a>(
                     }
                 }
             }
-        } else if handler.config.transport_enabled {
-            data_handled = send_to_next_hop(packet, &handler, None).await;
+        } else {
+            data_handled =
+                destination_data::forward_destination_data(packet, iface, &handler).await;
         }
     }
 

@@ -113,6 +113,15 @@ impl PathTable {
         Self { map: HashMap::new() }
     }
 
+    /// Number of known routes, for metrics.
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub(super) fn random_blob_count(&self) -> usize {
+        self.map.values().map(|entry| entry.random_blobs.len()).sum()
+    }
+
     pub fn get(&self, destination: &AddressHash) -> Option<&PathEntry> {
         self.map.get(destination)
     }
@@ -165,6 +174,12 @@ impl PathTable {
 
     pub fn hops_to(&self, destination: &AddressHash) -> u8 {
         self.map.get(destination).map_or(super::PATHFINDER_M as u8, |entry| entry.hops)
+    }
+
+    pub(super) fn rebalance_hops(&mut self, destination: &AddressHash, hops: u8) {
+        if let Some(entry) = self.map.get_mut(destination) {
+            entry.hops = hops;
+        }
     }
 
     #[cfg(test)]

@@ -3,8 +3,8 @@ use rns_transport::resource::ResourceEventKind;
 #[tokio::test]
 async fn daemon_observes_inbound_retry_timeout_without_completion_and_recovers_on_link() {
     let message_id = "daemon-inbound-resource-retry-timeout";
-    let mut peer =
-        start_daemon_resource_peer(message_id, ResourcePeerMode::DropInboundResourceParts).await;
+    let peer =
+        start_daemon_resource_peer(message_id).await;
     let mut resource_events = peer.transport.resource_events();
     let failed_payload = vec![0x6D; 4096];
     let failed_hash = peer
@@ -38,11 +38,6 @@ async fn daemon_observes_inbound_retry_timeout_without_completion_and_recovers_o
         resource_events.try_recv(),
         Err(tokio::sync::broadcast::error::TryRecvError::Empty)
     ));
-    assert!(matches!(
-        peer.receipt_rx.try_recv(),
-        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-    ));
-
     assert!(peer
         .peer_transport
         .cancel_resource(&peer.link_id, failed_hash)

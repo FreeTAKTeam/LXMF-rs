@@ -20,7 +20,9 @@ include!("tests_parts/bootstrap_ifac_tcp_startup_error.rs");
 
 include!("tests_parts/bootstrap_reports_auto_interface_as.rs");
 
-include!("tests_parts/bootstrap_restores_path_cache.rs");
+include!("tests/bootstrap_path_cache.rs");
+
+include!("tests/announce_cache_maintenance.rs");
 
 include!("tests_parts/durable_broker_bootstrap.rs");
 
@@ -29,3 +31,9 @@ include!("tests_parts/bootstrap_strict_mode_panics_on_lora.rs");
 include!("tests_parts/propagation_node_toml_config.rs");
 
 include!("tests_parts/propagation_default_stamp_cost_is_the_python_target.rs");
+
+#[path = "tests/sqlite_cache_release.rs"]
+mod sqlite_cache_release;
+
+#[path = "tests/delivery_proofs.rs"]
+mod delivery_proofs;

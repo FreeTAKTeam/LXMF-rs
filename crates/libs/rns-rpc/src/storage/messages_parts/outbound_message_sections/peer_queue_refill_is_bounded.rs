@@ -46,6 +46,43 @@ fn refill_state(store: &MessagesStore, peer: &str) -> Option<RefillState> {
 }
 
 #[test]
+fn refill_operation_counters_follow_pages_candidates_and_inserts() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    let peer = "peer-refill-counters";
+    for index in 0..300 {
+        store.upsert_propagation_entry(&refill_entry(index, index as i64)).expect("insert");
+    }
+    let before = store.operation_metrics_snapshot();
+    assert_eq!(before["refill"]["invocations_total"], 0);
+    assert_eq!(before["wal"]["checkpoint_attempts_total"], 0);
+
+    let inserted =
+        store.mark_recent_propagation_unhandled_for_peer(peer, 1_000, u64::MAX).expect("refill");
+    assert_eq!(inserted, 300);
+    let after = store.operation_metrics_snapshot()["refill"].clone();
+    assert_eq!(after["invocations_total"], 1);
+    assert_eq!(after["in_flight"], 0);
+    assert_eq!(after["rows_inserted_total"], 300);
+    // 300 candidates in 128-row pages: 128, 128, 44 -> three pages examined 300 rows.
+    assert_eq!(after["pages_total"], 3);
+    assert_eq!(after["candidates_examined_total"], 300);
+    assert_eq!(after["capacity_reached_total"], 0);
+    assert!(after["wall_ns_total"].as_u64().unwrap_or(0) > 0);
+    assert!(after["max_page_ns"].as_u64().unwrap_or(0) > 0);
+
+    // A smaller capacity stops at the limit and counts it.
+    let capped = "peer-refill-capped";
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10, u64::MAX).expect("capped"), 10);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(capped, 10, u64::MAX).expect("full"), 0);
+    let capped_after = store.operation_metrics_snapshot()["refill"].clone();
+    // The first capped call fills ten rows and then observes the full queue on
+    // its next page; the second call is turned away by the read-only gate.
+    assert_eq!(capped_after["capacity_reached_total"], 1);
+    assert_eq!(capped_after["skipped_capacity_total"], 1);
+    assert_eq!(capped_after["invocations_total"], 3);
+}
+
+#[test]
 fn refill_scans_known_inventory_in_bounded_pages_and_coalesces_completed_announces() {
     let store = MessagesStore::in_memory().expect("in-memory store");
     let peer = "peer-bounded-refill";
@@ -59,13 +96,13 @@ fn refill_scans_known_inventory_in_bounded_pages_and_coalesces_completed_announc
         }
     }
 
-    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(), 10);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000, u64::MAX).unwrap(), 10);
     assert_eq!(store.list_peer_unhandled_propagation_ids(peer).unwrap().len(), 10);
 
     let completed_state = refill_state(&store, peer).expect("completed scan state");
     assert!(completed_state.scan_complete);
     assert_eq!(
-        store.mark_recent_propagation_unhandled_for_peer(peer, 1_000).unwrap(),
+        store.mark_recent_propagation_unhandled_for_peer(peer, 1_000, u64::MAX).unwrap(),
         0,
         "an unchanged completed inventory should not be rescanned on every announce"
     );
@@ -102,7 +139,7 @@ fn refill_scans_known_inventory_in_bounded_pages_and_coalesces_completed_announc
             Ok((candidate_plan, count_plan))
         })
         .expect("explain refill query plans");
-    assert!(plans.0.contains("idx_propagation_entries_received_transient"), "{}", plans.0);
+    assert!(plans.0.contains("idx_propagation_entries_retention_cover"), "{}", plans.0);
     assert!(!plans.0.contains("TEMP B-TREE"), "{}", plans.0);
     assert!(plans.1.contains("idx_propagation_peer_entries_unhandled_folded"), "{}", plans.1);
     assert!(!plans.1.contains("TEMP B-TREE"), "{}", plans.1);
@@ -125,7 +162,7 @@ fn refill_scan_survives_reopen_and_observes_inventory_arriving_mid_scan() {
     }
 
     assert_eq!(
-        store.mark_recent_propagation_unhandled_for_peer(peer, 10).expect("fill first page"),
+        store.mark_recent_propagation_unhandled_for_peer(peer, 10, u64::MAX).expect("fill first page"),
         10
     );
     let prior = refill_state(&store, peer).expect("persisted cursor");
@@ -147,7 +184,7 @@ fn refill_scan_survives_reopen_and_observes_inventory_arriving_mid_scan() {
     let freed_id = refill_entry(259, 259).transient_id;
     store.mark_peer_handled_propagation(peer, &freed_id).expect("free pending capacity");
     assert_eq!(
-        store.mark_recent_propagation_unhandled_for_peer(peer, 10).unwrap(),
+        store.mark_recent_propagation_unhandled_for_peer(peer, 10, u64::MAX).unwrap(),
         1,
         "the newest candidate visible at call entry wins over the older saved cursor"
     );
@@ -198,7 +235,7 @@ fn refill_reaches_older_unseen_entry_after_more_than_8192_known_candidates() {
     });
     tx.expect("seed large known inventory");
 
-    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1).unwrap(), 1);
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1, u64::MAX).unwrap(), 1);
     assert_eq!(
         store.list_peer_unhandled_propagation_ids(peer).unwrap(),
         vec![format!("{:064x}", 0)]
@@ -206,4 +243,61 @@ fn refill_reaches_older_unseen_entry_after_more_than_8192_known_candidates() {
     let state = refill_state(&store, peer).expect("continued refill cursor");
     assert_eq!(state.cursor_received_at, Some(0));
     assert!(state.scan_complete, "the final bounded page completes the captured pass");
+}
+
+#[test]
+fn refill_defers_inventory_inserted_between_pages_until_next_invocation() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    let peer = "peer-refill-fixed-boundary";
+    for index in 0..260 {
+        let entry = PropagationEntryRecord {
+            transient_id: format!("{index:064x}"),
+            destination: "44".repeat(16),
+            payload_hex: String::new(),
+            received_at: index,
+            size_bytes: 0,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&entry).expect("insert inventory");
+        store.mark_peer_handled_propagation(peer, &entry.transient_id).expect("mark known");
+    }
+
+    let boundary = store
+        .with_read_conn(MessagesStore::capture_peer_queue_refill_boundary)
+        .expect("capture boundary");
+    let first_page = store
+        .with_write_conn(|conn| {
+            store.refill_recent_peer_propagation_on(conn, peer, 1_000, u64::MAX, &boundary, &mut None)
+        })
+        .expect("scan first page");
+    assert!(!first_page.pass_finished);
+
+    let new_entry = PropagationEntryRecord {
+        transient_id: format!("{:064x}", 300),
+        destination: "44".repeat(16),
+        payload_hex: String::new(),
+        received_at: 300,
+        size_bytes: 0,
+        stamp_value: None,
+    };
+    store.upsert_propagation_entry(&new_entry).expect("insert after boundary capture");
+
+    loop {
+        let page = store
+            .with_write_conn(|conn| {
+                store.refill_recent_peer_propagation_on(conn, peer, 1_000, u64::MAX, &boundary, &mut None)
+            })
+            .expect("continue captured pass");
+        assert_eq!(page.inserted, 0);
+        if page.pass_finished {
+            break;
+        }
+    }
+    assert!(store.list_peer_unhandled_propagation_ids(peer).unwrap().is_empty());
+
+    assert_eq!(store.mark_recent_propagation_unhandled_for_peer(peer, 1_000, u64::MAX).unwrap(), 1);
+    assert_eq!(
+        store.list_peer_unhandled_propagation_ids(peer).unwrap(),
+        vec![new_entry.transient_id]
+    );
 }

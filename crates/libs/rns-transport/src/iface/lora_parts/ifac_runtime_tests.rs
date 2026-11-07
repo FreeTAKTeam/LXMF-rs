@@ -47,16 +47,14 @@ async fn lora_production_stream_rejects_wrong_ifac_and_authenticates_ingress_egr
     let (stream, mut peer_stream) = tokio::io::duplex(4_096);
     let cancel = CancellationToken::new();
     let interface = context.inner.clone();
-    let management_frame_rx = interface
-        .lock()
-        .expect("LoRa interface mutex poisoned")
-        .management_frame_rx
-        .clone();
+    let management_frame_rx =
+        interface.lock().expect("LoRa interface mutex poisoned").management_frame_rx.clone();
     let session = tokio::spawn(run_lora_kiss_stream(
         stream,
         LoraStreamRun {
             interface,
             cancel: cancel.clone(),
+            iface_stop: cancel.clone(),
             iface_address: address,
             endpoint_label: "in-memory LoRa raw-payload adapter".to_string(),
             config: LoraConfig::us915_default(),
@@ -133,14 +131,16 @@ async fn lora_production_stream_rejects_wrong_ifac_and_authenticates_ingress_egr
         })
         .await;
     assert_eq!(trace.sent_ifaces, 1);
-    let mut decoder = KissStreamDecoder::new(usize::from(LoraConfig::us915_default().max_payload_bytes))
-        .with_command_port_nibble_stripping(false);
+    let mut decoder =
+        KissStreamDecoder::new(usize::from(LoraConfig::us915_default().max_payload_bytes))
+            .with_command_port_nibble_stripping(false);
     let mut read_buffer = [0_u8; 512];
     let decoded_packet = timeout(Duration::from_secs(1), async {
         'read_frames: loop {
             let read = peer_stream.read(&mut read_buffer).await.expect("read LoRa stream bytes");
             assert_ne!(read, 0, "LoRa stream closed before authenticated egress");
-            for frame in decoder.push_bytes(&read_buffer[..read]).expect("decode LoRa KISS frames") {
+            for frame in decoder.push_bytes(&read_buffer[..read]).expect("decode LoRa KISS frames")
+            {
                 if let KissFrame::Data(payload) = frame {
                     break 'read_frames decode_packet_ifac(&ifac_state, &payload)
                         .expect("decode outbound LoRa IFAC packet");
@@ -148,8 +148,8 @@ async fn lora_production_stream_rejects_wrong_ifac_and_authenticates_ingress_egr
             }
         }
     })
-        .await
-        .expect("LoRa IFAC egress timed out");
+    .await
+    .expect("LoRa IFAC egress timed out");
     assert_eq!(decoded_packet.destination, outbound_packet.destination);
     assert_eq!(decoded_packet.data.as_slice(), b"authenticated LoRa egress");
     assert_eq!(ifac_violations.load(Ordering::Relaxed), 1);

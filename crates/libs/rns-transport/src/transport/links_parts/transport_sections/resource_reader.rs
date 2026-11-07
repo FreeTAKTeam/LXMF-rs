@@ -9,8 +9,7 @@ impl Transport {
         data_size: u64,
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
-        self.send_resource_from_reader_observed(link_id, reader, data_size, metadata, |_| {})
-            .await
+        self.send_resource_from_reader_observed(link_id, reader, data_size, metadata, |_| {}).await
     }
 
     pub async fn send_resource_from_reader_observed<R: Read + Send + Sync + 'static>(
@@ -50,8 +49,7 @@ impl Transport {
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
         handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
-        let events = handler.resource_manager.drain_events();
-        super::resource_wire::publish_resource_events(&handler, events);
+        super::resource_wire::publish_resource_events(&mut handler).await;
         if sent {
             Ok(resource_hash)
         } else {

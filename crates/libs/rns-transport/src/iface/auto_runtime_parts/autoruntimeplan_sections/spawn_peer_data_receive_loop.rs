@@ -1,5 +1,4 @@
 impl AutoRuntimePlan {
-
     #[allow(dead_code)]
     fn spawn_peer_data_receive_loop(
         &self,
@@ -31,15 +30,15 @@ impl AutoRuntimePlan {
                         let datagram = match received {
                             Ok(datagram) => datagram,
                             Err(error) => {
-                                if events
-                                    .send(AutoPeerDataLoopEvent::ReceiveFailed {
+                                let reported = tokio::select! {
+                                    _ = shutdown.wait_for(|stopped| *stopped) => break,
+                                    result = events.send(AutoPeerDataLoopEvent::ReceiveFailed {
                                         ifname: socket.ifname.clone(),
                                         bind_addr: socket.bind_addr,
                                         error,
-                                    })
-                                    .await
-                                    .is_err()
-                                {
+                                    }) => result,
+                                };
+                                if reported.is_err() {
                                     log::debug!(
                                         "[auto] peer-data failure receiver closed ifname={} bind_addr={}",
                                         socket.ifname,
@@ -62,20 +61,25 @@ impl AutoRuntimePlan {
                             continue;
                         };
                         let forwarding = if let Some(transport) = &transport {
-                            Some(transport
-                                .forward_peer_data(
+                            Some(tokio::select! {
+                                _ = shutdown.wait_for(|stopped| *stopped) => break,
+                                result = transport.forward_peer_data(
                                     &processed,
                                     Arc::clone(&socket.socket),
                                     plan.config.data_port,
-                                )
-                                .await)
+                                ) => result,
+                            })
                         } else {
                             None
                         };
                         if let Some(runtime_status) = &runtime_status {
                             runtime_status.record_peer_data(&processed, forwarding);
                         }
-                        if events.send(AutoPeerDataLoopEvent::Processed(processed)).await.is_err() {
+                        let reported = tokio::select! {
+                            _ = shutdown.wait_for(|stopped| *stopped) => break,
+                            result = events.send(AutoPeerDataLoopEvent::Processed(processed)) => result,
+                        };
+                        if reported.is_err() {
                             break;
                         }
                     }

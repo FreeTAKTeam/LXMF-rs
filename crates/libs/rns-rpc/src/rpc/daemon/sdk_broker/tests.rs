@@ -3,7 +3,8 @@ use super::*;
 struct IdentityBridge;
 impl ServiceIdentityBridge for IdentityBridge {
     fn list_service_identities(&self) -> std::io::Result<Vec<ServiceIdentityRecord>> {
-        Ok(vec![])
+        self.import_service_identity(&[], ServiceIdentitySpec::default())
+            .map(|identity| vec![identity])
     }
     fn create_service_identity(
         &self,
@@ -127,6 +128,38 @@ fn authenticated_principals_cannot_share_consumer_operation_or_mutation_authorit
         json!({"message_id":alice["message_id"],"status":"delivered"}),
     );
     assert_eq!(denied.error.unwrap().code, "SDK_SECURITY_OPERATION_FORBIDDEN");
+    let forged = request(
+        &daemon,
+        "alice",
+        7,
+        "record_receipt",
+        json!({"message_id":alice["message_id"],"status":"sent: propagated resource",
+            "dispatch_complete":"propagation_custody","propagation_custody":"Resource"}),
+    );
+    assert!(forged.error.is_none(), "{:?}", forged.error);
+    daemon.store.broker_recover_dispatch().unwrap();
+    let alice_id = alice["message_id"].as_str().unwrap();
+    let connection = rusqlite::Connection::open(dir.path().join("auth.db")).unwrap();
+    let state: String = connection
+        .query_row("SELECT state FROM broker_operations WHERE message_id=?1", [alice_id], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(state, "custody", "RPC text cannot grant native custody authority");
+    let committed = daemon
+        .record_propagation_custody(
+            alice_id,
+            crate::broker::PropagationCustody::Resource,
+            JsonMap::new(),
+        )
+        .unwrap();
+    assert_eq!(committed["updated"], true, "identical sent text must still retire dispatch intent");
+    let state: String = connection
+        .query_row("SELECT state FROM broker_operations WHERE message_id=?1", [alice_id], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(state, "custody");
     let invalid = request(
         &daemon,
         "alice",

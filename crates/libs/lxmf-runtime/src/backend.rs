@@ -36,6 +36,14 @@ impl InProcessBackend {
         }
     }
 
+    pub fn local_propagation(
+        &self,
+        path: impl AsRef<std::path::Path>,
+        limits: lxmf_propagation::StoreLimits,
+    ) -> Result<crate::LocalPropagation, lxmf_propagation::Error> {
+        crate::LocalPropagation::open(self.config.as_ref().clone(), path, limits)
+    }
+
     pub fn send_report(
         &self,
         message_id: &MessageId,

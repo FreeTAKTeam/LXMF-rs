@@ -60,31 +60,30 @@ use crate::packet::PacketType;
 use crate::ratchets::{encrypt_for_public_key, now_secs, RatchetStore};
 use crate::resource::{build_resource_request_packet, ResourceEvent, ResourceManager};
 
-fn medium_path_timeout_for_bitrate(bitrate: Option<u64>) -> Duration {
-    const RETICULUM_MTU_BYTES: f64 = 500.0;
-    const MINIMUM_BITRATE: u64 = 5;
-    const DEFAULT_PER_HOP_TIMEOUT_SECS: f64 = 6.0;
-
-    let Some(bitrate) = bitrate else { return Duration::ZERO };
-    Duration::from_secs_f64(
-        2.0 * (RETICULUM_MTU_BYTES * 8.0 / bitrate.max(MINIMUM_BITRATE) as f64)
-            + DEFAULT_PER_HOP_TIMEOUT_SECS,
-    )
-}
+mod path_timing;
+use path_timing::medium_path_timeout_for_bitrate;
+pub use path_timing::PathTimingSnapshot;
 
 mod announce_limits;
 mod announce_table;
 mod diag;
 mod inbound_processing;
 mod inbound_queues;
+mod link_packet_receipt;
 mod link_table;
 mod packet_cache;
+pub use link_packet_receipt::LinkPacketReceipt;
+mod destination_cache;
+mod destination_proof;
+pub use destination_proof::{DestinationProof, ReceivedDataWithProof};
 mod packet_disk_cache;
 mod path_requests;
 mod path_table;
 mod reticulum_announce_cache;
 mod reticulum_path_store;
 mod runtime_management;
+mod table_occupancy;
+pub use table_occupancy::TableOccupancy;
 mod tunnels;
 
 pub use announce_limits::AnnounceRateTableEntry;
@@ -96,8 +95,8 @@ pub use inbound_queues::{
 pub use packet_disk_cache::{CachedPacket, ReticulumPacketDiskCache};
 
 pub use reticulum_path_store::{
-    RestoredReticulumPathIdentity, ReticulumPathTableRestoreReport,
-    ReticulumPathTableRestoreSkipped,
+    AnnounceCacheCleanupReport, PathTableSaveReport, RestoredReticulumPathIdentity,
+    ReticulumPathTableRestoreReport, ReticulumPathTableRestoreSkipped,
 };
 
 #[cfg(feature = "storage")]
@@ -151,7 +150,6 @@ pub mod test_bridge {
 // Transport-wide packet tracing remains off by default to keep runtime noise low.
 const PACKET_TRACE: bool = false;
 pub const PATHFINDER_M: usize = 128; // Max hops
-
 #[allow(dead_code)]
 const INTERVAL_LINKS_CHECK: Duration = Duration::from_secs(1);
 #[allow(dead_code)]
@@ -162,18 +160,16 @@ const INTERVAL_IFACE_CLEANUP: Duration = Duration::from_secs(10);
 const INTERVAL_ANNOUNCES_RETRANSMIT: Duration = Duration::from_secs(1);
 const INTERVAL_KEEP_PACKET_CACHED: Duration = Duration::from_secs(180);
 const INTERVAL_PACKET_CACHE_CLEANUP: Duration = Duration::from_secs(90);
+const INTERVAL_PACKET_MEMBERSHIP_MAINTENANCE: Duration = Duration::from_millis(250);
 const LOCAL_PATH_RESPONSE_COOLDOWN: Duration = Duration::from_millis(750);
-
 /// How long an auto-spawned per-peer unicast UDP iface may sit idle
 /// before `handle_cleanup` tears it down. Sized so typical peers'
 /// announce cadences (default 300s) refresh it several times over.
 const UNICAST_IFACE_IDLE_TIMEOUT: Duration = Duration::from_secs(1800);
-
 // Other constants
 #[allow(dead_code)]
 const KEEP_ALIVE_REQUEST: u8 = 0xFF;
 const KEEP_ALIVE_RESPONSE: u8 = 0xFE;
-
 #[derive(Clone)]
 pub struct ReceivedData {
     pub destination: AddressHash,
@@ -261,6 +257,7 @@ pub(crate) struct TransportHandler {
     single_in_destinations: HashMap<AddressHash, Arc<Mutex<SingleInputDestination>>>,
     single_in_destination_app_data: HashMap<AddressHash, Vec<u8>>,
     single_out_destinations: HashMap<AddressHash, Arc<Mutex<SingleOutputDestination>>>,
+    single_out_destinations_removed_total: u64,
     blackholed_identities: HashMap<AddressHash, Option<f64>>,
 
     announce_limits: AnnounceLimits,
@@ -278,6 +275,7 @@ pub(crate) struct TransportHandler {
 
     link_in_event_tx: broadcast::Sender<LinkEventData>,
     received_data_tx: broadcast::Sender<ReceivedData>,
+    received_data_with_proof_tx: broadcast::Sender<ReceivedDataWithProof>,
     ratchet_store: Option<RatchetStore>,
 
     resource_manager: ResourceManager,
@@ -315,7 +313,7 @@ pub(crate) struct TransportHandler {
 struct QueuedInbound {
     message: RxMessage,
     ingress_limited: bool,
-    packet_cache_inserted: bool,
+    wire_hops: u8,
     path_request: Option<PathRequest>,
 }
 
@@ -342,6 +340,7 @@ pub struct Transport {
     link_in_event_tx: broadcast::Sender<LinkEventData>,
     link_out_event_tx: broadcast::Sender<LinkEventData>,
     received_data_tx: broadcast::Sender<ReceivedData>,
+    received_data_with_proof_tx: broadcast::Sender<ReceivedDataWithProof>,
     iface_messages_tx: broadcast::Sender<RxMessage>,
     resource_events_tx: broadcast::Sender<ResourceEvent>,
     handler: Arc<Mutex<TransportHandler>>,
@@ -472,9 +471,11 @@ mod announce;
 mod config;
 // core: construction and minimal high-level transport API methods.
 mod core;
+mod core_interfaces;
 // handler: packet send pipeline and routing/encryption outcomes.
 mod handler;
 mod ifac;
+mod prepared_packet;
 // jobs: background maintenance loops and periodic work.
 mod jobs;
 // links: link lifecycle and link-scoped data/resource operations.
@@ -483,6 +484,7 @@ mod links;
 mod path;
 mod profiling;
 // resource_wire: link-scoped resource packet handling on inbound wire paths.
+mod requests;
 mod resource_wire;
 // wire_encryption: packet-context policy for transport-layer encryption.
 mod wire_encryption;

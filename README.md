@@ -28,14 +28,14 @@ Read our [full statement on independent implementations and AI-assisted developm
 <!-- performance-summary:start -->
 ## Measured performance
 
-Release dataset: `v0.10.1` at `25a976945cb335dff3be692981151c8741a5fdeb`; Python Reticulum `ea98db4f53dc` and LXMF `727830cefda8`.
+Dataset: `main-2026-11-01` at `c59f35f62fb3196eeb391c943b840f0ad53ca2f3`; Python Reticulum `ea98db4f53dc` and LXMF `727830cefda8`.
 
 | Matched workload | Rust p50 | Python p50 | Rust/Python |
 |---|---:|---:|---:|
-| LXMF message decode | 225 ns | 7.99 ms | 35459.28x |
-| LXMF message encode | 385 ns | 2.10 ms | 5450.73x |
-| LXMF large message decode | 370 ns | 7.96 ms | 21536.64x |
-| LXMF large message encode | 773 ns | 2.12 ms | 2743.59x |
+| LXMF message decode + verify | 33.00 us | 89.44 us | 2.71x |
+| LXMF message encode + sign | 13.83 us | 37.22 us | 2.69x |
+| LXMF large message decode + verify | 36.59 us | 94.59 us | 2.59x |
+| LXMF large message encode + sign | 21.18 us | 45.26 us | 2.14x |
 
 These are matched-workload comparisons, not a claim of whole-system superiority. See [methodology, complete results, variability, and limitations](docs/performance.md).
 <!-- performance-summary:end -->
@@ -43,13 +43,14 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 
 ## Current status
 
-The latest stable release is
-[`v0.14.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0).
-It aligns the 19 public packages and includes bounded ZeroMQ exchanges,
-reusable reply connections, propagation resource-use fixes, and opt-in durable
-custody and recovery. Rust 1.88 or newer is required. A source checkout of
-`main` can contain changes after the release; use the release tag to reproduce
-its published artifacts.
+The `v0.16.1` release train aligns 22 public packages, including
+the shared event-broker library, delivery-proof fixes, MeshChat host/origin
+validation and propagation quota improvements. Its release workflow covers
+Linux, macOS, Windows, OCI images and crates.io. See the
+[release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.16.1)
+for publication status, downloads and exact-build validation. Production resource
+and retention acceptance remain open. Rust 1.88 or newer is required; use an
+exact release tag to reproduce published artifacts.
 
 The canonical release reference remains Python Reticulum 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`, with Python LXMF 0.9.6 at
@@ -68,7 +69,7 @@ it does not establish full forward behavioral parity.
 | Remaining operational matrix | Permanent HIL, the full declared hardware/platform matrix, public-network rows, long soak, and current-release client reruns remain separate from the completed software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
-project posture, the [v0.14.0 release notes](docs/release-notes-v0.14.0.md),
+project posture, the [v0.16.1 release notes](docs/release-notes-v0.16.1.md),
 the [v0.14.0 migration guide](docs/migrations/v0.14.0-zmq.md), and the
 [Reticulum](docs/status/reticulum-parity-matrix.md) and
 [LXMF](docs/status/lxmf-parity-matrix.md) parity matrices for row-level detail.
@@ -79,7 +80,8 @@ the [v0.14.0 migration guide](docs/migrations/v0.14.0-zmq.md), and the
 | --- | --- |
 | Install, build, or run the tools | [Getting started](docs/getting-started.md) |
 | Integrate the Rust SDK | [SDK guide](docs/sdk/README.md) and [quickstart](docs/sdk/quickstart.md) |
-| Understand the crates and binaries | [Workspace and package guide](docs/project-layout.md) |
+| Find the three main applications and their binaries | [Application and binary table](docs/project-layout.md#applications-and-binaries) |
+| Understand the crates and dependency boundaries | [Workspace and package guide](docs/project-layout.md) |
 | Deploy a daemon | [`lxmd` systemd guide](docs/runbooks/lxmd-systemd.md) or [`reticulumd` operations](docs/runbooks/reticulumd-operational-deployment.md) |
 | Try the development MeshChat Rust POC | [MeshChat API runbook](docs/runbooks/meshchat-api.md) and [pinned application contract](docs/contracts/meshchat/README.md) |
 | Review compatibility claims | [Compatibility contract](docs/contracts/compatibility-contract.md) and [current roadmap](docs/status/current-roadmap.md) |
@@ -106,8 +108,8 @@ Library consumers can start with the umbrella crates:
 
 ```toml
 [dependencies]
-lxmf = "0.14.0"
-reticulum-rs = "0.14.0"
+lxmf = "0.16.1"
+reticulum-rs = "0.16.1"
 ```
 
 See [Getting started](docs/getting-started.md) for release downloads, checksum
@@ -119,15 +121,18 @@ verification, component crates, and additional run commands.
 | --- | --- | --- |
 | `lxmf`, `lxmf-sdk`, `lxmf-wire` | LXMF wire types and high-level client APIs | [crates.io](https://crates.io/crates/lxmf), [docs.rs](https://docs.rs/lxmf), [SDK guide](docs/sdk/README.md) |
 | `reticulum-rs`, `reticulum-rs-core`, `reticulum-rs-transport`, `reticulum-rs-rpc` | Reticulum primitives, transport, interfaces, resources, and RPC | [crates.io](https://crates.io/crates/reticulum-rs), [docs.rs](https://docs.rs/reticulum-rs), [API overview](docs/lxmf-rs-api.md) |
-| `lxmf-cli`, `reticulumd`, `rns-tools` | LXMF, daemon, diagnostic, and operator binaries | [CLI reference](docs/lxmf-cli.md), [examples](docs/examples.md) |
+| Main applications | `lxmf-cli` for LXMF client and daemon workflows; `reticulumd` for the Reticulum daemon and interchange service; `rns-tools` for Reticulum utilities | [Application and binary table](docs/project-layout.md#applications-and-binaries), [CLI reference](docs/lxmf-cli.md), [examples](docs/examples.md) |
 | `meshchat-api` | Opt-in local MeshChat HTTP/WebSocket adapter for the development POC | [Runbook](docs/runbooks/meshchat-api.md) |
 | Embedded crates | Constrained-device, managed-runtime, mini-node, and C ABI integration | [Package guide](docs/project-layout.md#embedded-libraries), [FFI guide](crates/libs/rns-embedded-ffi/README.md) |
 
-Embedded portability varies by crate. `lxmf-wire` currently requires the Rust
-standard library, even with `--no-default-features --features alloc`; its `std`
-and `alloc` feature names do not guarantee bare-metal support. Full `no_std` +
-`alloc` support for this path is deferred pending maintainer capacity or
-contributor help ([#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646)). See the
+Embedded portability varies by crate. `reticulum-rs-core` builds for bare-metal
+`no_std` targets with `--no-default-features --features alloc`, verified in CI
+against `thumbv7em-none-eabi` ([#676](https://github.com/FreeTAKTeam/LXMF-rs/issues/676));
+the embedding application supplies its own RNG and clock. `lxmf-wire` still
+requires the Rust standard library, even with `--no-default-features --features
+alloc`; its `std` and `alloc` feature names do not guarantee bare-metal support.
+Full `no_std` + `alloc` support for that path is deferred pending maintainer
+capacity or contributor help ([#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646)). See the
 [capability audit](docs/contracts/sdk-v2-feature-matrix.md#no_std--alloc-capability-audit)
 for crate-specific limits.
 
@@ -163,7 +168,7 @@ full gate and evidence boundaries.
 - [LXMF parity matrix](docs/status/lxmf-parity-matrix.md)
 - [Independent implementation evidence](docs/interop/README.md)
 - [Performance methodology and results](docs/performance.md)
-- [v0.14.0 performance dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/lxmf-rs-performance.html) (the generated table above retains its explicitly pinned v0.10.1 dataset)
+- [v0.14.0 performance dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.14.0/lxmf-rs-performance.html) (superseded: measured before Rust and Python did matched work, so it overstates Rust)
 - [Support and LTS policy](docs/contracts/support-policy.md)
 - [Security policy](SECURITY.md)
 

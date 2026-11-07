@@ -1,12 +1,20 @@
 # Issue 659 implementation and evidence
 
-Scope authorized 9 October 2026: implement the paired daemon/SDK/RCH path.
-ZeroMQ is the primary interface. Existing non-ZeroMQ SDK behavior remains
-unchanged. RCH cuts over without a legacy consumer fallback. The reviewed
-[PLAN.md](PLAN.md) remains the design reference; no production root cause or
-deployed binary is assumed from source inspection.
+Issue #659 is closed. The durable-broker implementation shipped in v0.14.0;
+see the [release notes](../../release-notes-v0.14.0.md),
+[migration guide](../../migrations/v0.14.0-zmq.md), and
+[published release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0).
+The [operations runbook](OPERATIONS.md) covers cutover and recovery. This file
+preserves local implementation evidence gathered for the paired daemon/SDK/RCH
+path. Its candidate, branch, publication, and validation statements describe
+that evidence snapshot; it is not proof of a production deployment or
+root-cause confirmation.
 
-## Contract and execution board
+Scope authorized 9 October 2026: ZeroMQ is the primary interface. Existing
+non-ZeroMQ SDK behavior remains unchanged. RCH cuts over without a legacy
+consumer fallback.
+
+## Original scope and execution board
 
 The daemon owns admission, its SQLite message/journal/operation transactions,
 consumer receipts and dispatch recovery. The SDK owns sockets and finite
@@ -30,10 +38,10 @@ actor library or generic storage abstraction is added.
 | W4 | Main; all required event producers and existing test utilities. | Real SQLite/socket/paired tests for failures, bounds, contention, retention/recovery and unchanged legacy SDK/wire contracts. After W3. |
 | W5 | Main; additive migrations, required capability/bootstrap controls and runbook. | Existing-state cutover, explicit recovery/downgrade restrictions and paired revision/settings evidence. No live production deployment is authorized. After W4. |
 
-Implementation is sequential in the main agent. Independent roles review
-correctness, maintainability and final plan alignment, and verify evidence.
-Incomplete packages remain explicitly incomplete; socket success alone never
-closes the issue. Kill criteria: remove RCH's old polling/history-import
+Implementation proceeded sequentially. Independent roles reviewed correctness,
+maintainability and scope alignment, and verified evidence. Incomplete packages
+remained explicitly incomplete; socket success alone did not satisfy issue
+acceptance. The original kill criteria were to remove RCH's old polling/history-import
 authority at durable cutover; retain one authoritative post-cutover producer
 transaction and one ordered consumer. Forbidden: treating socket/session IDs as
 principals, silently tailing expired/restored state, retrying uncertain ordinary
@@ -134,15 +142,16 @@ completion, and supervises fatal failure through daemon shutdown/admission.
   local qualification, not a repository lint-policy weakening or a green claim
   for the exact strict gate.
 
-W4 local source/socket/SQLite evidence is complete for this candidate. W5
-cutover/restore/downgrade instructions are in [OPERATIONS.md](OPERATIONS.md) and
-RCH `docs/durable-broker.md`; immutable paired pins identify its source.
-Publication and deployment are not authorized by this implementation request.
-The source is retained in local branches; framework publication must precede
-any remote RCH build that resolves the candidate Git revision.
+W4 local source/socket/SQLite evidence was complete for the pre-release
+candidate. W5 cutover/restore/downgrade instructions are in
+[OPERATIONS.md](OPERATIONS.md) and RCH `docs/durable-broker.md`; immutable paired
+pins identify the tested source. The framework was subsequently published in
+v0.14.0; the release notes and public release record carry release-gate
+evidence.
 
-Still unperformed: hardware power-cut qualification, production multi-hour
-load/memory/swap plateau, public-network or hardware interoperability, full
-release-readiness runner (PowerShell unavailable), and hosted CI. No production
-root-cause confirmation, deployment, release readiness or issue closure is
-claimed by these local tests.
+Not established by this local qualification: hardware power-cut durability,
+production multi-hour load/memory/swap plateau, public-network or hardware
+interoperability, production deployment, or production root-cause confirmation.
+See the [published release record](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.14.0)
+for hosted and publication checks; this evidence report does not claim those
+checks failed or that an RCH deployment occurred.

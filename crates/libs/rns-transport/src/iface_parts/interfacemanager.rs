@@ -182,12 +182,7 @@ impl InterfaceManager {
         R: std::future::Future<Output = ()> + Send + 'static,
         R::Output: Send + 'static,
     {
-        let context = self.new_context_with_role_and_mode(inner, role, mode);
-        let address = *context.channel.address();
-
-        self.worker_tasks.insert(address, task::spawn(worker(context)));
-
-        address
+        self.spawn_as_with_mode_and_handle(inner, worker, role, mode).0
     }
 
     pub fn spawn_as_with_mode_and_handle<T: Interface, F, R>(
@@ -202,13 +197,10 @@ impl InterfaceManager {
         R: std::future::Future<Output = ()> + Send + 'static,
         R::Output: Send + 'static,
     {
-        let context = self.new_context_with_role_and_mode(inner, role, mode);
-        let address = *context.channel.address();
-        let handle = context.inner.clone();
-
-        self.worker_tasks.insert(address, task::spawn(worker(context)));
-
-        (address, handle)
+        self.try_spawn_as_with_mode_and_handle(inner, worker, role, mode, |_, _| {
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .unwrap_or_else(|never| match never {})
     }
 
     pub fn role(&self, address: &AddressHash) -> Option<IfaceRole> {
@@ -246,43 +238,59 @@ impl InterfaceManager {
         self.ifaces.iter().find(|i| i.full_hash == *full_hash).map(|i| i.address)
     }
 
+    /// Update the registered interface and its current descendants.
     pub fn set_mode(&mut self, address: AddressHash, mode: InterfaceMode) -> bool {
-        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
-            iface.mode = mode;
-            true
-        } else {
-            false
+        if !self.ifaces.iter().any(|iface| iface.address == address) {
+            return false;
         }
+        let tree = self.interface_tree_hashes(address);
+        for iface in &mut self.ifaces {
+            if tree.contains(&iface.address) {
+                iface.mode = mode;
+            }
+        }
+        true
     }
 
+    /// Update the registered interface and its current descendants.
     pub fn set_outgoing(&mut self, address: AddressHash, outgoing: bool) -> bool {
-        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
-            iface.outgoing = outgoing;
-            true
-        } else {
-            false
+        if !self.ifaces.iter().any(|iface| iface.address == address) {
+            return false;
         }
+        let tree = self.interface_tree_hashes(address);
+        for iface in &mut self.ifaces {
+            if tree.contains(&iface.address) {
+                iface.outgoing = outgoing;
+            }
+        }
+        true
     }
 
+    /// Update subsequent pacing decisions throughout the registered subtree;
+    /// existing queue timestamps and eligibility deadlines stay committed.
     pub fn set_announce_pacing(
         &mut self,
         address: AddressHash,
         bitrate_bps: u64,
         cap_percent: u64,
     ) -> bool {
-        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
-            iface.announce_bitrate_bps = bitrate_bps;
-            iface.announce_cap_percent = cap_percent;
-            true
-        } else {
-            false
+        if !self.ifaces.iter().any(|iface| iface.address == address) {
+            return false;
         }
+        let tree = self.interface_tree_hashes(address);
+        for iface in &mut self.ifaces {
+            if tree.contains(&iface.address) {
+                iface.announce_bitrate_bps = bitrate_bps;
+                iface.announce_cap_percent = cap_percent;
+            }
+        }
+        true
     }
 
     /// Register a virtual iface that shares its tx channel with an
     /// existing host iface. Used by the UDP multicast iface to pin
     /// per-peer point-to-point routes without spawning additional
-    /// sockets. Returns `None` if `host` is not registered.
+    /// sockets. Returns `None` if `host` is absent or retiring.
     ///
     /// The returned `AddressHash` is used by the transport's routing
     /// tables (path_table, link ingress_iface) so `Direct` tx
@@ -295,6 +303,9 @@ impl InterfaceManager {
         role: IfaceRole,
     ) -> Option<AddressHash> {
         let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
+        if host_iface.stop.is_cancelled() {
+            return None;
+        }
         let host_tx = host_iface.tx_send.clone();
         let host_online = host_iface.online.clone();
         let host_ifac_state = host_iface.ifac_state.clone();

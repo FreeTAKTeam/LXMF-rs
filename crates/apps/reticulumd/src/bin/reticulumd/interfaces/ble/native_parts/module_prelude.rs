@@ -64,10 +64,14 @@ pub(super) async fn spawn_with_backend(
         runtime_status: status.clone(),
     };
 
-    let iface = iface_manager
-        .lock()
-        .await
-        .spawn(interface, |context| async move { BleGattInterface::run(context).await });
+    let iface = crate::interfaces::common::spawn_configured(
+        &mut *iface_manager.lock().await,
+        interface,
+        |context| async move { BleGattInterface::run(context).await },
+        rns_transport::iface::IfaceRole::Unicast,
+        iface,
+    )
+    .map_err(|error| format!("BLE runtime policy could not be installed: {error}"))?;
     status.update(|status| {
         status.iface = Some(iface.to_string());
     });
@@ -370,12 +374,9 @@ async fn establish_session(
     backend.subscribe(settings).await.inspect_err(|err| {
         record_ble_session_error(status, BleLifecyclePhase::Subscribe, err);
     })?;
-    backend
-        .write_probe(super::BLE_STARTUP_PROBE_PAYLOAD, settings)
-        .await
-        .inspect_err(|err| {
-            record_ble_session_error(status, BleLifecyclePhase::WriteProbe, err);
-        })?;
+    backend.write_probe(super::BLE_STARTUP_PROBE_PAYLOAD, settings).await.inspect_err(|err| {
+        record_ble_session_error(status, BleLifecyclePhase::WriteProbe, err);
+    })?;
     let probe = backend.read_probe_notification(settings).await.inspect_err(|err| {
         record_ble_session_error(status, BleLifecyclePhase::NotificationProbe, err);
     })?;

@@ -31,13 +31,16 @@ Use a two-tier public model:
   - `lxmf`
   - `reticulum-rs`
 - Component crates:
+  - `r3akt-event-broker` (transport-independent durable event journal)
   - `reticulum-rs-zeromq` (the patched Tokio/TCP transport dependency)
   - `lxmf-reference`
   - `lxmf-wire`
+  - `lxmf-propagation`
   - `lxmf-sdk`
   - `lxmf-runtime`
   - `meshchat-api` (the opt-in partial application API)
   - `reticulum-rs-core`
+  - `reticulum-rs-bluetooth`
   - `reticulum-rs-transport`
   - `reticulum-rs-rpc`
   - `lxmf-embedded-mini`
@@ -72,12 +75,15 @@ not have to rewrite `use` paths just to complete the package rename.
 
 | Current workspace package | crates.io package | Rust crate name | Version target | Publish |
 | --- | --- | --- | --- | --- |
+| `r3akt-event-broker` | `r3akt-event-broker` | `r3akt_event_broker` | GitHub release version | yes |
 | `lxmf-reference` | `lxmf-reference` | `lxmf_reference` | GitHub release version | yes |
 | `vendor/zeromq` | `reticulum-rs-zeromq` | `zeromq` | GitHub release version | yes |
 | `lxmf-core` | `lxmf-wire` | `lxmf_core` | GitHub release version | yes |
+| `lxmf-propagation` | `lxmf-propagation` | `lxmf_propagation` | GitHub release version | yes |
 | `lxmf-sdk` | `lxmf-sdk` | `lxmf_sdk` | GitHub release version | yes |
 | `lxmf-runtime` | `lxmf-runtime` | `lxmf_runtime` | GitHub release version | yes |
 | `rns-core` | `reticulum-rs-core` | `rns_core` | GitHub release version | yes |
+| `rns-bluetooth` | `reticulum-rs-bluetooth` | `rns_bluetooth` | GitHub release version | yes |
 | `rns-transport` | `reticulum-rs-transport` | `rns_transport` | GitHub release version | yes |
 | `rns-rpc` | `reticulum-rs-rpc` | `rns_rpc` | GitHub release version | yes |
 | `meshchat-api` | `meshchat-api` | `meshchat_api` | GitHub release version | yes |
@@ -192,25 +198,28 @@ Publish in dependency order, not with a blanket `cargo publish --workspace`.
 
 Recommended order:
 
-1. `reticulum-rs-zeromq`
-2. `lxmf-reference`
-3. `reticulum-rs-core`
-4. `lxmf-wire`
-5. `rns-embedded-core`
-6. `rns-embedded-runtime`
-7. `rns-embedded-ffi`
-8. `reticulum-rs-transport`
-9. `reticulum-rs-rpc`
-10. `meshchat-api`
-11. `lxmf-sdk`
-12. `lxmf-runtime`
-13. `rns-embedded-mininode`
-14. `lxmf-embedded-mini`
-15. `reticulum-rs`
-16. `lxmf`
-17. `lxmf-cli`
-18. `reticulumd`
-19. `rns-tools`
+1. `r3akt-event-broker`
+2. `reticulum-rs-zeromq`
+3. `lxmf-reference`
+4. `reticulum-rs-core`
+5. `lxmf-wire`
+6. `lxmf-propagation`
+7. `rns-embedded-core`
+8. `rns-embedded-runtime`
+9. `rns-embedded-ffi`
+10. `reticulum-rs-bluetooth`
+11. `reticulum-rs-transport`
+12. `reticulum-rs-rpc`
+13. `meshchat-api`
+14. `lxmf-sdk`
+15. `lxmf-runtime`
+16. `rns-embedded-mininode`
+17. `lxmf-embedded-mini`
+18. `reticulum-rs`
+19. `lxmf`
+20. `lxmf-cli`
+21. `reticulumd`
+22. `rns-tools`
 
 The fork retains upstream MIT attribution and the `zeromq` Rust import name.
 Its distinct package name is required: publishing a path dependency named
@@ -223,6 +232,8 @@ Reason:
 - `reticulum-rs-rpc` and `lxmf-sdk` share pinned compatibility metadata through
   `lxmf-reference`
 - `lxmf-wire` depends on `reticulum-rs-core`
+- `lxmf-propagation` depends on `lxmf-wire` and `reticulum-rs-core`
+- `reticulum-rs-bluetooth` precedes the SDK and transport consumers
 - `rns-embedded-runtime` depends on `rns-embedded-core`
 - `rns-embedded-ffi` depends on `rns-embedded-core` and `rns-embedded-runtime`
 - `reticulum-rs-transport` depends on `reticulum-rs-core`
@@ -286,3 +297,13 @@ Recommended follow-up automation:
   `pub use` dumps of every subcrate symbol.
 - GitHub releases remain the supported binary delivery path even after crates.io
   publication is introduced for library consumers.
+
+
+## Shared Bluetooth leaf
+
+Publish `reticulum-rs-bluetooth` (directory/alias `rns-bluetooth`, import
+`rns_bluetooth`) before any transport, SDK or application that depends on it.
+It participates in the synchronized public release version and existing notice,
+package-content and dependency-version checks. Its explicit edition 2024/MSRV
+1.85 is tested from the normalized package with an independent lockfile by
+`bluetooth-msrv-185`; host workspace builds do not establish its MSRV.

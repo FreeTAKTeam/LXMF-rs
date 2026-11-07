@@ -29,7 +29,9 @@ fn run_migration_checks() -> Result<()> {
 
 fn run_architecture_checks() -> Result<()> {
     run_architecture_lint_check()?;
-    run_module_size_check()
+    run_module_size_check()?;
+    run_no_std_core_check()?;
+    run_embedded_core_check()
 }
 
 fn run_forbidden_deps() -> Result<()> {
@@ -70,6 +72,12 @@ fn run_boundary_checks(enforce_legacy_imports: &str, enforce_legacy_shims: &str)
 
 fn run_module_size_check() -> Result<()> {
     run("bash", &["tools/scripts/check-module-size.sh"])
+}
+
+/// Bare-metal `no_std` gate for designated protocol crates (#625/#676). Requires the
+/// `thumbv7em-none-eabi` target; the script explains how to install it.
+fn run_no_std_core_check() -> Result<()> {
+    run("bash", &["tools/scripts/check-no-std-core.sh"])
 }
 
 fn parse_cutover_rows(markdown: &str) -> Result<Vec<Vec<String>>> {
@@ -282,6 +290,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
         PublishWave::All => {
             static ALL_PUBLIC_CRATES: &[PublishedCrate] = &[
                 PublishedCrate {
+                    package: "r3akt-event-broker",
+                    manifest_path: "crates/libs/r3akt-event-broker/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "reticulum-rs-zeromq",
                     manifest_path: "vendor/zeromq/Cargo.toml",
                 },
@@ -298,6 +310,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
                     manifest_path: "crates/libs/lxmf-core/Cargo.toml",
                 },
                 PublishedCrate {
+                    package: "lxmf-propagation",
+                    manifest_path: "crates/libs/lxmf-propagation/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "rns-embedded-core",
                     manifest_path: "crates/libs/rns-embedded-core/Cargo.toml",
                 },
@@ -308,6 +324,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
                 PublishedCrate {
                     package: "rns-embedded-ffi",
                     manifest_path: "crates/libs/rns-embedded-ffi/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "reticulum-rs-bluetooth",
+                    manifest_path: "crates/libs/rns-bluetooth/Cargo.toml",
                 },
                 PublishedCrate {
                     package: "reticulum-rs-transport",

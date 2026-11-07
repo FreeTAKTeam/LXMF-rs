@@ -13,7 +13,9 @@ pub(super) use router::run_zmq_router_loop_until;
 use support::*;
 
 use rns_rpc::rpc::zmq::{self, ZmqRpcEnvelope, ZmqRpcEnvelopeKind};
-use rns_rpc::rpc::zmq_metrics::{ZmqPipelineMetrics, ZmqStage, ZmqStageGuard, ZmqStageOutcome};
+use rns_rpc::rpc::zmq_metrics::{
+    ZmqFailureContext, ZmqPipelineMetrics, ZmqStage, ZmqStageGuard, ZmqStageOutcome,
+};
 use rns_rpc::{RpcDaemon, RpcError, RpcResponse};
 use std::io;
 use std::sync::Arc;
@@ -34,6 +36,7 @@ struct ZmqOutboundResponse {
     endpoint: String,
     connection_id: Option<String>,
     envelope: ZmqRpcEnvelope,
+    failure_context: ZmqFailureContext,
     queue_stage: Option<ZmqStageGuard>,
     admission: Option<admission::Lease>,
 }
@@ -90,6 +93,10 @@ fn handle_zmq_command_message(
         endpoint: response_endpoint,
         connection_id,
         envelope: response,
+        // Pipeline dispatch replaces this fallback with the bounded method
+        // already decoded during admission. Direct helper callers have no stage
+        // correlation and must not traverse the RPC payload for diagnostics.
+        failure_context: ZmqFailureContext::new("other", 0),
         queue_stage: None,
         admission: None,
     })

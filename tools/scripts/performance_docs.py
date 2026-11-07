@@ -23,7 +23,7 @@ START = "<!-- performance-summary:start -->"
 END = "<!-- performance-summary:end -->"
 PYTHON_INTEROP_WORKFLOW = ROOT / ".github/workflows/verify.yml"
 PYTHON_BENCHMARK_CONFIG = ROOT / "tools/benchmarks/python_impl.toml"
-DEFAULT_RELEASE = "v0.10.1"
+DEFAULT_RELEASE = "main-2026-11-01"
 
 
 def parse_args() -> argparse.Namespace:
@@ -200,7 +200,7 @@ def summary_section(data: dict[str, Any], release: str) -> str:
         START,
         "## Measured performance",
         "",
-        f"Release dataset: `{release}` at `{env['git_commit']}`; Python Reticulum `{env['python_rns_revision'][:12]}` and LXMF `{env['python_lxmf_revision'][:12]}`.",
+        f"Dataset: `{release}` at `{env['git_commit']}`; Python Reticulum `{env['python_rns_revision'][:12]}` and LXMF `{env['python_lxmf_revision'][:12]}`.",
         "",
         "| Matched workload | Rust p50 | Python p50 | Rust/Python |",
         "|---|---:|---:|---:|",
@@ -226,17 +226,21 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
         "",
         "<!-- GENERATED: tools/scripts/performance_docs.py -->",
         "",
-        f"Dataset: [`docs/performance/{release}.json`](performance/{release}.json). All numbers below originate from release SHA `{env['git_commit']}`.",
-        "The standalone release dashboard is available at [the latest GitHub Release asset](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html); the release asset is the public source for the complete matrix.",
+        f"Dataset: [`docs/performance/{release}.json`](performance/{release}.json). All numbers below originate from commit `{env['git_commit']}`.",
+        "Release dashboards published before this methodology (up to and including v0.14.0) overstate Rust's advantage; this page supersedes them.",
         "",
         "## Methodology",
         "",
         f"The report uses `{data['compare_runs']}` interleaved comparison runs and `{data['resource_runs']}` isolated resource runs. Fixtures and process setup are completed before timed regions. Results are medians; p95 and p99 retain tail visibility. Rust/Python ranking is evidence, not a release threshold.",
         "",
+        "Workloads do the same work on both sides: LXMF encode signs and decode verifies the Ed25519 signature, as `LXMessage.pack()` and `LXMessage.unpack_from_bytes()` do; announce validation re-verifies every call instead of reusing Python's per-packet validation cache. "
+        "Python runs with the PyCA `cryptography` backend that a normal `pip install rns` uses; the benchmark refuses to run on RNS's pure-Python fallback. "
+        "Earlier datasets did not meet these rules and overstated Rust's advantage.",
+        "",
         "## Environment",
         "",
         f"- Timestamp: `{env['timestamp_utc']}`",
-        f"- Release SHA: `{env['git_commit']}`",
+        f"- Commit: `{env['git_commit']}`",
         f"- Python Reticulum: `{env['python_rns_revision']}`",
         f"- Python LXMF: `{env['python_lxmf_revision']}`",
         f"- Rust: `{env['rustc_version']}`",
@@ -297,33 +301,34 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
     if e2e:
         lines.extend(
             [
-                "These matched sender workloads use the same two-node loopback TCP topology with one Rust and one pinned-Python endpoint. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary.",
+                "These workloads use one Rust and one pinned-Python endpoint over loopback TCP. Startup and route warm-up are outside the timed enqueue-to-receiver-evidence boundary. "
+                "Each direction runs one implementation as sender and the other as receiver, so the two columns are not a Rust-versus-Python ratio; whole-harness CPU and RSS are not published for the same reason.",
                 "",
-                "| Workload | Route | Payload | Rust p50 | Python p50 | Rust/Python | Rust p95 | Python p95 | Rust CPU | Python CPU | Rust RSS | Python RSS | Rust variability | Python variability |",
-                "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+                "| Workload | Route | Payload | Rust → Python p50 | Python → Rust p50 | Rust → Python p95 | Python → Rust p95 | Rust → Python variability | Python → Rust variability |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for row in e2e:
             lines.append(
-                "| {label} | {route} | {payload} | {rust50} | {python50} | {ratio:.2f}x | {rust95} | {python95} | {rust_cpu:.3f}s | {python_cpu:.3f}s | {rust_rss:.1f} MiB | {python_rss:.1f} MiB | {rust_var:.2%} | {python_var:.2%} |".format(
+                "| {label} | {route} | {payload} | {rust50} | {python50} | {rust95} | {python95} | {rust_var:.2%} | {python_var:.2%} |".format(
                     label=row["label"],
                     route=row["route_state"],
                     payload=row["payload_size_bytes"],
                     rust50=fmt_ns(row["rust"]["p50_ns"]),
                     python50=fmt_ns(row["python"]["p50_ns"]),
-                    ratio=row["rust_p50_speedup_vs_python"],
                     rust95=fmt_ns(row["rust"]["p95_ns"]),
                     python95=fmt_ns(row["python"]["p95_ns"]),
-                    rust_cpu=row["rust"]["median_cpu_seconds"],
-                    python_cpu=row["python"]["median_cpu_seconds"],
-                    rust_rss=row["rust"]["median_peak_rss_bytes"] / 1_048_576,
-                    python_rss=row["python"]["median_peak_rss_bytes"] / 1_048_576,
                     rust_var=row["rust"]["dispersion"]["p50_relative_mad"],
                     python_var=row["python"]["dispersion"]["p50_relative_mad"],
                 )
             )
     else:
-        lines.append("No E2E measurements are present; release publication must add the report before making whole-delivery claims.")
+        lines.append(
+            "No E2E measurements are published in this dataset. The previous harness timed debug Rust builds and "
+            "about one second of RPC-helper start-up inside Rust's boundary, and each direction still includes "
+            "the other implementation's receive path (including Rust lxmd's 250 ms on-inbound poll), so earlier "
+            "E2E ratios were not attributable to either implementation."
+        )
     independent = data.get("independent_performance")
     lines.extend(["", "## Independent rns-rs network comparison", ""])
     if independent:

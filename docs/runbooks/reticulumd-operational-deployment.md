@@ -92,7 +92,9 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=1800
 ExecStart=/usr/local/bin/reticulumd --rpc-unix /run/reticulumd/lxmf-rpc.sock
 RuntimeDirectory=reticulumd
 RuntimeDirectoryMode=0700
@@ -106,6 +108,16 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 ```
+
+The daemon sends `READY=1` after its configured RPC sockets and ZeroMQ listeners
+have bound. `TimeoutStartSec` must allow identity, route and database restoration;
+it does not make an unready daemon ready. `STOPPING=1` precedes graceful shutdown
+on SIGINT or SIGTERM. `NOTIFY_SOCKET` is optional outside systemd.
+
+For a separate RCH service, put `After=lxmd.service` and `Requires=lxmd.service`
+in its `[Unit]` when this direct daemon unit is named `lxmd.service` (use
+`reticulumd.service` in both directives if that is its name). systemd then waits
+for daemon readiness before starting RCH.
 
 ## launchd Example
 
@@ -149,3 +161,14 @@ curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/readyz
 curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/metrics
 cargo run -p lxmf-cli -- --rpc unix:/tmp/lxmf-rpc.sock status
 ```
+
+## Persistent announce history
+
+The daemon retains the newest 100,000 announce events plus each peer's latest
+operational event and latest non-null stamp cost. Set
+`--announce-history-max-rows N` to change the recent-history window; zero retains
+only the per-peer records. Existing databases converge in bounded background
+batches, and index creation can extend the first startup. Deleting history does
+not immediately shrink the database file. See the
+[retention contract and diagnostics](../performance/announce-history-retention-717.md)
+for pagination effects, maintenance capacity, measurements and remaining limits.

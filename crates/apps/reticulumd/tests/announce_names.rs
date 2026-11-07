@@ -80,3 +80,28 @@ fn encode_delivery_display_name_round_trips() {
     assert_eq!(parsed.0, "Alice Router");
     assert_eq!(parsed.1, "delivery_app_data");
 }
+
+#[test]
+fn propagation_metadata_identifies_rust_implementation_with_and_without_name() {
+    use reticulum_daemon::announce_names::{
+        encode_propagation_node_app_data, PropagationNodeAnnounceConfig,
+    };
+    for name in [Some(" Peer Node "), None, Some(" ")] {
+        let bytes =
+            encode_propagation_node_app_data(name, PropagationNodeAnnounceConfig::default())
+                .expect("encode propagation metadata");
+        let value: Value = rmp_serde::from_slice(&bytes).expect("decode propagation metadata");
+        let entries = value.as_array().expect("announce array");
+        let metadata = entries[6].as_map().expect("metadata map");
+        let field = |key: u8| {
+            metadata.iter().find(|(k, _)| k.as_u64() == Some(u64::from(key))).map(|(_, v)| v)
+        };
+        assert_eq!(field(0xfe).and_then(Value::as_str), Some("reticulumd"));
+        assert_eq!(field(0).and_then(Value::as_str), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(
+            field(1).and_then(Value::as_slice),
+            name.filter(|n| !n.trim().is_empty()).map(|n| n.trim().as_bytes())
+        );
+        assert!(lxmf::announce::pn_announce_data_is_valid(&bytes));
+    }
+}

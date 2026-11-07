@@ -81,22 +81,42 @@ This table is the source of truth for constrained-device portability planning.
 
 | Crate | std_required | alloc_target | status | removal_plan |
 | --- | --- | --- | --- | --- |
-| `lxmf-wire` | MessagePack dependencies and the std-coupled Reticulum dependency graph; default feature also enables JSON/file helpers, clock timestamps, and standard error impls | future candidate: message encode/decode primitives and msgpack payload model | `std-first` | real `no_std` + `alloc` support deferred in #646 pending capacity or contributor help; no serializer or entropy migration scheduled |
-| `reticulum-rs-core` | MessagePack and inherited dependency std defaults, plus std-gated APIs; OS RNG selection is an additional bare-metal target constraint | future candidate: packet/hash/destination/ratchet primitives | `std-first` | std-free dependency configuration and device-supplied entropy remain future work; no bare-metal support claimed for the current dependency graph |
+| `lxmf-wire` | MessagePack dependencies; default feature also enables JSON/file helpers, clock timestamps, and standard error impls | future candidate: message encode/decode primitives and msgpack payload model | `std-first` | real `no_std` + `alloc` support deferred in #646 pending capacity or contributor help; no serializer or entropy migration scheduled |
+| `reticulum-rs-core` | none with `--no-default-features --features alloc`; the `std` feature adds the OS RNG, `group_encrypt`, the filesystem key store, and ratchet persistence | packet/hash/destination/ratchet primitives, `group_encrypt_with_rng`, announce with caller-supplied RNG and `ratchets::set_time_override` clock | `no_std-verified` | done for #676: `rmp-serde` is `std`-only, dependency `std` defaults are disabled, and `tools/scripts/check-no-std-core.sh` builds the crate for `thumbv7em-none-eabi` in the architecture-checks CI job |
 | `rns-embedded-ffi` | host-only C ABI boundary with documented unsafe sites | firmware-facing create/tick/ble-wire/message queue entrypoints | `std-first` | keep unsafe isolated to FFI crate and migrate ESP call sites onto native Rust when toolchain is ready |
-| `rns-embedded-runtime` | no host-only requirement in current scaffold | announce scheduler, outbound queueing, replay-aware inbound dispatch | `alloc-ready` | keep transport and store behind traits so ESP bindings stay out of the core runtime |
+| `rns-embedded-core` | none in the declared `alloc` and `alloc,serde` feature sets | packet/message primitives, store/transport ports | `no_std-verified` | #625 bare-metal gate includes optional Serde without dependency std defaults |
+| `rns-embedded-runtime` | none with `alloc`; TCP adapters are std-only | announce scheduler, outbound queueing, replay-aware inbound dispatch | `no_std-verified` | #625 bare-metal gate; host adapter tests run in architecture checks |
+| `lxmf-embedded-mini` | none; fixed capacity and no allocator | mini LXMF message primitives | `no_std-verified` | #625 bare-metal gate without default features |
+| `rns-embedded-mininode` | MessagePack and LXMF dependencies | host node helpers | `std-first` | no-default feature tree must keep `reticulum-rs-core/std` disabled; this does not make mininode no_std |
+| `lxmf-propagation` | storage and host runtime dependencies | propagation services | `std-first` | full no_std work deferred in #646 |
+| `reticulum-rs-transport` | Tokio, host network and platform adapters | full transport runtime | `std-first` | use designated core and embedded adapters for bare-metal targets |
 
 Status legend:
 - `std-first`: currently requires std; `no_std` support is deferred.
-- `alloc-ready`: compile-tested in `alloc` mode.
+- `alloc-ready`: compile-tested in `alloc` mode on the host only.
+- `no_std-verified`: compile-tested for a bare-metal target without `std` in CI.
 - `planned`: identified but not yet audited.
 
-For `lxmf-wire` and its `reticulum-rs-core` dependency, a passing host build with
-`--no-default-features --features alloc` is only a feature-configuration check,
-not evidence of a std-free or bare-metal build. The empty `lxmf-wire/alloc`
-feature is retained for compatibility. Full support is deferred because current
-maintainer time is limited; contributors who can implement, review, and maintain
-it are welcome in [#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646).
+For `lxmf-wire`, a passing host build with `--no-default-features --features
+alloc` is only a feature-configuration check,
+not evidence of a std-free or bare-metal build.
+The empty `lxmf-wire/alloc` feature is retained for
+compatibility. Full support is deferred because current maintainer time is
+limited; contributors who can implement, review, and maintain it are welcome in
+[#646](https://github.com/FreeTAKTeam/LXMF-rs/issues/646).
+
+For `reticulum-rs-core`, the `no_std` claim is backed by a real target build:
+`tools/scripts/check-no-std-core.sh` runs `cargo check` for
+`thumbv7em-none-eabi` with `alloc` and `alloc,fernet-aes128`, and
+`cargo xtask ci --stage architecture-checks` includes it. The same script now
+builds all crates and feature sets declared by `workspace.metadata.boundaries`
+(see [the protocol boundary](../architecture/overview.md#protocol-core-boundary-625)).
+Host tests may use std-only dev dependencies; target dependencies are checked
+separately, and the boundary regression suite seeds optional/dev/build violations.
+Bare-metal callers
+supply their own `CryptoRngCore` and install a clock with
+`ratchets::set_time_override`; this is a compile gate, not device evidence
+([#676](https://github.com/FreeTAKTeam/LXMF-rs/issues/676)).
 
 ## Security Feature Matrix
 

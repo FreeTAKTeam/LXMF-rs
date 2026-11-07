@@ -17,7 +17,12 @@ PERFORMANCE_PAYLOAD_BYTES="${PERFORMANCE_PAYLOAD_BYTES:-0}"
 if [[ "${PERFORMANCE_MODE}" == "1" ]]; then
   PERFORMANCE_POLL_SECS="${PERFORMANCE_POLL_SECS:-0.02}"
   PERFORMANCE_POLL_ATTEMPTS="$((TIMEOUT_SECS * 50))"
+  # Timing the unoptimized daemon would compare a debug build with Python.
+  RUST_DAEMON_PROFILE=(--release)
+  RUST_DAEMON_DIR="release"
 else
+  RUST_DAEMON_PROFILE=()
+  RUST_DAEMON_DIR="debug"
   PERFORMANCE_POLL_SECS="${PERFORMANCE_POLL_SECS:-1}"
   PERFORMANCE_POLL_ATTEMPTS="${TIMEOUT_SECS}"
 fi
@@ -50,7 +55,8 @@ RUST_TRANSPORT_ADDR="${RUST_TRANSPORT_ADDR:-127.0.0.1:$((37430 + ($$ % 1000)))}"
 RUST_TRANSPORT_HOST="${RUST_TRANSPORT_ADDR%:*}"
 RUST_TRANSPORT_PORT="${RUST_TRANSPORT_ADDR##*:}"
 
-PY_SHARED_INSTANCE_PORT="${PY_SHARED_INSTANCE_PORT:-$((39428 + ($$ % 200)))}"
+# Keep Python listeners below the ephemeral range used by its outgoing TCP socket.
+PY_SHARED_INSTANCE_PORT="${PY_SHARED_INSTANCE_PORT:-$((19428 + ($$ % 200)))}"
 PY_INSTANCE_CONTROL_PORT="${PY_INSTANCE_CONTROL_PORT:-$((PY_SHARED_INSTANCE_PORT + 1))}"
 PY_ENDPOINT_CONTROL_PORT="${PY_ENDPOINT_CONTROL_PORT:-$((PY_INSTANCE_CONTROL_PORT + 10))}"
 PY_ENDPOINT_HELPER="${PY_ENDPOINT_HELPER:-${REPO_ROOT}/crates/apps/lxmf-cli/tests/support/python_lxmf_endpoint.py}"
@@ -60,7 +66,7 @@ import os
 print(os.pathsep)
 PY
 )"
-export PYTHONPATH="${RETICULUM_PY_REPO}${PYTHON_PATHSEP}${LXMF_PY_REPO}${PYTHONPATH:+${PYTHON_PATHSEP}${PYTHONPATH}}"
+export PYTHONPATH="${SCRIPT_DIR}${PYTHON_PATHSEP}${RETICULUM_PY_REPO}${PYTHON_PATHSEP}${LXMF_PY_REPO}${PYTHONPATH:+${PYTHON_PATHSEP}${PYTHONPATH}}"
 
 HOST_BASH="${BASH_BIN:-}"
 if [[ -z "${HOST_BASH}" ]]; then
@@ -214,6 +220,7 @@ rpc_call() {
   "${PYTHON_BIN}" - <<'PY' "${rpc_addr}" "${method}" "${params_json}"
 import json
 import errno
+import os
 import socket
 import sys
 import time
@@ -232,6 +239,13 @@ def is_rate_limited(error):
     if isinstance(error, dict):
         return error.get("code") == "SDK_SECURITY_RATE_LIMITED"
     return False
+
+def write_rpc_timing(started_ns, finished_ns):
+    # Performance boundaries exclude this helper's interpreter startup.
+    timing_path = os.environ.get("RPC_TIMING_FILE")
+    if timing_path:
+        with open(timing_path, "w", encoding="utf-8") as handle:
+            handle.write(f"{started_ns} {finished_ns}\n")
 
 def is_retryable_socket_error(exc):
     if isinstance(exc, (ConnectionRefusedError, TimeoutError, socket.timeout)):
@@ -254,6 +268,7 @@ for attempt in range(60):
         f"Connection: close\r\n\r\n"
     ).encode("utf-8") + frame
     try:
+        started_ns = time.time_ns()
         with socket.create_connection((host, int(port)), timeout=30) as sock:
             sock.sendall(request)
             response = bytearray()
@@ -262,6 +277,7 @@ for attempt in range(60):
                 if not chunk:
                     break
                 response.extend(chunk)
+        finished_ns = time.time_ns()
     except OSError as exc:
         if is_retryable_socket_error(exc) and attempt + 1 < 60:
             time.sleep(1)
@@ -305,6 +321,7 @@ for attempt in range(60):
         continue
     if error:
         raise SystemExit(json.dumps(error))
+    write_rpc_timing(started_ns, finished_ns)
     print(json.dumps(result))
     raise SystemExit(0)
 
@@ -319,7 +336,27 @@ capture_rust_message_evidence() {
   rpc_call "${RUST_RPC_ADDR}" "message_delivery_trace" "{\"message_id\":\"${message_id}\"}" >"${out_dir}/message_delivery_trace.json" || true
   rpc_call "${RUST_RPC_ADDR}" "sdk_status_v2" "{\"message_id\":\"${message_id}\"}" >"${out_dir}/sdk_status_v2.json" || true
   rpc_call "${RUST_RPC_ADDR}" "sdk_snapshot_v2" "{}" >"${out_dir}/sdk_snapshot_v2.json" || true
-  rpc_call "${RUST_RPC_ADDR}" "sdk_poll_events_v2" "{\"max\":64}" >"${out_dir}/sdk_poll_events_v2.json" || true
+  capture_rust_event_evidence "${out_dir}"
+}
+
+capture_rust_event_evidence() {
+  local out_dir="$1" cursor="" page_info count params start
+  start="$(date +%s)"
+  if [[ -f "${out_dir}/sdk_poll_events_v2.json" ]]; then
+    cursor="$("${PYTHON_BIN}" -c 'import json,sys; print(json.load(open(sys.argv[1]))["next_cursor"])' "${out_dir}/sdk_poll_events_v2.json")" || return 1
+  fi
+  while true; do
+    params="$("${PYTHON_BIN}" -c 'import json,sys; print(json.dumps({"max":64,"cursor":sys.argv[1] or None}))' "${cursor}")" || return 1
+    rpc_call "${RUST_RPC_ADDR}" "sdk_poll_events_v2" "${params}" >"${out_dir}/sdk-event-page.json" || return 1
+    page_info="$("${PYTHON_BIN}" "${SCRIPT_DIR}/python_compat_lxmf_evidence.py" merge-events \
+      "${out_dir}/sdk-event-page.json" "${out_dir}/sdk_poll_events_v2.json")" || return 1
+    read -r cursor count <<<"${page_info}"
+    if (( count < 64 )); then return 0; fi
+    if (( "$(date +%s)" - start >= TIMEOUT_SECS )); then
+      echo "SDK event evidence did not reach the stream tail before the deadline" >&2
+      return 1
+    fi
+  done
 }
 
 wait_rust_trace_status() {
@@ -331,11 +368,77 @@ wait_rust_trace_status() {
   local start
   start="$(date +%s)"
   while true; do
-    capture_rust_message_evidence "${message_id}"
+    capture_rust_message_evidence "${message_id}" || return 1
     if trace_contains_status "${out_dir}/message_delivery_trace.json" "${status}"; then
       return 0
     fi
     if (( "$(date +%s)" - start >= timeout )); then
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+wait_rust_native_completion() {
+  local message_id="$1" status="$2" kind="$3" method="$4" peer="$5"
+  local out_dir="${RUST_EVIDENCE_DIR}/${message_id}"
+  local start
+  start="$(date +%s)"
+  while true; do
+    capture_rust_message_evidence "${message_id}" || return 1
+    if "${PYTHON_BIN}" "${SCRIPT_DIR}/python_compat_lxmf_evidence.py" \
+        "${out_dir}/sdk_poll_events_v2.json" "${message_id}" "${status}" \
+        "${kind}" "${method}" "${peer}" "${PY_DIR}/link-limits.jsonl" >"${out_dir}/native-completion.json" 2>"${out_dir}/native-completion-error.log"; then
+      return 0
+    fi
+    if (( "$(date +%s)" - start >= TIMEOUT_SECS )); then
+      cat "${out_dir}/native-completion-error.log" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+record_python_pn_metadata() {
+  local start status
+  start="$(date +%s)"
+  while true; do
+    rpc_call "${RUST_RPC_ADDR}" "list_announces" '{"limit":500}' >"${TMP_ROOT}/rust-announces.json" || return 1
+    rpc_call "${RUST_RPC_ADDR}" "list_peers" 'null' >"${TMP_ROOT}/rust-peers.json" || return 1
+    if "${PYTHON_BIN}" - "${TMP_ROOT}" "${PY_PROPAGATION_HASH}" >"${PY_PN_METADATA_JSON}" <<'PY'
+import json
+import os
+from pathlib import Path
+import sys
+from python_compat_lxmf_evidence import propagation_metadata
+
+root, peer = Path(sys.argv[1]), sys.argv[2]
+records = json.loads((root / "rust-announces.json").read_text())["announces"]
+record = next((row for row in records if row["peer"] == peer), None)
+if record is None or not record.get("app_data_hex"):
+    raise SystemExit(75)
+target = os.environ.get("LXMF_COMPAT_REFERENCE_PROFILE", "baseline") == "lxmf-1.2.0"
+proof = propagation_metadata(bytes.fromhex(record["app_data_hex"]),
+                             "lxmd" if target else None, "1.2.0" if target else None)
+for key, value in zip(("stamp_cost", "stamp_cost_flexibility", "peering_cost"), proof["stamp_costs"]):
+    assert record[key] == value, record
+if target:
+    observed = next((row for row in json.loads((root / "rust-peers.json").read_text())["peers"] if row["peer"] == peer), None)
+    if observed is None:
+        raise SystemExit(75)
+    assert observed["metadata"]["254"] == "lxmd", observed
+    assert observed["metadata"]["0"] == "1.2.0", observed
+proof["peer"] = peer
+print(json.dumps(proof))
+PY
+    then
+      return 0
+    else
+      status=$?
+    fi
+    if (( status != 75 )); then return "${status}"; fi
+    if (( "$(date +%s)" - start >= TIMEOUT_SECS )); then
+      echo "Rust did not retain the exact Python propagation announce and metadata" >&2
       return 1
     fi
     sleep 1
@@ -433,6 +536,16 @@ raise SystemExit(f"no Python propagation payload for {destination_hash_hex} in {
 PY
 }
 
+# Receiver evidence time: when the file was written, not when polling noticed it.
+# With a directory, the newest file in it.
+evidence_mtime_ns() {
+  "${PYTHON_BIN}" -c 'import os,sys
+p=sys.argv[1]
+if os.path.isdir(p):
+    p=max((os.path.join(p,n) for n in os.listdir(p)), key=lambda f: os.stat(f).st_mtime_ns)
+print(os.stat(p).st_mtime_ns)' "$1"
+}
+
 python_control_call() {
   local control_port="$1"
   local method="$2"
@@ -442,8 +555,10 @@ python_control_call() {
   fi
   "${PYTHON_BIN}" - <<'PY' "${control_port}" "${method}" "${params_json}"
 import json
+import os
 import socket
 import sys
+import time
 
 control_port = int(sys.argv[1])
 method = sys.argv[2]
@@ -457,6 +572,7 @@ if isinstance(params, dict) and "timeout" in params:
     socket_timeout = max(socket_timeout, float(params["timeout"]) + 5.0)
 
 request = json.dumps({"method": method, "params": params}).encode("utf-8") + b"\n"
+started_ns = time.time_ns()
 with socket.create_connection(("127.0.0.1", control_port), timeout=socket_timeout) as sock:
     sock.settimeout(socket_timeout)
     sock.sendall(request)
@@ -478,6 +594,10 @@ except json.JSONDecodeError as exc:
     raise SystemExit(f"invalid control response: {decoded!r}: {exc}")
 if not payload.get("ok"):
     raise SystemExit(payload.get("error") or "python endpoint control call failed")
+# Performance boundaries exclude this helper's interpreter startup.
+if os.environ.get("RPC_TIMING_FILE"):
+    with open(os.environ["RPC_TIMING_FILE"], "w", encoding="utf-8") as handle:
+        handle.write(f"{started_ns} {time.time_ns()}\n")
 
 print(json.dumps(payload.get("result")))
 PY
@@ -645,12 +765,17 @@ while time.time() < quiet_deadline:
     time.sleep(0.25)
 
 started = time.time()
+started_ns = time.time_ns()
 before = RNS.Transport.has_path(destination_hash)
 requested = False
+next_request = started
 deadline = started + timeout_secs
 while time.time() < deadline:
     if RNS.Transport.has_path(destination_hash):
+        found_ns = time.time_ns()
         print(json.dumps({
+            "started_unix_ns": started_ns,
+            "found_unix_ns": found_ns,
             "destination_hash": destination_hash_hex,
             "path_found_before": before,
             "path_found": True,
@@ -661,9 +786,12 @@ while time.time() < deadline:
             "elapsed_seconds": round(time.time() - started, 3),
         }, sort_keys=True))
         raise SystemExit(0)
-    RNS.Transport.request_path(destination_hash)
-    requested = True
-    time.sleep(0.5)
+    # Check at the Rust request_path RPC's poll interval; re-request as before.
+    if time.time() >= next_request:
+        RNS.Transport.request_path(destination_hash)
+        requested = True
+        next_request = time.time() + 0.5
+    time.sleep(0.025)
 
 print(json.dumps({
     "destination_hash": destination_hash_hex,
@@ -682,12 +810,12 @@ PY
 start_python_lxmd() {
   local redirect="${1:->}"
   if [[ "${redirect}" == ">>" ]]; then
-    "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
+    "${PYTHON_BIN}" "${SCRIPT_DIR}/python_compat_lxmd.py" "${PY_DIR}/link-limits.jsonl" \
       --config "${PY_DIR}" \
       --rnsconfig "${PY_RNS_DIR}" \
       --propagation-node >>"${PY_LOG}" 2>&1 &
   else
-    "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
+    "${PYTHON_BIN}" "${SCRIPT_DIR}/python_compat_lxmd.py" "${PY_DIR}/link-limits.jsonl" \
       --config "${PY_DIR}" \
       --rnsconfig "${PY_RNS_DIR}" \
       --propagation-node >"${PY_LOG}" 2>&1 &
@@ -819,6 +947,8 @@ RUST_HOOK_LOG="${HOOK_STATE_DIR}/rust-hook.log"
 PY_HOOK_LOG="${HOOK_STATE_DIR}/python-hook.log"
 PY_STORED_MESSAGE_JSON="${TMP_ROOT}/python-stored-message.json"
 PY_PROPAGATION_PAYLOAD_JSON="${TMP_ROOT}/python-propagation-payload.json"
+PY_PN_METADATA_JSON="${TMP_ROOT}/python-pn-metadata-at-rust.json"
+RUST_PN_METADATA_JSON="${TMP_ROOT}/rust-pn-metadata-at-python.json"
 RUST_EVIDENCE_DIR="${TMP_ROOT}/rust-evidence"
 
 kill_process_tree() {
@@ -947,7 +1077,7 @@ PY
 )"
 
 RUST_ON_INBOUND_LINE="on_inbound = ${RUST_DIR}/on_inbound.sh"
-if [[ "${COMPAT_CASE}" == *_rust_to_python || "${COMPAT_CASE}" == "rns_path_request_rust_to_python_scoped_refresh" ]]; then
+if [[ "${COMPAT_CASE}" == *_rust_to_python || "${COMPAT_CASE}" == "resource_transfer" || "${COMPAT_CASE}" == "rns_path_request_rust_to_python_scoped_refresh" ]]; then
   RUST_ON_INBOUND_LINE="# on_inbound disabled for rust_to_python compatibility lanes"
 fi
 
@@ -1031,6 +1161,8 @@ cat > "${PY_RNS_DIR}/config" <<EOF
 [reticulum]
   enable_transport = true
   share_instance = yes
+  # Use the per-case ports below on platforms whose default is a shared Unix socket.
+  shared_instance_type = tcp
   shared_instance_port = ${PY_SHARED_INSTANCE_PORT}
   instance_control_port = ${PY_INSTANCE_CONTROL_PORT}
   discover_interfaces = false
@@ -1065,10 +1197,10 @@ cat > "${PY_SENDER_RNS_DIR}/config" <<EOF
     target_port = ${RUST_TRANSPORT_PORT}
 EOF
 
-cargo build -p reticulumd --bin reticulumd --quiet
-cargo build -p lxmf-cli --bin lxmd --quiet
+cargo build "${RUST_DAEMON_PROFILE[@]}" -p reticulumd --bin reticulumd --quiet
+cargo build "${RUST_DAEMON_PROFILE[@]}" -p lxmf-cli --bin lxmd --quiet
 
-RUST_LOG="${RUST_LOG}" SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
+RUST_LOG="${RUST_LOG}" SHELL="${HOST_BASH}" "${REPO_ROOT}/target/${RUST_DAEMON_DIR}/lxmd" \
   --config "${RUST_DIR}/launcher.toml" >"${RUST_LXMD_LOG}" 2>&1 &
 RUST_PID=$!
 
@@ -1112,6 +1244,13 @@ run_link_case() {
     exit 1
   fi
 
+  # The control server can be ready while the transport interface is reconnecting.
+  # Wait for the TCP client before sending the one-shot lifecycle announces.
+  if ! wait_for_rust_tcp_client_accept; then
+    echo "Rust daemon did not accept Python TCP client before ${COMPAT_CASE}" >&2
+    exit 1
+  fi
+
   py_status_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "status" "null")"
   py_delivery_hash="$("${PYTHON_BIN}" - <<'PY' "${py_status_json}"
 import json
@@ -1129,21 +1268,19 @@ PY
         echo "Rust did not learn Python endpoint announce for ${COMPAT_CASE}" >&2
         exit 1
       fi
-      if [[ "${COMPAT_CASE}" == "link_setup_rust_to_python" ]]; then
-        PERFORMANCE_START_NS="$(date +%s%N)"
-      fi
       rust_message_id="rust-link-${COMPAT_CASE}-$(date +%s)"
-      rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
+      RPC_TIMING_FILE="${TMP_ROOT}/link-send.timing" rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
 {"id":"${rust_message_id}","source":"${RUST_DELIVERY_HASH}","destination":"${py_delivery_hash}","title":"","content":"${smoke_message_content}","method":"direct"}
 EOF
 )" >"${PY_SEND_LOG}"
-      active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
+      active_snapshot="$(RPC_TIMING_FILE="${TMP_ROOT}/link-active.timing" python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
 {"state":"active","timeout":${TIMEOUT_SECS}}
 EOF
 )")"
       echo "active_snapshot=${active_snapshot}" >>"${PY_LOG}"
       if [[ "${COMPAT_CASE}" == "link_setup_rust_to_python" ]]; then
-        PERFORMANCE_END_NS="$(date +%s%N)"
+        read -r PERFORMANCE_START_NS _ <"${TMP_ROOT}/link-send.timing"
+        read -r _ PERFORMANCE_END_NS <"${TMP_ROOT}/link-active.timing"
       fi
       message_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_message" "$(cat <<EOF
 {"content":"${smoke_message_content}","timeout":${TIMEOUT_SECS}}
@@ -1157,15 +1294,14 @@ EOF
 {"destination":"${RUST_DELIVERY_HASH}","timeout":${TIMEOUT_SECS}}
 EOF
 )" >/dev/null
-        PERFORMANCE_START_NS="$(date +%s%N)"
       fi
-      active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "open_link" "$(cat <<EOF
+      active_snapshot="$(RPC_TIMING_FILE="${TMP_ROOT}/link-open.timing" python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "open_link" "$(cat <<EOF
 {"destination":"${RUST_DELIVERY_HASH}","timeout":${TIMEOUT_SECS}}
 EOF
 )")"
       echo "active_snapshot=${active_snapshot}" >>"${PY_LOG}"
       if [[ "${COMPAT_CASE}" == "link_setup_python_to_rust" ]]; then
-        PERFORMANCE_END_NS="$(date +%s%N)"
+        read -r PERFORMANCE_START_NS PERFORMANCE_END_NS <"${TMP_ROOT}/link-open.timing"
       fi
       ;;
     *)
@@ -1383,6 +1519,9 @@ control_allowed = ${RUST_CONTROL_IDENTITY_HASH}
 
 [lxmf]
 display_name = Python Smoke Node
+# Declare the same 1 MB receiving policy at both pins. LXMF 1.2.0 changed
+# lxmd's default to 1 KB; this lane deliberately transfers 16 KB Resources.
+delivery_transfer_max_accepted_size = 1000
 announce_at_start = ${PY_ANNOUNCE_AT_START}
 ${PY_ANNOUNCE_INTERVAL_LINE}
 on_inbound = ${PY_DIR}/on_inbound.sh
@@ -1405,9 +1544,11 @@ if [[ "${COMPAT_CASE}" == "rns_path_request_python_to_rust" ]]; then
     exit 1
   fi
 
-  PATH_DISCOVERY_START_NS="$(date +%s%N)"
   PYTHON_PATH_REQUEST_RESULT="$(request_python_destination_path_json "${RUST_DELIVERY_HASH}" "${PATH_DISCOVERY_TIMEOUT_SECS}" "${PATH_DISCOVERY_QUIET_SECS}")"
-  PATH_DISCOVERY_END_NS="$(date +%s%N)"
+  # The helper stamps request and arrival itself, excluding its Reticulum startup.
+  read -r PATH_DISCOVERY_START_NS PATH_DISCOVERY_END_NS < <(
+    "${PYTHON_BIN}" -c 'import json,sys; r=json.loads(sys.argv[1]); print(r.get("started_unix_ns", 0), r.get("found_unix_ns", 0))' "${PYTHON_PATH_REQUEST_RESULT}"
+  )
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
@@ -1493,9 +1634,8 @@ assert status.get("known") is False, status
 assert status.get("status") == "unknown", status
 PY
 
-  PATH_DISCOVERY_START_NS="$(date +%s%N)"
-  PATH_REQUEST_RESULT="$(rpc_call "${RUST_RPC_ADDR}" "request_path" "{\"destination_hash\":\"${PY_DELIVERY_HASH}\",\"timeout_secs\":${PATH_DISCOVERY_TIMEOUT_SECS}}")"
-  PATH_DISCOVERY_END_NS="$(date +%s%N)"
+  PATH_REQUEST_RESULT="$(RPC_TIMING_FILE="${TMP_ROOT}/path-request.timing" rpc_call "${RUST_RPC_ADDR}" "request_path" "{\"destination_hash\":\"${PY_DELIVERY_HASH}\",\"timeout_secs\":${PATH_DISCOVERY_TIMEOUT_SECS}}")"
+  read -r PATH_DISCOVERY_START_NS PATH_DISCOVERY_END_NS <"${TMP_ROOT}/path-request.timing"
   PATH_STATUS_AFTER="$(rpc_call "${RUST_RPC_ADDR}" "path_status" "{\"destination\":\"${PY_DELIVERY_HASH}\"}")"
   RNPATH_JSON="${TMP_ROOT}/rnpath-rs.json"
   "${REPO_ROOT}/target/debug/rnpath-rs" \
@@ -1652,13 +1792,17 @@ write_report() {
     "${PY_DELIVERY_HASH}" \
     "${PY_PROPAGATION_HASH}" \
     "${HOOK_MESSAGE_FILE}" \
-    "${SMOKE_MESSAGE_MARKER}" \
+    "${SMOKE_MESSAGE_CONTENT:-${SMOKE_MESSAGE_MARKER}}" \
     "${COMPAT_CASE}" \
     "${PERFORMANCE_START_NS}" \
     "${PERFORMANCE_END_NS}" \
-    "${PERFORMANCE_PAYLOAD_BYTES}"
+    "${PERFORMANCE_PAYLOAD_BYTES}" \
+    "${PY_PN_METADATA_JSON}" \
+    "${RUST_PN_METADATA_JSON}" \
+    "${PY_SEND_LOG}"
 import json
 import sys
+from pathlib import Path
 
 (
     report_path,
@@ -1682,10 +1826,22 @@ import sys
     performance_end_ns,
     performance_payload_bytes,
 ) = sys.argv[1:21]
+py_pn_metadata, rust_pn_metadata = sys.argv[21:23]
+python_sender_log = Path(sys.argv[23])
+
+from performance_fixture import validate_opportunistic_sender
+
+python_sender = (json.loads(python_sender_log.read_text())
+                 if compat_case.endswith("_python_to_rust") and python_sender_log.is_file() else None)
+if python_sender is not None:
+    assert Path(hook_message_file).name == python_sender["message_id"], "stored LXMF ID differs from sender"
+    if compat_case == "opportunistic_python_to_rust":
+        validate_opportunistic_sender(python_sender)
 
 report = {
     "status": "pass",
     "case": compat_case,
+    "configuration": {"python_delivery_transfer_max_accepted_size_kb": 1000},
     "proof": {
         "python_remote_status_to_rust": rust_propagation_hash,
         "rust_remote_status_to_python": py_propagation_hash,
@@ -1693,6 +1849,9 @@ report = {
         "hook_message_file": hook_message_file,
         "python_stored_message": py_stored_message_json,
         "rust_evidence_dir": rust_evidence_dir,
+        "python_sender": python_sender,
+        "python_pn_metadata_at_rust": json.loads(Path(py_pn_metadata).read_text()) if Path(py_pn_metadata).is_file() else None,
+        "rust_pn_metadata_at_python": json.loads(Path(rust_pn_metadata).read_text()) if Path(rust_pn_metadata).is_file() else None,
     },
     "hashes": {
         "rust_delivery": rust_delivery_hash,
@@ -1718,10 +1877,14 @@ if performance_start_ns and performance_end_ns:
     end_ns = int(performance_end_ns)
     if end_ns <= start_ns:
         raise SystemExit("invalid performance timing boundary")
+    actual_payload_bytes = len(smoke_message_content.encode("utf-8"))
+    if int(performance_payload_bytes) > 0 and actual_payload_bytes != int(performance_payload_bytes):
+        raise SystemExit("actual performance payload size differs from requested size")
     report["performance"] = {
         "boundary": "enqueue_to_receiver_evidence",
         "enqueue_to_delivery_ns": end_ns - start_ns,
-        "payload_size_bytes": int(performance_payload_bytes),
+        "payload_size_bytes": actual_payload_bytes,
+        "requested_payload_size_bytes": int(performance_payload_bytes),
         "startup_included": False,
         "route_warmup_included": False,
     }
@@ -1751,7 +1914,7 @@ if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_pyt
 
   RUST_REMOTE_STATUS_OK=0
   for _ in $(seq 1 "${REMOTE_STATUS_ATTEMPTS}"); do
-    if SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
+    if SHELL="${HOST_BASH}" "${REPO_ROOT}/target/${RUST_DAEMON_DIR}/lxmd" \
         --config "${RUST_DIR}/launcher.toml" \
         --timeout "${REMOTE_STATUS_TIMEOUT_SECS}" \
         --remote "${PY_PROPAGATION_HASH}" \
@@ -1797,7 +1960,7 @@ if [[ "${COMPAT_CASE}" == "propagation_remote_fetch_rust_to_python" || "${COMPAT
 EOF
 )" >"${PY_SEND_LOG}"
 
-  if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "sent: propagated resource" "${TIMEOUT_SECS}"; then
+  if ! wait_rust_native_completion "${RUST_MESSAGE_ID}" "custody" "auto" "propagation" "${PY_PROPAGATION_HASH}"; then
     echo "Rust daemon did not seed Python propagation node for ${COMPAT_CASE}" >&2
     exit 1
   fi
@@ -1978,7 +2141,7 @@ if [[ "${COMPAT_CASE}" == "propagation_remote_sync_rust_to_python" ]]; then
 EOF
 )" >"${PY_SEND_LOG}"
 
-  if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "sent: propagated resource" "${TIMEOUT_SECS}"; then
+  if ! wait_rust_native_completion "${RUST_MESSAGE_ID}" "custody" "auto" "propagation" "${PY_PROPAGATION_HASH}"; then
     echo "Rust daemon did not seed Python propagation node for ${COMPAT_CASE}" >&2
     exit 1
   fi
@@ -2768,7 +2931,8 @@ if [[ "${COMPAT_CASE}" == "resource_transfer" ]]; then
   SMOKE_MESSAGE_CONTENT="${SMOKE_MESSAGE_MARKER}:$(printf 'x%.0s' $(seq 1 16384))"
 fi
 if (( PERFORMANCE_PAYLOAD_BYTES > 0 )); then
-  SMOKE_MESSAGE_CONTENT="${SMOKE_MESSAGE_MARKER}:$(printf 'x%.0s' $(seq 1 "${PERFORMANCE_PAYLOAD_BYTES}"))"
+  SMOKE_MESSAGE_CONTENT="$("${PYTHON_BIN}" "${SCRIPT_DIR}/performance_fixture.py" \
+    "${SMOKE_MESSAGE_MARKER}" "${PERFORMANCE_PAYLOAD_BYTES}")"
 fi
 HOOK_MESSAGE_FILE=""
 
@@ -2780,20 +2944,57 @@ if [[ "${COMPAT_CASE}" == *_python_to_rust ]]; then
   "${RUST_DELIVERY_HASH}" \
   "${RUST_PROPAGATION_HASH}" \
   "${TIMEOUT_SECS}" \
-  "${SMOKE_MESSAGE_CONTENT}" >"${PY_SEND_LOG}"
+  "${SMOKE_MESSAGE_CONTENT}" \
+  "${RUST_PN_METADATA_JSON}" >"${PY_SEND_LOG}"
 import json
 import os
 import sys
 import time
+from pathlib import Path
+import tomllib
 
 import RNS
 import LXMF
+from python_compat_lxmf_evidence import propagation_metadata
 
 case_id, rns_config, storage_dir, destination_hash_hex, propagation_hash_hex, timeout_secs, content = sys.argv[1:8]
+metadata_path = Path(sys.argv[8])
 timeout_secs = max(float(timeout_secs), 1.0)
 destination_hash = bytes.fromhex(destination_hash_hex)
 propagation_hash = bytes.fromhex(propagation_hash_hex)
 
+# Preserve Python's native cryptographic validation and delivery callback.
+# Capture the receipt only after that validator accepts the returned wire proof.
+validated_proofs = []
+validated_resource_proofs = []
+original_resource_validate = RNS.Resource.validate_proof
+
+def validate_resource_proof(resource, proof_data):
+    result = original_resource_validate(resource, proof_data)
+    if resource.status == RNS.Resource.COMPLETE:
+        validated_resource_proofs.append({
+            "resource_hash": resource.get_hash().hex(),
+            "proof_data_hex": proof_data.hex(),
+            "resource_status": int(resource.status),
+        })
+    return result
+
+RNS.Resource.validate_proof = validate_resource_proof
+original_validate = RNS.PacketReceipt.validate_proof_packet
+
+def validate_proof_packet(receipt, proof_packet):
+    accepted = original_validate(receipt, proof_packet)
+    if accepted:
+        validated_proofs.append({
+            "packet_hash": receipt.hash.hex(),
+            "proof_destination": proof_packet.destination_hash.hex(),
+            "proof_data_hex": proof_packet.data.hex(),
+            "receipt_status": int(receipt.status),
+            "proved": receipt.proved,
+        })
+    return accepted
+
+RNS.PacketReceipt.validate_proof_packet = validate_proof_packet
 RNS.Reticulum(configdir=rns_config, loglevel=0)
 identity = RNS.Identity()
 router = LXMF.LXMRouter(identity=identity, storagepath=storage_dir)
@@ -2844,6 +3045,10 @@ elif case_id == "propagated_python_to_rust":
     if remote_identity is None:
         raise SystemExit("timed out recalling Rust identity from propagation path")
 
+    expected_version = tomllib.loads(Path("crates/apps/reticulumd/Cargo.toml").read_text())["package"]["version"]
+    metadata_proof = propagation_metadata(RNS.Identity.recall_app_data(propagation_hash), "reticulumd", expected_version)
+    metadata_proof["peer"] = propagation_hash_hex
+    metadata_path.write_text(json.dumps(metadata_proof) + "\n")
     router.set_outbound_propagation_node(propagation_hash)
 elif case_id != "opportunistic_python_to_rust":
     raise SystemExit(f"unsupported smoke case: {case_id}")
@@ -2877,11 +3082,21 @@ router.handle_outbound(message)
 
 deadline = time.time() + timeout_secs
 while time.time() < deadline:
-    if message.state in (LXMF.LXMessage.DELIVERED, LXMF.LXMessage.SENT):
+    # Propagation SENT is custody at the forwarding node. Direct and
+    # opportunistic delivery require the final receiver's native proof.
+    completed = (message.state == LXMF.LXMessage.SENT if case_id == "propagated_python_to_rust"
+                 else message.state == LXMF.LXMessage.DELIVERED and bool(validated_proofs or validated_resource_proofs))
+    if completed:
         print(
             json.dumps(
                 {
                     "state": int(message.state),
+                    "method": int(message.method),
+                    "message_id": message.hash.hex(),
+                    "python_reticulum_version": RNS.__version__,
+                    "python_lxmf_version": LXMF.__version__,
+                    "validated_proofs": validated_proofs,
+                    "validated_resource_proofs": validated_resource_proofs,
                     "case": case_id,
                     "destination": destination_hash_hex,
                     "source": RNS.hexrep(source.hash, delimit=False).lower(),
@@ -2921,7 +3136,8 @@ PY
 
   assert_contains "${RUST_HOOK_LOG}" "${SMOKE_MESSAGE_CONTENT}" "Rust lxmd on-inbound hook content"
   assert_contains "${RUST_HOOK_LOG}" "${PY_SENDER_SOURCE_HASH}" "Rust lxmd on-inbound hook source hash"
-  PERFORMANCE_END_NS="$(date +%s%N)"
+  # The shell only starts polling after the Python sender process exits.
+  PERFORMANCE_END_NS="$(evidence_mtime_ns "${RUST_HOOK_LOG}")"
 
   HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${RUST_HOOK_LOG}"
 import sys
@@ -2949,6 +3165,7 @@ else
       ;;
     propagated_rust_to_python)
       RUST_SEND_METHOD="propagated"
+      record_python_pn_metadata
       rpc_call "${RUST_RPC_ADDR}" "set_outbound_propagation_node" "{\"peer\":\"${PY_PROPAGATION_HASH}\"}" >/dev/null
       assert_contains <(
         rpc_call "${RUST_RPC_ADDR}" "get_outbound_propagation_node" "null"
@@ -2972,21 +3189,37 @@ else
     fi
   fi
 
-  PERFORMANCE_START_NS="$(date +%s%N)"
-  rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
+  py_stored_before="$(find "${PY_DIR}/storage/messages" -type f 2>/dev/null | wc -l)"
+  RPC_TIMING_FILE="${TMP_ROOT}/send.timing" rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
 {"id":"${RUST_MESSAGE_ID}","source":"${RUST_DELIVERY_HASH}","destination":"${PY_DELIVERY_HASH}","title":"","content":"${SMOKE_MESSAGE_CONTENT}","method":"${RUST_SEND_METHOD}"}
 EOF
 )" >"${PY_SEND_LOG}"
+  # Like the Python sender's started_unix_ns: stamped by the client, not its startup.
+  read -r PERFORMANCE_START_NS _ <"${TMP_ROOT}/send.timing"
 
-  capture_rust_message_evidence "${RUST_MESSAGE_ID}"
+  # Detect arrival cheaply; parsing the stored LXMF file imports LXMF.
   for _ in $(seq 1 "${PERFORMANCE_POLL_ATTEMPTS}"); do
+    if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
+      break
+    fi
+    if (( "$(find "${PY_DIR}/storage/messages" -type f 2>/dev/null | wc -l)" > py_stored_before )); then
+      break
+    fi
+    sleep "${PERFORMANCE_POLL_SECS}"
+  done
+  # Decide before the fallback below appends its own lines to the hook log.
+  RUST_SENDER_EVIDENCE="${PY_DIR}/storage/messages"
+  if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
+    RUST_SENDER_EVIDENCE="${PY_HOOK_LOG}"
+  fi
+  for _ in $(seq 1 50); do
     if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
       break
     fi
     if record_python_stored_message "${PY_DIR}/storage/messages" "${SMOKE_MESSAGE_CONTENT}" "${PY_STORED_MESSAGE_JSON}" >/dev/null 2>&1; then
       break
     fi
-    sleep "${PERFORMANCE_POLL_SECS}"
+    sleep 0.1
   done
 
   if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
@@ -3011,7 +3244,8 @@ PY
     assert_contains "${PY_STORED_MESSAGE_JSON}" "\"exact_content_match\": *true" "Python stored LXMF exact content"
     assert_contains "${PY_STORED_MESSAGE_JSON}" "\"destination\": *\"${PY_DELIVERY_HASH}\"" "Python stored LXMF destination hash"
   fi
-  PERFORMANCE_END_NS="$(date +%s%N)"
+  PERFORMANCE_END_NS="$(evidence_mtime_ns "${RUST_SENDER_EVIDENCE}")"
+  capture_rust_message_evidence "${RUST_MESSAGE_ID}"
   if [[ -z "${HOOK_MESSAGE_FILE}" && -f "${PY_STORED_MESSAGE_JSON}" ]]; then
     HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${PY_STORED_MESSAGE_JSON}"
 import json
@@ -3029,8 +3263,8 @@ PY
     fi
   fi
   if [[ "${COMPAT_CASE}" == "resource_transfer" ]]; then
-    if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "sent: link resource" "${TIMEOUT_SECS}"; then
-      echo "Rust daemon did not record sent: link resource for resource transfer" >&2
+    if ! wait_rust_native_completion "${RUST_MESSAGE_ID}" "delivered" "link-resource" "direct" "${PY_DELIVERY_HASH}"; then
+      echo "Rust daemon did not record native Resource completion for resource transfer" >&2
       exit 1
     fi
     if ! trace_lacks_status_prefix "${RUST_EVIDENCE_DIR}/${RUST_MESSAGE_ID}/message_delivery_trace.json" "failed:"; then
@@ -3039,19 +3273,16 @@ PY
     fi
     assert_contains \
       "${RUST_EVIDENCE_DIR}/${RUST_MESSAGE_ID}/message_delivery_trace.json" \
-      '"status": *"(sending|sent): link resource"' \
+      '"status": *"delivered"' \
       "Rust resource transfer trace"
   elif [[ "${COMPAT_CASE}" == "propagated_rust_to_python" ]]; then
-    if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "sent: propagated resource" "${TIMEOUT_SECS}"; then
-      echo "Rust daemon did not record sent: propagated resource for propagated transfer" >&2
+    if ! wait_rust_native_completion "${RUST_MESSAGE_ID}" "custody" "auto" "propagation" "${PY_PROPAGATION_HASH}"; then
+      echo "Rust daemon did not record native propagation custody for propagated transfer" >&2
       exit 1
     fi
     if ! trace_lacks_status_prefix "${RUST_EVIDENCE_DIR}/${RUST_MESSAGE_ID}/message_delivery_trace.json" "failed:"; then
       echo "Rust daemon recorded propagated resource failure despite Python evidence" >&2
       exit 1
-    fi
-    if [[ "${PERFORMANCE_MODE}" != "1" ]]; then
-      assert_contains "${RUST_LXMD_LOG}" "resource_hash=|sending: propagated resource|sent: propagated resource" "Rust propagated resource trace"
     fi
   fi
 

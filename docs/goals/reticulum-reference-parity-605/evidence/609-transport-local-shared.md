@@ -491,7 +491,15 @@ restart trace above separately verifies path, link, and raw packet recovery;
 broader packet/proof duplicate handling and LXMF queue retry across daemon
 replacement remain open.
 
-## Multi-hop link-request-proof duplicate suppression
+## Historical multi-hop link-request-proof suppression (superseded)
+
+The suppression oracle below was superseded on 2026-10-23 by reconciliation
+with the frozen Python source and the approved transit contract. The current
+`python_to_python_transit_link_request_proof_replays_preserve_single_channel_delivery`
+case requires both validated proof copies to forward and exactly one Channel
+delivery. The full 66-case pinned-baseline channel selection passes with that
+oracle. The earlier command and result are retained below as historical evidence;
+see the [current execution record](../../open-issues-2026-10/PROGRESS.md).
 
 `python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport`
 starts two pinned Python nodes on separate TCP carriers owned by one forwarding
@@ -1175,17 +1183,146 @@ sets, and applies the same scheduler rotation predicate directly so the
 background-only transition is testable without starting the global thread. It
 verifies rotation at three entries, duplicate rejection for the immediately
 previous generation, and admission after that generation is displaced; it does
-not claim to exercise scheduler timing or its production loop. Rust's current
-`PacketCache` has time-based expiry rather than this two-generation size
-rotation; a focused observation confirms it retains six inserted unique
-entries. Therefore the Python reference contract is tested in a deterministic
-fixture, but Rust size/rotation parity remains an open implementation gap. No
-production behavior was changed in this slice.
+not claim to exercise scheduler timing or its production loop. The original slice tested Python's contract only. Native two-generation
+rotation subsequently landed in #674; proof/source TTL remains separate. The
+current differential now exercises native maintenance at exactly 500,000
+entries (no rotation), 500,001 (rotation), and a second 500,001-entry generation
+(oldest displaced), matching Python's duplicate-membership decisions. It keeps
+the native production threshold and does not claim scheduler-timing parity.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_duplicate_filter_context_matrix_matches_rust -- --ignored --nocapture
   PASS (1 test; Python Reticulum 99de23c040d507e3fefca19e87b182302902725d and Rust duplicate filter agree)
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_packet_hash_rotation_and_size_contract -- --ignored --nocapture
-  PASS (1 test; Python size/rotation contract proven; Rust currently retains entries without size rotation)
+  Historical PASS (Python-only fixture; superseded by native comparison below)
 ```
 ```
+
+
+## P0 outbound membership and executable duplicate-filter coverage (2026-11-03)
+
+The standalone outbound paths previously remembered a packet hash before checking
+whether any interface accepted the frame. A zero-interface send or closed carrier
+queue could therefore suppress the first real ingress copy. The ordinary and
+prepared regressions fail before the fix. Ordinary, recursive-path-request and
+prepared dispatch now keep destination-bound proof context before handoff but add
+duplicate membership only after a sent/queued result. An existing membership is
+never removed on failure; attached clients still defer membership to their owner.
+No lock-order change is needed: prepared broadcast keeps its existing
+handler → cache → interface order and nonblocking handoff; other sends release
+the interface lock before acquiring the cache to remember.
+
+At frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`Transport._outbound`'s interface loop remembers only in its `should_transmit`
+branch. The packet-class differential now executes a real Python no-interface
+outbound attempt and observes `(sent, remembered) = (false, false)`, then checks
+the same Rust decision. Carrier-acceptance is native queue handoff, not proof of
+wire delivery. Destination-bound proof context intentionally remains independent.
+
+Verify's interfaces lane explicitly runs the 21-context Cartesian differential
+(18,144 predicates), packet-class matrix, Plain/Group exceptions, ordinary Proof,
+rotation/size differential and native generation/proof-context tests at the frozen
+parity checkout. The rotation test now compares native generation transitions
+at the unmodified 1,000,000-hash budget, rather than only inserting six hashes.
+The standalone daemon restart suite now independently exercises Data, LinkRequest
+and Proof through production HDLC/TCP ingress, graceful process shutdown,
+Python-format hashlist persistence, restart and filter-hit counters.
+
+These checks qualify the named software contracts. The existing three-relay
+replacement fixture and its 24-message matrix are separate recovery evidence;
+this change does not claim the entire #609 routing/shared-instance matrix or
+long-running production stability.
+
+Validation on the behavior candidate:
+
+- Full native transport library: 1,071 passed, 13 explicitly ignored reference
+  tests; final focused cache suite after the retained-membership retry assertion:
+  9 passed.
+- All five named frozen-Python differential commands above passed against
+  `99de23c040d507e3fefca19e87b182302902725d`.
+- `reticulumd --test packet_replay_process_restart`: all three packet classes
+  passed; `--test code_quality_issue_369`: passed.
+- Existing `deep_relay_recovery` matrix: all three fresh topologies and all 24
+  numbered messages passed in 166.58 seconds, with bidirectional DIRECT packet
+  and 131,101-byte Resource delivery before/after fresh middle-relay replacement.
+  Reference pins were RNS `99de23c040d507e3fefca19e87b182302902725d` and
+  LXMF `c3ff2d6dc2f256daab896dadc044dd5a913ecbb7`; frozen daemon SHA-256 was
+  `ea86d055205d8497fda846a79d0d62fe64db5ce66ef51725d076e99e6d812db4`.
+  The daemon was frozen after the behavior changes; later changes were test
+  assertions, formatting and documentation. This is the declared recovery
+  matrix, not unrestricted network/restart qualification.
+- Formatting, boundaries, module-size and `cargo run -p xtask -- architecture-checks`
+  passed. Workspace all-target/all-feature Clippy passed with `-D warnings`.
+  The environment supplied DBus development headers through pkg-config selectors
+  and `LXMF_RS_BASH` preserved the managed Rust PATH for architecture subprocesses;
+  neither required a repository workaround.
+
+### Concurrent standalone process-fixture correction
+
+PR #727's first hosted integration run exposed that the three new replay cases
+shared the implicit local instance when Cargo ran them concurrently. One daemon
+owned duplicate membership while the attached fixtures correctly delegated it;
+two cases therefore timed out waiting for their own filter-hit counters. The
+serialized Verify lane passed and the default parallel local run reproduced the
+1-pass/2-failure result, so the earlier serialized observation was insufficient.
+
+The fixture now sets `share_instance=false` and positively asserts the public
+shared-instance status mode is `disabled` at both process starts. Every case
+therefore owns its own replay cache and persistence file. The original packet
+counts, persistence assertions and deadlines remain intact; no test serialization
+or production behavior changed. Default-parallel local execution and CI's
+explicit four-thread invocation both pass all three cases, and the #369 scanner,
+formatting and focused all-feature Clippy pass.
+
+
+## Disabled shared-daemon ordinary Data and proof return (2026-11-06)
+
+Frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Transport.py:1968,1997,2734` permits ordinary Data and returning proofs
+across a local-client boundary even when network transport is disabled. Both
+Rust production gates originally required transport to be enabled. Independent
+native Data and proof regressions failed before their respective fixes.
+
+The ordinary Single Data helper now permits ingress from an actual local child
+or delivery to an actual local child on a zero-hop route, using existing
+parent-authoritative classification. Ordinary network-to-network transit stays disabled. Existing enabled-mode
+same-interface Data routes remain supported. Accepted Data handoff records the expected
+proof ingress. Reverse proofs resolve by their destination, require that accepted
+route, and consume it once after the mode gate passes. A wrong eligible ingress
+consumes without forwarding, matching Python; an ingress rejected by the mode
+gate leaves the route intact. Source observation alone, failed Data handoff and
+replayed proofs confer no return authority. Receipt signature validation remains
+independent; opaque relay signatures are intentional in these tests.
+
+The native roundtrip fixture covers sixteen source/destination local flags ×
+implicit/explicit × wrong-first-return cells, exact Direct targets, Data contents,
+proof bytes, negative ordinary transit and one-shot return. A failed-handoff case
+proves no reverse route is created. A cache test counts pending route metadata,
+checks immediate removal on proof consumption and expires an unconsumed route
+with its authoritative source context. This introduces no separate lifetime or
+public API. Existing source-only proof-context APIs still support local receipt
+validation without granting reverse routing authority.
+
+The pinned regression executes the exact AST-selected Data gate and reverse-proof
+block, including correct/wrong ingress and gate-before-pop behavior. Verify's
+interfaces lane explicitly names this regression. This is isolated source-block
+evidence, not live Python socket, receipt verification or arbitrary packet-class
+coverage. Broader #609 shared-instance/recovery acceptance remains open.
+
+Final candidate validation:
+
+- Full native transport library: 1,076 passed, 14 explicitly ignored reference
+  tests after the final same-interface compatibility regression.
+- Named frozen-source Data/proof policy regression: passed separately at
+  `99de23c040d507e3fefca19e87b182302902725d`.
+- Required daemon #369 scanner passed from this checkout.
+- Strict package all-target/all-feature Clippy, formatting, boundaries,
+  module-size and diff checks passed. Clippy used the environment's DBus
+  pkg-config selectors.
+
+The existing explicit proof relay fixture had used the recipient's destination
+address while carrying the proved packet's hash. It now constructs the frozen
+wire destination (the truncated proved-packet hash), preserving its exact return
+route assertion. A new negative explicitly confirms that a correct embedded hash
+cannot route a proof bearing a different destination; a subsequent correctly
+addressed proof still returns.

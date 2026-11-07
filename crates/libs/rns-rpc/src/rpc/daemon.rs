@@ -11,6 +11,7 @@ use sdk_helpers::{
     python_reference_meta, software_parity_orientation, SDK_VERSION,
     STORE_FORWARD_MAX_MESSAGES_LIMIT,
 };
+mod cgroup_memory;
 mod dispatch;
 mod dispatch_legacy_clear;
 mod dispatch_legacy_messages;
@@ -22,10 +23,14 @@ mod events_redaction;
 mod events_sink;
 mod init;
 mod metrics;
+mod metrics_providers;
+pub use metrics_providers::MetricsProvider;
+mod readiness;
 mod resources;
 mod sdk_attachments;
 mod sdk_auth_http;
 mod sdk_capabilities;
+mod sdk_capability_list;
 mod sdk_identity;
 mod sdk_markers;
 mod sdk_negotiate_poll;
@@ -37,6 +42,7 @@ mod sdk_paper_command;
 mod sdk_runtime;
 mod sdk_topics;
 mod sdk_voice;
+mod storage_maintenance;
 
 include!("daemon/tests.rs");
 

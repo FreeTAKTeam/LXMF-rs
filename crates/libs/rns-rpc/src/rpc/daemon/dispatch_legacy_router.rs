@@ -87,6 +87,7 @@ impl RpcDaemon {
             | "probe"
             | "announce_now"
             | "announce_delivery"
+            | "set_display_name"
             | "announce_received"
             | "get_blackholed_identities"
             | "blackhole_identity"

@@ -331,6 +331,7 @@ fn active_path_entries_keep_python_random_blob_window() {
 
     let entry = table.get(&destination).expect("path should exist");
     assert_eq!(entry.random_blobs.len(), MAX_RANDOM_BLOBS);
+    assert_eq!(entry.random_blobs.capacity(), MAX_RANDOM_BLOBS, "bounded storage capacity");
     assert_eq!(random_blob_timebase(entry.random_blobs.first().expect("oldest")), 7);
     assert_eq!(random_blob_timebase(entry.random_blobs.last().expect("newest")), 70);
 

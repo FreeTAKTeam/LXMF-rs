@@ -1,0 +1,83 @@
+impl TransportHandler {
+    /// Remember only a carrier-accepted outbound packet. A failed attempt must
+    /// not suppress the first real ingress copy. Proof context is tracked before
+    /// handoff independently, and shared clients leave membership to their owner.
+    pub(super) fn remember_dispatched_outbound_packet(
+        &self,
+        cache: &mut PacketCache,
+        packet: &Packet,
+        dispatch: &TxDispatchTrace,
+    ) {
+        if !self.config.connected_to_shared_instance
+            && (dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0)
+        {
+            cache.remember_hash(packet.hash());
+        }
+    }
+
+    pub(super) async fn send(&self, message: TxMessage) -> TxDispatchTrace {
+        self.send_observed(message, |_| {}).await
+    }
+
+    pub(super) async fn send_observed(
+        &self,
+        message: TxMessage,
+        handoff: impl FnOnce(&TxDispatchTrace),
+    ) -> TxDispatchTrace {
+        let packet = message.packet.clone();
+        self.packet_cache.lock().await.track_packet(&packet);
+        let dispatch = self.dispatch_observed(message, handoff).await;
+        self.remember_dispatched_outbound_packet(
+            &mut *self.packet_cache.lock().await,
+            &packet,
+            &dispatch,
+        );
+        dispatch
+    }
+
+    /// The validated relay path mirrors Python's raw LRPROOF transmit: retain
+    /// packet context without originating-outbound duplicate remembering.
+    pub(super) async fn send_transit_link_request_proof(
+        &self,
+        message: TxMessage,
+    ) -> TxDispatchTrace {
+        self.packet_cache.lock().await.track_packet(&message.packet);
+        self.dispatch_observed(message, |_| {}).await
+    }
+
+    async fn dispatch_observed(
+        &self,
+        message: TxMessage,
+        handoff: impl FnOnce(&TxDispatchTrace),
+    ) -> TxDispatchTrace {
+        let packet = message.packet.clone();
+        let announce_policy = if packet.header.packet_type == PacketType::Announce
+            && matches!(message.tx_type, TxMessageType::Broadcast(_))
+        {
+            let next_hop_iface = self.path_table.next_hop_iface(&packet.destination);
+            let mut mgr = self.iface_manager.lock().await;
+            let local_destination = self.single_in_destinations.contains_key(&packet.destination);
+            let policy =
+                AnnounceBroadcastPolicy::for_next_hop(&mgr, next_hop_iface, local_destination);
+            let dispatch = mgr.send_with_announce_policy(message, Some(policy)).await;
+            handoff(&dispatch);
+            if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
+                self.note_link_packet_sent(&packet).await;
+            }
+            return dispatch;
+        } else {
+            None
+        };
+        let dispatch = self
+            .iface_manager
+            .lock()
+            .await
+            .send_with_announce_policy(message, announce_policy)
+            .await;
+        handoff(&dispatch);
+        if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
+            self.note_link_packet_sent(&packet).await;
+        }
+        dispatch
+    }
+}

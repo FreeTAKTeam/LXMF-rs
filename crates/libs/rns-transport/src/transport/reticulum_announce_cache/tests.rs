@@ -34,7 +34,7 @@ async fn profile_repeated_announce_cache_writes() {
         let packet = packet(index);
         let hash = packet.hash();
         let (fingerprint, _) = cache
-            .write_with_fingerprint(hash, iface, packet, None, true)
+            .write_with_fingerprint(hash, iface, &packet, None, true)
             .await
             .expect("initial cache");
         fingerprints.insert(hash, fingerprint);
@@ -46,7 +46,7 @@ async fn profile_repeated_announce_cache_writes() {
         let hash = packet.hash();
         let previous = fingerprints.get(&hash).copied();
         cache
-            .write_with_fingerprint(hash, iface, packet, previous, false)
+            .write_with_fingerprint(hash, iface, &packet, previous, false)
             .await
             .expect("unchanged cache");
     }
@@ -88,7 +88,7 @@ async fn unchanged_cached_announce_preserves_file_and_changed_interface_is_persi
     cache.write(hash, next_iface, packet.clone()).await.expect("changed interface");
     assert_eq!(
         std::fs::read(&path).expect("changed bytes"),
-        encode_cached_announce(next_iface, packet).expect("encoding")
+        encode_cached_announce(next_iface, &packet).expect("encoding")
     );
     assert_ne!(std::fs::metadata(&path).expect("metadata").modified().expect("modified"), modified);
 }
@@ -106,7 +106,7 @@ async fn cached_announce_replaces_corrupt_content_and_propagates_file_errors() {
     cache.write(hash, iface, packet.clone()).await.expect("repair");
     assert_eq!(
         std::fs::read(&path).expect("repaired bytes"),
-        encode_cached_announce(iface, packet.clone()).expect("encoding")
+        encode_cached_announce(iface, &packet).expect("encoding")
     );
     std::fs::remove_file(&path).expect("remove fixture");
     std::fs::create_dir(&path).expect("invalid file fixture");
@@ -127,7 +127,7 @@ async fn cached_announce_persists_mutable_headers_even_when_hash_is_unchanged() 
     cache.write(hash, iface, packet.clone()).await.expect("new hops");
     assert_eq!(
         std::fs::read(cache.path(hash)).expect("bytes"),
-        encode_cached_announce(iface, packet.clone()).expect("encoding")
+        encode_cached_announce(iface, &packet).expect("encoding")
     );
 }
 
@@ -140,7 +140,7 @@ async fn unchanged_fingerprint_skips_io_and_full_verification_repairs_missing_ca
     let hash = packet.hash();
     let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"fingerprint-interface"));
     let (fingerprint, first) = cache
-        .write_with_fingerprint(hash, iface, packet.clone(), None, true)
+        .write_with_fingerprint(hash, iface, &packet, None, true)
         .await
         .expect("initial write");
     assert_eq!(first, CacheWriteOutcome::Written);
@@ -148,7 +148,7 @@ async fn unchanged_fingerprint_skips_io_and_full_verification_repairs_missing_ca
     let path = cache.path(hash);
     std::fs::remove_file(&path).expect("remove cache file");
     let (same_fingerprint, skipped) = cache
-        .write_with_fingerprint(hash, iface, packet.clone(), Some(fingerprint), false)
+        .write_with_fingerprint(hash, iface, &packet, Some(fingerprint), false)
         .await
         .expect("skip known bytes");
     assert_eq!(same_fingerprint, fingerprint);
@@ -156,25 +156,25 @@ async fn unchanged_fingerprint_skips_io_and_full_verification_repairs_missing_ca
     assert!(!path.exists(), "the unchanged fast path does not inspect or recreate files");
 
     let (repaired_fingerprint, repaired) = cache
-        .write_with_fingerprint(hash, iface, packet.clone(), Some(fingerprint), true)
+        .write_with_fingerprint(hash, iface, &packet, Some(fingerprint), true)
         .await
         .expect("full verification repair");
     assert_eq!(repaired_fingerprint, fingerprint);
     assert_eq!(repaired, CacheWriteOutcome::Written);
     assert_eq!(
         std::fs::read(&path).expect("repaired file"),
-        encode_cached_announce(iface, packet.clone()).expect("encoding")
+        encode_cached_announce(iface, &packet).expect("encoding")
     );
 
     std::fs::write(&path, b"corrupt").expect("corrupt cache file");
     let (_, repaired) = cache
-        .write_with_fingerprint(hash, iface, packet.clone(), Some(fingerprint), true)
+        .write_with_fingerprint(hash, iface, &packet, Some(fingerprint), true)
         .await
         .expect("corrupt-file repair");
     assert_eq!(repaired, CacheWriteOutcome::Written);
     assert_eq!(
         std::fs::read(path).expect("repaired corrupt file"),
-        encode_cached_announce(iface, packet).expect("encoding")
+        encode_cached_announce(iface, &packet).expect("encoding")
     );
 }
 
@@ -187,13 +187,13 @@ async fn changed_interface_or_header_invalidates_cached_fingerprint() {
     let hash = packet.hash();
     let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"initial-interface"));
     let (fingerprint, _) = cache
-        .write_with_fingerprint(hash, iface, packet.clone(), None, true)
+        .write_with_fingerprint(hash, iface, &packet, None, true)
         .await
         .expect("initial write");
 
     let changed_iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"changed-interface"));
     let (fingerprint, outcome) = cache
-        .write_with_fingerprint(hash, changed_iface, packet.clone(), Some(fingerprint), false)
+        .write_with_fingerprint(hash, changed_iface, &packet, Some(fingerprint), false)
         .await
         .expect("interface update");
     assert_eq!(outcome, CacheWriteOutcome::Written);
@@ -201,14 +201,14 @@ async fn changed_interface_or_header_invalidates_cached_fingerprint() {
     packet.header.hops += 1;
     assert_eq!(packet.hash(), hash, "mutable hops are not part of the packet hash");
     let (next_fingerprint, outcome) = cache
-        .write_with_fingerprint(hash, changed_iface, packet.clone(), Some(fingerprint), false)
+        .write_with_fingerprint(hash, changed_iface, &packet, Some(fingerprint), false)
         .await
         .expect("header update");
     assert_ne!(next_fingerprint, fingerprint);
     assert_eq!(outcome, CacheWriteOutcome::Written);
     assert_eq!(
         std::fs::read(cache.path(hash)).expect("updated file"),
-        encode_cached_announce(changed_iface, packet).expect("encoding")
+        encode_cached_announce(changed_iface, &packet).expect("encoding")
     );
 }
 
@@ -221,5 +221,5 @@ async fn failed_cache_write_returns_no_fingerprint_to_mark_clean() {
     let hash = packet.hash();
     let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"failed-interface"));
     std::fs::create_dir(cache.path(hash)).expect("directory at cache file path");
-    assert!(cache.write_with_fingerprint(hash, iface, packet, None, true).await.is_err());
+    assert!(cache.write_with_fingerprint(hash, iface, &packet, None, true).await.is_err());
 }

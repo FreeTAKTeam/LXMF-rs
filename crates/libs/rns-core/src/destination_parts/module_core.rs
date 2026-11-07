@@ -1,5 +1,7 @@
+#[cfg(feature = "std")]
+pub use primitives::group_encrypt;
 pub use primitives::{
-    group_decrypt, group_encrypt, Direction, Group, Input, Output, Plain, Single, Type,
+    group_decrypt, group_encrypt_with_rng, Direction, Group, Input, Output, Plain, Single, Type,
 };
 
 pub use ratchet::RATCHET_LENGTH;
@@ -345,7 +347,7 @@ impl Destination<PrivateIdentity, Input, Single> {
         let mut rng_mut = rng;
         rng_mut.fill_bytes(&mut random_part);
         rand_hash[..RAND_HASH_LENGTH / 2].copy_from_slice(&random_part);
-        let emitted_secs = now.floor() as u64;
+        let emitted_secs = now as u64;
         let emitted_be = emitted_secs.to_be_bytes();
         rand_hash[RAND_HASH_LENGTH / 2..].copy_from_slice(&emitted_be[3..8]);
 
@@ -353,7 +355,7 @@ impl Destination<PrivateIdentity, Input, Single> {
         let verifying_key = self.identity.as_identity().verifying_key_bytes();
 
         let ratchet = if self.ratchet_state.enabled {
-            self.ratchet_state.rotate_if_needed(&self.identity, now)?;
+            self.ratchet_state.rotate_if_needed(&self.identity, rng, now)?;
             self.ratchet_state.current_ratchet_public()
         } else {
             None

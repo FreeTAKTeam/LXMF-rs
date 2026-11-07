@@ -66,7 +66,7 @@ pub(super) async fn run_rpc_loop(
 ) {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     tokio::spawn(async move {
-        match tokio::signal::ctrl_c().await {
+        match crate::systemd_notify::shutdown_signal().await {
             Ok(()) => {
                 log::info!("[daemon] shutdown signal received");
                 shutdown_tx.send_replace(true);
@@ -86,20 +86,24 @@ pub(super) async fn run_rpc_loop_until(
     unix_socket: Option<PathBuf>,
     shutdown: ShutdownReceiver,
 ) {
+    let expected_rpc = usize::from(addr.is_some()) + usize::from(cfg!(unix) && unix_socket.is_some());
+    let (bound_tx, bound_rx) = watch::channel(0);
+    let _readiness = crate::systemd_notify::spawn_readiness(daemon.clone(), expected_rpc, bound_rx, shutdown.clone());
     match (addr, tls, unix_socket) {
         (Some(addr), tls, unix_socket) => {
             let unix_handle = if let Some(path) = unix_socket {
                 let daemon_for_unix = daemon.clone();
                 let shutdown_for_unix = shutdown.clone();
+                let bound_for_unix = bound_tx.clone();
                 Some(tokio::spawn(async move {
-                    run_unix_rpc_loop(path, daemon_for_unix, shutdown_for_unix).await;
+                    run_unix_rpc_loop(path, daemon_for_unix, shutdown_for_unix, bound_for_unix).await;
                 }))
             } else {
                 None
             };
             match tls {
-                Some(config) => run_tls_rpc_loop(addr, daemon, config, shutdown).await,
-                None => run_plain_rpc_loop(addr, daemon, shutdown).await,
+                Some(config) => run_tls_rpc_loop(addr, daemon, config, shutdown, bound_tx).await,
+                None => run_plain_rpc_loop(addr, daemon, shutdown, bound_tx).await,
             }
             if let Some(handle) = unix_handle {
                 if let Err(err) = handle.await {
@@ -107,7 +111,7 @@ pub(super) async fn run_rpc_loop_until(
                 }
             }
         }
-        (None, None, Some(path)) => run_unix_rpc_loop(path, daemon, shutdown).await,
+        (None, None, Some(path)) => run_unix_rpc_loop(path, daemon, shutdown, bound_tx).await,
         (None, Some(_), Some(_)) => {
             panic!("--rpc is required when TLS RPC options are configured");
         }
@@ -118,8 +122,9 @@ pub(super) async fn run_rpc_loop_until(
 }
 
 #[cfg(unix)]
-async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: ShutdownReceiver) {
+async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: ShutdownReceiver, bound: watch::Sender<usize>) {
     let listener = bind_private_rpc_unix_listener(&path).expect("bind private rpc unix socket");
+    let _bound = crate::systemd_notify::RpcListenerBound::new(bound);
     log::info!("reticulumd listening on unix:{}", path.display());
     let peer_addr = SocketAddr::from(([127, 0, 0, 1], 0));
 
@@ -144,7 +149,7 @@ async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: 
 }
 
 #[cfg(not(unix))]
-async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>, _shutdown: ShutdownReceiver) {
+async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>, _shutdown: ShutdownReceiver, _bound: watch::Sender<usize>) {
     log::warn!(
         "[daemon] ignoring --rpc-unix {} because Unix sockets are not supported on this platform",
         path.display()

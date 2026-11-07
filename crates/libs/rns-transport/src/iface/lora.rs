@@ -6,4 +6,8 @@ include!("lora_parts/stored_config.rs");
 
 include!("lora_parts/lorainterface.rs");
 
+include!("lora_parts/supervision.rs");
+
+include!("lora_parts/management.rs");
+
 include!("lora_parts/module_extra.rs");

@@ -8,8 +8,8 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 401804,
-      "sha256": "8a4abd201c09675075e124c6e982ccdeb3040310ddf552ec107ce35fb147509b"
+      "bytes": 401888,
+      "sha256": "39546542adb7eb7a9e69c3c93591c741db0bd030ec2622dcae3e0aea4a613823"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
@@ -28,8 +28,8 @@
     },
     {
       "path": "docs/contracts/compatibility-contract.md",
-      "bytes": 4364,
-      "sha256": "3c3627c05be5699d44e1267ee597c8125e6b85d90417fb82f70f1cfe169ef72b"
+      "bytes": 4664,
+      "sha256": "8a05aa70f109cf90722a3b21a5654ba41bc484b8159409d694b24ea43fd307e2"
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
@@ -228,8 +228,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-feature-matrix.md",
-      "bytes": 11359,
-      "sha256": "2a2f89cfebe2624764d696744a4b405c08374187e22d42982cae35c61493e39c"
+      "bytes": 13263,
+      "sha256": "ad1336f6395cc77e511361ce836a65a0cede7a635fc18ba14f8d3ec75a74777f"
     },
     {
       "path": "docs/contracts/sdk-v2-identity.md",
@@ -273,8 +273,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2.md",
-      "bytes": 14585,
-      "sha256": "3a88979acd5856ebae34dc80abed265b3b769c01f287ab281334f83b184a470f"
+      "bytes": 14578,
+      "sha256": "4e22a8ca7da6d23da3e2c08033daa807d83c3548cb1407c047235df519357793"
     },
     {
       "path": "docs/contracts/support-policy.md",

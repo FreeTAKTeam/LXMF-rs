@@ -26,6 +26,10 @@ async fn record_propagation_payload_metadata_persists_packed_bytes() {
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
     let destination = [0u8; 16];
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
+        path_requests: Default::default(),
+        deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
         transport,
         peer_crypto: Arc::new(Mutex::new(HashMap::new())),
@@ -187,7 +191,7 @@ async fn propagation_target_cost_matches_selected_node_case_insensitively() {
         AddressHash::new(parse_destination_hash_required(peer).expect("peer hash"));
     let (cost, source) = task
         .propagation_target_cost_reference_style(&peer.to_ascii_uppercase(), propagation_hash)
-        .await;
+        .await.expect("cost lookup");
 
     assert_eq!(cost, Some(23));
     assert_eq!(source, "cached_announce");
@@ -274,6 +278,10 @@ async fn self_selected_propagation_node_stores_locally_without_link_activation()
     destination.copy_from_slice(remote_identity.address_hash.as_slice());
     let (receipt_tx, mut receipt_rx) = tokio::sync::mpsc::channel(16);
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
+        path_requests: Default::default(),
+        deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
         transport,
         peer_crypto: Arc::new(Mutex::new(HashMap::new())),
@@ -302,13 +310,16 @@ async fn self_selected_propagation_node_stores_locally_without_link_activation()
         propagation_node_hex: Some(local_propagation_hash.clone()),
     };
 
-    let task_handle = tokio::spawn(task.run());
+    let prepared = PreparedDeliveryPayload { lxmf_payload: task.build_payload().await.expect("payload"), propagation: None };
+    task.receipt_tx.reserve_completion(message_id, true).expect("paired custody capacity");
+    let (stop, owner) = start_prepared(task, prepared);
     let receipt = tokio::time::timeout(Duration::from_secs(1), receipt_rx.recv())
-        .await
-        .expect("receipt")
-        .expect("receipt event");
+        .await.expect("local custody publication").expect("custody receipt");
     assert_eq!(receipt.status, "sent: propagated resource");
-    task_handle.await.expect("delivery task join");
+    assert_eq!(receipt.custody(), Some(rns_rpc::broker::PropagationCustody::Resource));
+    assert!(!owner.is_finished(), "production owner waits for custody commitment");
+    stop.send_replace(true);
+    owner.await.expect("owner shutdown");
     while let Ok(Some(packet)) =
         tokio::time::timeout(Duration::from_millis(150), channel.tx_channel.recv()).await
     {

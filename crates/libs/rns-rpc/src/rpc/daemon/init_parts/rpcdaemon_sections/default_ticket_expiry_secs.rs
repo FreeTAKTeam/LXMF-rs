@@ -72,13 +72,12 @@ impl RpcDaemon {
         peer: &str,
     ) -> Result<(), std::io::Error> {
         self.ensure_peer_queue_import(peer)?;
-        let per_peer_limit = self
-            .propagation_state
-            .lock()
-            .expect("propagation mutex poisoned")
-            .peer_entry_limit_per_peer;
+        let (per_peer_limit, total_limit) = {
+            let state = self.propagation_state.lock().expect("propagation mutex poisoned");
+            (state.peer_entry_limit_per_peer, state.peer_entry_limit)
+        };
         self.store
-            .mark_recent_propagation_unhandled_for_peer(peer, per_peer_limit)
+            .mark_recent_propagation_unhandled_for_peer(peer, per_peer_limit, total_limit)
             .map_err(std::io::Error::other)?;
         Ok(())
     }
@@ -177,6 +176,8 @@ impl RpcDaemon {
             },
         );
         let daemon = Self {
+            zmq_expected_listeners: std::sync::atomic::AtomicUsize::new(0),
+            zmq_bound_listeners: std::sync::atomic::AtomicUsize::new(0),
             store,
             identity_hash,
             delivery_destination_hash: Mutex::new(None),
@@ -254,6 +255,7 @@ impl RpcDaemon {
             remote_control_bridge: Mutex::new(None),
             rnode_management_bridge: Mutex::new(None),
             weave_display_control_bridge: Mutex::new(None),
+            metrics_providers: Mutex::new(Vec::new()),
             started_at: std::time::Instant::now(),
         };
         if let Err(error) = daemon.restore_sdk_domain_snapshot() {

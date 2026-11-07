@@ -37,6 +37,10 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = 1
 EXPECTED_RETICULUM_REVISION = "99de23c040d507e3fefca19e87b182302902725d"
 EXPECTED_LXMF_REVISION = "727830cefda83d9c6e3982b48675425f3f988f9c"
+LXMF_REFERENCE_PROFILES = {
+    "baseline": EXPECTED_LXMF_REVISION,
+    "lxmf-1.2.0": "c3ff2d6dc2f256daab896dadc044dd5a913ecbb7",
+}
 
 # Keep this list explicit.  It is the acceptance contract, while the imported
 # sets are the implementation dispatch table that must continue to satisfy it.
@@ -225,7 +229,7 @@ def validate_cargo_evidence(output: str) -> tuple[str, str, list[dict[str, int |
 
 def validate_live_evidence(report_path: Path) -> tuple[str, str, dict[str, Any] | None]:
     if not report_path.is_file():
-        return "fail", "live case exited successfully without report.json", None
+        return "fail", "live case did not produce report.json", None
     try:
         payload = json.loads(report_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -249,8 +253,10 @@ def preflight(
     harness: Path,
     reticulum_path: Path,
     lxmf_path: Path,
+    reference_profile: str = "baseline",
 ) -> tuple[list[str], dict[str, Any]]:
     errors: list[str] = []
+    expected_lxmf_revision = LXMF_REFERENCE_PROFILES[reference_profile]
     candidate = git_metadata(ROOT)
     reticulum = git_metadata(reticulum_path)
     lxmf = git_metadata(lxmf_path)
@@ -272,10 +278,10 @@ def preflight(
         errors.append("Python Reticulum checkout is dirty")
     if not lxmf_path.is_dir() or not lxmf["revision"]:
         errors.append(f"Python LXMF checkout is unavailable: {lxmf_path}")
-    elif lxmf["revision"] != EXPECTED_LXMF_REVISION:
+    elif lxmf["revision"] != expected_lxmf_revision:
         errors.append(
             "Python LXMF checkout does not match the pinned compatibility reference: "
-            f"{lxmf['revision']} != {EXPECTED_LXMF_REVISION}"
+            f"{lxmf['revision']} != {expected_lxmf_revision} ({reference_profile})"
         )
     if not lxmf["clean"]:
         errors.append("Python LXMF checkout is dirty")
@@ -365,6 +371,7 @@ def run_case(
     reticulum_path: Path,
     lxmf_path: Path,
     timeout: float,
+    reference_profile: str = "baseline",
 ) -> dict[str, Any]:
     case_dir = output_dir / "cases" / case_id
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -388,6 +395,7 @@ def run_case(
             "LOG_DIR": str(case_dir / "smoke-logs"),
             "REPORT_PATH": str(report_path),
             "LXMF_PY_COMPAT_CASE_TIMEOUT_SECS": str(timeout),
+            "LXMF_COMPAT_REFERENCE_PROFILE": reference_profile,
         }
     )
     command = [python_executable, str(harness), case_id]
@@ -417,6 +425,12 @@ def run_case(
                 "LOG_DIR",
                 "REPORT_PATH",
                 "LXMF_PY_COMPAT_CASE_TIMEOUT_SECS",
+                "LXMF_COMPAT_REFERENCE_PROFILE",
+                "RUST_RPC_ADDR",
+                "RUST_TRANSPORT_ADDR",
+                "PY_SHARED_INSTANCE_PORT",
+                "PY_INSTANCE_CONTROL_PORT",
+                "PY_ENDPOINT_CONTROL_PORT",
             }
         },
         "stdout": repo_path(stdout_path),
@@ -480,6 +494,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--harness", type=Path)
     parser.add_argument("--python-rns-path", type=str)
     parser.add_argument("--python-lxmf-path", type=str)
+    parser.add_argument(
+        "--reference-profile", choices=tuple(LXMF_REFERENCE_PROFILES), default="baseline",
+        help="select an immutable LXMF acceptance pin; the RNS parity pin is unchanged",
+    )
     args = parser.parse_args(argv)
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
@@ -515,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
         args.harness,
         args.reticulum_path,
         args.lxmf_path,
+        args.reference_profile,
     )
     preflight_errors = dispatch + preflight_errors
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -533,6 +552,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.reticulum_path,
                     args.lxmf_path,
                     args.timeout,
+                    args.reference_profile,
                 )
             )
             print(
@@ -548,8 +568,9 @@ def main(argv: list[str] | None = None) -> int:
         "finished_at": utc_now(),
         "candidate": environment,
         "reference": {
+            "profile": args.reference_profile,
             "reticulum_expected_revision": EXPECTED_RETICULUM_REVISION,
-            "lxmf_expected_revision": EXPECTED_LXMF_REVISION,
+            "lxmf_expected_revision": LXMF_REFERENCE_PROFILES[args.reference_profile],
             "reticulum_path": repo_path(args.reticulum_path),
             "lxmf_path": repo_path(args.lxmf_path),
         },
@@ -567,7 +588,12 @@ def main(argv: list[str] | None = None) -> int:
         "commands": {
             "runner": command_text([args.python_executable, str(args.harness), "<case_id>"]),
             "full_invocation": command_text(
-                [args.python_executable, str(Path(__file__).resolve()), "--all", "--output", str(args.output)]
+                [args.python_executable, str(Path(__file__).resolve()), "--all",
+                 "--reference-profile", args.reference_profile,
+                 "--python", args.python_executable,
+                 "--python-rns-path", str(args.reticulum_path),
+                 "--python-lxmf-path", str(args.lxmf_path),
+                 "--output", str(args.output)]
             ),
         },
     }

@@ -1,0 +1,1 @@
+-keep class org.reticulum.bluetooth.** { public *; }

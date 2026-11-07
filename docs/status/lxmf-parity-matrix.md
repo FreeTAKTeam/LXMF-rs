@@ -39,10 +39,126 @@ extends resource evidence for issues 657/655 without promoting production
 memory/swap acceptance. See
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 
+The 2026-10-28 #663 maintenance attribution increment adds separate expiry,
+quota and payload durations, successful deletion counts, failure totals and
+process-wide physical-read deltas to `storage.maintenance` on `/metrics`.
+Unavailable read counters are null. These counters instrument existing operations;
+the measured payload phase (8.08 s / 379 MiB physical reads) now uses 4,096-row
+oldest candidate windows with weight/priority ordering inside each window and
+writer release between pages. Quota remains atomic after a 1.74 ms / zero-read
+measurement. Cross-window ordering follows age; see the retention migration note. Production acceptance remains open.
+
+The 2026-10-29 #663 increment makes peer-entry expiry index-driven: a
+`(state, updated_at)` index serves TTL candidates in keyset pages, the per-row
+orphan join is removed so marks of deleted entries live until their TTL or the
+quota (which also keeps completed marks across a haves purge, as documented
+below), and quota counts once per pass. Phase metrics add per-thread logical
+read bytes. See `docs/migrations/propagation-peer-entry-expiry-index-663.md`.
+A later increment serves the per-peer quota from a partial
+`(peer, updated_at DESC, transient_id DESC)` unhandled index. A read-only gate
+skips the writer when no quota is exceeded, and the original ranking runs only
+for over-quota peers, with the same limits and ordering
+(`docs/migrations/propagation-peer-entry-quota-index.md`).
+Global quota selection also uses partial `(updated_at, transient_id, peer)`
+indexes for unhandled and completed marks, avoiding retained-history sorts for a
+small excess while preserving deletion order and transactional recovery. The
+[migration note](../migrations/propagation-global-quota-order-indexes.md) records
+startup/index costs; production #663 acceptance remains open.
+Refill now respects the global peer-entry limit. A trigger-maintained count is
+checked inside the insert transaction, and at the limit the pass is deferred
+rather than skipped. Quota and refill therefore no longer delete and recreate
+the same pair every pass (`docs/migrations/propagation-refill-global-budget.md`).
+
+The subsequent #663 diagnostics increment exports ZeroMQ stage outcomes and
+latency buckets through `/metrics`, with a bounded recent incident ring and
+stable SDK exchange error categories. Existing durability and acknowledgement
+semantics remain unchanged. The combined cache-retention and persistence-memory
+work still requires multi-hour delivery/recovery and memory/swap acceptance.
+Periodic retention now uses a covering metadata index and bounded peer-history
+writer transactions, preserving TTLs, priority ordering and configured limits.
+
 The historical v0.9.8 record retains its release boundary. Current `main` and
 the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for their
 named software scenarios, with hardware, public-network, and third-party-client
 evidence tracked independently.
+
+## LXMF 1.2.0 software qualification (issue 648)
+
+The module rows below retain the existing baseline. Additional target
+`c3ff2d6dc2f256daab896dadc044dd5a913ecbb7` work covers the serialized Opportunistic
+limit, truthful implementation/version metadata, notification callback isolation
+and peer stamp minimum. Eighteen size fixtures include title/fields/stamps;
+metadata fixtures cover old/new/unknown/malformed values. The
+[accumulated delta ledger](lxmf-1.2.0-delta.md) records covered behavior, confirmed
+gaps and changes inapplicable to SINGLE/Direct metadata.
+
+Shared timing policy covers normal/slow measurements, strict due decisions,
+debounce and attempt limits. Ten Opportunistic scenarios (66 snapshots) are
+consumed by production policy tests. Native tests cover discovery/exhaustion,
+targeted signed-announce wakeups, coalescing, fresh waits after blocked handoff,
+rediscovery, earlier-attempt proofs, unavailable status reads and cancellation.
+Signed bytes and committed propagation envelopes remain unchanged across retry.
+
+The production scheduler now runs one retained Link/Resource owner. Pending
+activation retains count/bytes/membership beyond the displaced 20-second cutoff
+without execution/stamp permits. Atomic native acquisition and cache selection
+preserve live Links and Resources. Native packet observations bind the original
+hash/Link/key; logical Resource results survive broadcast lag. Exact-Arc cleanup
+preserves replacement Links and observes local cleanup before optional frame I/O.
+Public restart is not leased.
+
+Only that owner retires native Resource correlation. The old sender, detached
+monitors, generic discovery loop and outbound broadcast receipt publisher are
+removed. SINGLE overflow returns to the same owner. Typed local/remote packet or
+Resource custody commits status/journal/dispatch atomically through the sole
+receipt worker, preserving later recipient-terminal capacity. Admission remains
+owned until commitment or coordinated shutdown; waits release execution permits.
+
+Five real Rust peer cases cover Direct packet/Resource, oversized Opportunistic
+Resource and propagated packet/Resource. Each verifies exact committed bytes,
+native proof, blocked SQLite receipt writes and one durable completion. Other
+regressions cover another blocked handler during shutdown, retained unresolved
+correlation and three interrupted stamp workers without spending build retries.
+The all-feature transport suite passes 968 tests with 9 existing ignores; the
+all-feature daemon binary suite passes 574 tests; 31 daemon library and two
+native packet-bridge integration tests also pass.
+
+The 47 controlled Python Link/Resource scenarios (263 snapshots) include shared
+Links, method-specific outcomes, closure budgets and creator-bound signals. The
+Rust row adapter passes all snapshots through the production admitted owner with
+controlled measurement/turn inputs, native proofs and durable completion. Reference missing-receipt/external-close SENDING
+stalls are characterized behavior, not successful recovery. Late-proof retention,
+monotonic committed terminals and the signal decoder depth budget are explicit
+Rust differences. A canonical public SDK/ZeroMQ client now survives two real
+missing-peer send failures and external notification error/panic, then delivers
+signed native content with coherent status, replay and one persisted terminal
+outcome per operation.
+
+Clean candidate `5a0a30f55eac94f6bf5dcb7963f5be28771a8abd` passes all 30 required
+compatibility cases separately at baseline `727830ce` and target `c3ff2d6d`, both
+with RNS `99de23c0`: 23 live cases and seven local transport-policy cases each,
+zero failures, skips or ignores. The six delivery directions, bidirectional
+propagation controls, offers, Link lifecycle, 16 KB Resource, interchange and path
+policy cases pass. Target Python metadata is ingested as `lxmd`/`1.2.0`; the old
+pin's missing metadata stays absent. Both Python peers decode Rust's truthful
+`reticulumd`/`0.14.0` announce. Native completion evidence binds message, method,
+peer, representation and proof hash; final-recipient stored content is checked
+separately from propagation custody. Resource acceptance is configured to 1 MB
+at both pins, not an equivalence claim for the target's changed 1 KB default.
+
+The four approved item-3 slices merged in
+[PR #673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673), merge `9c277477`,
+after independent final review/verifier approval. Final head `609edf12` has
+20 successful hosted checks and one deliberate publication skip. Hosted baseline
+compatibility passes 30/30; PR HIL passes 23/23 on first attempts. The independent
+peer gate passes its unchanged divergence policy, with 79 passes, three known
+peer failures and two dependency-blocked cases. The accumulated file-export,
+source-blackhole, persistence and autonomous-peer boundaries remain in the delta
+ledger. Release-check reaches the existing published ZeroMQ/UUID conflict after
+passing its software test stages; later release stages remain unperformed.
+No parity row or reference baseline is promoted. See
+[LINK-OWNER.md](../goals/open-issues-2026-10/LINK-OWNER.md) and
+[PROGRESS.md](../goals/open-issues-2026-10/PROGRESS.md).
 
 ## MeshChat proof-of-concept evidence (outside module counts)
 
@@ -63,7 +179,7 @@ unchanged. See the [MeshChat API runbook](../runbooks/meshchat-api.md) and
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | complete | unit, pinned-python | Pinned module constants, payload fields, message identity, inbound decoding, wire helpers, delivery app-data helpers, compression support detection, and propagation-node announce helper validation. | No confirmed `LXMF.py` blocker in the pinned Python reference. |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | complete | unit, pinned-python | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, timestamp precision metadata, and the `pack`/`get_stamp`/`include_ticket` members that stamp a message and carry its ticket. | No confirmed base-message blocker. |
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | complete | unit, pinned-python | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
-| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd`, `crates/apps/lxmf-cli`, `crates/libs/lxmf-sdk`, `crates/libs/lxmf-runtime` | complete | unit, simulated, pinned-python | Outbound modes and progress/cancellation, selected propagation nodes, direct/propagated resources, accepted-result Resource timeout/failure propagation with transport cancellation before retry, cleanup-failure visibility, fetch/download/sync RPCs, receipts, persistence and maintenance, propagation-node side effects, retry/failure handling, delivery policy, ticket and stamp lifecycle, peer distribution, announce metadata, delivery-link/resource callbacks, transient caches, typed router statistics, and typed message/information storage policy. `SdkBackend`, RPC, ZeroMQ, and in-process backends share the additive router-management contract. | No generated public-callable software gap remains in `LXMRouter.py`; physical/public-network and third-party-client evidence remain separate. The in-process propagated-delivery path (`lxmf-runtime` `send_propagated`) generates a real propagation stamp at the Python default target cost 16, which satisfies default-configured relays (minimum accepted 13); the daemon bridge mines at the same target when a relay's announced cost is unknown, rather than at that 13 minimum, so a relay run with no flexibility now accepts every stamp it produces rather than the roughly one in eight that cleared 16 by chance. Neither path yet honors a relay's announced stamp cost, so relays enforcing a minimum above 16 still reject these transfers until the announced `pn_stamp_cost` is plumbed into stamp generation. |
+| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd`, `crates/apps/lxmf-cli`, `crates/libs/lxmf-sdk`, `crates/libs/lxmf-runtime` | partial | unit, simulated, pinned-python | Outbound modes and progress/cancellation, selected propagation nodes, direct/propagated resources, accepted-result Resource timeout/failure propagation with transport cancellation before retry, cleanup-failure visibility, fetch/download/sync RPCs, receipts, persistence and maintenance, propagation-node side effects, retry/failure handling, delivery policy, ticket and stamp lifecycle, peer distribution, announce metadata, delivery-link/resource callbacks, transient caches, typed router statistics, and typed message/information storage policy. `SdkBackend`, RPC, ZeroMQ, and in-process backends share the additive router-management contract. | #663 deliberately bounds payload retention to 4,096 oldest candidates: weight/priority ordering is exact inside each window, while cross-window selection follows age. Global Python weight ordering is therefore an explicit policy difference; see `docs/migrations/propagation-retention-paging-663.md`. No generated public-callable surface gap remains in `LXMRouter.py`; physical/public-network and third-party-client evidence remain separate. The in-process propagated-delivery path (`lxmf-runtime` `send_propagated`) generates a real propagation stamp at the Python default target cost 16, which satisfies default-configured relays (minimum accepted 13); the daemon bridge mines at the same target when a relay's announced cost is unknown, rather than at that 13 minimum, so a relay run with no flexibility now accepts every stamp it produces rather than the roughly one in eight that cleared 16 by chance. Neither path yet honors a relay's announced stamp cost, so relays enforcing a minimum above 16 still reject these transfers until the announced `pn_stamp_cost` is plumbed into stamp generation. |
 | `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | complete | unit, simulated, pinned-python | Delivery and propagation announce handlers implement stamp-cost updates, pending direct/opportunistic wakeup, path-response handling, static-peer refresh, autopeer depth policy, peer removal, malformed announce visibility, and the router-coupled delivery/receipt/drop side effects exposed through daemon events and the typed SDK. | No confirmed software blocker in the pinned four-item public handler surface. |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | complete | unit, pinned-python | Validation, generation, ticket-derived stamps, cancellation-aware task work, background deferred worker queue ownership, retry state, cancellation, propagation-stamp pre-handoff preparation, progress metadata, and default-cost propagation stamp mining/validation in `lxmf-wire` (`stamp.rs`, ported `LXStamper` workblock HKDF) with fail-fast rejection of unattainable costs at or above 256: `COST_TICKET` is exactly 256, which a validator accepts as a ticket-paid message's worth and a miner cannot reach. Delivery stamps, ticket stamps and peering keys are library surface in `lxmf-wire` alongside the propagation ones, with the `LXMessage` ticket lifetime constants, so a consumer gets the Python behaviour without reimplementing it. | No confirmed deferred-stamp lifecycle blocker. |
 | `LXMF/Utilities/lxmd.py` | `crates/apps/lxmf-cli`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Canonical `lxmd` workflows, configuration, announce cadence, propagation controls, status, and daemon lifecycle map to the shared Rust daemon and CLI surfaces. | No generated public utility callable is unmapped. |
@@ -108,6 +224,28 @@ unchanged. See the [MeshChat API runbook](../runbooks/meshchat-api.md) and
 ## Capability Detail
 
 ### Integrated delivery and router compatibility
+
+- Issue #719 scopes deferred opportunistic receipts to daemon LXMF delivery
+  identities, including imported and restored identities. The transport exposes
+  a separate bounded proof-capable event stream while preserving `ReceivedData`
+  and `ProofStrategy` source compatibility. A proof handle expires after 180
+  seconds and binds the original encrypted packet hash to its ingress interface.
+  Decode, stamp, ignored-source and storage failures remain unproved. Existing
+  signature metadata admission remains unchanged: a receipt confirms accepted
+  storage, not sender-signature attestation. This deliberately waits longer than
+  pinned Python `LXMRouter.delivery_packet`, which proves before parsing.
+  `tests/delivery_proofs.rs` exercises the production worker, blocked SQLite
+  commitment, contention rejection with durable broker enabled, one retained journal delivery event,
+  rejected intake, exact ciphertext retries, new ingress interfaces and reopened
+  storage with a new transport. Identity registration tests cover
+  bootstrap, import, create and restoration. The Python-to-Rust smoke lane now
+  requires native LXMF `DELIVERED` plus a validated PacketReceipt/Resource proof
+  and records message ID, method, proof binding and Python versions. Live pinned
+  RNS 1.5.2 / LXMF 0.9.6 senders reached `DELIVERED` for opportunistic packets,
+  direct packets and a 16 KB direct Resource. Durable
+  broker ACKs and command responses are separate signals. Physical Columba/Pixel
+  and Ratspeak/Windows evidence and the original direct-link symptom remain
+  unverified; direct Link/Resource mechanisms retain their own native receipts.
 
 - Direct delivery can reuse an identified inbound backchannel link for the
   same LXMF delivery destination, while closed or failed cached links are
@@ -274,6 +412,12 @@ unchanged. See the [MeshChat API runbook](../runbooks/meshchat-api.md) and
   delivery/link semaphores are acquired.
 
 ### Peers and propagation
+
+Embedded custody treats application payloads as generic `MessageKind::Application`.
+R3AKT's mission classification is owned by its shared mesh-delivery crate and
+translated by the product adapter. Persisted kind `1`, retention and signed-wire
+recovery remain unchanged; a raw stored-record restart regression covers this
+boundary. This adds no protocol or operational parity claim.
 
 - Peer behavior includes static/discovered admission, peering cost/timebase,
   queue accounting, sync/transfer limits, stamp policy, throttling, candidate
@@ -1143,3 +1287,9 @@ unchanged. See the [MeshChat API runbook](../runbooks/meshchat-api.md) and
   duplicate storage/upsert work.
 - `interop.python_live_gate` means the configured scenarios run successfully;
   it does not imply every partial row is complete.
+
+Preview.26 SDK control follow-up (#663/#657): replay-safe durable broker calls
+recover from typed writer deadlines; admission keeps operation-ID reconciliation.
+Timeout metadata also supports existing category-based clients. Local parked-writer,
+recovery and real ZMQ control stress passed; long-duration custody/delivery and
+production resource acceptance remain open in the regression package.

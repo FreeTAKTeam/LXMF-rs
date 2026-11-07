@@ -1,11 +1,10 @@
 use super::network::{self, Runtime};
 use super::protocol::{self, ResponseStatus};
-use rns_transport::destination::link::{unpack_response_envelope, Link, LinkEvent, LinkStatus};
+use rns_transport::destination::link::{unpack_response_envelope, Link, LinkEvent};
 use rns_transport::destination::DestinationDesc;
 use rns_transport::hash::AddressHash;
-use rns_transport::packet::PacketContext;
 use rns_transport::resource::ResourceEventKind;
-use rns_transport::transport::{ReceivedData, SendPacketOutcome, Transport};
+use rns_transport::transport::{SendPacketOutcome, Transport};
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::Arc;
@@ -52,24 +51,40 @@ pub(crate) async fn fetch(
         rmpv::Value::String(remote_file.to_string_lossy().into_owned().into()),
     )
     .map_err(|error| io::Error::other(format!("could not build fetch request: {error:?}")))?;
-    let packet = {
-        let guard = link.lock().await;
-        guard
-            .request_packet(&request.packed)
-            .map_err(|error| io::Error::other(format!("could not build fetch packet: {error:?}")))?
-    };
-    let request_id = request_id_from_packet(&packet);
-    let mut data_events = runtime.transport.received_data_events();
+    // The file is a separate ordinary Resource and can arrive before its status.
     let mut resource_events = runtime.transport.resource_events();
     emit_status(runtime.silent, "Requesting file from remote...")?;
-    send_on_link(&runtime.transport, &link, packet).await?;
-    let status = wait_for_response(
-        &mut data_events,
-        link_id,
-        request_id,
-        network::operation_timeout(runtime).await,
-    )
-    .await?;
+    let duration = network::operation_timeout(runtime).await;
+    let mut receipt =
+        runtime.transport.send_request_on_link(&link, request, duration, None).await.map_err(
+            |error| io::Error::other(format!("could not send fetch request: {error:?}")),
+        )?;
+    let request_id: [u8; 16] =
+        receipt.request_id().try_into().expect("native request IDs have 16 bytes");
+    let response = match timeout(duration, receipt.wait()).await {
+        Ok(result) => result.map_err(|error| {
+            if error == rns_transport::destination::link::RequestFailure::Timeout {
+                io::Error::new(io::ErrorKind::TimedOut, "remote fetch response timed out")
+            } else {
+                io::Error::other(format!("fetch request failed: {error}"))
+            }
+        })?,
+        Err(_) => {
+            let (committed, commit) = tokio::sync::oneshot::channel();
+            tokio::select! {
+                _ = runtime.transport.cancel_request_on_link_observed(&link, &receipt, |_| {
+                    // Local latch only; optional I/O may be abandoned after cleanup.
+                    if committed.send(()).is_err() {
+                        log::trace!("rncp native cleanup observer was dropped");
+                    }
+                }) => {},
+                _ = commit => {},
+            }
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "remote fetch response timed out"));
+        }
+    };
+    let (_, status) = unpack_response_envelope(&response.data)
+        .map_err(|error| io::Error::other(format!("invalid fetch response: {error:?}")))?;
     match protocol::response_status(&status)? {
         ResponseStatus::Found => {}
         ResponseStatus::NotFound => {
@@ -181,44 +196,6 @@ async fn send_on_link(
     }
 }
 
-fn request_id_from_packet(packet: &rns_transport::packet::Packet) -> [u8; 16] {
-    let hash = packet.hash().to_bytes();
-    let mut request_id = [0u8; 16];
-    request_id.copy_from_slice(&hash[..16]);
-    request_id
-}
-
-async fn wait_for_response(
-    events: &mut broadcast::Receiver<ReceivedData>,
-    link_id: AddressHash,
-    request_id: [u8; 16],
-    duration: Duration,
-) -> io::Result<rmpv::Value> {
-    timeout(duration, async {
-        loop {
-            let event = match events.recv().await {
-                Ok(event) => event,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => {
-                    return Err(io::Error::other("received-data channel closed"));
-                }
-            };
-            if event.destination != link_id || event.context != Some(PacketContext::Response) {
-                continue;
-            }
-            let Ok((received_id, response)) = unpack_response_envelope(event.data.as_slice())
-            else {
-                continue;
-            };
-            if received_id == request_id {
-                return Ok(response);
-            }
-        }
-    })
-    .await
-    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "remote fetch response timed out"))?
-}
-
 async fn wait_for_response_resource(
     events: &mut broadcast::Receiver<rns_transport::resource::ResourceEvent>,
     link_id: AddressHash,
@@ -302,12 +279,19 @@ async fn wait_for_outbound(
 }
 
 async fn close_link(transport: &Transport, link: &Arc<Mutex<Link>>) {
-    let packet = {
-        let mut guard = link.lock().await;
-        (guard.status() != LinkStatus::Closed).then(|| guard.teardown()).flatten()
-    };
-    if let Some(packet) = packet {
-        let _ = transport.send_link_packet_on_bound_iface(link, packet).await;
+    let (committed, commit) = tokio::sync::oneshot::channel();
+    tokio::select! {
+        result = transport.teardown_link_observed(link, || {
+            // Local latch only; optional I/O may be abandoned after cleanup.
+            if committed.send(()).is_err() {
+                        log::trace!("rncp native cleanup observer was dropped");
+                    }
+        }) => {
+            if let Err(error) = result {
+                log::debug!("rncp native Link close frame handoff failed: {error}");
+            }
+        },
+        _ = commit => {},
     }
 }
 

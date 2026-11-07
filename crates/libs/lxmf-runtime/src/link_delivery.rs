@@ -82,7 +82,7 @@ pub(crate) async fn send_link_payload(
     })
 }
 
-async fn activate_link(
+pub(crate) async fn activate_link(
     transport: &Transport,
     destination: DestinationDesc,
     timeout: Duration,
@@ -111,10 +111,13 @@ async fn activate_link(
             }
         }
     }
-    Err(transport_error(format!(
+    let offline =
+        last_error.as_ref().is_some_and(|error| error.kind() == std::io::ErrorKind::TimedOut);
+    let error = transport_error(format!(
         "link activation failed: {}",
         last_error.map_or_else(|| "no attempts made".to_owned(), |error| error.to_string())
-    )))
+    ));
+    Err(if offline { error.with_cause_code("OfflineRouteUnavailable") } else { error })
 }
 
 async fn cancel_resource(

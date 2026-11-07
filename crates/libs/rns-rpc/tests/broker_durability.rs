@@ -469,6 +469,8 @@ fn persisted_budget_stays_coherent_and_wal_recovers_after_pinned_reader() {
     assert_eq!(store.broker_command(prepared()).unwrap(), serde_json::json!({"prepared":true}));
     reader.execute_batch("ROLLBACK").unwrap();
     writer.execute("DELETE FROM pressure", []).unwrap();
+    // Rate-limited emergency checkpoints defer pressure recovery to the daemon timer.
+    store.maintain_wal_with_threshold(0).unwrap();
     ack(&store, &batch).unwrap();
     store.insert_message(&message("after", "rch")).unwrap();
     assert!(fetch(&store, 128, MAX_BATCH_BYTES)
@@ -607,5 +609,7 @@ fn shared_metadata_writes_backpressure_without_rejecting_idempotent_custody_read
     ack(&store, &batch).unwrap();
     ack(&store, &batch).unwrap();
     reader.execute_batch("ROLLBACK").unwrap();
+    // Model the next scheduled maintenance pass after the reader releases its snapshot.
+    store.maintain_wal_with_threshold(0).unwrap();
     store.update_message_fields("shared", None).unwrap();
 }

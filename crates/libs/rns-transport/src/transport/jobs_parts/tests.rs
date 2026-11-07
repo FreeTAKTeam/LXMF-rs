@@ -63,9 +63,7 @@ mod tests {
         let mut workers = WorkerSet::new();
         let mut worker_names = WorkerNames::new();
 
-        spawn_named_worker(&mut workers, &mut worker_names, "panicky", async {
-            panic!("boom")
-        });
+        spawn_named_worker(&mut workers, &mut worker_names, "panicky", async { panic!("boom") });
         {
             let cancel = cancel.clone();
             spawn_named_worker(&mut workers, &mut worker_names, "long-lived", async move {
@@ -136,5 +134,30 @@ mod tests {
         .await
         .expect("supervision should drain cleanly on normal shutdown");
         assert!(workers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn supervision_interrupts_blocked_worker_and_releases_native_cleanup_lock() {
+        let cancel = CancellationToken::new();
+        let mut workers = WorkerSet::new();
+        let mut names = WorkerNames::new();
+        let handler = Arc::new(Mutex::new(()));
+        let owned = handler.clone();
+        let (entered, entered_rx) = tokio::sync::oneshot::channel();
+        spawn_named_worker(&mut workers, &mut names, "blocked-io", async move {
+            let _handler = owned.lock().await;
+            entered.send(()).expect("worker acquired its native lock");
+            std::future::pending::<()>().await;
+        });
+        entered_rx.await.expect("blocked worker started");
+        cancel.cancel();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            supervise_workers(&mut workers, &names, &cancel),
+        )
+        .await
+        .expect("cancellation interrupts I/O before native cleanup");
+        assert!(workers.is_empty());
+        assert!(handler.try_lock().is_ok());
     }
 }

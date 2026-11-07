@@ -8,7 +8,10 @@ import importlib.util
 import json
 import os
 import random
+import signal
 import socket
+import subprocess
+import sys
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -79,7 +82,10 @@ class FastBufferedSocket:
 class ReticulumGoControl:
     """Use the pinned peer's stdlib-only example client as its public adapter."""
 
-    def __init__(self, peer_root: Path, port: int, token: str) -> None:
+    def __init__(
+        self, peer_root: Path, port: int, token: str, peer_process: ManagedProcess
+    ) -> None:
+        self._peer_process = peer_process
         example = peer_root / "examples/control-client/client.py"
         spec = importlib.util.spec_from_file_location("reticulum_go_control_client", example)
         if spec is None or spec.loader is None:
@@ -123,6 +129,29 @@ class ReticulumGoControl:
 
     def command(self, value: dict[str, Any]) -> None:
         self._module.ws_send_text(self.sock, json.dumps(value).encode("utf-8"))
+
+    def capture_failure_diagnostics(self, reason: str) -> None:
+        peer = self._peer_process
+        process = peer.process
+        record = {"reason": reason, "pid": process.pid, "status": "pending"}
+        try:
+            quit_signal = getattr(signal, "SIGQUIT", None)
+            if process.poll() is not None:
+                record["status"] = "already_exited"
+            elif quit_signal is None:
+                record["status"] = "signal_unavailable"
+            else:
+                # All scenario outcomes are recorded before terminating this owned peer.
+                process.send_signal(quit_signal)
+                record["exit_code"] = process.wait(timeout=10)
+                record["status"] = "peer_exited_after_signal"
+        except (OSError, subprocess.TimeoutExpired) as error:
+            record.update(status="capture_failed", error=str(error))
+        path = peer.log_path.with_suffix(".diagnostics.json")
+        try:
+            path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        except OSError as error:
+            print(f"Reticulum-Go diagnostics could not be saved at {path}: {error}", file=sys.stderr)
 
     def http(self, method: str, path: str, body: Any = None) -> Any:
         return self._module.http_json(
@@ -276,7 +305,7 @@ def two_node_session(
             lambda: _go_health(peer_root, go_control_port, token),
             timeout=20,
         )
-        control = ReticulumGoControl(peer_root, go_control_port, token)
+        control = ReticulumGoControl(peer_root, go_control_port, token, processes[-1])
         go_destination = control.register_destination()
         yield rust, control, rust_status["destination_hash"], go_destination
     finally:
@@ -378,15 +407,17 @@ def run_two_node(
             failure_owner="Reticulum-Go",
             classification="peer_surface_unavailable",
         )
+        large_resource_failed = False
         if level in {"nightly", "release"}:
             fifty_mib = random.Random(0x52474F50).randbytes(50 * 1024 * 1024)
-            evidence.run(
+            result = evidence.run(
                 "Resource 50 MiB",
                 "LXMF-rs -> Reticulum-Go",
                 lambda: resource_rust_to_go(rust, go, link_id, fifty_mib),
                 expected_bytes=len(fifty_mib),
                 content_hash=sha256(fifty_mib),
             )
+            large_resource_failed = result is None
             evidence.record(
                 "Resource 50 MiB",
                 "Reticulum-Go control API -> LXMF-rs",
@@ -418,6 +449,8 @@ def run_two_node(
                 "LXMF-rs -> Reticulum-Go",
                 lambda: close_link(rust, go, reverse["link_id"]),
             )
+        if large_resource_failed:
+            go.capture_failure_diagnostics("50 MiB Resource failed; subsequent Link checks recorded")
 
 
 def run_multi_hop(
@@ -605,7 +638,7 @@ def rust_go_rust_topology(
             lambda: _go_health(peer_root, go_control_port, token),
             timeout=20,
         )
-        control = ReticulumGoControl(peer_root, go_control_port, token)
+        control = ReticulumGoControl(peer_root, go_control_port, token, processes[-1])
         wait_until(
             "Reticulum-Go transport interfaces",
             lambda: _go_transport_ready(control),

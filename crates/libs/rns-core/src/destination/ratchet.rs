@@ -6,7 +6,6 @@ use crate::{
 use alloc::vec::Vec;
 #[cfg(feature = "std")]
 use ed25519_dalek::Signature;
-use rand_core::OsRng;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
@@ -123,9 +122,10 @@ impl RatchetState {
         Ok(())
     }
 
-    pub(crate) fn rotate_if_needed(
+    pub(crate) fn rotate_if_needed<R: rand_core::CryptoRngCore>(
         &mut self,
         identity: &PrivateIdentity,
+        rng: R,
         now: f64,
     ) -> Result<(), RnsError> {
         #[cfg(not(feature = "std"))]
@@ -135,7 +135,7 @@ impl RatchetState {
         }
         let last = self.latest_ratchet_time.unwrap_or(0.0);
         if self.ratchets.is_empty() || now > last + self.ratchet_interval_secs as f64 {
-            let secret = StaticSecret::random_from_rng(OsRng);
+            let secret = StaticSecret::random_from_rng(rng);
             self.ratchets.insert(0, secret.to_bytes());
             self.latest_ratchet_time = Some(now);
             if self.ratchets.len() > self.retained_ratchets {
@@ -195,17 +195,25 @@ mod tests {
         let identity = PrivateIdentity::new_from_rand(OsRng);
         let mut state = RatchetState { enabled: true, ..RatchetState::default() };
 
-        state.rotate_if_needed(&identity, 1_000.0).expect("first rotation");
+        state.rotate_if_needed(&identity, OsRng, 1_000.0).expect("first rotation");
         assert_eq!(state.ratchets.len(), 1, "empty state rotates regardless of clock");
         let first = state.ratchets.clone();
 
         state
-            .rotate_if_needed(&identity, 1_000.0 + DEFAULT_RATCHET_INTERVAL_SECS as f64 - 1.0)
+            .rotate_if_needed(
+                &identity,
+                OsRng,
+                1_000.0 + DEFAULT_RATCHET_INTERVAL_SECS as f64 - 1.0,
+            )
             .expect("within interval");
         assert_eq!(state.ratchets, first, "no rotation before the interval elapses");
 
         state
-            .rotate_if_needed(&identity, 1_000.0 + DEFAULT_RATCHET_INTERVAL_SECS as f64 + 1.0)
+            .rotate_if_needed(
+                &identity,
+                OsRng,
+                1_000.0 + DEFAULT_RATCHET_INTERVAL_SECS as f64 + 1.0,
+            )
             .expect("past interval");
         assert_eq!(state.ratchets.len(), 2);
         assert_ne!(
@@ -224,11 +232,11 @@ mod tests {
         // the replay window. With the injected-time contract the caller
         // controls `now`, and a zero value must behave as "no time
         // elapsed": rotate the empty state once, then hold steady.
-        state.rotate_if_needed(&identity, 0.0).expect("zero clock");
+        state.rotate_if_needed(&identity, OsRng, 0.0).expect("zero clock");
         assert_eq!(state.ratchets.len(), 1);
         let only = state.ratchets.clone();
         for _ in 0..3 {
-            state.rotate_if_needed(&identity, 0.0).expect("zero clock again");
+            state.rotate_if_needed(&identity, OsRng, 0.0).expect("zero clock again");
         }
         assert_eq!(state.ratchets, only, "a frozen clock must not silently rotate or expire");
     }
@@ -238,7 +246,58 @@ mod tests {
         let identity = PrivateIdentity::new_from_rand(OsRng);
         let mut state = RatchetState::default();
 
-        state.rotate_if_needed(&identity, 1_000.0).expect("disabled state");
+        state.rotate_if_needed(&identity, OsRng, 1_000.0).expect("disabled state");
         assert!(state.ratchets.is_empty());
+    }
+
+    /// Deterministic counter RNG so the test can prove rotation draws its
+    /// secret from the injected generator rather than an OS source.
+    #[derive(Clone, Copy)]
+    struct CounterRng(u8);
+
+    impl rand_core::RngCore for CounterRng {
+        fn next_u32(&mut self) -> u32 {
+            let mut bytes = [0u8; 4];
+            self.fill_bytes(&mut bytes);
+            u32::from_le_bytes(bytes)
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            let mut bytes = [0u8; 8];
+            self.fill_bytes(&mut bytes);
+            u64::from_le_bytes(bytes)
+        }
+
+        fn fill_bytes(&mut self, dest: &mut [u8]) {
+            for slot in dest.iter_mut() {
+                *slot = self.0;
+                self.0 = self.0.wrapping_add(1);
+            }
+        }
+
+        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+            self.fill_bytes(dest);
+            Ok(())
+        }
+    }
+
+    impl rand_core::CryptoRng for CounterRng {}
+
+    // Regression for issue #676: no_std builds have no OS RNG, so ratchet
+    // rotation must take its secret from the generator the caller passes to
+    // `announce`. The same seed therefore yields the same ratchet.
+    #[test]
+    fn rotate_if_needed_draws_secret_from_injected_rng() {
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let mut first = RatchetState { enabled: true, ..RatchetState::default() };
+        let mut second = RatchetState { enabled: true, ..RatchetState::default() };
+
+        first.rotate_if_needed(&identity, CounterRng(7), 1_000.0).expect("first rotation");
+        second.rotate_if_needed(&identity, CounterRng(7), 1_000.0).expect("second rotation");
+        assert_eq!(first.ratchets, second.ratchets, "same injected rng, same ratchet secret");
+
+        let mut other = RatchetState { enabled: true, ..RatchetState::default() };
+        other.rotate_if_needed(&identity, CounterRng(8), 1_000.0).expect("other rotation");
+        assert_ne!(first.ratchets, other.ratchets, "different rng seed, different secret");
     }
 }

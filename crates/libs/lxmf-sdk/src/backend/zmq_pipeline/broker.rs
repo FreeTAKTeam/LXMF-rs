@@ -72,3 +72,29 @@ impl ZmqPipelineBackendClient {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{SdkError, ZmqPipelineBackendClient};
+
+    #[test]
+    fn durable_broker_methods_accept_legacy_rpc_contract_paths() {
+        // Keep the old public paths in these signatures: canonical ownership may move,
+        // but existing SDK consumers must retain the same parameter and result types.
+        let _ack: fn(
+            &ZmqPipelineBackendClient,
+            rns_rpc::broker::AckStoredRequest,
+        ) -> Result<rns_rpc::broker::EventPosition, SdkError> =
+            ZmqPipelineBackendClient::broker_ack_stored;
+        let _fetch: fn(
+            &ZmqPipelineBackendClient,
+            rns_rpc::broker::FetchRequest,
+        ) -> Result<rns_rpc::broker::BrokerBatch, SdkError> =
+            ZmqPipelineBackendClient::broker_fetch;
+        let _resume: fn(
+            &ZmqPipelineBackendClient,
+            rns_rpc::broker::ResumeRequest,
+        ) -> Result<rns_rpc::broker::BrokerCheckpoint, SdkError> =
+            ZmqPipelineBackendClient::broker_resume;
+    }
+}

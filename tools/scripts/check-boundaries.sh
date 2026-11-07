@@ -149,8 +149,13 @@ check_edge_set_matches_allowlist() {
   fi
 }
 
-METADATA_FILE="$(mktemp)"
-trap 'rm -f "${METADATA_FILE}"' EXIT
+# The override supports seeded negative tests; production always uses Cargo metadata.
+METADATA_FILE="${BOUNDARY_METADATA_FILE:-}"
+if [[ -z "$METADATA_FILE" ]]; then
+  METADATA_FILE="$(mktemp)"
+  trap 'rm -f "${METADATA_FILE}"' EXIT
+  cargo metadata --locked --no-deps --format-version 1 > "$METADATA_FILE"
+fi
 ENFORCE_RETM_LEGACY_SHIMS="${ENFORCE_RETM_LEGACY_SHIMS:-0}"
 ENFORCE_LEGACY_APP_IMPORTS="${ENFORCE_LEGACY_APP_IMPORTS:-0}"
 ARCH_REPORT_PATH="${ARCH_REPORT_PATH:-target/architecture/boundary-report.txt}"
@@ -158,7 +163,6 @@ ARCH_REPORT_PATH="${ARCH_REPORT_PATH:-target/architecture/boundary-report.txt}"
 require_command jq
 require_command "${PATTERN_MATCHER}"
 
-cargo metadata --no-deps --format-version 1 > "$METADATA_FILE"
 
 if search_text "crates/internal/lxmf-legacy|crates/internal/reticulum-legacy" Cargo.toml >/dev/null; then
   fail "Workspace membership must not include crates/internal legacy crates"
@@ -174,7 +178,38 @@ if [ -d "lxmf.egg-info" ]; then
   fail "Python egg metadata must not be present in this repository"
 fi
 
+# Designated core declarations are checked even when optional, target-specific,
+# build-only or dev-only. Host test serializers are allowed; production JSON is not.
+mapfile -t no_std_core < <(jq -r '(.workspace_metadata // .metadata).boundaries.no_std_core[]' "$METADATA_FILE")
+mapfile -t forbidden_core_deps < <(jq -r '(.workspace_metadata // .metadata).boundaries.forbidden_core_deps[]' "$METADATA_FILE")
+((${#no_std_core[@]} > 0 && ${#forbidden_core_deps[@]} > 0)) || fail "no_std core policy is empty"
+for package in "${no_std_core[@]}"; do
+  for dependency in "${forbidden_core_deps[@]}"; do
+    if jq -e --arg package "$package" --arg dep "$dependency" '
+        .packages[] | select(.name == $package) | .dependencies[]
+        | select(.name == $dep and (.name != "serde_json" or .kind != "dev"))
+      ' "$METADATA_FILE" >/dev/null; then
+      fail "package '${package}' depends on forbidden crate '${dependency}'"
+    fi
+  done
+  crate_root="$(jq -r --arg package "$package" '.packages[] | select(.name == $package) | .manifest_path' "$METADATA_FILE")"
+  [[ -n "$crate_root" ]] || fail "designated no_std package '${package}' is missing"
+  for symbol in tokio tokio_util tokio_serial zeromq rusqlite clap reticulumd lxmf_sdk meshchat_api; do
+    check_source_imports "$(dirname "$crate_root")/src" "$symbol"
+  done
+done
+
 # 1) Core dependency constraints (hard policy).
+# The canonical broker must also remain reusable outside this workspace.
+broker_workspace_dependencies="$(jq -r '
+  .workspace_members as $members
+  | [.packages[] | . as $package | select($members | index($package.id)) | .name] as $names
+  | .packages[] | select(.name == "r3akt-event-broker")
+  | .dependencies[]? | .name as $dependency | select($names | index($dependency)) | .name
+' "$METADATA_FILE")"
+[[ -z "$broker_workspace_dependencies" ]] || fail "shared broker depends on workspace crate: ${broker_workspace_dependencies}"
+check_forbidden_dependency "r3akt-event-broker" "reticulum-rs-rpc" "reticulum-rs-core" "reticulum-rs-transport" "lxmf-wire" "lxmf-sdk" "lxmf-runtime" "zeromq" "reticulum-rs-zeromq" "axum" "ureq" "reqwest"
+check_no_app_dependencies "r3akt-event-broker" "lxmf-cli" "rns-tools" "reticulumd"
 check_forbidden_dependency "lxmf-wire" "tokio" "clap" "ureq"
 check_forbidden_dependency "reticulum-rs-core" "tokio" "clap"
 check_forbidden_dependency "reticulum-rs-transport" "clap"
@@ -276,6 +311,13 @@ if (( ENFORCE_RETM_LEGACY_SHIMS == 1 )); then
   fi
 else
   echo "boundary notice: rns-transport/rns-rpc legacy shim references are currently allowed"
+fi
+
+# A host consumer may compile while silently enabling core/std. Inspect the
+# real feature graph separately from the bare-metal, isolated crate builds.
+feature_tree="$(cargo tree --locked -p rns-embedded-mininode --no-default-features -e features --prefix none)"
+if grep -Fq 'reticulum-rs-core feature "std"' <<<"$feature_tree"; then
+  fail "rns-embedded-mininode without defaults enables reticulum-rs-core/std"
 fi
 
 echo "boundary report: ${ARCH_REPORT_PATH}"

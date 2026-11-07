@@ -2,6 +2,7 @@
 struct RecordingAnnounceBridge {
     full_count: std::sync::Mutex<u32>,
     delivery_hashes: std::sync::Mutex<Vec<String>>,
+    display_names: std::sync::Mutex<Vec<String>>,
 }
 
 impl RecordingAnnounceBridge {
@@ -25,6 +26,14 @@ impl AnnounceBridge for RecordingAnnounceBridge {
             .lock()
             .expect("delivery hashes mutex poisoned")
             .push(destination_hash.to_string());
+        Ok(())
+    }
+
+    fn set_display_name(&self, display_name: &str) -> Result<(), std::io::Error> {
+        self.display_names
+            .lock()
+            .expect("display names mutex poisoned")
+            .push(display_name.to_string());
         Ok(())
     }
 }
@@ -132,4 +141,29 @@ fn announce_delivery_rejects_nonlocal_delivery_destination() {
     assert_eq!(bridge.full_count(), 0);
     assert!(bridge.delivery_hashes().is_empty());
     assert!(daemon.take_event().is_none());
+}
+
+#[test]
+fn set_display_name_updates_bridge_and_requires_a_name() {
+    let bridge = std::sync::Arc::new(RecordingAnnounceBridge::default());
+    let daemon = RpcDaemon::with_store_and_bridges(
+        MessagesStore::in_memory().expect("store"),
+        hex::encode([0x21; 16]),
+        None,
+        Some(bridge.clone()),
+    );
+
+    let response = daemon
+        .handle_rpc(rpc_request(202, "set_display_name", json!({ "display_name": "  Corvo  " })))
+        .expect("set display name response");
+    assert!(response.error.is_none());
+    assert_eq!(response.result.expect("result")["applied"], json!(true));
+    assert_eq!(
+        bridge.display_names.lock().expect("display names mutex poisoned").clone(),
+        vec!["Corvo".to_string()]
+    );
+
+    let missing = daemon.handle_rpc(rpc_request(203, "set_display_name", json!({ "display_name": " " })));
+    assert!(missing.is_err());
+    assert_eq!(bridge.full_count(), 0);
 }

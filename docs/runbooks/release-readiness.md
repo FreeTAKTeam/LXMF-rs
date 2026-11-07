@@ -63,6 +63,18 @@ reference compatibility. It invokes `cargo xtask hil run --level pr --all`,
 which runs the virtual transport cases, the pinned Python conformance
 baseline, and live Rust/Python channel, paper, compatibility-matrix, and LXMD
 remote-relay cases. The resulting evidence bundle is retained with the run.
+The controller's channel, baseline compatibility, relay/paper, and
+reference/virtual groups run independently alongside the exact-target matrix,
+interface/lifecycle checks, and command-line/media checks. Each of these seven
+jobs has its own Rust dependency cache. Tests within each job retain their
+existing serial execution, timeouts, and Python reference revisions. Dependency
+setup skips installed packages, bounds apt requests and lock waits, and limits
+media installation to the tools job. Controller logs identify each case as it
+starts and report its result, duration, and attempts when it finishes.
+The required `HIL PR level` check passes only when every job succeeds and the
+combined same-commit evidence contains every configured PR case/profile pair
+exactly once. Per-job evidence and the combined support report are retained;
+failures do not cancel the other suites.
 - Independent implementation interoperability is a separate evidence axis,
   enforced by `.github/workflows/independent-interop.yml` and published through
   `tools/scripts/independent_evidence_publish.py`. Its readiness output reports
@@ -77,6 +89,17 @@ remote-relay cases. The resulting evidence bundle is retained with the run.
   `SHA256SUMS`. Every dashboard cell must be measured or explicitly report N/A,
   UNSUPPORTED, or FAILED; blank cells and smaller substitutes for exact
   workloads are not accepted.
+
+For benchmark-harness recovery on an existing immutable release, dispatch
+`Release performance comparison` from the reviewed workflow commit with
+`candidate_ref=<existing tag>`, `release_tag=<same tag>`,
+`harness_ref=<full reviewed harness commit SHA>` (defaults to the workflow SHA),
+and `publish_assets=true`. The candidate must resolve to that exact release tag
+before publication. Only the explicit benchmark-harness allowlist is overlaid;
+product crates and manifests remain unchanged. The dataset, raw evidence, and
+`lxmf-rs-performance-provenance.json` sidecar record both commit SHAs, overlay
+file hashes, and hosted benchmark configuration changes. Publication still
+requires the complete same-runner gate and checksummed evidence.
 
 The SDK reports the parity checkpoint as its crate version plus the pinned
 reference revisions from `.github/workflows/verify.yml`: Reticulum

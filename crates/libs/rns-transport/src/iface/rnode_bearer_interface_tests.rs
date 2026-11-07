@@ -11,6 +11,9 @@ use crate::packet::{Packet, PacketDataBuffer};
 
 use super::*;
 
+#[path = "rnode_bearer_parts/tests/lifecycle.rs"]
+mod lifecycle;
+
 enum OpenBehavior {
     Fail,
     Block,

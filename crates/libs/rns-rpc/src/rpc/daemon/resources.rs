@@ -31,6 +31,26 @@ impl RpcDaemon {
         Arc::clone(&self.zmq_pipeline_metrics)
     }
 
+    /// Read the small pressure sample retained with a slow or failed ZMQ stage.
+    pub fn zmq_failure_context(
+        &self,
+        method: &str,
+        queue_depth: usize,
+    ) -> super::super::zmq_metrics::ZmqFailureContext {
+        let mut context = super::super::zmq_metrics::ZmqFailureContext::new(method, queue_depth);
+        context.write_lock_wait_ns_total =
+            Some(self.store.contention_snapshot().write_lock_wait_ns_total);
+        let operation_metrics = self.store.operation_metrics_snapshot();
+        context.refill_in_flight =
+            operation_metrics["refill"]["in_flight"].as_u64().map(|count| count > 0);
+        context.announce_persistence_in_flight =
+            self.metrics_provider_snapshots()["announce_persistence"]["in_flight"].as_bool();
+        context.memory_events_high = super::cgroup_memory::memory_accounting_snapshot()
+            .pointer("/cgroup/memory_events/high")
+            .and_then(JsonValue::as_u64);
+        context
+    }
+
     /// Explicit diagnostics only. Approximate owned buffers are separate from
     /// process RSS/swap; broadcast subscribers and SQLite caches are not included.
     pub fn resource_usage_snapshot(&self) -> Result<JsonValue, std::io::Error> {

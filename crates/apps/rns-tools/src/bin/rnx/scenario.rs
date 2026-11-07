@@ -11,6 +11,9 @@ use harness::{
 };
 use rns_rpc::e2e_harness::{build_send_params, build_tcp_client_config, timestamp_millis};
 use rns_rpc::rpc::replay::{execute_trace, load_trace_file, save_capture_file};
+#[cfg(test)]
+#[path = "scenario_tests.rs"]
+mod tests;
 
 pub(crate) fn run_replay(
     trace: PathBuf,
@@ -485,7 +488,7 @@ fn delivery_trace_statuses(
 
 fn expected_delivery_trace_statuses(expected_mode: &str) -> &'static [&'static str] {
     match expected_mode {
-        "direct" => &["sent: direct", "sent: link"],
+        "direct" => &["sent: direct", "sent: link", "delivered"],
         "sent: link" => &["sent: link"],
         "sent: link resource" => &["sent: link resource"],
         "opportunistic" => &["sent: opportunistic"],

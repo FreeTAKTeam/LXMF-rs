@@ -279,7 +279,7 @@ impl PathRequests {
             },
             ifac: None,
             destination,
-            transport: self.transport_id,
+            transport: None,
             context: PacketContext::None,
             data,
         }

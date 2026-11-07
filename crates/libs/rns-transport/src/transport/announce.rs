@@ -16,7 +16,7 @@ use crate::packet::{Header, HeaderType, PropagationType};
 /// accepted announce, so rejecting on app_data change would break
 /// legitimate announces (e.g. LXMF peers rotating stamp-cost metadata)
 /// and diverge from protocol behavior.
-fn identity_drifted(existing: &Identity, announced: &Identity) -> bool {
+pub(super) fn identity_drifted(existing: &Identity, announced: &Identity) -> bool {
     existing.public_key != announced.public_key || existing.verifying_key != announced.verifying_key
 }
 
@@ -201,7 +201,7 @@ async fn process_announce<'a>(
         // Everything that is not queued is still cached rather than dropped.
         // Unlike the reference, this crate rebuilds a path entry's announce
         // packet out of the announce table when persisting the path table
-        // (`save_reticulum_path_table` -> `cached_packet_for_destination`),
+        // (`save_reticulum_path_table` -> `shared_cached_packet_for_destination`),
         // where the reference stores a packet hash and keeps the packet in its
         // own on-disk cache. Dropping it outright here would persist an empty
         // path table on exactly the nodes this guard is meant to help. The
@@ -448,6 +448,7 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
     let inbound_queues = handler.inbound_queues.clone();
 
     for released_announce in released {
+        let wire_hops = released_announce.packet.header.hops;
         let queued = QueuedInbound {
             message: RxMessage {
                 address: released_announce.iface,
@@ -455,10 +456,33 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
                 source: released_announce.source,
             },
             ingress_limited: true,
-            packet_cache_inserted: false,
+            wire_hops,
             path_request: None,
         };
-        if let Err(full) = inbound_queues.enqueue(InboundTrafficClass::IngressLimited, queued) {
+        if let Err(failure) = super::inbound_processing::admission::try_enqueue_inbound_message(
+            &handler,
+            &inbound_queues,
+            InboundTrafficClass::IngressLimited,
+            queued,
+        )
+        .await
+        {
+            let full = match failure {
+                super::inbound_processing::admission::AdmissionFailure::Full(full) => full,
+                super::inbound_processing::admission::AdmissionFailure::Filtered(candidate) => {
+                    handler
+                        .iface_manager
+                        .lock()
+                        .await
+                        .record_packet_filter_hit(candidate.message.address);
+                    log::warn!(
+                        "released announce failed packet filter iface={} hash={}",
+                        candidate.message.address,
+                        candidate.message.packet.hash()
+                    );
+                    continue;
+                }
+            };
             log::warn!(
                 "dropping released announce because ingress-limited queue is full iface={} hash={}",
                 full.item.message.address,

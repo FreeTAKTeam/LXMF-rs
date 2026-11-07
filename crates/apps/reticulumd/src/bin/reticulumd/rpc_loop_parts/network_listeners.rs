@@ -8,8 +8,10 @@ async fn run_plain_rpc_loop(
     addr: SocketAddr,
     daemon: Arc<RpcDaemon>,
     mut shutdown: ShutdownReceiver,
+    bound: watch::Sender<usize>,
 ) {
     let listener = TcpListener::bind(addr).await.expect("bind rpc listener");
+    let _bound = crate::systemd_notify::RpcListenerBound::new(bound);
     let connection_permits = Arc::new(Semaphore::new(RPC_MAX_REMOTE_CONNECTIONS));
     println!("{}", rpc_ready_line("http", addr));
 
@@ -46,10 +48,12 @@ async fn run_tls_rpc_loop(
     daemon: Arc<RpcDaemon>,
     config: RpcTlsConfig,
     mut shutdown: ShutdownReceiver,
+    bound: watch::Sender<usize>,
 ) {
     let tls_server = build_tls_server_config(&config).expect("build rpc tls server config");
     let acceptor = TlsAcceptor::from(tls_server);
     let listener = TcpListener::bind(addr).await.expect("bind tls rpc listener");
+    let _bound = crate::systemd_notify::RpcListenerBound::new(bound);
     let connection_permits = Arc::new(Semaphore::new(RPC_MAX_REMOTE_CONNECTIONS));
     println!("{}", rpc_ready_line("https", addr));
 

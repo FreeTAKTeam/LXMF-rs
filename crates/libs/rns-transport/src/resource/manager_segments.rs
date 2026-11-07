@@ -11,6 +11,12 @@ pub struct PreparedSend {
     pending: Option<PendingSegments>,
 }
 
+impl PreparedSend {
+    pub(crate) fn original_hash(&self) -> Hash {
+        self.first.original_hash
+    }
+}
+
 /// The not-yet-built tail of an outbound split resource.
 ///
 /// This used to be a `VecDeque<ResourceSender>` filled by `start_send`, which
@@ -62,10 +68,13 @@ impl std::fmt::Debug for PendingSegments {
         formatter
             .debug_struct("PendingSegments")
             .field("link_id", &self.link_id)
-            .field("source", &match &self.source {
-                PendingSegmentSource::InMemory { .. } => "in_memory",
-                PendingSegmentSource::Reader { .. } => "reader",
-            })
+            .field(
+                "source",
+                &match &self.source {
+                    PendingSegmentSource::InMemory { .. } => "in_memory",
+                    PendingSegmentSource::Reader { .. } => "reader",
+                },
+            )
             .field("next_segment_index", &self.next_segment_index)
             .field("total_segments", &self.total_segments)
             .field("total_size", &self.total_size)
@@ -205,10 +214,8 @@ impl ResourceManager {
             return;
         }
 
-        let assembly = self
-            .incoming_segments
-            .entry(segment.original_hash)
-            .or_insert_with(|| InboundSegmentAssembly {
+        let assembly = self.incoming_segments.entry(segment.original_hash).or_insert_with(|| {
+            InboundSegmentAssembly {
                 link_id,
                 next_segment: 1,
                 total_segments: segment.total_segments,
@@ -218,7 +225,8 @@ impl ResourceManager {
                 request_id: payload.request_id.clone(),
                 is_request: payload.is_request,
                 is_response: payload.is_response,
-            });
+            }
+        });
         // Deliberately a drop rather than a failure: issue #520 established that
         // an out-of-order segment must leave the assembly intact so the transfer
         // resumes when the expected segment arrives.
@@ -240,11 +248,7 @@ impl ResourceManager {
             .as_ref()
             .map(|metadata| metadata.len().saturating_add(3))
             .unwrap_or(0);
-        if assembly
-            .data
-            .len()
-            .saturating_add(payload.data.len())
-            .saturating_add(metadata_size)
+        if assembly.data.len().saturating_add(payload.data.len()).saturating_add(metadata_size)
             > assembly.total_data_size as usize
         {
             self.fail_inbound_segments(segment.original_hash, "oversized_segment");

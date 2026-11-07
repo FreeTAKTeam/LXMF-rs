@@ -48,6 +48,9 @@ pub(super) async fn validated_receipt_hash(
     if packet.header.destination_type == DestinationType::Link
         && matches!(packet.context, PacketContext::LinkProof | PacketContext::None)
     {
+        if let Some(hash) = handler.packet_cache.lock().await.link_receipts.validate(packet)? {
+            return Ok(Some(hash));
+        }
         let mut link = handler
             .in_links
             .get(&packet.destination)

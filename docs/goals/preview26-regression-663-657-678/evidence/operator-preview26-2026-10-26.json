@@ -1,0 +1,39 @@
+{
+  "providers.announce_persistence": {
+    "cleanup_bytes_removed_total": 268812387,
+    "cleanup_duration_ns_total": 454619500038,
+    "cleanup_errors_total": 0,
+    "cleanup_examined_total": 1262745,
+    "cleanup_last_duration_ns": 66096162,
+    "cleanup_last_success_unix_secs": 1793031622,
+    "cleanup_removed_total": 1046838,
+    "cleanup_scans_completed_total": 2,
+    "coalesced_triggers_total": 1805,
+    "dropped_triggers_total": 4958,
+    "duration_ns_total": 2538980149971,
+    "errors_total": 0,
+    "full_verifications_total": 28,
+    "in_flight": false,
+    "last_duration_ns": 999826777,
+    "last_fingerprint_map_len": 30838,
+    "last_kept_entries": 28677,
+    "last_run_unix_secs": 1793031622,
+    "last_tunnel_paths": 3045,
+    "records_examined_total": 67815223,
+    "runs_total": 2177,
+    "skipped_known_total": 65110554,
+    "triggers_total": 8941,
+    "verified_unchanged_total": 845700,
+    "written_total": 1858969
+  },
+  "storage.wal": {
+    "busy_total": 0,
+    "checkpoint_attempts_total": 0,
+    "emergency_reclaim_total": 0,
+    "errors_total": 0,
+    "last_checkpoint_unix_secs": 0,
+    "last_wal_bytes": 100663296,
+    "passive_incomplete_total": 0,
+    "truncated_total": 0
+  }
+}

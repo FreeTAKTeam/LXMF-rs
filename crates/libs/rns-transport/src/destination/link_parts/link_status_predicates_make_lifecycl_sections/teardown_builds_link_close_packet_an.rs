@@ -34,6 +34,39 @@
         assert_eq!(decrypted, outbound.id().as_slice());
     }
 
+    #[test]
+    fn teardown_frame_construction_failure_still_closes_the_native_link() {
+        for legacy in [false, true] {
+            let mut link = test_link();
+            link.status = LinkStatus::Active;
+            link.channel_open = true;
+            link.signalling = Some([0, 0, 1]);
+            if legacy {
+                assert!(link.teardown().is_none(), "legacy API keeps local closure");
+            } else {
+                assert!(matches!(link.try_teardown(), Err(RnsError::OutOfMemory)));
+            }
+            assert_eq!(link.status(), LinkStatus::Closed);
+            assert_eq!(link.close_reason(), Some(LinkCloseReason::InitiatorClosed));
+            assert!(!link.channel_open);
+            assert!(link.session_cipher.is_none());
+        }
+    }
+
+    #[test]
+    fn packet_receipt_timeout_uses_measured_rtt_with_the_reference_minimum() {
+        let mut link = test_link();
+        for (rtt, timeout) in [
+            (Duration::ZERO, Duration::from_millis(5)),
+            (Duration::from_nanos(833_333), Duration::from_millis(5)),
+            (Duration::from_nanos(833_334), Duration::from_nanos(5_000_004)),
+            (Duration::from_millis(100), Duration::from_millis(600)),
+        ] {
+            link.rtt = rtt;
+            assert_eq!(link.packet_receipt_timeout(), timeout);
+        }
+    }
+
     #[tokio::test]
     async fn close_events_expose_python_teardown_reason_codes() {
         let signer = PrivateIdentity::new_from_rand(OsRng);

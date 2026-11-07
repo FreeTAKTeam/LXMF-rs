@@ -7,17 +7,23 @@ async fn stalled_response_peer_does_not_block_healthy_event_poll() {
     let stalled_endpoint = format!("tcp://{}", stalled.local_addr().expect("stalled address"));
     let mut healthy = PullSocket::new();
     let endpoint = healthy.bind("tcp://127.0.0.1:0").await.expect("healthy peer").to_string();
-    let daemon = RpcDaemon::test_instance();
+    let daemon = Arc::new(RpcDaemon::test_instance());
     let (tx, rx) = mpsc::channel(8);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
     let metrics = Arc::new(ZmqPipelineMetrics::default());
-    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::clone(&metrics)));
+    let writer = tokio::spawn(run_zmq_response_writer(
+        rx,
+        shutdown_rx,
+        Arc::clone(&metrics),
+        Arc::clone(&daemon),
+    ));
     tx.send(ZmqOutboundResponse {
         connection_id: None,
         queue_stage: None,
         admission: None,
         endpoint: stalled_endpoint,
         envelope: ZmqRpcEnvelope::response("departed-client".to_string(), 1, vec![]),
+        failure_context: ZmqFailureContext::new("sdk_poll_events_v2", 0),
     })
     .await
     .expect("stalled response");
@@ -38,7 +44,7 @@ async fn stalled_response_peer_does_not_block_healthy_event_poll() {
         None,
     );
     let response = handle_zmq_command_message(
-        &daemon,
+        daemon.as_ref(),
         ZmqMessage::from(zmq::encode_envelope(&request).expect("request envelope")),
         false,
     )
@@ -65,6 +71,16 @@ async fn stalled_response_peer_does_not_block_healthy_event_poll() {
     assert_eq!(snapshot["delivery"]["timed_out"], 1);
     assert_eq!(snapshot["delivery"]["active"], 0);
     assert_eq!(snapshot["delivery"]["owned_wire_bytes"], 0);
+    let incidents = snapshot["recent_failures"].as_array().expect("failure context");
+    let connect_failure = incidents
+        .iter()
+        .find(|incident| incident["stage"] == "response_connect")
+        .expect("connect failure is correlated");
+    assert_eq!(connect_failure["outcome"], "timed_out");
+    assert_eq!(connect_failure["method"], "sdk_poll_events_v2");
+    assert!(connect_failure["queue_depth"].is_number());
+    assert!(connect_failure.get("session_id").is_none());
+    assert!(connect_failure.get("request_id").is_none());
 }
 
 #[tokio::test]
@@ -74,13 +90,19 @@ async fn response_writer_cancels_active_stalled_peers_on_shutdown() {
     let (tx, rx) = mpsc::channel(8);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let metrics = Arc::new(ZmqPipelineMetrics::default());
-    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::clone(&metrics)));
+    let writer = tokio::spawn(run_zmq_response_writer(
+        rx,
+        shutdown_rx,
+        Arc::clone(&metrics),
+        Arc::new(RpcDaemon::test_instance()),
+    ));
     tx.send(ZmqOutboundResponse {
         connection_id: None,
         queue_stage: None,
         admission: None,
         endpoint,
         envelope: ZmqRpcEnvelope::response("shutdown-client".to_string(), 1, vec![]),
+        failure_context: ZmqFailureContext::new("status", 0),
     })
     .await
     .expect("response");
@@ -107,12 +129,18 @@ async fn stable_response_generation_reuses_one_connection_for_a_burst() {
     let mut monitor = replies.monitor();
     let (tx, rx) = mpsc::channel(8);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
-    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::default()));
+    let writer = tokio::spawn(run_zmq_response_writer(
+        rx,
+        shutdown_rx,
+        Arc::default(),
+        Arc::new(RpcDaemon::test_instance()),
+    ));
     for id in 0..40 {
         tx.send(ZmqOutboundResponse {
             endpoint: endpoint.clone(),
             connection_id: Some("generation-one".into()),
             envelope: ZmqRpcEnvelope::response("burst-client".into(), id, vec![42; 4096]),
+            failure_context: ZmqFailureContext::new("status", 0),
             queue_stage: None,
             admission: None,
         })
@@ -146,7 +174,12 @@ async fn replaced_response_socket_reconnects_with_the_same_session_and_endpoint(
     let metrics = Arc::new(ZmqPipelineMetrics::default());
     let (tx, rx) = mpsc::channel(8);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
-    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::clone(&metrics)));
+    let writer = tokio::spawn(run_zmq_response_writer(
+        rx,
+        shutdown_rx,
+        Arc::clone(&metrics),
+        Arc::new(RpcDaemon::test_instance()),
+    ));
     for (id, generation) in [(1, "old"), (2, "old"), (3, "replacement"), (4, "replacement")] {
         if id == 3 {
             replies.backend().shutdown();
@@ -158,6 +191,7 @@ async fn replaced_response_socket_reconnects_with_the_same_session_and_endpoint(
             endpoint: endpoint.clone(),
             connection_id: Some(generation.into()),
             envelope: ZmqRpcEnvelope::response("same-identity-session".into(), id, vec![id as u8]),
+            failure_context: ZmqFailureContext::new("status", 0),
             queue_stage: None,
             admission: None,
         })
@@ -186,12 +220,18 @@ async fn legacy_response_routes_reconnect_for_every_reply() {
     let metrics = Arc::new(ZmqPipelineMetrics::default());
     let (tx, rx) = mpsc::channel(8);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
-    let writer = tokio::spawn(run_zmq_response_writer(rx, shutdown_rx, Arc::clone(&metrics)));
+    let writer = tokio::spawn(run_zmq_response_writer(
+        rx,
+        shutdown_rx,
+        Arc::clone(&metrics),
+        Arc::new(RpcDaemon::test_instance()),
+    ));
     for id in 0..3 {
         tx.send(ZmqOutboundResponse {
             endpoint: endpoint.clone(),
             connection_id: None,
             envelope: ZmqRpcEnvelope::response("legacy".into(), id, vec![]),
+            failure_context: ZmqFailureContext::new("status", 0),
             queue_stage: None,
             admission: None,
         })

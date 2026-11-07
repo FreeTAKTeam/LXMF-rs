@@ -16,6 +16,25 @@ The bind is opt-in and must be loopback. The frontend assets must be a built
 Configure at least one network interface for live peers; see the
 [UDP interface runbook](reticulumd-udp-interface.md) for a local example.
 With no assets path, the API still runs but there is no browser entry page.
+
+HTTP requests, static assets, and WebSocket upgrades require a single `Host`
+matching the listener's IP or `localhost`, at its actual port (including an
+assigned port when binding to port zero). IPv6 literals use brackets. Browser
+`Origin`, when present, must be `http://` with the same hostname and effective
+port as the request; `localhost` and an IP literal are separate origins.
+Cross-site and same-site browser requests are denied through `Sec-Fetch-Site`,
+including image/navigation requests without `Origin`. Requests rejected by this
+policy return HTTP 403 before routing or a WebSocket upgrade. Forwarded headers
+do not override this policy; reverse-proxy and cross-origin UI deployments are
+not supported. Direct navigation and local non-browser clients can omit browser
+headers, but must send a valid `Host` (or HTTP/2 `:authority`). A client that sends
+neither `Origin` nor Fetch Metadata is treated as a non-browser client; this is
+not authentication against other local processes.
+
+The public `meshchat_api::router` constructor has no listener address and accepts
+loopback IP literals or `localhost` at any port, with the same browser checks.
+Its caller must bind the listener to loopback. The daemon's `serve` path also
+checks the configured IP and actual listening port.
 Local UI settings, favourites, name overrides, and read timestamps persist to
 `/path/to/reticulum.meshchat.json` beside the selected daemon database. A
 corrupt state file stops the API at startup instead of silently discarding it.
@@ -26,7 +45,7 @@ The following operations use the active daemon state: status, local announce,
 text and file/image send, inbound file/image/audio decoding,
 conversation/history reads, send cancellation, durable message and
 conversation deletion, route lookup/drop, stamp cost, stored signal readings,
-read-only interface status, discovered propagation nodes, propagation status,
+live interface snapshots and serial-port discovery, discovered propagation nodes, propagation status,
 remote propagation fetch, and control WebSocket config/ping plus
 inbound/outbound message events. The same
 origin serves both REST and the control WebSocket. Local UI settings,
@@ -34,11 +53,20 @@ favourites, name overrides, and read state are persisted by the API crate.
 The application shell's calls poll returns an empty list because this daemon
 does not run an audio-call manager.
 
+With `--config`, `GET /api/v1/reticulum/interfaces` reads the saved TOML
+configuration by interface name. The add, enable, disable, delete, import,
+export, and transport-toggle routes edit that same file. Both `[[interfaces]]`
+and `[interfaces.<name>]` layouts are supported; unrelated TOML settings and
+comments are preserved. Import/export use MeshChat's ConfigObj-style text for
+the supported interface types. `GET /api/v1/interface-stats` reads the daemon's
+live interface snapshot. Saved edits take effect after restarting `reticulumd`;
+the API does not claim to hot-apply them. Without `--config`, saved-config
+operations return HTTP 503 rather than reporting a successful write.
+
 This is a **partial implementation** of the 2.4.0 contract. Every declared
 route is registered, but operations without a matching daemon capability
 return HTTP 501 with a JSON `message`. These include audio call actions and
-binary audio WebSockets, NomadNet downloads/identify, serial port and interface
-editing, transport toggles, path-table/interface statistics, delivery ping,
+binary audio WebSockets, NomadNet downloads/identify, path-table reads, delivery ping,
 propagation sync cancellation, and audio attachment sends. Config PATCH rejects
 keys that would need a daemon side effect. Other unsupported attachment kinds
 are rejected explicitly.
@@ -49,6 +77,10 @@ row IDs, which are local to its message store; app info lacks
 Python-specific paths/version data; and the daemon lacks MeshChat's call and
 propagation-transfer state. When no transport is configured, path reads return
 `null`; a configured transport is needed for path discovery and delivery.
+Live interface statistics expose the daemon snapshot and do not yet provide
+every Python RNS field. Config import accepts the supported MeshChat interface
+types and rejects unsupported types instead of saving a daemon config it
+cannot activate.
 Do not use this build as evidence of full API conformance or network
 interoperability.
 
@@ -63,6 +95,9 @@ a conversation, sent a text message, and displayed that message after reload
 without browser console errors. The 32 synthetic contract fixtures pass their
 offline validator. The implementation is not certified against every route in
 the pinned contract.
+Focused config tests cover both daemon TOML layouts, saved interface edits,
+transport toggles, import preview, selected export, and failed writes. These
+are local file/API checks; no hardware interface was changed during testing.
 
 The companion `reticulum-meshchat` launcher, outside this repository, ran one
 `reticulumd` process with `rmap.world:4242` and the serial RNode on

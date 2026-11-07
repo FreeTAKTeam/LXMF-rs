@@ -1,0 +1,28 @@
+plugins { id 'com.android.library' }
+android {
+    namespace 'org.reticulum.bluetooth'
+    compileSdk 35
+    defaultConfig { minSdk 26; consumerProguardFiles 'consumer-rules.pro' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    lint { abortOnError true; warningsAsErrors true }
+    sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/bluetooth-assets'))
+}
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.14.2'
+}
+
+
+def identityFile = layout.buildDirectory.file('generated/bluetooth-assets/bluetooth-build.json')
+tasks.register('bluetoothBuildIdentity') {
+    outputs.file(identityFile)
+    outputs.upToDateWhen { false }
+    doLast {
+        def revision = providers.exec { commandLine 'git', 'rev-parse', 'HEAD' }.standardOutput.asText.get().trim()
+        def dirty = !providers.exec { commandLine 'git', 'status', '--porcelain', '--untracked-files=normal' }.standardOutput.asText.get().trim().isEmpty()
+        def file = identityFile.get().asFile
+        file.parentFile.mkdirs()
+        file.text = groovy.json.JsonOutput.toJson([bridge_version: 1, source_revision: revision, dirty: dirty])
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'bluetoothBuildIdentity' }

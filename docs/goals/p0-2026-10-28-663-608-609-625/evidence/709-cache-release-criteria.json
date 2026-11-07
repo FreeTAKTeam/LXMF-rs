@@ -1,0 +1,49 @@
+{
+  "analysis_script_sha256": "37a6946dcb9cddce266b1e0461a20f054e071b656af8e7cc7812633387d0da38",
+  "baseline": {
+    "cpu_percent_one_core": 3.97189672466153,
+    "logical_read_bytes_per_sec": 10680175.491703378,
+    "max_cgroup_swap_bytes": 0,
+    "max_pressure_events": {
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0
+    },
+    "max_process_swap_bytes": 0,
+    "memory_high_delta": 444,
+    "memory_high_post_anchor_delta": 12,
+    "physical_read_bytes_per_sec": 66326.13361004824,
+    "poll_window_p95_max_us": 2547,
+    "poll_window_p95_median_us": 724.0,
+    "post_first_phase_max_ns": {
+      "expiry": 4806919,
+      "payload": 8753306,
+      "quota": 2056665
+    }
+  },
+  "baseline_bundle_sha256": "8f7c7cc289e0602b5d8f774fa8742f7c2ce4becee45fb9fb1f1ccd9c2664fd17",
+  "baseline_input_sha256": {
+    "analysis.json": "2e599819a77d574f3cf70a2304278404f4052daf7309c6434b87f75f8c2efa9d",
+    "client.jsonl": "0913fdf11ef19005ea9e1b1ab179ecdc19deae57a6d57101adf32abd28cd5930",
+    "samples.jsonl": "0328ddbea437c8b19c455a4cd4d08a0832949ad4628ce8f4d51384bb76e4166d"
+  },
+  "comparison_script_sha256": "e4232dd530183169359b4e5d99dcdb81621cda6f570296588caa0430e87c3ef3",
+  "frozen_before_acquisition_utc": "2026-10-28T23:17:06.334889+00:00",
+  "guard": "Original three-phase second-pass anchor and full original closure acceptance unchanged; require expected completed release calls and zero errors; one prospective intervention only.",
+  "limits": {
+    "cpu_percent_one_core": 4.97189672466153,
+    "logical_read_bytes_per_sec": 11748193.040873718,
+    "memory_high_delta": 444,
+    "memory_high_post_anchor_delta": 12,
+    "poll_window_p95_max_us": 100000,
+    "poll_window_p95_median_us": 2000,
+    "post_first_phase_max_ns": {
+      "expiry": 10000000,
+      "payload": 10941632.5,
+      "quota": 10000000
+    },
+    "release_max_duration_ns": 100000000,
+    "release_max_lock_wait_ns": 100000000
+  },
+  "schema": "lxmf-rs-709-cache-candidate-criteria-v1"
+}

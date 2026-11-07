@@ -20,14 +20,13 @@ async fn named_management_attaches_reloads_and_detaches_real_tcp_listener() {
     daemon.replace_interfaces(vec![disabled]);
 
     let attached = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new(
             "attach",
             "named-listener",
             Some(tcp_server_record("named-listener", "127.0.0.1", first_port)),
         ),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -36,14 +35,13 @@ async fn named_management_attaches_reloads_and_detaches_real_tcp_listener() {
     assert_eq!(attached["complete"], true);
     assert!(TcpStream::connect(("127.0.0.1", first_port)).await.is_ok());
     let duplicate = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new(
             "attach",
             "named-listener",
             Some(tcp_server_record("named-listener", "127.0.0.1", first_port)),
         ),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -52,14 +50,13 @@ async fn named_management_attaches_reloads_and_detaches_real_tcp_listener() {
     assert_eq!(duplicate.kind(), io::ErrorKind::AlreadyExists);
 
     let reloaded = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new(
             "reload",
             "named-listener",
             Some(tcp_server_record("named-listener", "127.0.0.1", second_port)),
         ),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -78,10 +75,9 @@ async fn named_management_attaches_reloads_and_detaches_real_tcp_listener() {
     assert_eq!(manager.lock().await.interface_hashes().len(), 2);
 
     let detached = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new("detach", "named-listener", None),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -105,14 +101,13 @@ async fn named_management_failed_reload_restores_previous_listener() {
     let working_port = available_port();
     daemon.replace_interfaces(vec![]);
     management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new(
             "attach",
             "named-listener",
             Some(tcp_server_record("named-listener", "127.0.0.1", working_port)),
         ),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -122,14 +117,13 @@ async fn named_management_failed_reload_restores_previous_listener() {
     let occupied = TcpListener::bind("127.0.0.1:0").await.expect("occupy replacement port");
     let occupied_port = occupied.local_addr().expect("occupied address").port();
     let error = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new(
             "reload",
             "named-listener",
             Some(tcp_server_record("named-listener", "127.0.0.1", occupied_port)),
         ),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -148,10 +142,9 @@ async fn named_management_rejects_missing_and_unsupported_names() {
     let refreshes = runtime_refreshes();
     let mut managed = HashMap::new();
     let missing = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new("detach", "missing", None),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -168,10 +161,9 @@ async fn named_management_rejects_missing_and_unsupported_names() {
         settings: None,
     }]);
     let unsupported = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new("detach", "protected", None),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -243,14 +235,13 @@ async fn named_management_failed_startup_leaves_interface_detached() {
     disabled.enabled = false;
     daemon.replace_interfaces(vec![disabled]);
     let error = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new(
             "attach",
             "busy",
             Some(tcp_server_record("busy", "127.0.0.1", port)),
         ),
-        None,
         &refreshes,
         Some(&weak),
     )
@@ -262,14 +253,13 @@ async fn named_management_failed_startup_leaves_interface_detached() {
 
     daemon.replace_interfaces(vec![]);
     let error = management::apply(
-        &manager,
+        NativeInterfaceContext { iface_manager: &manager, transport: None, reconnect_events: None },
         &mut managed,
         management::NamedInterfaceAction::new(
             "attach",
             "broken-pipe",
             Some(pipe_record("broken-pipe", "/definitely/missing/lxmf-pipe-command")),
         ),
-        None,
         &refreshes,
         Some(&weak),
     )

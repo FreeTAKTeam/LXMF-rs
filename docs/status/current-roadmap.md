@@ -1,7 +1,60 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-10-15
+The 2026-11-06 full release preparation aligns the daemon, SDK and 22 public
+packages on `0.16.1`, adding the shared `r3akt-event-broker` package while
+preserving legacy RPC/SDK broker imports. The release train includes the Linux
+candidate changes and the subsequent MeshChat host/origin policy, admitted
+delivery proofs, shared-client proof returns, rejected IFAC startup records,
+propagation quota indexes and BLE startup diagnostics. See the
+[v0.16.1 release notes](../release-notes-v0.16.1.md) for the full platform
+inventory and upgrade requirements. Exact-source release validation and
+publication remain to be recorded; preparing this train does not promote any
+parity row or close the operational and external-client acceptance work below.
+
+The #608 rejected-startup RPC view now retains credential-only IFAC interfaces
+and I2P-local credential aliases when a carrier field prevents configuration
+parsing. Negative IFAC sizes retain the pinned carrier-default semantics in
+error classification. The daemon regression checks a sanitized failed row
+exactly once for all five configurations; broad startup/error, carrier-family,
+and physical acceptance remain open.
+
+The #719 receive-side proof policy defers opportunistic LXMF proofs until
+existing delivery admission and durable storage succeed. Default, imported and
+restored delivery identities opt in; ordinary Reticulum destinations retain their
+proof policy. Accepted duplicates can regenerate the original wire-hash proof
+without another inbound delivery. A transport proof confirms receipt, separately
+from signature metadata, durable broker ACKs and application responses. Local
+regressions cover blocked commit, broker contention rejection, exact retry, reconnect and
+reopened storage. Pinned RNS 1.5.2 / LXMF 0.9.6 senders reach native `DELIVERED`
+for opportunistic packets, direct packets and a 16 KB direct Resource.
+Columba/Pixel and Ratspeak/Windows acceptance and the original unlocalized direct
+report remain open; this increment does not establish those live outcomes.
+
+The #663 global peer-entry quota selection now uses shared order-covering partial
+indexes instead of sorting retained history for small excesses. Local actual-SQL
+regressions preserve exact quota ordering and database reopening; production
+resource/delivery acceptance remains open. See the
+[migration and costs](../migrations/propagation-global-quota-order-indexes.md).
+
+The #608 I2P startup path now preserves nonempty legacy IFAC aliases literally,
+including whitespace, and falls back to them when canonical credentials are
+empty. A configured fake-SAM regression checks plaintext rejection before first
+authenticated ingress and exact authenticated egress. Verify also selects the
+existing pinned-Python TCP lifecycle and KISS PTY IFAC tests explicitly. This
+closes the alias/CI gap only; six software carrier-family lifecycle rows and
+whole-issue acceptance remain open in the transport execution contract.
+
+The durable ZeroMQ announce projection now supports bounded latest-per-peer
+keyset sweeps. Repeated announces from busy peers cannot evict quiet peers from
+the consumer view; completed sweeps reconcile intervening updates and replay
+safely after restart. The legacy latest-32 history response remains available.
+Storage regressions cover bursts, timestamp ties, retention, reopening, and
+oversized records; this is state reconciliation, not delivery of every historical
+announce event. External-client delivery remains a separate acceptance check.
+
+Last reassessed: 2026-10-18
 MeshChat POC evidence added: 2026-09-27
+MeshChat saved interface controls added: 2026-10-15
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -16,6 +69,251 @@ external-client evidence.
 
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.
+
+The approved [open-issue execution plan](../goals/open-issues-2026-10/PLAN.md)
+tracks six ordered PRs for acceptance reconciliation, automatic CI/protection,
+LXMF 1.2.0, residual transport/RNS 1.5.5 behavior, maintenance fixes and
+utility/rngit software completion. Its [dated acceptance map](../goals/open-issues-2026-10/ACCEPTANCE.md)
+distinguishes existing implementation, missing behavior and missing evidence.
+Recording this plan does not promote a parity row or complete an issue.
+
+Item 3's four approved software slices are locally qualified. Implementation
+covers serialized payload limits, truthful implementation/version metadata,
+isolated notification failures and peer
+stamp-floor arithmetic. Shared timing policy and retained Opportunistic retries
+consume exact target fixtures, including 66 snapshots. Preparation, coalesced path
+requests and targeted announce wakeups retain admission across waits.
+
+The production scheduler now also uses one retained Link/Resource owner. Native
+activation governs Pending Links; exact packet/Resource context survives retries;
+the sole receipt worker commits terminal delivery or typed propagation custody.
+The displaced 20-second sender, detached monitors, separate discovery loop and
+outbound broadcast receipt publisher are removed. Five real peer cases prove
+exact Direct/oversized Opportunistic/propagated packet/Resource bytes and native
+proof while admission survives blocked SQLite commitment. Coordinated shutdown
+also interrupts another blocked native handler and preserves unresolved correlation
+until transport shutdown.
+
+Local all-feature transport and daemon binary suites pass. The 47 controlled
+Python Link/Resource scenarios (263 snapshots) now pass the production-owner row adapter;
+the public SDK/ZeroMQ recovery qualification passes two real failed sends,
+external callback error/panic and subsequent signed native delivery with coherent
+status/replay and persisted terminal outcomes. Clean candidate `5a0a30f5` passes
+both complete 30-case compatibility matrices: 23 live Python/Rust cases and seven
+local transport-policy cases at each immutable LXMF pin, without skips or ignores.
+Direct, Opportunistic and propagated traffic passes in both directions; the target
+propagation announces exchange honest `lxmd`/`1.2.0` and `reticulumd`/`0.14.0`
+metadata. The 16 KB Resource lane explicitly uses a 1 MB Python receiving policy;
+upstream's new 1 KB default remains a documented difference.
+
+The scoped increment merged in [PR #673](https://github.com/FreeTAKTeam/LXMF-rs/pull/673)
+at `9c27747753488ed950c52a2c7717ddec14478786`, after independent review and
+verification of final head `609edf12`: 20 successful hosted checks and one
+deliberately inapplicable publication skip. Hosted baseline compatibility passed
+30/30 and PR HIL passed 23/23 on first attempts. The independent peer gate passed
+with its existing explicit divergences (79 pass, three peer failures and two
+dependency-blocked cases), not an 84-case pass. Workspace tests and all-feature Clippy pass. The
+release-check reaches the pre-existing published ZeroMQ/UUID dependency conflict;
+it does not pass and no release readiness is claimed. The
+[accumulated delta ledger](lxmf-1.2.0-delta.md) preserves file-export,
+source-blackhole and autonomous-peer gaps. See the
+[LXMF target-work boundary](lxmf-parity-matrix.md#lxmf-120-software-qualification-issue-648).
+
+Item 4 checkpoint stabilization on 2026-10-23 also corrects generated Type 1
+path requests: the requester identity stays in the payload, and the transport
+header field is absent, matching pinned Python behavior. The eight production
+transport-policy tests and all 98 targets in the broad CI integration selection
+pass locally. This does not complete the remaining interface families or claim
+whole-item release acceptance.
+
+Item 4 is in progress on that merge. Its first IFAC slice resolves raw SDK
+credential aliases consistently, publishes shared policy fallibly, and installs
+hot-apply policy before starting workers. The existing mutation worker now owns
+committed interface records; native SDK/RPC calls explicitly acknowledge queued
+work, while actual status and completion events come from the worker. Focused
+wire, rollback, ordering and record-retention regressions pass. Configured bootstrap
+roots now use the prepared policy path, retaining carrier defaults and control
+handles. Shared attachments commit transport mode before worker activation, and
+automatic TCP/Unix shared clients retain their plaintext contract while explicit
+Local configuration enforces IFAC. First-wire, cancellation, key-rotation and new
+accepted-client regressions pass locally. Duplicate membership now uses independent
+current/previous generations with bounded maintenance and owner-only persistence.
+Ordinary queue admission commits filtering/enqueue/remembering together; full
+queues preserve proof state. A frozen 21-context differential qualifies the filter
+predicate. Native Link routing now binds pending proofs to the request generation,
+preserves retry binding, applies one valid-proof-authorized hop rebalance, and
+remembers local matching-hop proofs before validation. Transit LRPROOF replay
+avoids originating hash remembering; ordinary Link and KeepAlive routing share
+validated interface/hop checks. Actual queue changes and retained late-receipt
+regressions pass. A pinned Python Resource round trip also passes. Native
+request receipts now retain packet/Resource outcomes through one Link-owned book,
+with exact generation/registration binding, response admission, timeout phases
+and cancellation. ResourceManager validates a response receiver before binding
+its hashes; request cleanup cannot remove ordinary or other-request transfers.
+Native lifecycle retirement/shutdown settles retained observers before removing
+their owner, and utility clients can abandon optional cancellation/close I/O
+after native cleanup commits. See the bounded
+[request contract](../goals/open-issues-2026-10/REQUESTS.md) for evidence and limits.
+The common InterfaceManager setters now propagate mode, outgoing, gravity and
+announce pacing through registered descendants. Native dispatch, queued release
+and exact signed-announce tie-breaking qualify the live consumers while preserving
+IFAC choices, unrelated trees and committed queue/path state.
+Discovery preparation now parses all startup configuration views from one file
+snapshot while preserving independent fallbacks and exhaustive public structs.
+The pure planner reserves collision suffixes, excludes unsafe endpoint classes,
+and accepts the explicit qualification override through an additive initial
+planning method. A controlled exact-1.5.5 comparison covers 78 qualification
+cases, nine endpoints and sequential names, including large version components.
+The existing mutation worker now consumes that policy for prepared native
+admission, persisted live observations and five-second refill/monitoring.
+Native packet provenance, blackholes, contention-safe downtime, session detach
+suppression, key collisions, whole-tree stop and retained status refresh pass
+bounded regressions. Trusted bootstrap recovery covers four managed kinds plus
+private Backbone clients; broader family recipes remain open. A local daemon
+process connects to a test-owned socket. The three exact-target Python process
+cases now pass: Rust default accepts Python, Python default rejects honest Rust
+with free slots and a working control, and Python override accepts Rust. Positive
+traces assert exact signed LXMF content on the selected native Backbone route and
+separate sender receipts. The honest Rust publisher identifies as LXMF-rs.
+The deeper recovery matrix also passes all 24 Direct packet/Resource deliveries
+across three fresh three-relay topologies before and after middle replacement.
+Endpoint/edge processes and native Link caches persist; fresh edge routes bind
+to the replacement identity, and exact signed recipient bytes and independent
+sender receipts qualify each cell. The shared per-recipe dispatcher now transfers
+actual configured roots and unique effects into the existing mutation owner.
+Private occurrence bindings preserve duplicate/unnamed roots; one publication tick
+replaces detached refresh loops, controls retire with their native receivers, and
+cancelled shutdown awaits retain the original worker join. Tree retirement fences
+late children and still removes virtual routes after manager cleanup. Native
+controls and 31 library/642 binary daemon tests pass locally. Auto lifetime tests
+retain their immediate exclusive-bind checks in isolated processes after a traced
+Pipe fork/exec interference control. Per-recipe helpers now receive only their
+existing preflight flag, and selected listeners share one startup constructor
+while retaining their separate strict policy. The same worker now retains narrow
+startup context and joins reconnect completion. Trusted restoration preserves
+original recipe identity, current publication slots, common/degraded status and
+first control visibility. Native KISS authentication/reorder, TCP endpoint
+replacement/continuity and failed listener retry controls pass. Public/named TCP
+clients now reuse schema-validated startup options and preserve initial/reconnect
+tunnel hooks through replacement and failed-reload rollback. Five option-only
+native replacements and signed/authenticated rollback/reconnect traffic pass;
+full daemon validation passes 31 library/646 binary tests. Four subsequent
+TCP/Backbone native lifecycle traces qualify the first two declared software
+family rows: connection failure/reconnect, existing/new child key rotation,
+named TCP rollback/reload/detach/attach, changed-key configured restart and exact
+unrelated traffic. Listener preference forwarding, native IPv4 fallback and
+tested numeric/wildcard bind collisions are covered; local IPv6 wire evidence
+uses a dual-loopback hostname with separate exact-`localhost` preparation controls.
+Both independent source reviews approve, and final daemon validation passes
+31 library/653 binary tests. Raw IFAC admission now rejects malformed object
+credentials/sizes before queueing and preserves signed negative-size presence
+as typed startup does. Shared alias lists retain precedence, null/empty fallback
+and whitespace; opaque settings metadata stays compatible. A real SDK/ZeroMQ
+rejection/recovery trace preserves authenticated UDP, unrelated TCP and joined
+cleanup. Six focused controls and 31 library/660 binary daemon tests pass with
+independent source POST approval. Two subsequent UDP native traces qualify the
+unicast/multicast software lifecycle rows: committed-key rollback after a real
+bind failure, unrelated traffic during owned cleanup, named reload/detach/attach,
+loopback multicast group egress, signed unicast peer learning, key rotation,
+peer-isolated direct replies and same-destination route rebinding across changed-key
+replacement/restart. Cached paths remain subject to existing maintenance; retired
+hashes lose dispatch authority. No production behavior changes are needed.
+Both independent source reviews approve; 31 library/662 binary daemon tests and
+focused gates pass. Two Linux Pipe process traces then cover configured missing
+executable failure/repair, independent default-tag authentication, same-process
+key rotation, exit/respawn, named failed-reload rollback, detach/attach and native
+MTU. Direct-child identity, socket EOF and /proc disappearance prove reaping;
+unrelated traffic and owned shutdown persist. Both source reviews and focused
+gates pass with 31 library/664 binary daemon tests, without production changes.
+Four Linux Serial/KISS cases then cover real device-open/refused-connect failures,
+same-root key rotation and reopen/reconnect, exact independent initialization/UI
+framing, changed-key configured restart, native MTU and unrelated traffic. Raw
+PTY helpers are explicitly reaped; removing owned aliases prevents retries from
+opening another test's reused slave name.
+Both source reviews and focused gates pass with 31 library/668 binary daemon tests,
+without production changes. Six configured fake-SAM I2P cases now cover refused
+setup, private-reply redaction/recovery, actual key persistence, default IFAC,
+old/new child rotation and isolation, session recreation, reconnect/restart and
+native MTU. Three pre-fix incoming setup sockets outlived joined root shutdown;
+root/accept task ownership and cancellation-aware setup now close them. Five
+additional shared HDLC regressions first fail under receive/write/flush pressure,
+then pass joined shutdown and peer EOF while pressure remains held. Cancellation
+retires partial frames without output-success events. Both source POST reviews
+approve; default and all-feature transport/daemon suites, Clippy and focused
+source gates pass. Recovered persistence metadata remains a bootstrap snapshot;
+the trace verifies the actual file. Two configured Linux Auto traces then prove
+native bind-failure/partial cleanup, default IFAC, existing/new virtual-child key
+and non-IFAC policy inheritance, configured-port peer isolation, unrelated TCP
+and changed-identity restart. Two native pressure regressions fail before the
+existing receive owner observes shutdown during forwarding/event sends, then
+pass joined completion and exclusive socket rebind with queues still held.
+Both source POST roles and ordinary affected-package gates pass. Manual bindings
+do not establish OS adoption or multicast ingress. A separately retained combined
+package all-feature run exposes unchanged independent cipher-feature wiring:
+transport AES-128 with core AES-256 fails sixteen daemon cases; the standalone
+daemon all-feature command passes those cases. See the execution record for exact
+command scopes. A configured Meshtastic simulation trace now composes schema
+and startup-guard failure, actual multi-chunk admission, explicit simulated
+status, same-root rotation, unrelated TCP and joined changed-identity/key
+restart. Two native queue-pressure cases fail before existing-token selection
+around blocked handoffs, then pass with exact held queues and closed input
+ownership. Independent bearer IFAC evidence stays separate from configured
+loopback composition. An old Auto immediate-bind failure is retained as
+untraced/consistent with prior controlled descriptor inheritance; its unchanged
+lifetime bodies now reuse exact-case isolation. The declared next all-feature
+transport run passes 1,056 tests (twelve existing ignores), separate daemon
+validation passes 31/677, and affected Clippy/focused gates pass.
+A configured Weave PTY trace now verifies signed discovery/CONNECT, native
+sixteen-byte IFAC rejection/authentication, old/new child policy and isolated
+endpoint replies, same-root recovery, actual remote-display wire commands and
+changed-identity/key/MTU restart with joined native/control/observer cleanup.
+Eight native regressions fail before correcting inherited outgoing policy,
+blocked I/O cancellation and interrupted child ownership, then pass; mandatory
+cleanup uses the existing manager tree outside cancellable I/O. Both final
+source reviews approve, final configured default/all-feature cases pass 2/2,
+and affected suites/Clippy/focused gates pass. The full default daemon run
+precedes a quiet-observer tightening covered by the final focused run; exact
+scopes and retained failures remain in the execution record.
+LoRa/RNode's next bounded supervisor increment now publishes contextual native
+opening errors and observes independent global/interface stop inputs through
+connect/retry and the existing stream/probe owner. Failure/stop regressions and
+the final 26-case native suite pass with independent source review and focused
+gates. Those supervisor active-stream controls are unpressured. Separately, nine
+native shared-KISS pressure cases fail before scoped I/O cancellation, then pass
+alongside exact ready-shutdown and initial-error/no-cleanup controls (15 total).
+Initial failure and interrupted I/O append no shutdown bytes; ordinary ready
+cleanup remains intact. Independent source reviews and affected gates pass;
+default transport passes 1,054, transport all-feature 1,083 (twelve existing
+ignores each) and default daemon 31/678. A subsequent generic bearer checkpoint
+reuses cancellation for receive admission, publishes final offline state and
+retains cleanup errors beside the original failure. Six new cases for the two
+existing bearer kinds and five prior controls pass with independent source
+review and focused gates, while native read ownership and timing remain intact.
+Two configured LoRa/RNode serial/TCP traces now cover owned state/device/refusal/
+firmware failure and repair, complete probe/radio echoes, exact IFAC traffic,
+live rotation/reconnect, actual management bytes and changed-identity/key/MTU
+restart with unrelated traffic. They expose retired command admission surviving
+a retained status handle; final supervisor exit now closes that existing receiver.
+Both final source reviews and affected gates pass. Default transport 1,060 and
+transport all-feature 1,089 retain twelve existing ignores; default daemon 31/680
+precedes fixture-only write-bound/probe-assertion tightening, covered by final
+focused default 2/2. Separate final all-feature daemon 31/681 passes.
+Fourteen of twenty declared software family rows are locally qualified. Remaining
+carrier lifecycle composition and whole-item integration/hosted work remain open in the
+[execution contract](../goals/open-issues-2026-10/TRANSPORT.md).
+
+## Propagation `/get` responses above the Link MDU (2026-11-01)
+
+The high-load daemon preflight showed Rust accepting all 600 messages but a
+Python receiver retrieving only 3. The daemon's propagation/control responses
+bypassed `Transport::send_response` and sent any envelope up to 256 KiB as one
+packet; Python drops frames above the negotiated Link MTU, so every list or
+message batch over about 16 KiB on TCP (or about 431 bytes on legacy-MTU links)
+was lost and the receiver timed out. These responses now follow the pinned
+`RNS/Link.py::handle_request` packet/Resource rule. The control and resource
+event workers also no longer exit or drop silently on broadcast lag. A local
+Python RNS 1.5.7 / LXMF 1.2.1 sync of 600 stored messages went from 0 to 600
+delivered; the guest high-load profile still needs a fresh run.
 
 ## RCH resource regressions: issues 663, 657 and 655
 
@@ -33,6 +331,119 @@ including remaining production memory/swap and delivery acceptance, is in
 [the resource regression record](../performance/rch-resource-fixes-663.md).
 This does not change the Python reference pin or certify a production plateau.
 
+Issue 663 was reopened on 2026-10-23 because production still shows rising
+`memory.events high`, doubled anonymous memory and intermittent poll errors
+after that increment. The follow-through runs from the
+[acceptance execution plan](../goals/issue-663-resource-acceptance/PLAN.md),
+one PR per item, with progress in its
+[progress record](../goals/issue-663-resource-acceptance/PROGRESS.md). Preview.26 regression work follows the
+[ordered regression plan](../goals/preview26-regression-663-657-678/PLAN.md) and
+[regression progress](../goals/preview26-regression-663-657-678/PROGRESS.md).
+Remaining P0 closure for #663, #608, #609 and #625 (evaluated 2026-10-28 at
+`45b5f565`) is ordered in the
+[P0 closure plan](../goals/p0-2026-10-28-663-608-609-625/PLAN.md) with its
+[progress record](../goals/p0-2026-10-28-663-608-609-625/PROGRESS.md). The
+first item adds a production-shaped fixture, an RCH-shaped poller and a
+cgroup-constrained sampler (`cargo xtask resource-soak-663`); its ten-minute
+baseline is recorded in the resource regression record and is a harness smoke
+check, not acceptance. The second item adds refill, WAL, cgroup memory and
+announce-persistence counters to the daemon metrics snapshot. The third item
+bounds the refill scan, yields the SQLite writer to broker commands and moves
+WAL truncation to a daemon timer.
+
+The #609 outbound replay fix now keeps duplicate membership only when a carrier
+accepts the frame or paced announce, while retaining destination-bound proof
+context before handoff. Rejected ordinary, recursive and prepared sends remain
+eligible for their first ingress copy. Verify now names the frozen 21-context,
+packet-class, Plain/Group, ordinary Proof and generation tests; the rotation
+differential exercises native maintenance at its real size threshold. Daemon
+restart coverage includes Data and LinkRequest as well as Proof. These bounded
+software checks leave the wider shared-instance/routing matrix open.
+
+A focused #609 follow-up restores ordinary Single Data and destination-proof
+return across local-client boundaries with transport disabled. Native roundtrip
+cases preserve ordinary-transit rejection, exact routes and one-shot proof
+return. Only accepted Data dispatch grants return authority, bound to the expected
+proof ingress; cache expiry removes pending metadata. A frozen Python source-block
+regression independently checks Data/proof gates and mode-before-pop behavior.
+These checks do not close the broader #609 routing/shared-instance matrix.
+
+The 2026-10-28 #663 closure increment prunes remote recipient and daemon peer
+identity caches after route expiry while preserving pending SINGLE receipts,
+local destinations and live links. It bounds retained random-blob capacity and
+encodes the duplicate hashlist without a second hash snapshot. New occupancy
+and removed-entry counters use the existing metrics provider; live fingerprint
+occupancy is read from the persistence owner without blocking, and the existing
+last-save fingerprint gauge remains available. Focused
+regressions and the transport suite pass; production acceptance stays open.
+
+The #663 readiness increment notifies systemd after configured RPC and ZeroMQ
+listeners bind, and handles SIGTERM through graceful shutdown. Direct daemon
+units can use `Type=notify` with RCH `After`/`Requires` ordering. The combined
+`lxmd` launcher remains `Type=simple` because its child is not the main PID.
+
+The #663 maintenance attribution increment exports separate expiry, quota and
+payload durations, deletion/failure totals and physical-read deltas under
+`storage.maintenance`. The instrumented ingress soak triggered payload paging at
+8.08 s / 379 MiB reads; 4,096-row candidate windows now release the writer between
+transactions. Global payload-priority ordering is intentionally approximate across
+windows, so the LXMRouter parity row records that remaining difference. Quota
+stays atomic after its 1.74 ms / zero-read measurement.
+Physical-read deltas include concurrent process work and exclude cached reads.
+The 2026-10-29 production residency map attributed the repeated 175 MiB DB
+read to that expiry phase's rowid walk and per-row orphan probe; expiry is now
+served by a `(state, updated_at)` index, orphaned marks expire by TTL or quota
+instead of a per-pass join, and phases report logical read bytes
+(`docs/migrations/propagation-peer-entry-expiry-index-663.md`).
+Quota no longer ranks every unhandled mark each pass. A partial rank index serves a
+read-only gate and the over-quota ranking, so an idle pass takes no writer and
+does no sort (`docs/migrations/propagation-peer-entry-quota-index.md`).
+The durable-dispatch retry index now includes `next_attempt_at`, so an empty
+poll skips future-deferred queued operations instead of examining each one.
+Native SQLite regressions cover queue-independent idle work, unchanged due-message
+ordering and old-profile restart migration; production resource acceptance stays
+open (see the [resource regression record](../performance/rch-resource-fixes-663.md)).
+Refill now respects the global peer-entry limit. A trigger-maintained count is
+checked inside the insert transaction, and at the limit the pass is deferred
+rather than skipped. Quota and refill therefore no longer delete and recreate
+the same pair every pass (`docs/migrations/propagation-refill-global-budget.md`).
+A retained anonymous-memory step with flat table counts activated the conditional
+allocator evaluation. Matched static-musl runs reduced absolute anon but still
+failed the short-run growth/80% ownership gates. Stack #708 subsequently merged
+the allocator evaluation; this did not qualify it as a memory fix. #709 adds
+`providers.heap.rust_allocated_bytes` through the existing daemon metrics registry
+and measures repeated cycles in a 60-minute ingress run. The gauge counts
+outstanding requested Rust sizes, not resident pages. SQLite cache targets and
+anon minus requested bytes cannot be credited as measured resident owners.
+The completed default 3,600-second fixture has flat requested bytes but fails
+two RSS window comparisons (+13.51 and +2.43 MiB). The completed full-hour
+two-option purge trial passes RSS-window stability (0.000/+0.463/−0.266 MiB)
+and requested-byte flatness. Its matched steady ingress, different warmup and
+warmer physical-read state are recorded with recoverable raw evidence; this
+does not isolate either setting or a resident owner. Production defaults remain
+unchanged. A separate tagged full-hour diagnostic now verifies >=91.203% named
+resident mapping ownership across every post-second-pass capture, but its first
+RSS-window growth is +2.328 MiB and fails the unchanged gate. #709 remains open
+for that failure. The user canceled synthetic candidate validation and requested
+real Linux testing; the safe SQLite pager-cache candidate is packaged in a draft
+Linux x86-64 daemon-only release from `132c692e`. Its RSS/performance remains
+unverified. PR #711 merged on 2026-10-30 (`ac7fc4b1`); merging the code
+does not establish memory acceptance, and no synthetic restart is planned.
+Production memory acceptance remains open. Offline resident-replay regressions
+now reject nonfinite/boolean timing, overlapping captures and maintenance-counter
+resets; the stricter replay reproduces all 717 stored captures and the unchanged
+ownership result. This validation correction supplies no new stability evidence.
+
+The next resource increment connects reference-aware announce-cache collection
+for #678 to successful route/tunnel persistence, with bounded idle maintenance
+that does not rewrite route snapshots. It also shares cached packet data during
+persistence and exposes ZeroMQ stage latency and bounded incident context in
+`/metrics`. A covering retention index and bounded peer-history deletion pages
+reduce periodic maintenance I/O and writer occupancy. Local software regressions
+and short before/after runs are recorded
+in the resource regression record; multi-hour memory/swap, delivery and recovery
+acceptance for #663 remains open.
+
 The PR CI repair routes established Link data, RTT, packet delivery proofs and
 Resource proofs to the opposite recorded interface in either direction, only
 after Link validation. It preserves shared-owner handoff even without a
@@ -40,7 +451,7 @@ destination path-table entry. Focused regressions cover absent paths, both
 proof contexts, unrelated ingress and pending Links;
 the pinned-Python two-relay restart regression retains sender delivery checks.
 
-## v0.14.0 release preparation
+## v0.14.0 release
 
 The published release consolidates the ZeroMQ SDK recovery, durable-custody,
 propagation resource-use, and reusable reply-connection increments merged since
@@ -81,7 +492,8 @@ path; the daemon
 does not yet activate auto-connect from it. Named attach/detach/reload covers
 only existing TCP client/server, UDP, and Pipe hot-apply paths; the separate
 `set_interfaces` RPC still acknowledges queue admission. Broader Markdown
-rendering and pending Link request-receipt states remain open. An uninterrupted
+rendering remains open; later native request-receipt qualification is recorded
+in item 4 above. An uninterrupted
 local `cargo xtask release-check` passed on the code-identical candidate.
 The exact integrated commit `fbc75b86e15550722923b366398f0a4116182894`
 passed [CI](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/37124456558),
@@ -94,10 +506,41 @@ and tag-level [performance verification](https://github.com/FreeTAKTeam/LXMF-rs/
 are tracked separately.
 See [the delta ledger](rns-1.5.5-delta.md) for the exact boundary.
 
+## `reticulum-rs-core` bare-metal build (#676, 2026-10-24)
+
+`reticulum-rs-core` now compiles for `thumbv7em-none-eabi` with
+`--no-default-features --features alloc`. The report was correct: the crate's own
+`std` use was already feature-gated, but `rmp-serde`, `hex`, `serde`,
+`serde_bytes`, `sha2`, `ed25519-dalek`, `x25519-dalek`, and `getrandom` entered
+through dependency defaults. `rmp-serde` is now `std`-only (it was used only by
+the filesystem key store and ratchet persistence), the other dependencies have
+their `std` defaults moved under the crate's `std` feature, ratchet rotation
+draws its secret from the RNG passed to `announce`, and `group_encrypt_with_rng`
+serves `no_std` callers while `group_encrypt` stays `std`-only. Default builds
+and wire behavior are unchanged; `cargo test -p reticulum-rs-core` and the
+workspace build pass. `tools/scripts/check-no-std-core.sh` is the regression
+gate and runs inside `cargo xtask ci --stage architecture-checks`. This is a
+compile gate for one target, not device evidence, and it does not change the
+`lxmf-wire` posture below.
+
+## Designated protocol core boundary (#625, 2026-11-03)
+
+The existing architecture gate now builds the four metadata-designated protocol
+crates separately for `thumbv7em-none-eabi`, including core Fernet and embedded
+Serde feature variants. `lxmf-wire` no longer activates `reticulum-rs-core/std`
+when its own std feature is disabled; default desktop builds forward std
+explicitly. Embedded Serde also disables dependency std defaults. Seeded
+optional/dev/build forbidden dependencies and an unlisted workspace edge prove
+the boundary gate rejects violations. The gate checks active transitive target
+build dependencies and the mininode's no-default feature graph, and runs existing
+host embedded adapter checks. See the [authoritative core contract](../architecture/overview.md#protocol-core-boundary-625).
+`lxmf-wire`, mininode, propagation and full transport remain std-first; no new
+wire parity, device HIL or production claim follows from these compile checks.
+
 ## Core-library portability (#646, 2026-09-28)
 
 `lxmf-wire` currently requires `std`, including when built with
-`--no-default-features --features alloc`. Its MessagePack and Reticulum dependency
+`--no-default-features --features alloc`. Its MessagePack dependency
 graph is not suitable for `no_std`-only targets. The support declaration and
 [capability audit](../contracts/sdk-v2-feature-matrix.md#no_std--alloc-capability-audit)
 state this explicitly without changing default APIs or wire behavior. Full
@@ -110,8 +553,11 @@ remains open as deferred capability work, not a completed bare-metal fix.
 The opt-in loopback `meshchat-api` crate exposes a partial MeshChat 2.4.0
 HTTP/WebSocket compatibility layer from `reticulumd`. Text and file/image
 messaging, conversation/history reads, cancellation, deletion, local
-preferences, remote propagation fetch, and control-socket basics are
-implemented and locally tested. The current development POC ran with
+preferences, remote propagation fetch, control-socket basics, saved interface
+edits/import/export, serial-port discovery, and saved transport toggles are implemented and locally
+tested. Interface edits support both daemon TOML layouts and require restart;
+the live interface stats endpoint exposes a partial daemon snapshot. The
+current development POC ran with
 `rmap.world:4242` and a serial RNode on `/dev/ttyUSB1` at 915 MHz, 500 kHz,
 SF10, 4/5, and 22 dBm, with Reticulum transport enabled. The user confirmed
 two-way LoRa text and delivery of one message after about four idle minutes;
@@ -120,7 +566,7 @@ observations for one setup, not a sustained delivery or verified
 TCP-to-LoRa-to-TCP forwarding test. A roughly 271 KB attachment failed in the
 earlier trial, and receipt of three other messages that Columba reported as
 "in propagation" was not confirmed. The full application contract remains
-incomplete, especially audio send/calls, NomadNet, interface editing, and
+incomplete, especially audio send/calls, NomadNet, and
 propagation transfer state. This adapter does not change the Python RNS/LXMF
 callable-parity counts. See the [MeshChat API runbook](../runbooks/meshchat-api.md),
 [LXMF matrix](lxmf-parity-matrix.md), [Reticulum matrix](reticulum-parity-matrix.md),
@@ -252,9 +698,9 @@ and sender-visible completion.
 
 The standalone transport restart path now restores and persists exact packet
 hashes in the pinned-Python-compatible `packet_hashlist.raw`. A production
-ingress regression additionally starts `reticulumd` as a subprocess, admits a
-proof and counts its duplicate, gracefully stops it, then restarts on the same
-storage and confirms the exact proof is filtered again. This is separate from
+ingress suite additionally starts `reticulumd` as a subprocess for each of
+Proof, Data and LinkRequest, admits a packet and counts its duplicate, gracefully
+stops it, then restarts on the same storage and confirms exact replay is filtered. This is separate from
 the LXMF `LXMRouter` delivered-ID cache. A deterministic failure-injection
 regression also confirms a failed hashlist save does not suppress path-table
 writes, while persistence errors remain surfaced. This applies only to
@@ -264,9 +710,9 @@ hash filter; Rust now admits repeated ResourceProof packets to the resource
 state machine with a focused production-filter regression. A further source
 comparison found the same pinned exception for `RESOURCE`; Rust now also admits
 repeated Link Resource packets through the production filter, covered by a
-regression that failed before the fix. Other Python-exempt contexts,
-retransmission classes, cache rotation/size parity, and the broader #609
-recovery matrix remain open.
+regression that failed before the fix. Frozen Cartesian/context differentials
+and native generation rotation now have named Verify coverage. Other production
+retransmission/routing combinations and the broader #609 recovery matrix remain open.
 
 The previously intermittent B-to-A LXMF delivery was traced to relay A
 rejecting the shared-owner `LinkRequestProof` because it lacked the
@@ -1301,8 +1747,9 @@ release blockers.
 
 ## Issue #605 pinned 1.5.4-dev feature update
 
-The repository's current release posture remains anchored to the RNS 1.5.2
-baseline above. The #605 feature-update target is the immutable RNS 1.5.4-dev
+Issue #605 is closed. The repository's current release posture remains
+anchored to the RNS 1.5.2 baseline above. The #605 feature-update target was
+the immutable RNS 1.5.4-dev
 development revision `99de23c040d507e3fefca19e87b182302902725d`. The target is
 recorded in the canonical `[parity_target]` section of
 `tools/interop/independent-implementations.toml`; changing it requires a
@@ -1312,9 +1759,9 @@ The identified feature delta is integrated on the combined mainline: HDLC
 framing, RNode BLE lifecycle/Windows paired-device selection, and rngit media,
 page, permission-refresh, and work-transition changes. Focused Rust tests,
 pinned-Python interop, and normal CI provide software evidence. The short
-reconciliation in [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) is #605's update
-checklist; the inherited gaps below remain linked follow-ups, not automatic
-blockers. The 1.5.2 release baseline is unchanged.
+reconciliation in [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) records the
+completed #605 scope; inherited gaps below remain linked follow-ups, not grounds
+to reopen it. The 1.5.2 release baseline is unchanged.
 
 The callable inventory is now treated as historical navigation evidence for the
 active release, not as proof of forward behavioral parity. The generated
@@ -1326,7 +1773,7 @@ candidate inventory intentionally demotes inherited mappings to provisional
 `partial` until behavior is exercised.
 
 The forward ledger is [`docs/status/rns-1.5.4-delta.md`](rns-1.5.4-delta.md).
-Completing #605's feature update does not certify full Reticulum parity,
+Closing #605's feature update did not certify full Reticulum parity,
 promote a new release baseline, or close the inherited behavioral contract.
 Physical, platform, third-party-client, public-network, and soak evidence
 remain a separate operational axis under #616.
@@ -1612,8 +2059,8 @@ direction.
   attachments). Production-ingress regressions and pinned-Python differential
   cover repeated copies and mismatched transport IDs for both classes.
   Transported packets and invalid announces remain rejected earlier; other
-  duplicate classes, cache rotation/size behavior, and broad #609 acceptance
-  remain open. See `evidence/609-transport-local-shared.md`.
+  production duplicate/routing combinations and broad #609 acceptance remain
+  open; native cache rotation/size now has the separate evidence noted above. See `evidence/609-transport-local-shared.md`.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
@@ -3029,9 +3476,26 @@ direction.
 
 ## Current Release State
 
-Stable v0.14.0 is the current published release. Its package alignment, opt-in
+The v0.16.0 release train includes bounded announce-cache cleanup, persistence,
+ZeroMQ readiness and WAL maintenance fixes. Production resource and multi-cycle
+retention acceptance remain open. See [release notes](../release-notes-v0.16.0.md).
+
+The v0.15.0 release train aligns 21 public packages and carries the delivery,
+interface lifecycle, Bluetooth, bare-metal and embedded custody changes since
+v0.14.0. Its software/artifact qualification does not close announce-cache disk
+exhaustion (#678) or production resource acceptance (#663). See the
+[release notes and operating limitations](../release-notes-v0.15.0.md).
+
+The unpublished embedded custody API keeps application-domain classification
+outside LXMF-rs. Generic `MessageKind::Application` retains persisted kind `1`;
+R3AKT's mission classification lives in its shared mesh-delivery crate, with
+translation owned by the embedding application. Protocol storage and handlers
+stay shared by the daemon and embedded runtime. See the
+[API migration note](../migrations/propagation-application-kind.md).
+
+Stable v0.14.0 is the preceding published release. Its package alignment, opt-in
 durable broker, migration requirements and qualification boundaries are
-summarized [above](#v0140-stable-release) and in the
+summarized [above](#v0140-release) and in the
 [release notes](../release-notes-v0.14.0.md). The older records below retain
 their original version and evidence scope.
 
@@ -3091,3 +3555,37 @@ broader #613 rendering and lifecycle acceptance remains partial.
 - A passing interop workflow does not promote unrelated matrix rows.
 - Update this file and the affected matrix in the same change.
 - Keep implementation history in Git and historical plans, not in this file.
+
+Preview.26 regression implementation now bounds dirty path-table saves to a
+300-second minimum (configurable), delays cleanup startup, and seeds validated
+canonical restore fingerprints. The regression package tracks the remaining
+readiness/control and WAL connection increments and paired ingress evidence.
+
+Preview.26 control follow-up: `/readyz` returns 503 until every configured ZMQ
+listener has bound, and clears on loop exit. Durable capability reads use a
+startup/enable cache. Replay-safe broker RPC commands return a typed timeout
+after 2.5 seconds while queued work retains its commit semantics. Eight legal
+maximum control request/reply pairs and 32 bounded rejection replies have
+reserved admission capacity; power-of-two drop warnings bound log volume.
+Larger configured poll batches preclude a fixed 1 MiB reply reservation.
+Local readiness/deadline regressions passed; production p99 and pressure
+acceptance remain pending.
+
+Preview.26 WAL follow-up runs scheduled PASSIVE/TRUNCATE on a dedicated
+maintenance connection outside the traffic writer mutex. Emergency write-path
+checkpoint attempts are limited to the shared maintenance interval, so recovery
+from reader-pinned physical backpressure can wait until that next pass.
+`storage.wal.last_checkpoint` exposes SQLite busy/log/checkpointed frames.
+Regressions retain physical budget and custody/ACK guarantees and demonstrate
+checkpoint progress while both traffic connection mutexes are held.
+Production reader attribution and resource acceptance remain open.
+
+The preview.26 regression stack is available as PRs #695 (dirty persistence),
+#696 (readiness/control and SDK deadline recovery), and #697 (WAL connection).
+Paired 600-second musl ingress reduced persistence 210→1 runs and CPU
+14.33→7.83%, but retention still caused memory/reclaim pressure, and logical
+reads / aggregate writer wait worsened. Resource acceptance stays open.
+A separate control stress achieved negotiate p99 1.087 ms during saves and
+checkpoints; failed binds truthfully keep readiness at 503. Conditional PR 4
+is deferred until repeated-cycle or phase-specific evidence establishes its
+trigger. Details and prerelease evidence are in the regression package.

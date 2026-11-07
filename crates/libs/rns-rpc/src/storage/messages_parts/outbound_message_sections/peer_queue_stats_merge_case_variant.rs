@@ -173,7 +173,7 @@
             .expect("mark existing received");
 
         store
-            .mark_recent_propagation_unhandled_for_peer(peer, 1)
+            .mark_recent_propagation_unhandled_for_peer(peer, 1, u64::MAX)
             .expect("mark recent prospective entry");
 
         assert_eq!(

@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -13,6 +14,47 @@ class PythonCompatibilityMatrixTests(unittest.TestCase):
     def test_required_contract_is_dispatchable(self) -> None:
         self.assertEqual(matrix.dispatch_errors(), [])
         self.assertEqual(len(matrix.REQUIRED_CASES), 30)
+
+    def test_target_reference_profile_is_explicit_and_frozen(self) -> None:
+        args = matrix.parse_args(["--reference-profile", "lxmf-1.2.0"])
+        self.assertEqual(args.reference_profile, "lxmf-1.2.0")
+        self.assertEqual(matrix.parse_args([]).reference_profile, "baseline")
+        self.assertEqual(matrix.LXMF_REFERENCE_PROFILES["lxmf-1.2.0"],
+                         "c3ff2d6dc2f256daab896dadc044dd5a913ecbb7")
+
+    def test_reference_profiles_preserve_exact_pin_and_clean_candidate_gates(self) -> None:
+        for profile, expected in matrix.LXMF_REFERENCE_PROFILES.items():
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                harness = root / "harness.py"
+                harness.touch()
+                metadata = [
+                    {"revision": "candidate", "clean": True},
+                    {"revision": matrix.EXPECTED_RETICULUM_REVISION, "clean": True},
+                    {"revision": expected, "clean": True},
+                ]
+
+                def check() -> list[str]:
+                    with patch.object(matrix, "git_metadata", side_effect=metadata), \
+                         patch.object(matrix, "run_capture", return_value=(0, "", "")), \
+                         patch.object(matrix.shutil, "which", return_value="python3"):
+                        errors, _ = matrix.preflight("python3", "bash", harness, root, root, profile)
+                    return errors
+
+                self.assertEqual(check(), [])
+                metadata[2]["revision"] = next(
+                    revision for name, revision in matrix.LXMF_REFERENCE_PROFILES.items()
+                    if name != profile
+                )
+                self.assertTrue(any("LXMF checkout does not match" in error for error in check()))
+                metadata[2]["revision"] = expected
+                metadata[1]["revision"] = "another-rns-revision"
+                self.assertTrue(any("Reticulum checkout does not match" in error for error in check()))
+                metadata[1]["revision"] = matrix.EXPECTED_RETICULUM_REVISION
+                for candidate in metadata:
+                    candidate["clean"] = False
+                    self.assertTrue(any("dirty" in error for error in check()))
+                    candidate["clean"] = True
 
     def test_missing_dispatch_is_reported(self) -> None:
         original = matrix.SMOKE_SCRIPT_CASES

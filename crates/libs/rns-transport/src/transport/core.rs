@@ -12,6 +12,8 @@ impl Transport {
             tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
         let (received_data_tx, _) =
             tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (received_data_with_proof_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
         let (iface_messages_tx, _) =
             tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
         let (resource_events_tx, _) =
@@ -66,6 +68,7 @@ impl Transport {
             single_in_destinations: HashMap::new(),
             single_in_destination_app_data: HashMap::new(),
             single_out_destinations: HashMap::new(),
+            single_out_destinations_removed_total: 0,
             blackholed_identities: HashMap::new(),
             announce_limits: AnnounceLimits::new(),
             packet_signal_cache: VecDeque::new(),
@@ -79,6 +82,7 @@ impl Transport {
             announce_tx,
             link_in_event_tx: link_in_event_tx.clone(),
             received_data_tx: received_data_tx.clone(),
+            received_data_with_proof_tx: received_data_with_proof_tx.clone(),
             ratchet_store,
             resource_manager: ResourceManager::new_with_config(
                 Duration::from_secs(resource_retry_interval_secs),
@@ -102,6 +106,7 @@ impl Transport {
         fn spawn_link_data_forwarder(
             mut link_rx: broadcast::Receiver<LinkEventData>,
             received_data_tx: broadcast::Sender<ReceivedData>,
+            received_data_with_proof_tx: broadcast::Sender<ReceivedDataWithProof>,
         ) {
             tokio::spawn(async move {
                 loop {
@@ -115,19 +120,23 @@ impl Transport {
                                     payload.context() as u8,
                                     payload.len()
                                 );
-                                if received_data_tx
-                                    .send(ReceivedData {
-                                        destination: event.id,
-                                        data: PacketDataBuffer::new_from_slice(payload.as_slice()),
-                                        payload_mode: ReceivedPayloadMode::FullWire,
-                                        ratchet_used: false,
-                                        context: Some(payload.context()),
-                                        request_id: payload.request_id(),
-                                        hops: None,
-                                        interface: None,
+                                let received = ReceivedData {
+                                    destination: event.id,
+                                    data: PacketDataBuffer::new_from_slice(payload.as_slice()),
+                                    payload_mode: ReceivedPayloadMode::FullWire,
+                                    ratchet_used: false,
+                                    context: Some(payload.context()),
+                                    request_id: payload.request_id(),
+                                    hops: None,
+                                    interface: None,
+                                };
+                                let proof_consumer = received_data_with_proof_tx
+                                    .send(ReceivedDataWithProof {
+                                        received: received.clone(),
+                                        proof: None,
                                     })
-                                    .is_err()
-                                {
+                                    .is_ok();
+                                if received_data_tx.send(received).is_err() && !proof_consumer {
                                     log::trace!(
                                         "[tp-diag] received data has no active subscribers link_id=/{}//",
                                         event.id
@@ -142,8 +151,16 @@ impl Transport {
             });
         }
         {
-            spawn_link_data_forwarder(link_in_event_tx.subscribe(), received_data_tx.clone());
-            spawn_link_data_forwarder(link_out_event_tx.subscribe(), received_data_tx.clone());
+            spawn_link_data_forwarder(
+                link_in_event_tx.subscribe(),
+                received_data_tx.clone(),
+                received_data_with_proof_tx.clone(),
+            );
+            spawn_link_data_forwarder(
+                link_out_event_tx.subscribe(),
+                received_data_tx.clone(),
+                received_data_with_proof_tx.clone(),
+            );
         }
 
         Self {
@@ -152,6 +169,7 @@ impl Transport {
             link_in_event_tx,
             link_out_event_tx,
             received_data_tx,
+            received_data_with_proof_tx,
             iface_messages_tx,
             resource_events_tx,
             handler,
@@ -239,45 +257,32 @@ impl Transport {
         self.handler.lock().await.config.set_connected_to_shared_instance(connected);
     }
 
-    /// Spawn a multicast UDP interface with per-peer routing.
-    ///
-    /// Announces and path requests broadcast to the multicast group
-    /// exactly as before. Point-to-point `Direct` tx for a peer
-    /// discovered via this iface is delivered through the same host
-    /// socket, unicast — the tx task resolves the virtual iface hash
-    /// to a `SocketAddr` via the `PeerRouting` map this method
-    /// registers with the transport handler.
-    ///
-    /// Callers (backend_lxmf.rs) should use this rather than spawning
-    /// a `UdpInterface` with `is_multicast=true` directly; going
-    /// through this helper ensures the transport handler knows about
-    /// the routing map so `unicast_iface_for_source` can register
-    /// peers into it.
-    pub async fn add_multicast_udp_interface(
-        &self,
-        bind_addr: String,
-        forward_addr: Option<String>,
-    ) -> AddressHash {
-        self.add_multicast_udp_interface_with_status(bind_addr, forward_addr).await.0
+    pub async fn connected_to_shared_instance(&self) -> bool {
+        self.handler.lock().await.config.connected_to_shared_instance
     }
 
-    pub async fn add_multicast_udp_interface_with_status(
+    /// Commit attached-client mode before releasing an owned worker's start
+    /// gate. A closed gate or already-cancelled interface leaves mode unchanged.
+    /// This contains no packet I/O, callbacks or await while holding the handler.
+    pub async fn activate_shared_instance_interface(
         &self,
-        bind_addr: String,
-        forward_addr: Option<String>,
-    ) -> (AddressHash, crate::iface::udp::UdpRuntimeStatusHandle) {
-        let (iface_hash, peer_routing, status) = {
-            let mut mgr = self.iface_manager.lock().await;
-            let (iface_hash, peer_routing, status) =
-                crate::iface::udp::spawn_multicast_udp_with_status(
-                    &mut mgr,
-                    bind_addr,
-                    forward_addr,
-                );
-            (iface_hash, peer_routing, status)
+        activation: tokio::sync::oneshot::Sender<()>,
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> Result<(), crate::error::RnsError> {
+        let mut handler = tokio::select! {
+            _ = cancel.cancelled() => return Err(crate::error::RnsError::ConnectionError),
+            handler = self.handler.lock() => handler,
         };
-        self.handler.lock().await.register_multicast_peer_routing(iface_hash, peer_routing);
-        (iface_hash, status)
+        if cancel.is_cancelled() {
+            return Err(crate::error::RnsError::ConnectionError);
+        }
+        let previous = handler.config.connected_to_shared_instance;
+        handler.config.set_connected_to_shared_instance(true);
+        if activation.send(()).is_err() {
+            handler.config.set_connected_to_shared_instance(previous);
+            return Err(crate::error::RnsError::ConnectionError);
+        }
+        Ok(())
     }
 
     pub fn channel(&self, link_id: AddressHash) -> TransportChannel {

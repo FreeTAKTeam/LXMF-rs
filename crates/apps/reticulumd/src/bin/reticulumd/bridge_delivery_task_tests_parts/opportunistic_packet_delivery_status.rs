@@ -31,11 +31,18 @@ async fn opportunistic_packet_delivery_reports_status_hash_and_bytes() {
 
     let remote_signer = rns_transport::identity::PrivateIdentity::new_from_rand(OsRng);
     let remote_identity = *remote_signer.as_identity();
+    let destination_hash = rns_transport::destination::SingleOutputDestination::new(
+        remote_identity, DestinationName::new("lxmf", "delivery"),
+    ).desc.address_hash;
     let mut destination = [0u8; 16];
-    destination.copy_from_slice(remote_identity.address_hash.as_slice());
+    destination.copy_from_slice(destination_hash.as_slice());
     let receipt_map = Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, mut receipt_rx) = tokio::sync::mpsc::channel(16);
     let task = DeliveryTask {
+        stopping: None,
+        wakeup: Default::default(),
+        path_requests: Default::default(),
+        deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
         transport,
         peer_crypto: Arc::new(Mutex::new(HashMap::new())),
@@ -48,7 +55,7 @@ async fn opportunistic_packet_delivery_reports_status_hash_and_bytes() {
         message_id: message_id.to_string(),
         source_hash: [1u8; 16],
         destination,
-        destination_hash: remote_identity.address_hash,
+        destination_hash,
         destination_hex: hex::encode(destination),
         title: String::new(),
         content: String::new(),
@@ -67,15 +74,19 @@ async fn opportunistic_packet_delivery_reports_status_hash_and_bytes() {
     let mut lxmf_payload = destination.to_vec();
     lxmf_payload.extend_from_slice(payload_body);
 
-    let task_handle = tokio::spawn(task.run_prepared(
-        PreparedDeliveryPayload { lxmf_payload, propagation: None },
-        Arc::new(tokio::sync::Semaphore::new(1)),
-    ));
+    let mut remote_destination = rns_transport::destination::SingleInputDestination::new(
+        remote_signer, DestinationName::new("lxmf", "delivery"));
+    channel.rx_channel.send(rns_transport::iface::RxMessage {
+        address: *channel.address(), packet: remote_destination.announce(OsRng, None).expect("signed announce"),
+        source: rns_transport::iface::IfaceSource::None,
+    }).await.expect("announce ingress");
+    while !task.transport.has_path(&destination_hash).await { tokio::task::yield_now().await; }
+    let (stop, task_handle) = start_prepared(task, PreparedDeliveryPayload { lxmf_payload, propagation: None });
     let sent = tokio::time::timeout(Duration::from_millis(200), channel.tx_channel.recv())
         .await
         .expect("opportunistic packet")
         .expect("opportunistic packet");
-    assert_eq!(sent.packet.destination, remote_identity.address_hash);
+    assert_eq!(sent.packet.destination, destination_hash);
     assert_eq!(sent.packet.context, PacketContext::None);
     let packet_hash = hex::encode(sent.packet.hash().to_bytes());
 
@@ -93,5 +104,7 @@ async fn opportunistic_packet_delivery_reports_status_hash_and_bytes() {
         receipt_map.lock().expect("receipt map").get(&packet_hash),
         Some(&message_id.to_string())
     );
+    assert!(!task_handle.is_finished(), "handoff retains the production owner");
+    stop.send_replace(true);
     task_handle.await.expect("delivery task join");
 }

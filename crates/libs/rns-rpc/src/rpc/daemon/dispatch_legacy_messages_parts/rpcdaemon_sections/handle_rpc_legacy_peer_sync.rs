@@ -125,38 +125,30 @@ impl RpcDaemon {
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| left.transient_id.cmp(&right.transient_id))
         });
+        if let Some(min_accepted_stamp_value) = peer_minimum_accepted_stamp_value(&record) {
+            let mut accepted_propagation = Vec::with_capacity(pending_propagation.len());
+            for entry in pending_propagation {
+                if entry.stamp_value.is_some_and(|value| value < min_accepted_stamp_value) {
+                    propagation_rejected = propagation_rejected.saturating_add(1);
+                    propagation_rejected_bytes =
+                        propagation_rejected_bytes.saturating_add(entry.size_bytes);
+                    propagation_rejected_ids.push(entry.transient_id.clone());
+                    continue;
+                }
+                accepted_propagation.push(entry);
+            }
+            pending_propagation = accepted_propagation;
+        }
         validate_peer_sync_wanted_ids_in_offer(
             wanted_ids.as_ref(),
             pending_propagation.as_slice(),
             transfer_limit_bytes,
             sync_limit_bytes,
         )?;
-        let (policy_relevant_pending, policy_relevant_has_stamp) = peer_sync_policy_relevance(
-            pending_propagation.as_slice(),
-            wanted_ids.as_ref(),
-            sync_limit_bytes,
-        );
-        if policy_relevant_pending > 0 && policy_relevant_has_stamp {
-            if let Some(min_accepted_stamp_value) = peer_minimum_accepted_stamp_value(&record) {
-                let mut accepted_propagation = Vec::with_capacity(pending_propagation.len());
-                for entry in pending_propagation {
-                    if entry.stamp_value.is_some_and(|value| value < min_accepted_stamp_value) {
-                        propagation_rejected = propagation_rejected.saturating_add(1);
-                        propagation_rejected_bytes =
-                            propagation_rejected_bytes.saturating_add(entry.size_bytes);
-                        propagation_rejected_ids.push(entry.transient_id.clone());
-                        self.store
-                            .remove_peer_unhandled_propagation(
-                                peer_key,
-                                entry.transient_id.as_str(),
-                            )
-                            .map_err(std::io::Error::other)?;
-                        continue;
-                    }
-                    accepted_propagation.push(entry);
-                }
-                pending_propagation = accepted_propagation;
-            }
+        for transient_id in &propagation_rejected_ids {
+            self.store
+                .remove_peer_unhandled_propagation(peer_key, transient_id)
+                .map_err(std::io::Error::other)?;
         }
         if let Some(limit) = transfer_limit_bytes {
             let mut candidates = Vec::with_capacity(pending_propagation.len());

@@ -2,6 +2,13 @@ use super::*;
 use rns_rpc::{OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome, PaperEncodeEnvelope};
 
 impl OutboundBridge for TransportBridge {
+    fn notify_delivery_path(&self, destination: &str) {
+        self.delivery_scheduler.notify_path_available(destination);
+    }
+    fn owns_delivery(&self, message_id: &str) -> bool {
+        self.delivery_scheduler.owns_delivery(message_id)
+    }
+
     fn validate_delivery(
         &self,
         record: &rns_rpc::MessageRecord,
@@ -47,7 +54,12 @@ impl OutboundBridge for TransportBridge {
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
         // Reserve count and retained-byte capacity before cloning fields, signing or ticket work.
-        let reservation = self.delivery_scheduler.reserve(delivery_reservation_bytes(record))?;
+        let Some(reservation) = self
+            .delivery_scheduler
+            .reserve_message(&record.id, delivery_reservation_bytes(record))?
+        else {
+            return Ok(());
+        };
         let destination = parse_destination_hash_required(&record.destination)?;
         let service_identity =
             self.service_identity_for_destination(record.source.as_str()).ok_or_else(|| {
@@ -142,31 +154,8 @@ impl OutboundBridge for TransportBridge {
                         }
                         return Some(identity);
                     }
-                    let identity = match resolve_destination_identity_blocking(
-                        self.transport.clone(),
-                        hash,
-                        Duration::from_secs(12),
-                    ) {
-                        Ok(Some(id)) => id,
-                        Ok(None) => return None,
-                        Err(err) => {
-                            log::warn!(
-                                "[daemon] identity resolver for propagation node {node_hex}: {err}"
-                            );
-                            return None;
-                        }
-                    };
-                    match self.outbound_propagation_identities.lock() {
-                        Ok(mut guard) => {
-                            guard.insert(node_hex.to_string(), identity);
-                        }
-                        Err(error) => {
-                            log::error!(
-                                "[daemon] propagation identity cache lock poisoned for node={node_hex}: {error}"
-                            );
-                        }
-                    }
-                    Some(identity)
+                    // Unresolved discovery belongs to the admitted asynchronous task.
+                    None
                 })
             })
         } else {
@@ -182,17 +171,25 @@ impl OutboundBridge for TransportBridge {
             return Ok(());
         }
 
+        let can_propagate = requested_method == RequestedDeliveryMethod::Propagated
+            || (requested_method == RequestedDeliveryMethod::Direct
+                && options.try_propagation_on_fail);
+        let custody = can_propagate;
         if daemon.owns_durable_message(&record.id)?
-            && self.receipt_tx.reserve_terminal(&record.id).is_err()
+            && self.receipt_tx.reserve_completion(&record.id, custody).is_err()
         {
             self.receipt_tx.retire_committed(|id| {
                 daemon.message_receipt_status(id).map(|s| {
                     s.as_deref().is_some_and(reticulum_daemon::receipt_bridge::is_terminal)
                 })
             })?;
-            self.receipt_tx.reserve_terminal(&record.id)?;
+            self.receipt_tx.reserve_completion(&record.id, custody)?;
         }
         let task = DeliveryTask {
+            stopping: None,
+            wakeup: Default::default(),
+            path_requests: Default::default(),
+            deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             daemon,
             transport: self.transport.clone(),
             peer_crypto: self.peer_crypto.clone(),
@@ -220,7 +217,11 @@ impl OutboundBridge for TransportBridge {
             try_propagation_on_fail: options.try_propagation_on_fail,
             propagation_node_hex,
         };
-        self.delivery_scheduler.enqueue_reserved(task, reservation)
+        let result = self.delivery_scheduler.enqueue_reserved(task, reservation);
+        if result.is_err() {
+            self.receipt_tx.release_unsent(&record.id);
+        }
+        result
     }
 
     fn delivery_pipeline_status(&self) -> Option<serde_json::Value> {

@@ -1,5 +1,5 @@
 async fn startup_udp(
-    args: &Args,
+    strict_interface_startup: bool,
     iface: &InterfaceConfig,
     label: &str,
     transport: &Transport,
@@ -21,7 +21,7 @@ async fn startup_udp(
         }
     };
 
-    if args.strict_interface_startup {
+    if strict_interface_startup {
         if let Err(err) = udp::strict_preflight(bind_addr.as_str()).await {
             record_startup_failure(
                 record,
@@ -38,27 +38,31 @@ async fn startup_udp(
     let adapter = UdpInterface::new(bind_addr.clone(), forward_addr.clone());
     let status = adapter.runtime_status_handle();
     let is_multicast = adapter.is_multicast();
-    let udp_iface = if is_multicast {
-        let (udp_iface, status) = transport
-            .add_multicast_udp_interface_with_status(bind_addr.clone(), forward_addr.clone())
-            .await;
-        iface_manager.lock().await.set_mode(udp_iface, mode);
-        sinks.runtime_refreshes.push(UdpRuntimeRefresh { runtime_iface: udp_iface, status });
-        udp_iface
+    let spawned = if is_multicast {
+        transport
+            .try_add_multicast_udp_interface_with_status(
+                bind_addr.clone(),
+                forward_addr.clone(),
+                mode,
+                |manager, address| apply_interface_runtime_config(manager, address, iface),
+            )
+            .await
     } else {
-        let udp_iface = iface_manager.lock().await.spawn_as_with_mode(
+        spawn_configured(
+            &mut *iface_manager.lock().await,
             adapter,
             UdpInterface::spawn,
             IfaceRole::Unicast,
-            mode,
-        );
-        sinks.runtime_refreshes.push(UdpRuntimeRefresh { runtime_iface: udp_iface, status });
-        udp_iface
+            iface,
+        )
+        .map(|address| (address, status))
     };
-    {
-        let mut manager = iface_manager.lock().await;
-        apply_interface_runtime_config(&mut manager, udp_iface, iface);
-    }
+    let Some((udp_iface, status)) =
+        record_prepared_spawn(spawned, record, sinks.startup_failures, label)
+    else {
+        return false;
+    };
+    sinks.runtime_refreshes.push(UdpRuntimeRefresh { runtime_iface: udp_iface, status });
     log::info!(
         "[daemon] udp enabled iface={} name={} bind={} forward={}",
         udp_iface,
@@ -136,6 +140,7 @@ where
                         AutoRuntimeShutdown {
                             host_iface,
                             runtime: activation.runtime,
+                            #[cfg(test)]
                             iface_manager: Arc::clone(iface_manager),
                         },
                     ))
@@ -179,7 +184,10 @@ async fn activate_auto_plan(
         let mut manager = iface_manager.lock().await;
         let channel = manager.new_channel_with_role_and_mode(128, IfaceRole::Multicast, mode);
         let host_iface = channel.address;
-        apply_interface_runtime_config(&mut manager, host_iface, iface);
+        if let Err(error) = apply_interface_runtime_config(&mut manager, host_iface, iface) {
+            manager.stop_interface(host_iface);
+            return Err(format!("AutoInterface runtime policy could not be installed: {error}"));
+        }
         (
             host_iface,
             auto::AutoInterfaceTransportRuntime::from_channel(channel, Arc::clone(iface_manager)),
@@ -220,508 +228,4 @@ impl AutoInterfaceActivation {
         self.runtime.stop().await;
         iface_manager.lock().await.stop_interface(self.host_iface)
     }
-}
-
-async fn startup_serial(
-    args: &Args,
-    iface: &InterfaceConfig,
-    label: &str,
-    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    record: &mut InterfaceRecord,
-    startup_failures: &mut Vec<InterfaceStartupFailure>,
-    serial_runtime_refreshes: &mut Vec<SerialRuntimeRefresh>,
-) -> bool {
-    let adapter = match serial::build_adapter(iface) {
-        Ok(adapter) => adapter,
-        Err(err) => {
-            record_startup_failure(
-                record,
-                startup_failures,
-                label.to_string(),
-                iface.kind.clone(),
-                err,
-            );
-            return false;
-        }
-    };
-
-    if args.strict_interface_startup {
-        if let Err(err) = adapter.preflight_open() {
-            record_startup_failure(
-                record,
-                startup_failures,
-                label.to_string(),
-                iface.kind.clone(),
-                err,
-            );
-            return false;
-        }
-    }
-
-    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-    let status = adapter.runtime_status_handle();
-    let serial_iface = iface_manager.lock().await.spawn_as_with_mode(
-        adapter,
-        |context| async move { rns_transport::iface::serial::SerialInterface::spawn(context).await },
-        IfaceRole::Unicast,
-        mode,
-    );
-    {
-        let mut manager = iface_manager.lock().await;
-        apply_interface_runtime_config(&mut manager, serial_iface, iface);
-    }
-    log::info!(
-        "[daemon] serial enabled iface={} name={} device={} baud_rate={}",
-        serial_iface,
-        label,
-        iface.device.as_deref().unwrap_or("<unset>"),
-        iface.baud_rate.unwrap_or_default()
-    );
-    let runtime_iface = serial_iface.to_string();
-    mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    mark_serial_runtime_status(record, iface, serial_iface);
-    serial_runtime_refreshes.push(SerialRuntimeRefresh { runtime_iface: serial_iface, status });
-    true
-}
-
-async fn startup_kiss(
-    args: &Args,
-    iface: &InterfaceConfig,
-    label: &str,
-    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    record: &mut InterfaceRecord,
-    startup_failures: &mut Vec<InterfaceStartupFailure>,
-    kiss_runtime_refreshes: &mut Vec<KissRuntimeRefresh>,
-) -> bool {
-    let adapter = match if iface.kind == "ax25_kiss" {
-        kiss::build_ax25_adapter(iface)
-    } else {
-        kiss::build_adapter(iface)
-    } {
-        Ok(adapter) => adapter,
-        Err(err) => {
-            record_startup_failure(
-                record,
-                startup_failures,
-                label.to_string(),
-                iface.kind.clone(),
-                err,
-            );
-            return false;
-        }
-    };
-
-    if args.strict_interface_startup {
-        if let Err(err) = adapter.preflight_open() {
-            record_startup_failure(
-                record,
-                startup_failures,
-                label.to_string(),
-                iface.kind.clone(),
-                err,
-            );
-            return false;
-        }
-    }
-
-    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-    let status = adapter.runtime_status_handle();
-    let kiss_iface = iface_manager.lock().await.spawn_as_with_mode(
-        adapter,
-        |context| async move { rns_transport::iface::kiss::KissInterface::spawn(context).await },
-        IfaceRole::Unicast,
-        mode,
-    );
-    {
-        let mut manager = iface_manager.lock().await;
-        apply_interface_runtime_config(&mut manager, kiss_iface, iface);
-    }
-    log::info!(
-        "[daemon] {} enabled iface={} name={} device={} baud_rate={}",
-        iface.kind,
-        kiss_iface,
-        label,
-        iface.device.as_deref().unwrap_or("<unset>"),
-        iface.baud_rate.unwrap_or_default()
-    );
-    let runtime_iface = kiss_iface.to_string();
-    mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    mark_kiss_runtime_status(record, iface, kiss_iface);
-    kiss_runtime_refreshes.push(KissRuntimeRefresh {
-        runtime_iface: kiss_iface,
-        runtime_key: "kiss",
-        status,
-    });
-    true
-}
-
-async fn startup_kiss_tcp_client(
-    args: &Args,
-    iface: &InterfaceConfig,
-    label: &str,
-    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    record: &mut InterfaceRecord,
-    startup_failures: &mut Vec<InterfaceStartupFailure>,
-    kiss_runtime_refreshes: &mut Vec<KissRuntimeRefresh>,
-) -> bool {
-    let adapter = match kiss::build_tcp_client_adapter(iface) {
-        Ok(adapter) => adapter,
-        Err(err) => {
-            record_startup_failure(
-                record,
-                startup_failures,
-                label.to_string(),
-                iface.kind.clone(),
-                err,
-            );
-            return false;
-        }
-    };
-
-    if args.strict_interface_startup {
-        if let Err(err) = strict_tcp_client_preflight(adapter.addr()).await {
-            record_startup_failure(
-                record,
-                startup_failures,
-                label.to_string(),
-                iface.kind.clone(),
-                err,
-            );
-            return false;
-        }
-    }
-
-    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-    let status = adapter.runtime_status_handle();
-    let kiss_iface = iface_manager.lock().await.spawn_as_with_mode(
-        adapter,
-        |context| async move {
-            rns_transport::iface::kiss::KissTcpClientInterface::spawn(context).await;
-        },
-        IfaceRole::Unicast,
-        mode,
-    );
-    {
-        let mut manager = iface_manager.lock().await;
-        apply_interface_runtime_config(&mut manager, kiss_iface, iface);
-    }
-    log::info!(
-        "[daemon] kiss_tcp_client enabled iface={} name={} endpoint={}:{}",
-        kiss_iface,
-        label,
-        iface.host.as_deref().unwrap_or("<unset>"),
-        iface.port.unwrap_or_default()
-    );
-    let runtime_iface = kiss_iface.to_string();
-    mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    mark_kiss_tcp_runtime_status(record, iface, kiss_iface);
-    kiss_runtime_refreshes.push(KissRuntimeRefresh {
-        runtime_iface: kiss_iface,
-        runtime_key: "kiss_tcp",
-        status,
-    });
-    true
-}
-
-async fn startup_ble(
-    iface: &InterfaceConfig,
-    label: &str,
-    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    record: &mut InterfaceRecord,
-    startup_failures: &mut Vec<InterfaceStartupFailure>,
-    ble_gatt_runtime_refreshes: &mut Vec<BleGattRuntimeRefresh>,
-) -> bool {
-    match ble::spawn(iface_manager.clone(), iface).await {
-        Ok(spawned) => {
-            mark_ble_spawn_success(iface, label, iface_manager, record, spawned.iface).await;
-            ble_gatt_runtime_refreshes.push(BleGattRuntimeRefresh {
-                runtime_iface: spawned.iface,
-                status: spawned.status,
-            });
-            true
-        }
-        Err(err) => {
-            record_startup_failure(
-                record,
-                startup_failures,
-                label.to_string(),
-                iface.kind.clone(),
-                err,
-            );
-            mark_interface_runtime_fields(record, "degraded", 0);
-            false
-        }
-    }
-}
-
-async fn startup_reticulum_ble(
-    iface: &InterfaceConfig,
-    label: &str,
-    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    record: &mut InterfaceRecord,
-    startup_failures: &mut Vec<InterfaceStartupFailure>,
-    reticulum_ble_runtime_refreshes: &mut Vec<ReticulumBleRuntimeRefresh>,
-    transport_identity_hash: Option<[u8; 16]>,
-) -> bool {
-    let Some(local_identity) = transport_identity_hash else {
-        let err = "reticulum_ble requires the daemon transport identity hash".to_string();
-        record_startup_failure(
-            record,
-            startup_failures,
-            label.to_string(),
-            iface.kind.clone(),
-            err,
-        );
-        mark_interface_runtime_fields(record, "degraded", 0);
-        return false;
-    };
-    match reticulum_ble::spawn(iface_manager.clone(), iface, local_identity).await {
-        Ok(spawned) => {
-            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-            let mut manager = iface_manager.lock().await;
-            manager.set_mode(spawned.iface, mode);
-            apply_interface_runtime_config(&mut manager, spawned.iface, iface);
-            drop(manager);
-            log::info!(
-                "[daemon] reticulum_ble enabled iface={} name={} service_uuid={}",
-                spawned.iface,
-                label,
-                iface.service_uuid.as_deref().unwrap_or(reticulum_ble::SERVICE_UUID)
-            );
-            let runtime_iface = spawned.iface.to_string();
-            mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-            mark_interface_runtime_fields(record, "degraded", 0);
-            mark_reticulum_ble_runtime_status(record, iface, spawned.iface, local_identity);
-            reticulum_ble_runtime_refreshes.push(ReticulumBleRuntimeRefresh {
-                runtime_iface: spawned.iface,
-                status: spawned.status,
-            });
-            true
-        }
-        Err(err) => {
-            record_startup_failure(
-                record,
-                startup_failures,
-                label.to_string(),
-                iface.kind.clone(),
-                err,
-            );
-            mark_interface_runtime_fields(record, "degraded", 0);
-            false
-        }
-    }
-}
-
-async fn mark_ble_spawn_success(
-    iface: &InterfaceConfig,
-    label: &str,
-    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
-    record: &mut InterfaceRecord,
-    ble_iface: AddressHash,
-) {
-    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-    let mut manager = iface_manager.lock().await;
-    manager.set_mode(ble_iface, mode);
-    apply_interface_runtime_config(&mut manager, ble_iface, iface);
-    log::info!(
-        "[daemon] ble_gatt enabled iface={} name={} peripheral_id={}",
-        ble_iface,
-        label,
-        iface.peripheral_id.as_deref().unwrap_or("<unset>")
-    );
-    let runtime_iface = ble_iface.to_string();
-    mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    mark_interface_runtime_fields(record, "running", 0);
-    mark_ble_gatt_runtime_status(record, iface, ble_iface);
-}
-
-fn mark_udp_runtime_status(
-    record: &mut InterfaceRecord,
-    bind_addr: &str,
-    forward_addr: Option<&str>,
-    is_multicast: bool,
-    runtime_iface: AddressHash,
-) {
-    let role = if is_multicast {
-        "multicast"
-    } else if forward_addr.is_some() {
-        "peer"
-    } else {
-        "listener"
-    };
-    with_interface_runtime_metadata(record, |runtime| {
-        runtime.insert(
-            "udp".to_string(),
-            serde_json::json!({
-                "status": {
-                    "link_state": "configured",
-                    "role": role,
-                    "bind_addr": bind_addr,
-                    "forward_addr": forward_addr,
-                    "iface": runtime_iface.to_string(),
-                }
-            }),
-        );
-    });
-}
-
-fn mark_serial_runtime_status(
-    record: &mut InterfaceRecord,
-    iface: &InterfaceConfig,
-    runtime_iface: AddressHash,
-) {
-    with_interface_runtime_metadata(record, |runtime| {
-        runtime.insert(
-            "serial".to_string(),
-            serde_json::json!({
-                "status": {
-                    "link_state": "configured",
-                    "device": iface.device.as_deref(),
-                    "baud_rate": iface.baud_rate,
-                    "data_bits": iface.data_bits,
-                    "parity": iface.parity.as_deref(),
-                    "stop_bits": iface.stop_bits,
-                    "flow_control": iface.flow_control_name(),
-                    "mtu": iface.mtu,
-                    "iface": runtime_iface.to_string(),
-                }
-            }),
-        );
-    });
-}
-
-fn mark_kiss_runtime_status(
-    record: &mut InterfaceRecord,
-    iface: &InterfaceConfig,
-    runtime_iface: AddressHash,
-) {
-    with_interface_runtime_metadata(record, |runtime| {
-        runtime.insert(
-            "kiss".to_string(),
-            serde_json::json!({
-                "status": kiss_runtime_status_json(iface, runtime_iface, None),
-            }),
-        );
-    });
-}
-
-fn mark_kiss_tcp_runtime_status(
-    record: &mut InterfaceRecord,
-    iface: &InterfaceConfig,
-    runtime_iface: AddressHash,
-) {
-    with_interface_runtime_metadata(record, |runtime| {
-        runtime.insert(
-            "kiss_tcp".to_string(),
-            serde_json::json!({
-                "status": kiss_runtime_status_json(iface, runtime_iface, Some(format!(
-                    "{}:{}",
-                    iface.host.as_deref().unwrap_or("<unset>"),
-                    iface.port.unwrap_or_default()
-                ))),
-            }),
-        );
-    });
-}
-
-fn kiss_runtime_status_json(
-    iface: &InterfaceConfig,
-    runtime_iface: AddressHash,
-    endpoint: Option<String>,
-) -> serde_json::Value {
-    serde_json::json!({
-        "link_state": "configured",
-        "bearer": if endpoint.is_some() { "tcp" } else { "serial" },
-        "device": iface.device.as_deref(),
-        "endpoint": endpoint,
-        "baud_rate": iface.baud_rate,
-        "mtu": iface.mtu,
-        "preamble_ms": iface.preamble_ms,
-        "tx_tail_ms": iface.tx_tail_ms,
-        "persistence": iface.persistence,
-        "slot_time_ms": iface.slot_time_ms,
-        "kiss_flow_control": iface.kiss_flow_control,
-        "ax25": iface.kind == "ax25_kiss",
-        "callsign": iface.callsign.as_deref(),
-        "ssid": iface.ssid,
-        "id_callsign": iface.id_callsign.as_deref(),
-        "id_interval": iface.id_interval,
-        "iface": runtime_iface.to_string(),
-    })
-}
-
-fn mark_ble_gatt_runtime_status(
-    record: &mut InterfaceRecord,
-    iface: &InterfaceConfig,
-    runtime_iface: AddressHash,
-) {
-    with_interface_runtime_metadata(record, |runtime| {
-        runtime.insert(
-            "ble_gatt".to_string(),
-            serde_json::json!({
-                "status": {
-                    "link_state": "configured",
-                    "adapter": iface.adapter.as_deref(),
-                    "peripheral_id": iface.peripheral_id.as_deref(),
-                    "service_uuid": iface.service_uuid.as_deref(),
-                    "write_char_uuid": iface.write_char_uuid.as_deref(),
-                    "notify_char_uuid": iface.notify_char_uuid.as_deref(),
-                    "mtu": iface.mtu,
-                    "scan_timeout_ms": iface.scan_timeout_ms,
-                    "connect_timeout_ms": iface.ble_connect_timeout_ms.or(iface.connect_timeout_ms),
-                    "iface": runtime_iface.to_string(),
-                }
-            }),
-        );
-    });
-}
-
-fn mark_reticulum_ble_runtime_status(
-    record: &mut InterfaceRecord,
-    iface: &InterfaceConfig,
-    runtime_iface: AddressHash,
-    local_identity: [u8; 16],
-) {
-    let local_identity = local_identity.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-    with_interface_runtime_metadata(record, |runtime| {
-        runtime.insert(
-            "reticulum_ble".to_string(),
-            serde_json::json!({
-                "status": {
-                    "link_state": "degraded",
-                    "adapter": iface.adapter.as_deref(),
-                    "service_uuid": iface.service_uuid.as_deref().unwrap_or(reticulum_ble::SERVICE_UUID),
-                    "tx_char_uuid": iface.notify_char_uuid.as_deref().unwrap_or(reticulum_ble::TX_CHAR_UUID),
-                    "rx_char_uuid": iface.write_char_uuid.as_deref().unwrap_or(reticulum_ble::RX_CHAR_UUID),
-                    "identity_char_uuid": iface.identity_char_uuid.as_deref().unwrap_or(reticulum_ble::IDENTITY_CHAR_UUID),
-                    "local_identity": local_identity,
-                    "mtu": iface.mtu.unwrap_or(185),
-                    "max_connections": iface.max_connections.unwrap_or(7),
-                    "scan_duration_ms": iface.scan_duration_ms.unwrap_or(10_000),
-                    "discovery_interval_ms": iface.discovery_interval_ms.unwrap_or(5_000),
-                    "discovery_interval_idle_ms": iface.discovery_interval_idle_ms.unwrap_or(30_000),
-                    "advertising_refresh_interval_ms": iface.advertising_refresh_interval_ms.unwrap_or(30_000),
-                    "min_rssi_dbm": iface.min_rssi_dbm.unwrap_or(-85),
-                    "enable_central": iface.enable_central.unwrap_or(true),
-                    "enable_peripheral": iface.enable_peripheral.unwrap_or(true),
-                    "central_links": 0,
-                    "peripheral_links": 0,
-                    "scan_state": if iface.enable_central.unwrap_or(true) { "native_backend_pending" } else { "disabled" },
-                    "advertising_state": if iface.enable_peripheral.unwrap_or(true) { "native_backend_pending" } else { "disabled" },
-                    "peer_identities": [],
-                    "active_addresses": [],
-                    "fragments_rx": 0,
-                    "fragments_tx": 0,
-                    "packets_rx": 0,
-                    "packets_tx": 0,
-                    "malformed_fragments": 0,
-                    "reconnects": 0,
-                    "duplicate_rejections": 0,
-                    "stale_reassembly_drops": 0,
-                    "last_error": "reticulum_ble native dual-role backend is not yet available",
-                    "iface": runtime_iface.to_string(),
-                }
-            }),
-        );
-    });
 }

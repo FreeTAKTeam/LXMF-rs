@@ -11,6 +11,13 @@ on:
         description: Release tag/label for the generated dataset and asset
         required: true
         default: v0.9.9-rc.6
+      harness_ref:
+        description: Optional full benchmark harness commit SHA (defaults to workflow commit)
+        required: false
+      publish_assets:
+        description: Publish passing evidence (candidate must equal the existing release tag)
+        type: boolean
+        default: false
   push:
     tags:
       - v*
@@ -20,6 +27,8 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+  HARNESS_REF: ${{ inputs.harness_ref || github.sha }}
+  PUBLISH_ASSETS: ${{ startsWith(github.ref, 'refs/tags/') || inputs.publish_assets == true }}
 
 jobs:
   same-runner-comparison:
@@ -29,11 +38,18 @@ jobs:
       - name: Resolve candidate ref
         id: candidate
         shell: bash
-        run: echo "ref=${{ inputs.candidate_ref || github.sha }}" >> "$GITHUB_OUTPUT"
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref || github.sha }}
+        run: echo "ref=$CANDIDATE_REF" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.candidate.outputs.ref }}
           path: candidate
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HARNESS_REF }}
+          path: release-harness
       - uses: actions/checkout@v4
         with:
           ref: v0.9.1
@@ -42,10 +58,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Pin benchmark harness and publication provenance
+        shell: bash
+        run: |
+          publish=()
+          if [[ "$PUBLISH_ASSETS" == true ]]; then publish=(--publish); fi
+          python3 release-harness/tools/scripts/performance_release_recovery.py \
+            --candidate candidate --harness release-harness \
+            --harness-ref "$HARNESS_REF" --release-tag "$RELEASE_TAG" "${publish[@]}"
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libdbus-1-dev
+      - name: Install Python crypto backend
+        # RNS uses slow pure-Python crypto without it; normal installs have it.
+        run: python3 -m pip install "cryptography==46.0.5"
       - name: Check out pinned Python references
         run: |
           git clone https://github.com/markqvist/Reticulum.git refs/Reticulum
@@ -61,6 +88,27 @@ jobs:
             sed -i 's/^iterations = 10000$/iterations = 2000/' "$config"
             test "$(grep -c '^iterations = 2000$' "$config")" -eq 2
           done
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess
+          provenance_path = pathlib.Path("candidate/target/performance/lxmf-rs-performance-provenance.json")
+          provenance = json.loads(provenance_path.read_text())
+          config = "tools/benchmarks/python_impl.toml"
+          provenance["benchmark_configurations"] = []
+          for checkout in ("candidate", "baseline"):
+              original = subprocess.check_output(["git", "-C", checkout, "show", f"HEAD:{config}"])
+              measured = (pathlib.Path(checkout) / config).read_bytes()
+              provenance["benchmark_configurations"].append({
+                  "checkout": checkout, "path": config, "iterations": 2000,
+                  "committed_sha256": hashlib.sha256(original).hexdigest(),
+                  "measured_sha256": hashlib.sha256(measured).hexdigest(),
+              })
+          changed = set(subprocess.check_output(
+              ["git", "-C", "candidate", "diff", "--name-only", "HEAD"], text=True).splitlines())
+          allowed = {item["path"] for item in provenance["overlay_files"]} | {config}
+          assert changed <= allowed, f"unexpected candidate changes: {sorted(changed - allowed)}"
+          provenance["candidate_product_files_unchanged"] = True
+          provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
+          PY
       - name: Measure v0.9.1 baseline
         working-directory: baseline
         env:
@@ -115,14 +163,8 @@ jobs:
             target/performance/e2e.json \
             target/performance/independent-runs \
             target/performance/independent.json \
+            target/performance/lxmf-rs-performance-provenance.json \
             target/performance/sdk-transport.json
-          (
-            cd target/performance
-            sha256sum \
-              lxmf-rs-performance.html \
-              lxmf-rs-performance.json \
-              lxmf-rs-performance-raw.tar.gz
-          ) > target/performance/SHA256SUMS
       - name: Apply release regression budgets
         working-directory: candidate
         run: |
@@ -134,6 +176,15 @@ jobs:
             --release "$RELEASE_TAG" \
             --dashboard-output target/performance/lxmf-rs-performance.html \
             --check
+          (
+            cd target/performance
+            sha256sum \
+              lxmf-rs-performance.html \
+              lxmf-rs-performance.json \
+              lxmf-rs-performance-provenance.json \
+              lxmf-rs-performance-raw.tar.gz \
+              release-gate.json
+          ) > target/performance/SHA256SUMS
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -147,11 +198,21 @@ jobs:
 
   publish-performance-assets:
     needs: same-runner-comparison
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.publish_assets == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+      - name: Classify release tag
+        id: release-metadata
+        env:
+          RELEASE_INPUT_TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          python3 tools/scripts/release_config.py classify \
+            --tag "$RELEASE_INPUT_TAG" --version-file VERSION --output "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           name: performance-release-${{ github.run_id }}
@@ -162,16 +223,31 @@ jobs:
           mkdir -p release-assets
           find dist -type f -name 'lxmf-rs-performance.html' -exec cp {} release-assets/lxmf-rs-performance.html \;
           find dist -type f -name 'lxmf-rs-performance.json' -exec cp {} release-assets/lxmf-rs-performance.json \;
+          find dist -type f -name 'lxmf-rs-performance-provenance.json' -exec cp {} release-assets/lxmf-rs-performance-provenance.json \;
+          find dist -type f -name 'release-gate.json' -exec cp {} release-assets/release-gate.json \;
           find dist -type f -name 'SHA256SUMS' -exec cp {} release-assets/SHA256SUMS \;
           find dist -type f -name 'lxmf-rs-performance-raw.tar.gz' -exec cp {} release-assets/lxmf-rs-performance-raw.tar.gz \;
           test -s release-assets/lxmf-rs-performance.html
           test -s release-assets/lxmf-rs-performance.json
           test -s release-assets/SHA256SUMS
           test -s release-assets/lxmf-rs-performance-raw.tar.gz
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          root = pathlib.Path("release-assets")
+          provenance = json.loads((root / "lxmf-rs-performance-provenance.json").read_text())
+          gate = json.loads((root / "release-gate.json").read_text())
+          tag_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          assert provenance["release_tag"] == os.environ["RELEASE_TAG"]
+          assert provenance["candidate_sha"] == provenance["release_tag_sha"] == tag_sha
+          assert gate["candidate_sha"] == tag_sha and gate["status"] in ("pass", "pass_with_warnings")
+          PY
+          (cd release-assets && sha256sum --check SHA256SUMS)
       - name: Attach public performance assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
           files: release-assets/*
           fail_on_unmatched_files: true
           generate_release_notes: false
+          prerelease: ${{ steps.release-metadata.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.release-metadata.outputs.prerelease == 'true' && 'false' || 'legacy' }}

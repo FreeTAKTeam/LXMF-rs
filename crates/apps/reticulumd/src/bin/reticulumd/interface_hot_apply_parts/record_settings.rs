@@ -2,6 +2,9 @@ use rns_rpc::InterfaceRecord;
 use rns_transport::iface::InterfaceSharedConfig;
 use serde_json::Value as JsonValue;
 
+pub(super) const IFAC_NETWORK_ALIASES: [&str; 3] = ["network_name", "networkname", "ifac_netname"];
+pub(super) const IFAC_PASSPHRASE_ALIASES: [&str; 3] = ["pass_phrase", "passphrase", "ifac_netkey"];
+
 pub(crate) fn setting<'a>(record: &'a InterfaceRecord, key: &str) -> Option<&'a JsonValue> {
     record.settings.as_ref()?.as_object()?.get(key)
 }
@@ -30,6 +33,15 @@ pub(crate) fn setting_f64(record: &InterfaceRecord, key: &str) -> Option<f64> {
     setting(record, key)?.as_f64()
 }
 
+// Match InterfaceConfig's startup precedence, filtering each alias before
+// fallback. Credentials are byte-significant, so do not trim whitespace.
+fn ifac_credential(record: &InterfaceRecord, aliases: &[&str]) -> Option<String> {
+    aliases
+        .iter()
+        .find_map(|key| setting_str(record, key).filter(|value| !value.is_empty()))
+        .map(ToOwned::to_owned)
+}
+
 pub(crate) fn interface_record_shared_config(record: &InterfaceRecord) -> InterfaceSharedConfig {
     InterfaceSharedConfig {
         announce_rate_target: setting_u64(record, "announce_rate_target"),
@@ -38,13 +50,10 @@ pub(crate) fn interface_record_shared_config(record: &InterfaceRecord) -> Interf
         bootstrap_only: setting_bool(record, "bootstrap_only"),
         announces_from_internal: setting_bool(record, "announces_from_internal"),
         announces_to_internal: setting_bool(record, "announces_to_internal"),
-        ifac_size: setting_u64(record, "ifac_size"),
-        network_name: setting_string(record, "network_name")
-            .or_else(|| setting_string(record, "networkname"))
-            .or_else(|| setting_string(record, "ifac_netname")),
-        passphrase: setting_string(record, "passphrase")
-            .or_else(|| setting_string(record, "pass_phrase"))
-            .or_else(|| setting_string(record, "ifac_netkey")),
+        // Preserve an explicit negative size as present/default, as typed startup does.
+        ifac_size: setting_i64(record, "ifac_size").map(|bits| bits.max(0).unsigned_abs()),
+        network_name: ifac_credential(record, &IFAC_NETWORK_ALIASES),
+        passphrase: ifac_credential(record, &IFAC_PASSPHRASE_ALIASES),
         ingress_control: setting_bool(record, "ingress_control"),
         egress_control: setting_bool(record, "egress_control"),
         ic_max_held_announces: setting_u64(record, "ic_max_held_announces"),

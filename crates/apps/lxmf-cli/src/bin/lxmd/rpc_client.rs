@@ -1,76 +1,7 @@
 use serde_json::json;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::path::PathBuf;
-use std::thread;
 use std::time::Duration;
-
-pub(crate) fn spawn_on_inbound_watcher(
-    rpc_addr: String,
-    command: String,
-    messages_dir: Option<PathBuf>,
-) {
-    thread::spawn(move || {
-        let mut cursor: Option<String> = None;
-        loop {
-            match poll_event_batch(&rpc_addr, cursor.as_deref()) {
-                Ok((events, next_cursor)) => {
-                    cursor = next_cursor;
-                    if events.is_empty() {
-                        thread::sleep(Duration::from_millis(250));
-                        continue;
-                    }
-                    for event in events {
-                        if let Err(err) = crate::inbound::run_on_inbound_command(
-                            &command,
-                            &event,
-                            messages_dir.as_deref(),
-                        ) {
-                            log::error!("on-inbound hook failed: {err}");
-                        }
-                    }
-                }
-                Err(err)
-                    if err.contains("SDK_RUNTIME_CURSOR_EXPIRED")
-                        || err.contains("SDK_RUNTIME_STREAM_DEGRADED") =>
-                {
-                    cursor = None;
-                    thread::sleep(Duration::from_millis(250));
-                }
-                Err(err) => {
-                    log::error!("inbound event watcher stopped: {err}");
-                    break;
-                }
-            }
-        }
-    });
-}
-
-fn poll_event_batch(
-    rpc_addr: &str,
-    cursor: Option<&str>,
-) -> Result<(Vec<serde_json::Value>, Option<String>), String> {
-    let response = rpc_call(
-        rpc_addr,
-        "sdk_poll_events_v2",
-        Some(json!({
-            "cursor": cursor,
-            "max": 256,
-        })),
-    )?;
-    let result = response.get("result").unwrap_or(&response);
-    if let Some(error) = response.get("error").or_else(|| result.get("error")) {
-        let code = error.get("code").and_then(|value| value.as_str()).unwrap_or("RPC_ERROR");
-        let message =
-            error.get("message").and_then(|value| value.as_str()).unwrap_or("unknown rpc error");
-        return Err(format!("{code}: {message}"));
-    }
-    let events =
-        result.get("events").and_then(|value| value.as_array()).cloned().unwrap_or_default();
-    let next_cursor =
-        result.get("next_cursor").and_then(|value| value.as_str()).map(ToOwned::to_owned);
-    Ok((events, next_cursor))
-}
 
 pub(crate) fn rpc_call(
     rpc_addr: &str,
@@ -115,7 +46,7 @@ pub(crate) fn http_request_bytes(rpc_addr: &str, request: &[u8]) -> Result<Vec<u
     Ok(bytes)
 }
 
-fn resolve_socket_addr(rpc_addr: &str) -> Result<SocketAddr, String> {
+pub(crate) fn resolve_socket_addr(rpc_addr: &str) -> Result<SocketAddr, String> {
     rpc_addr
         .to_socket_addrs()
         .map_err(|err| err.to_string())?

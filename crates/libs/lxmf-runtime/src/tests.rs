@@ -415,3 +415,84 @@ fn an_opportunistic_packet_carries_the_wire_without_its_destination_prefix() {
         "a wire that does not start with the destination is left alone"
     );
 }
+
+#[tokio::test]
+async fn serialized_opportunistic_boundary_uses_packets_before_link_fallback() {
+    use base64::Engine as _;
+    use rns_transport::iface::{IfaceSource, RxMessage};
+    use rns_transport::packet::PacketType;
+
+    let identity = rns_transport::identity::PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("size-boundary", &identity, true));
+    let source =
+        SingleInputDestination::new(identity.clone(), DestinationName::new("lxmf", "delivery"))
+            .desc
+            .address_hash;
+    let mut remote = SingleInputDestination::new(
+        rns_transport::identity::PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let mut channel = transport.iface_manager().lock().await.new_channel(16);
+    let mut announces = transport.recv_announces().await;
+    channel
+        .rx_channel
+        .send(RxMessage {
+            address: channel.address,
+            packet: remote.announce(OsRng, None).expect("announce"),
+            source: IfaceSource::None,
+        })
+        .await
+        .expect("inject peer announce");
+    tokio::time::timeout(Duration::from_secs(1), announces.recv())
+        .await
+        .expect("learn identity")
+        .expect("announce event");
+
+    for content_size in [286, 287, 288] {
+        while channel.tx_channel.try_recv().is_ok() {}
+        let mut request = SendRequest::new(
+            source.to_hex_string(),
+            remote.desc.address_hash.to_hex_string(),
+            json!({"content_base64": base64::engine::general_purpose::STANDARD.encode(vec![b'x'; content_size])}),
+        );
+        request.delivery_method = Some("opportunistic".into());
+        let result = crate::delivery::send(
+            crate::delivery::SendContext {
+                transport: &transport,
+                identity: &identity,
+                source_destination: source,
+                propagation_relay: None,
+                link_connect_timeout: Duration::from_millis(25),
+                link_connect_attempts: 1,
+                resource_transfer_timeout: Duration::from_secs(1),
+            },
+            &request,
+        )
+        .await;
+        let transmitted = tokio::time::timeout(Duration::from_secs(1), channel.tx_channel.recv())
+            .await
+            .expect("wire output")
+            .expect("packet")
+            .packet;
+        if content_size <= 287 {
+            let report = result.expect("a fitting message must not wait for a Link");
+            assert_eq!(report.method, crate::delivery::DeliveryMethod::Opportunistic);
+            assert_eq!(transmitted.header.packet_type, PacketType::Data);
+            let (plaintext, _) = remote
+                .decrypt_with_ratchets(transmitted.data.as_slice())
+                .expect("recipient decrypts opportunistic packet");
+            let mut wire = remote.desc.address_hash.as_slice().to_vec();
+            wire.extend_from_slice(&plaintext);
+            assert_eq!(wire.len(), content_size + 112);
+            let message = lxmf_core::WireMessage::unpack(&wire).expect("received LXMF");
+            assert_eq!(
+                message.payload.content.expect("content").as_ref(),
+                vec![b'x'; content_size]
+            );
+            assert!(channel.tx_channel.try_recv().is_err(), "no extra Link fallback");
+        } else {
+            assert!(result.is_err(), "unanswered Link must not report delivery");
+            assert_eq!(transmitted.header.packet_type, PacketType::LinkRequest);
+        }
+    }
+}

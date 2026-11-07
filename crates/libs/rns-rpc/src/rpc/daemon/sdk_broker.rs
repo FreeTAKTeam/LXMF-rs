@@ -3,9 +3,16 @@ use crate::broker::{AckStoredRequest, FetchRequest, ResumeRequest, CAPABILITY};
 use crate::storage::broker::{BrokerCommand, BrokerError};
 
 impl RpcDaemon {
-    pub(super) fn pump_durable_dispatch(store: &MessagesStore, bridge: &Arc<dyn OutboundBridge>) {
+    /// Dispatch queued durable messages. Returns whether any were pending so the
+    /// caller can back off its polling while the queue is empty (issue 663: this
+    /// query ran forty times per second on an idle daemon).
+    pub(super) fn pump_durable_dispatch(
+        store: &MessagesStore,
+        bridge: &Arc<dyn OutboundBridge>,
+    ) -> bool {
         match store.broker_pending_dispatch() {
             Ok(pending) => {
+                let found_work = !pending.is_empty();
                 for (mut record, options) in pending {
                     let id = record.id.clone();
                     record.fields = match outbound_wire_fields(record.fields) {
@@ -43,8 +50,12 @@ impl RpcDaemon {
                         }
                     }
                 }
+                found_work
             }
-            Err(error) => log::error!("durable dispatch query failed: {error}"),
+            Err(error) => {
+                log::error!("durable dispatch query failed: {error}");
+                false
+            }
         }
     }
 
@@ -149,6 +160,26 @@ impl RpcDaemon {
             RpcError::new("SDK_VALIDATION_BROKER_REQUEST", error.to_string())
         };
         if request.method == "sdk_broker_announces_v1" {
+            let request: crate::broker::AnnounceProjectionRequest =
+                serde_json::from_value(params).map_err(parse_error)?;
+            if request.latest_per_peer {
+                if request.after_peer.as_ref().is_some_and(|peer| peer.len() > 512) {
+                    return Err(RpcError::new(
+                        "SDK_VALIDATION_BROKER_REQUEST",
+                        "announce peer cursor exceeds 512 bytes",
+                    ));
+                }
+                let records = self
+                    .store
+                    .broker_announce_peer_page(request.after_peer.as_deref())
+                    .map_err(broker_store_error)?;
+                let next_peer =
+                    (records.len() == 32).then(|| records.last().expect("full page").peer.clone());
+                let result = json!({"announces":records,"next_peer":next_peer,
+                    "projection":"latest_per_peer_v1"});
+                validate_projection_size(&result)?;
+                return Ok(result);
+            }
             let records = self.store.broker_announce_projection().map_err(broker_store_error)?;
             let result = json!({"announces":records});
             validate_projection_size(&result)?;
@@ -357,106 +388,10 @@ impl RpcDaemon {
     }
 }
 
-impl RpcDaemon {
-    /// Trusted network producer entry point. RPC callers remain subject to operation ownership.
-    pub fn record_network_receipt(
-        &self,
-        message_id: &str,
-        status: &str,
-        mut metadata: JsonMap<String, JsonValue>,
-    ) -> Result<JsonValue, std::io::Error> {
-        metadata.insert("message_id".into(), json!(message_id));
-        metadata.insert("status".into(), json!(status));
-        let parsed: RecordReceiptParams = serde_json::from_value(JsonValue::Object(metadata))
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
-        self.apply_receipt_params(parsed)
-    }
-    pub(super) fn apply_receipt_params(
-        &self,
-        parsed: RecordReceiptParams,
-    ) -> Result<JsonValue, std::io::Error> {
-        let RecordReceiptParams {
-            message_id,
-            status: requested_status,
-            packet_hash,
-            resource_hash,
-            peer,
-            method,
-            delivery_kind,
-            bytes,
-            link_id,
-            stage,
-        } = parsed;
-        let (status, updated, delivered_ticket_destination) = {
-            let _status_guard =
-                self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
-            let existing_message =
-                self.store.get_message(&message_id).map_err(std::io::Error::other)?;
-            let existing_status =
-                existing_message.as_ref().and_then(|message| message.receipt_status.clone());
-            if existing_message.is_none() {
-                (requested_status, false, None)
-            } else if existing_status.as_deref().is_some_and(|status| {
-                Self::is_terminal_receipt_status(status)
-                    || Self::is_receipt_status_regression(status, &requested_status)
-            }) {
-                (existing_status.unwrap_or(requested_status), false, None)
-            } else {
-                let delivered_ticket_destination = existing_message
-                    .as_ref()
-                    .filter(|message| {
-                        requested_status.eq_ignore_ascii_case("delivered")
-                            && Self::message_requested_ticket(message)
-                    })
-                    .map(|message| message.destination.clone());
-                self.store
-                    .update_receipt_status(&message_id, &requested_status)
-                    .map_err(std::io::Error::other)?;
-                (requested_status, true, delivered_ticket_destination)
-            }
-        };
-        if updated {
-            self.append_delivery_trace(&message_id, status.clone());
-        }
-        if let Some(destination) = delivered_ticket_destination {
-            self.mark_ticket_delivered(destination.as_str());
-        }
-        let reason_code = delivery_reason_code(&status);
-        let mut payload = JsonMap::new();
-        payload.insert("message_id".into(), json!(message_id));
-        payload.insert("status".into(), json!(status));
-        payload.insert("updated".into(), json!(updated));
-        payload.insert("reason_code".into(), json!(reason_code));
-        if let Some(packet_hash) = packet_hash {
-            payload.insert("packet_hash".into(), json!(packet_hash));
-        }
-        if let Some(resource_hash) = resource_hash {
-            payload.insert("resource_hash".into(), json!(resource_hash));
-        }
-        if let Some(peer) = peer {
-            payload.insert("peer".into(), json!(peer));
-        }
-        if let Some(method) = method {
-            payload.insert("method".into(), json!(method));
-        }
-        if let Some(delivery_kind) = delivery_kind {
-            payload.insert("delivery_kind".into(), json!(delivery_kind));
-        }
-        if let Some(bytes) = bytes {
-            payload.insert("bytes".into(), json!(bytes));
-        }
-        if let Some(link_id) = link_id {
-            payload.insert("link_id".into(), json!(link_id));
-        }
-        if let Some(stage) = stage {
-            payload.insert("stage".into(), json!(stage));
-        }
-        let payload = JsonValue::Object(payload);
-        let event = RpcEvent { event_type: "receipt".into(), payload: payload.clone() };
-        self.publish_event(event);
-        Ok(payload)
-    }
-}
+mod receipts;
+
+#[cfg(test)]
+mod receipt_tests;
 
 #[cfg(test)]
 mod tests;

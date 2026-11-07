@@ -10,12 +10,21 @@ pub(super) fn encode_paper(
     record: &rns_rpc::MessageRecord,
 ) -> Result<Option<PaperEncodeEnvelope>, std::io::Error> {
     let destination = parse_destination_hash_required(&record.destination)?;
-    let destination_identity = bridge
+    let cached_identity = bridge
         .peer_crypto
         .lock()
         .expect("peer map")
         .get(&record.destination)
-        .map(|info| info.identity)
+        .map(|info| info.identity);
+    let destination_identity = cached_identity
+        .or_else(|| {
+            let daemon =
+                bridge.daemon.lock().expect("transport bridge daemon mutex poisoned").clone()?;
+            identity_resolver::persisted_identity_for_destination(
+                &daemon,
+                AddressHash::new(destination),
+            )
+        })
         .or_else(|| {
             resolve_destination_identity_blocking(
                 bridge.transport.clone(),

@@ -1,11 +1,10 @@
 use super::config::{
-    case_applies, has_nonempty_env, missing_profile_environment, reset_hook_configured, HilConfig,
+    has_nonempty_env, missing_profile_environment, reset_hook_configured, HilConfig,
 };
-use super::model::{
-    CaseDefinition, CaseResult, CommandSpec, ExecutionLevel, Profile, ResultClass, RunReport,
-};
-use super::support::{git_commit, tool_available, unix_secs, LeaseGuard};
-use super::{evidence, reset};
+use super::evidence;
+use super::model::{CaseDefinition, CaseResult, CommandSpec, ExecutionLevel, Profile, ResultClass};
+pub use super::run_controller::{run, RunArgs};
+use super::support::tool_available;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use serde::Serialize;
@@ -32,22 +31,6 @@ pub struct DoctorArgs {
 pub struct ListArgs {
     #[arg(long)]
     pub json: bool,
-}
-
-#[derive(Args, Debug)]
-pub struct RunArgs {
-    #[arg(long, conflicts_with_all = ["suite", "all"])]
-    pub profile: Option<String>,
-    #[arg(long, conflicts_with_all = ["profile", "all"])]
-    pub suite: Option<String>,
-    #[arg(long, conflicts_with_all = ["profile", "suite"])]
-    pub all: bool,
-    #[arg(long, value_enum)]
-    pub level: ExecutionLevel,
-    #[arg(long)]
-    pub seed: Option<u64>,
-    #[arg(long)]
-    pub output: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -160,135 +143,7 @@ pub fn doctor(config: &HilConfig, args: DoctorArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn run(config: &HilConfig, args: RunArgs) -> Result<()> {
-    let started = Instant::now();
-    let started_at_unix_secs = unix_secs();
-    let run_id = format!("{}-{}", started_at_unix_secs, std::process::id());
-    let output = args.output.unwrap_or_else(|| config.root.join("target/hil/runs").join(&run_id));
-    fs::create_dir_all(&output)
-        .with_context(|| format!("create HIL output directory {}", output.display()))?;
-    fs::create_dir_all(output.join("device-logs"))?;
-    fs::create_dir_all(output.join("serial-captures"))?;
-    fs::write(
-        output.join("runner.log"),
-        format!("run_started_at_unix_secs={started_at_unix_secs}\nrun_id={run_id}\n"),
-    )?;
-    let lock_path = std::env::var_os(&config.lab.lock_env)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| config.root.join("target/hil/hil.lock"));
-    let _lease = LeaseGuard::acquire(&lock_path, config.lab.lock_ttl_secs)?;
-    let profiles = config.profiles_for(args.profile.as_deref(), args.level)?;
-    let seed = args.seed.unwrap_or_else(|| started_at_unix_secs ^ u64::from(std::process::id()));
-    let mut report = RunReport::new(
-        run_id,
-        git_commit(&config.root),
-        config.lab.rack_id.clone(),
-        args.level,
-        started_at_unix_secs,
-    );
-    report.environment.insert("host_os".to_string(), std::env::consts::OS.to_string());
-    report.environment.insert("host_arch".to_string(), std::env::consts::ARCH.to_string());
-    report.environment.insert(
-        "crate_version".to_string(),
-        fs::read_to_string(config.root.join("VERSION"))
-            .map(|value| value.trim().to_string())
-            .unwrap_or_else(|_| "unknown".to_string()),
-    );
-    report.environment.insert("seed".to_string(), seed.to_string());
-    report.environment.insert("python_rns_version".to_string(), "1.5.2".to_string());
-    report.environment.insert(
-        "python_rns_revision".to_string(),
-        "ea98db4f53dcf0defc0e71a16e60d28b1229c4e6".to_string(),
-    );
-    report.environment.insert(
-        "python_lxmf_revision".to_string(),
-        "727830cefda83d9c6e3982b48675425f3f988f9c".to_string(),
-    );
-    report.environment.insert(
-        "reticulum_conformance_revision".to_string(),
-        "0319444b20e0815f26c6b9ceeba8fa44de037c9b".to_string(),
-    );
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("create HIL command runtime")?;
-    for profile in profiles {
-        let cases = config
-            .cases
-            .iter()
-            .filter(|case| case_applies(case, profile, args.level, args.suite.as_deref()))
-            .collect::<Vec<_>>();
-        if cases.is_empty() {
-            continue;
-        }
-        let mut missing = if profile.physical {
-            missing_profile_environment(profile, &config.lab)
-        } else {
-            Vec::new()
-        };
-        if profile.physical
-            && profile.power_hub_env.is_some()
-            && !reset_hook_configured(profile)
-            && !tool_available("uhubctl")
-        {
-            missing.push("tool:uhubctl".to_string());
-        }
-        if !missing.is_empty() {
-            for case in cases {
-                report.cases.push(blocked_case(
-                    case,
-                    profile,
-                    seed,
-                    format!("profile unavailable: {}", missing.join(", ")),
-                ));
-            }
-            continue;
-        }
-        if profile.physical {
-            let reset_result = runtime.block_on(reset::reset_with_retry(
-                profile,
-                seed,
-                &output,
-                config.lab.reset_timeout_secs,
-            ));
-            let reset_failed = !reset_result.result.is_pass();
-            report.cases.push(reset_result);
-            if reset_failed {
-                for case in cases {
-                    report.cases.push(blocked_case(
-                        case,
-                        profile,
-                        seed,
-                        "profile reset failed; case was not attempted".to_string(),
-                    ));
-                }
-                continue;
-            }
-        }
-        for case in cases {
-            report
-                .cases
-                .push(runtime.block_on(run_case(config, profile, case, args.level, seed, &output)));
-        }
-    }
-    if report.cases.is_empty() {
-        bail!("no HIL cases matched the requested level/profile/suite");
-    }
-    report.finalize(started.elapsed().as_millis());
-    evidence::write_report(&output, &report, config)?;
-    println!(
-        "HIL {}: {} ({} cases) evidence={}",
-        report.level,
-        report.result,
-        report.cases.len(),
-        output.display()
-    );
-    if !report.result.is_pass() {
-        bail!("HIL run finished with {}", report.result);
-    }
-    Ok(())
-}
-async fn run_case(
+pub(super) async fn run_case(
     config: &HilConfig,
     profile: &Profile,
     case: &CaseDefinition,
@@ -478,7 +333,12 @@ async fn run_case_attempt(
     }
 }
 
-fn blocked_case(case: &CaseDefinition, profile: &Profile, seed: u64, reason: String) -> CaseResult {
+pub(super) fn blocked_case(
+    case: &CaseDefinition,
+    profile: &Profile,
+    seed: u64,
+    reason: String,
+) -> CaseResult {
     CaseResult {
         case_id: case.id.clone(),
         profile_id: profile.id.clone(),

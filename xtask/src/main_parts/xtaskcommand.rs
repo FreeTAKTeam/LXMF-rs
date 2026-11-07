@@ -61,6 +61,12 @@ enum XtaskCommand {
         #[arg(long)]
         keep: bool,
     },
+    /// Issue 663 resource soak: fixture, cgroup-constrained daemon run and report
+    /// (`cargo xtask resource-soak-663 -- run --out target/soak-663/baseline`).
+    ResourceSoak663 {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     SchemaClientCheck,
     SchemaClientGenerate {
         #[arg(long)]
@@ -326,6 +332,7 @@ fn main() -> Result<()> {
         XtaskCommand::ArchitectureLintCheck => run_architecture_lint_check(),
         XtaskCommand::ArchitectureChecks => run_architecture_checks(),
         XtaskCommand::ForbiddenDeps => run_forbidden_deps(),
+        XtaskCommand::ResourceSoak663 { args } => run_resource_soak_663(&args),
         XtaskCommand::CorrectnessCheck => run_correctness_check(),
         XtaskCommand::SdkConformance => run_sdk_conformance(),
         XtaskCommand::SdkSchemaCheck => run_sdk_schema_check(),

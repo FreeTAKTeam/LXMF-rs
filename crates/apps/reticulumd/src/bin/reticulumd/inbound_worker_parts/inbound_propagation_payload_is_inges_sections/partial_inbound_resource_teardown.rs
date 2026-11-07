@@ -98,7 +98,7 @@ async fn daemon_reports_partial_inbound_resource_failure_after_gated_link_teardo
     let link_id = *link.lock().await.id();
 
     let mut resource_events = daemon_transport.resource_events();
-    let (receipt_tx, mut receipt_rx) = mpsc::channel(8);
+    let (_receipt_tx, mut receipt_rx) = mpsc::channel::<reticulum_daemon::receipt_bridge::ReceiptEvent>(8);
     spawn_inbound_worker(
         daemon.clone(),
         daemon_transport.clone(),
@@ -113,8 +113,6 @@ async fn daemon_reports_partial_inbound_resource_failure_after_gated_link_teardo
             identified_peer_links: Arc::new(Mutex::new(HashMap::new())),
         },
         None,
-        receipt_tx,
-        Arc::new(Mutex::new(HashMap::new())),
     );
 
     let payload = (0..512 * 1024)

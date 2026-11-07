@@ -1,6 +1,12 @@
 impl Link {
-
     pub fn next_watchdog_deadline(&self, initiator: bool) -> Option<Instant> {
+        match (self.link_watchdog_deadline(initiator), self.requests.next_deadline()) {
+            (Some(link), Some(request)) => Some(link.min(request)),
+            (link, request) => link.or(request),
+        }
+    }
+
+    fn link_watchdog_deadline(&self, initiator: bool) -> Option<Instant> {
         match self.status {
             LinkStatus::Active => {
                 let inbound_anchor = self.inbound_anchor();
@@ -97,7 +103,8 @@ impl Link {
             LinkEvent::PeerIdentified(_) => "peer_identified",
             LinkEvent::Closed => "closed",
         };
-        let close_reason = if matches!(&event, LinkEvent::Closed) { self.close_reason } else { None };
+        let close_reason =
+            if matches!(&event, LinkEvent::Closed) { self.close_reason } else { None };
         if self
             .event_tx
             .send(LinkEventData {
@@ -119,12 +126,14 @@ impl Link {
         if self.status == LinkStatus::Closed {
             return;
         }
+        self.requests.reset(RequestFailure::LinkClosed);
 
         for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
             self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
         }
         self.channel_rx_ring.clear();
         self.channel_open = false;
+        self.data_signal = None;
         self.status = LinkStatus::Closed;
         self.close_reason = Some(reason);
         self.peer_identity = Identity::default();
@@ -149,9 +158,23 @@ impl Link {
     }
 
     pub fn teardown(&mut self) -> Option<Packet> {
-        let packet =
-            if self.status.can_send_teardown() { self.teardown_packet().ok() } else { None };
-        if packet.is_some() {
+        match self.try_teardown() {
+            Ok(packet) => packet,
+            Err(error) => {
+                // Legacy callers require local closure even when no frame can be built.
+                log::warn!("link({}): teardown frame could not be built: {error}", self.id);
+                None
+            }
+        }
+    }
+
+    pub(crate) fn try_teardown(&mut self) -> Result<Option<Packet>, RnsError> {
+        let packet = if self.status.can_send_teardown() {
+            self.teardown_packet().map(Some)
+        } else {
+            Ok(None)
+        };
+        if matches!(packet, Ok(Some(_))) {
             self.note_outbound(PacketContext::LinkClose);
         }
         let reason = self.local_close_reason();
@@ -190,11 +213,18 @@ impl Link {
 
     pub fn restart(&mut self) {
         log::warn!("link({}): restart after {}s", self.id, self.request_time.elapsed().as_secs());
+        self.requests.reset(RequestFailure::LinkClosed);
 
         for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
             self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
         }
         self.channel_rx_ring.clear();
+        self.data_signal = None;
+        // Keep the public old ID until request() computes its replacement, but
+        // reject old proof/dispatch state during this not-yet-requested interval.
+        self.proof_generation_ready = false;
+        self.expected_proof_hops = None;
+        self.proof_hops_rebalanced = false;
         self.status = LinkStatus::Pending;
         self.close_reason = None;
         self.start_establishment();
@@ -221,8 +251,16 @@ impl Link {
         self.request_time.elapsed()
     }
 
+    pub fn is_initiator(&self) -> bool {
+        self.is_initiator
+    }
+
     pub fn status(&self) -> LinkStatus {
         self.status
+    }
+
+    pub(crate) fn packet_receipt_timeout(&self) -> Duration {
+        self.rtt.saturating_mul(6).max(Duration::from_millis(5))
     }
 
     pub fn id(&self) -> &LinkId {

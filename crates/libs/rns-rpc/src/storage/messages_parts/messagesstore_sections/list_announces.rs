@@ -6,7 +6,7 @@ impl MessagesStore {
         before_ts: Option<i64>,
         before_id: Option<&str>,
     ) -> rusqlite::Result<Vec<AnnounceRecord>> {
-        self.with_read_conn(|conn| list_announces_rows(conn,limit,before_ts,before_id))
+        self.with_read_conn(|conn| list_announces_rows(conn,limit,before_ts,before_id, &self.write_state.announce_metrics.history))
     }
 
     pub fn upsert_announce_identity(
@@ -34,27 +34,15 @@ impl MessagesStore {
         peer: &str,
     ) -> rusqlite::Result<Option<(String, String)>> {
         let peer = normalize_peer_key(peer);
-        self.with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT public_key_hex, verifying_key_hex
-                 FROM announce_identities
-                 WHERE peer = ?1
-                 LIMIT 1",
-                params![peer],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
-        })
+        self.with_read_conn(|conn| lxmf_propagation::identities::keys(conn, &peer))
     }
 
     pub fn latest_announce_stamp_cost_for(&self, peer: &str) -> rusqlite::Result<Option<u32>> {
         self.with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT stamp_cost FROM announces WHERE peer = ?1 AND stamp_cost IS NOT NULL ORDER BY timestamp DESC, id DESC LIMIT 1",
-                params![peer],
-                |row| row.get(0),
-            )
-            .optional()
+            let mut statement = conn.prepare("SELECT stamp_cost FROM announces WHERE peer = ?1 AND stamp_cost IS NOT NULL ORDER BY timestamp DESC, id DESC LIMIT 1")?;
+            self.write_state.announce_metrics.stamp_cost.measure(&mut statement, |statement| {
+                statement.query_row(params![peer], |row| row.get(0)).optional()
+            })
         })
     }
 
@@ -173,8 +161,11 @@ impl MessagesStore {
 
     pub fn clear_announces(&self) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
-            conn.execute("DELETE FROM announces", [])?;
-            conn.execute("DELETE FROM announce_identities", [])?;
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("DELETE FROM announces", [])?;
+            tx.execute("DELETE FROM announce_identities", [])?;
+            tx.execute("DELETE FROM announce_retention_cursor", [])?;
+            tx.commit()?;
             Ok(())
         })
     }
@@ -225,6 +216,11 @@ impl MessagesStore {
             conn.pragma_update(None, "journal_mode", "WAL")?;
             conn.pragma_update(None, "synchronous", "NORMAL")?;
             conn.pragma_update(None, "busy_timeout", 5_000i64)?;
+            conn.pragma_update(
+                None,
+                "journal_size_limit",
+                super::broker::truncate_limit_bytes(None) as i64,
+            )?;
             Ok(())
         })?;
         if self.read_conn.is_some() {
@@ -273,12 +269,6 @@ impl MessagesStore {
                     stamp_cost_flexibility INTEGER,
                     peering_cost INTEGER
                 );
-                CREATE TABLE IF NOT EXISTS announce_identities (
-                    peer TEXT PRIMARY KEY,
-                    public_key_hex TEXT NOT NULL,
-                    verifying_key_hex TEXT NOT NULL,
-                    updated_at INTEGER NOT NULL
-                );
                 CREATE TABLE IF NOT EXISTS sdk_domain_state (
                     domain TEXT PRIMARY KEY,
                     state_json TEXT NOT NULL
@@ -298,26 +288,10 @@ impl MessagesStore {
                     destination TEXT PRIMARY KEY,
                     delivered_at INTEGER NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS propagation_entries (
-                    transient_id TEXT PRIMARY KEY,
-                    destination TEXT NOT NULL,
-                    payload_hex TEXT NOT NULL,
-                    received_at INTEGER NOT NULL,
-                    size_bytes INTEGER NOT NULL,
-                    stamp_value INTEGER
-                );
-                CREATE TABLE IF NOT EXISTS propagation_peer_entries (
-                    peer TEXT NOT NULL,
-                    transient_id TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    updated_at INTEGER NOT NULL,
-                    PRIMARY KEY(peer, transient_id)
-                );
-                CREATE TABLE IF NOT EXISTS propagation_local_entries (
-                    transient_id TEXT PRIMARY KEY,
-                    processed_at INTEGER NOT NULL
-                );",
+",
             )?;
+            lxmf_propagation::storage::initialize(&tx)?;
+            lxmf_propagation::identities::initialize(&tx)?;
             Self::ensure_multi_ticket_schema(&tx)?;
             tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tickets_destination_expires
@@ -369,13 +343,9 @@ impl MessagesStore {
                     ON messages(receipt_status);
                 CREATE INDEX IF NOT EXISTS idx_announces_timestamp_id_desc
                     ON announces(timestamp DESC, id DESC);
-                CREATE INDEX IF NOT EXISTS idx_propagation_entries_destination_size
-                    ON propagation_entries(destination, size_bytes, transient_id);
-                CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_state
-                    ON propagation_peer_entries(peer, state, transient_id);
-                CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_folded_lookup
-                    ON propagation_peer_entries(LOWER(peer), transient_id, state);",
+",
             )?;
+            Self::init_announce_retention(&tx)?;
             Self::ensure_peer_queue_refill_schema(&tx)?;
             tx.commit()
         })
@@ -421,15 +391,46 @@ impl MessagesStore {
             let tx=conn.unchecked_transaction()?;
             let bytes:i64=tx.query_row("SELECT COALESCE(MAX(bytes),0) FROM (SELECT COALESCE(length(CAST(app_data_hex AS BLOB)),0)+COALESCE(length(CAST(name AS BLOB)),0)+COALESCE(length(CAST(name_source AS BLOB)),0)+COALESCE(length(CAST(capabilities AS BLOB)),0)+length(CAST(id AS BLOB))+length(CAST(peer AS BLOB)) AS bytes FROM announces ORDER BY timestamp DESC,id DESC LIMIT 32)",[],|r|r.get(0))?;
             if bytes>128*1024 {return Err(super::broker::error("SDK_STORAGE_BROKER_EVENT_TOO_LARGE","announce projection record exceeds 128 KiB"));}
-            let records=list_announces_rows(&tx,32,None,None)?;tx.commit()?;Ok(records)
+            let records=list_announces_rows(&tx,32,None,None, &self.write_state.announce_metrics.history)?;tx.commit()?;Ok(records)
         })
     }
 }
 
-fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before_id:Option<&str>)->rusqlite::Result<Vec<AnnounceRecord>> {
+fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before_id:Option<&str>, metrics: &super::announce_metrics::QueryMetrics)->rusqlite::Result<Vec<AnnounceRecord>> {
 
             let mut records = Vec::new();
-            let parse_row = |row: &rusqlite::Row| -> rusqlite::Result<AnnounceRecord> {
+            if let Some(ts) = before_ts {
+                let query_with_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3";
+                let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
+                if let Some(ann_id) = before_id {
+                    let mut stmt = conn.prepare(query_with_id)?;
+                    metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_announce_row(row)?); }
+                        Ok(())
+                    })?;
+                } else {
+                    let mut stmt = conn.prepare(query_without_id)?;
+                    metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![ts, limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_announce_row(row)?); }
+                        Ok(())
+                    })?;
+                }
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC,id DESC LIMIT ?1",
+                )?;
+                metrics.measure(&mut stmt, |stmt| {
+                        let mut rows = stmt.query(params![limit as i64])?;
+                        while let Some(row) = rows.next()? { records.push(parse_announce_row(row)?); }
+                        Ok(())
+                    })?;
+            }
+            Ok(records)
+}
+
+fn parse_announce_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnnounceRecord> {
                 let capabilities_json: Option<String> = row.get(8)?;
                 let capabilities = capabilities_json
                     .as_deref()
@@ -454,31 +455,4 @@ fn list_announces_rows(conn:&Connection,limit:usize,before_ts:Option<i64>,before
                     stamp_cost_flexibility: row.get(13)?,
                     peering_cost: row.get(14)?,
                 })
-            };
-            if let Some(ts) = before_ts {
-                let query_with_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3";
-                let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
-                if let Some(ann_id) = before_id {
-                    let mut stmt = conn.prepare(query_with_id)?;
-                    let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
-                    while let Some(row) = rows.next()? {
-                        records.push(parse_row(row)?);
-                    }
-                } else {
-                    let mut stmt = conn.prepare(query_without_id)?;
-                    let mut rows = stmt.query(params![ts, limit as i64])?;
-                    while let Some(row) = rows.next()? {
-                        records.push(parse_row(row)?);
-                    }
-                }
-            } else {
-                let mut stmt = conn.prepare(
-                    "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC,id DESC LIMIT ?1",
-                )?;
-                let mut rows = stmt.query(params![limit as i64])?;
-                while let Some(row) = rows.next()? {
-                    records.push(parse_row(row)?);
-                }
-            }
-            Ok(records)
 }

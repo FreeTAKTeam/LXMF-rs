@@ -1,16 +1,39 @@
+// The due-time index excludes deferred jobs before loading message rows. Keep
+// oldest-message ordering among eligible jobs, rather than ordering by retry time.
+const BROKER_PENDING_DISPATCH_SQL: &str =
+    "SELECT m.id,m.source,m.destination,m.title,m.content,m.timestamp,m.direction,m.fields,m.receipt_status,o.options
+     FROM broker_operations o JOIN messages m ON m.id=o.message_id
+     WHERE o.state='queued' AND o.next_attempt_at<=unixepoch()
+     ORDER BY m.timestamp,m.id LIMIT 1";
+
 impl MessagesStore {
     /// Must be called at startup before accepting traffic. Reopening preserves the profile.
     pub fn enable_durable_broker(&self, budget_bytes: i64) -> rusqlite::Result<()> {
-        self.with_control_conn(|conn| super::broker::enable(conn, budget_bytes))
+        self.with_control_conn(|conn| super::broker::enable(conn, budget_bytes))?;
+        self.refresh_broker_budget_cache()
     }
     pub fn durable_broker_enabled(&self) -> rusqlite::Result<bool> {
-        self.with_read_conn(super::broker::enabled)
+        Ok(self.durable_broker_enabled.load(Ordering::Acquire))
     }
     pub fn broker_command(&self, command: super::broker::BrokerCommand) -> rusqlite::Result<JsonValue> {
+        // Internal dispatch claims must observe their result before scheduling delivery.
+        let replay_safe = matches!(command, super::broker::BrokerCommand::Resume {..}
+            | super::broker::BrokerCommand::Fetch {..} | super::broker::BrokerCommand::Ack {..}
+            | super::broker::BrokerCommand::Admit {..} | super::broker::BrokerCommand::Reconcile {..});
         let (reply, receive) = mpsc::channel();
         self.outbound_write_tx.send(OutboundWriteCommand::Broker { command: Box::new(command), reply })
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        receive.recv().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+        if replay_safe {
+            match receive.recv_timeout(std::time::Duration::from_millis(2500)) {
+                Ok(result) => result,
+                Err(mpsc::RecvTimeoutError::Timeout) => Err(super::broker::error(
+                    "SDK_STORAGE_BROKER_TIMEOUT", "broker writer deadline exceeded; queued operation may still commit; retry with the same request",
+                )),
+                Err(error) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(error))),
+            }
+        } else {
+            receive.recv().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+        }
     }
 }
 
@@ -20,15 +43,22 @@ impl MessagesStore {
         self.with_read_conn(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM broker_operations WHERE message_id=?1)",[id],|r|r.get(0)))
     }
     pub fn broker_prepared(&self,id:&str)->rusqlite::Result<Option<Option<JsonValue>>> {
+        if self.durable_broker_enabled()? {
+            self.broker_command(super::broker::BrokerCommand::ReservePropagationCustody { message_id: id.into() })?;
+        }
         self.with_read_conn(|conn| {
             let row:Option<Option<String>>=conn.query_row("SELECT prepared FROM broker_operations WHERE message_id=?1",[id],|r|r.get(0)).optional()?;
             row.map(|value|value.map(|s|serde_json::from_str(&s).map_err(|e|rusqlite::Error::ToSqlConversionFailure(Box::new(e)))).transpose()).transpose()
         })
     }
+    /// Trusted native acknowledgement, distinct from final recipient delivery.
+    pub fn complete_propagation_custody(&self, id: &str, representation: crate::broker::PropagationCustody) -> rusqlite::Result<JsonValue> {
+        self.broker_command(super::broker::BrokerCommand::PropagationCustody { message_id: id.into(), representation })
+    }
     pub fn broker_pending_dispatch(&self)->rusqlite::Result<Vec<(MessageRecord,crate::rpc::OutboundDeliveryOptions)>> {
         if !self.durable_broker_enabled()? {return Ok(Vec::new());}
         self.with_read_conn(|conn| {
-            let mut stmt=conn.prepare("SELECT m.id,m.source,m.destination,m.title,m.content,m.timestamp,m.direction,m.fields,m.receipt_status,o.options FROM broker_operations o JOIN messages m ON m.id=o.message_id WHERE o.state='queued' AND o.next_attempt_at<=unixepoch() ORDER BY m.timestamp,m.id LIMIT 1")?;
+            let mut stmt=conn.prepare(BROKER_PENDING_DISPATCH_SQL)?;
             let result=stmt.query_map([],|row| {
                 let options:String=row.get(9)?;
                 Ok((super::broker::record_from_row(row)?,serde_json::from_str(&options).map_err(|e|rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?))

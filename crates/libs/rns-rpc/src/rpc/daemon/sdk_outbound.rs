@@ -2,6 +2,9 @@ use super::*;
 
 const OUTBOUND_DELIVERY_QUEUE_CAPACITY: usize = 1024;
 const OUTBOUND_DELIVERY_WORKER_LANES: usize = 16;
+/// Durable dispatch pump interval while work is flowing, and its idle ceiling.
+const DURABLE_PUMP_MIN_WAIT: std::time::Duration = std::time::Duration::from_millis(25);
+const DURABLE_PUMP_IDLE_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
 
 impl RpcDaemon {
     pub(super) fn spawn_outbound_delivery_worker(
@@ -34,29 +37,42 @@ impl RpcDaemon {
             workers.push(
                 std::thread::Builder::new()
                     .name(format!("rpc-outbound-delivery-worker-{lane}"))
-                    .spawn(move || loop {
-                        if stop.load(std::sync::atomic::Ordering::Acquire) {
-                            break;
+                    .spawn(move || {
+                        let mut pump_wait = DURABLE_PUMP_MIN_WAIT;
+                        loop {
+                            if stop.load(std::sync::atomic::Ordering::Acquire) {
+                                break;
+                            }
+                            if lane == 0 {
+                                // Back off while the durable queue is empty so an idle daemon
+                                // does not re-run the dispatch query forty times per second;
+                                // any pending work or inbound command restores the fast cadence.
+                                pump_wait = if Self::pump_durable_dispatch(&store, &bridge) {
+                                    DURABLE_PUMP_MIN_WAIT
+                                } else {
+                                    (pump_wait * 2).min(DURABLE_PUMP_IDLE_WAIT)
+                                };
+                            }
+                            // Each dedicated OS worker waits independently. In particular,
+                            // an idle receiver cannot lock lane 0 out of the durable pump.
+                            let command = rx.recv_timeout(pump_wait);
+                            let command = match command {
+                                Ok(command) => {
+                                    pump_wait = DURABLE_PUMP_MIN_WAIT;
+                                    command
+                                }
+                                Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
+                                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                            };
+                            Self::process_outbound_delivery_command(
+                                &bridge,
+                                &store,
+                                &delivery_traces,
+                                &delivery_status_lock,
+                                &outbound_delivery_handoffs,
+                                command,
+                            );
                         }
-                        if lane == 0 {
-                            Self::pump_durable_dispatch(&store, &bridge);
-                        }
-                        // Each dedicated OS worker waits independently. In particular,
-                        // an idle receiver cannot lock lane 0 out of the durable pump.
-                        let command = rx.recv_timeout(std::time::Duration::from_millis(25));
-                        let command = match command {
-                            Ok(command) => command,
-                            Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
-                            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
-                        };
-                        Self::process_outbound_delivery_command(
-                            &bridge,
-                            &store,
-                            &delivery_traces,
-                            &delivery_status_lock,
-                            &outbound_delivery_handoffs,
-                            command,
-                        );
                     })
                     .expect("spawn rpc outbound delivery worker"),
             );
@@ -397,99 +413,5 @@ impl RpcDaemon {
             .expect("delivery_destination_hash mutex poisoned")
             .clone()
             .unwrap_or_else(|| self.identity_hash.clone())
-    }
-
-    pub(super) fn capabilities() -> Vec<&'static str> {
-        vec![
-            "status",
-            "daemon_status_ex",
-            "list_messages",
-            "list_announces",
-            "list_peers",
-            "send_message",
-            "send_message_v2",
-            "sdk_send_v2",
-            "sdk_send_batch_v2",
-            "sdk_negotiate_v2",
-            "sdk_status_v2",
-            "sdk_configure_v2",
-            "sdk_poll_events_v2",
-            "sdk_cancel_message_v2",
-            "sdk_snapshot_v2",
-            "sdk_shutdown_v2",
-            "sdk_topic_create_v2",
-            "sdk_topic_get_v2",
-            "sdk_topic_list_v2",
-            "sdk_topic_subscribe_v2",
-            "sdk_topic_unsubscribe_v2",
-            "sdk_topic_publish_v2",
-            "sdk_telemetry_query_v2",
-            "sdk_telemetry_subscribe_v2",
-            "sdk_attachment_store_v2",
-            "sdk_attachment_get_v2",
-            "sdk_attachment_list_v2",
-            "sdk_attachment_delete_v2",
-            "sdk_attachment_download_v2",
-            "sdk_attachment_upload_start_v2",
-            "sdk_attachment_upload_chunk_v2",
-            "sdk_attachment_upload_commit_v2",
-            "sdk_attachment_download_chunk_v2",
-            "sdk_attachment_associate_topic_v2",
-            "sdk_marker_create_v2",
-            "sdk_marker_list_v2",
-            "sdk_marker_update_position_v2",
-            "sdk_marker_delete_v2",
-            "sdk_identity_list_v2",
-            "sdk_identity_create_v2",
-            "sdk_identity_announce_now_v2",
-            "sdk_identity_presence_list_v2",
-            "sdk_identity_activate_v2",
-            "sdk_identity_import_v2",
-            "sdk_identity_export_v2",
-            "sdk_identity_resolve_v2",
-            "sdk_identity_contact_update_v2",
-            "sdk_identity_contact_list_v2",
-            "sdk_identity_bootstrap_v2",
-            "sdk_workflow_peer_ready_v2",
-            "sdk_workflow_topic_sync_v2",
-            "sdk_workflow_attachment_report_publish_v2",
-            "sdk_workflow_mission_update_send_v2",
-            "sdk_paper_encode_v2",
-            "sdk_paper_decode_v2",
-            "sdk_command_invoke_v2",
-            "sdk_command_reply_v2",
-            "sdk_command_session_get_v2",
-            "sdk_command_session_list_v2",
-            "sdk_voice_session_open_v2",
-            "sdk_voice_session_update_v2",
-            "sdk_voice_session_close_v2",
-            "announce_now",
-            "announce_delivery",
-            "list_interfaces",
-            "set_interfaces",
-            "reload_config",
-            "peer_sync",
-            "peer_unpeer",
-            "set_delivery_policy",
-            "get_delivery_policy",
-            "allow_destination",
-            "disallow_destination",
-            "prioritise_destination",
-            "propagation_status",
-            "propagation_enable",
-            "propagation_ingest",
-            "propagation_fetch",
-            "get_outbound_propagation_cost",
-            "get_outbound_propagation_node",
-            "set_outbound_propagation_node",
-            "list_propagation_nodes",
-            "propagation_remote_fetch",
-            "propagation_remote_download",
-            "paper_ingest_uri",
-            "stamp_policy_get",
-            "stamp_policy_set",
-            "ticket_generate",
-            "message_delivery_trace",
-        ]
     }
 }

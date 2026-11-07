@@ -1,10 +1,13 @@
 use rns_rpc::rpc::zmq;
+use rns_rpc::rpc::zmq_metrics::ZmqFailureContext;
 use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 const CONTROL_COUNT: usize = 8;
 const BULK_COUNT: usize = 24;
-const CONTROL_BYTES: usize = 96 * 1024 * 1024;
+// Configurable poll batches can fill a legal envelope; reserve that actual ceiling.
+const CONTROL_BYTES: usize = CONTROL_COUNT * 2 * zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES;
+pub(super) const REJECTION_COUNT: usize = 32;
 const BULK_BYTES: usize = 160 * 1024 * 1024;
 
 pub(super) struct Admission {
@@ -46,7 +49,16 @@ impl Admission {
         Self {
             control: Lane::new(CONTROL_COUNT, CONTROL_BYTES),
             bulk: Lane::new(BULK_COUNT, BULK_BYTES),
-            rejection: Lane::new(2, 32 * 1024),
+            rejection: Lane::new(REJECTION_COUNT, REJECTION_COUNT * 12 * 1024),
+        }
+    }
+
+    pub(super) fn warn_rejection_drop(&self) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static DROPS: AtomicU64 = AtomicU64::new(0);
+        let dropped = DROPS.fetch_add(1, Ordering::Relaxed) + 1;
+        if dropped.is_power_of_two() {
+            log::warn!("[daemon] overload reply lane full; dropped_total={dropped}");
         }
     }
 
@@ -54,10 +66,11 @@ impl Admission {
         self.rejection.admit_with_reply(8192, 4096)
     }
 
-    pub(super) fn admit(&self, encoded: &[u8]) -> std::io::Result<Option<Lease>> {
+    pub(super) fn admit(&self, encoded: &[u8]) -> std::io::Result<(Option<Lease>, &'static str)> {
         let (method, retained) = zmq::request_admission(encoded)?;
         let lane = if control_method(method) { &self.control } else { &self.bulk };
-        Ok(lane.admit_with_reply(retained, zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES))
+        let bounded_method = ZmqFailureContext::bounded_method(method);
+        Ok((lane.admit_with_reply(retained, zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES), bounded_method))
     }
 }
 
@@ -80,6 +93,28 @@ fn control_method(method: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_eight_control_replies_fit_and_rejections_have_separate_capacity() {
+        let admission = Admission::new();
+        let leases: Vec<_> = (0..CONTROL_COUNT)
+            .map(|_| {
+                admission
+                    .control
+                    .admit_with_reply(
+                        zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES,
+                        zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES,
+                    )
+                    .expect("control slot with a maximum legal reply")
+            })
+            .collect();
+        assert!(admission.control.admit_with_reply(1, 1).is_none());
+        let rejections: Vec<_> = (0..REJECTION_COUNT)
+            .map(|_| admission.rejection().expect("bounded busy reply"))
+            .collect();
+        assert!(admission.rejection().is_none());
+        drop((leases, rejections));
+    }
 
     #[test]
     fn bulk_cannot_consume_reserved_control_reply_capacity() {

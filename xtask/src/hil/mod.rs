@@ -2,6 +2,7 @@ mod config;
 mod evidence;
 mod model;
 mod reset;
+mod run_controller;
 mod runner;
 mod support;
 

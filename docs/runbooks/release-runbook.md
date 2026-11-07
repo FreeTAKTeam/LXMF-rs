@@ -38,7 +38,11 @@
 
 ## crates.io Automation
 
-Publishing a final GitHub Release triggers `.github/workflows/crates-io-publish.yml`.
+After publishing a final GitHub Release, `release.yml` explicitly dispatches
+`.github/workflows/crates-io-publish.yml` for the same tag. GitHub suppresses
+recursive release events created with the default `GITHUB_TOKEN`, while
+`workflow_dispatch` remains supported. Releases published outside that workflow
+also retain the existing `release: published` trigger.
 Prereleases are intentionally skipped so RC tags can publish simulation and
 bundle evidence without publishing crates. For a final release, the workflow
 publishes the public library crates listed in
@@ -46,11 +50,16 @@ publishes the public library crates listed in
 The workflow rejects the release if any public crate version differs from the
 GitHub release tag after removing the leading `v`.
 
-After publication, verify that a `Publish crates.io` run exists for the exact
-tag and commit. GitHub suppresses recursive workflow events created with the
-default `GITHUB_TOKEN`; if the release event did not create a crates run,
-dispatch the workflow manually with `ref=<tag>`, `version=<version>`, and
-`dry_run=false`, then verify every package through the crates.io API. The
+The dispatch job requires successful release publication and skips prereleases
+and validation-only builds. It passes the literal tag as both `ref` and `version`
+(including a leading `v`) so explicit dispatches and release events share one
+publisher concurrency group. Its success means the run was queued, not that
+packages have been published.
+
+After publication, verify that a `Publish crates.io` run succeeds for the exact
+tag and commit, then verify every package through the crates.io API. If dispatch
+fails, rerun the failed dispatch job or dispatch the workflow manually with
+workflow ref `<tag>`, `ref=<tag>`, `version=<tag>`, and `dry_run=false`. The
 v0.10.1 train required this explicit dispatch as run
 [33255408925](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33255408925).
 
@@ -60,3 +69,37 @@ Repository setup required before the first automated publish:
   project-owned crates
 - optionally protect the `crates-io` GitHub Actions environment if releases
   should require manual approval before crates go live
+
+
+## Linux-only prereleases
+
+Use the existing Release workflow with a valid SemVer tag ending in `-linux`,
+for example `v0.16.1-rc.1-linux`. Commit the matching `VERSION`, public package
+versions, dependency requirements and lockfiles before tagging. The prepare step
+resolves the literal existing tag and checks `VERSION` from that immutable source;
+manual rebuilds cannot silently package a different checkout. Build metadata
+(`+suffix`) is not supported because the same version labels the OCI image.
+
+`tools/scripts/release_config.py` owns the build inventory and tag classification.
+Linux-only tags select x86-64, AArch64 and ARMv7 musl builds and their deb/rpm
+packages. Windows and macOS packaging are skipped; other tags retain all six
+build targets. SDK wrapper parity gates the builds, and publication requires
+successful builds, Linux packages, SBOMs and container checks. Only the two
+intentional platform skips are accepted by the explicit publication guard.
+
+Every accepted SemVer prerelease is published with `prerelease: true` and
+`make_latest: false`, including when the Linux performance or independent-evidence
+publisher finishes first. These auxiliary publishers retain their validation;
+independent nightly publishing still uploads workflow artifacts without creating
+a release. Prereleases do not update the OCI `latest` tag or Homebrew, and the
+crates.io workflow excludes them. Linux OCI version images, SBOMs, signed
+checksums and provenance retain the existing publication path.
+
+Asset names retain the release version, including its prerelease suffix.
+`packaging/nfpm.yaml` uses `version_schema: semver` for distro metadata: nfpm
+normalizes `0.16.1-rc.1-linux` to Debian `0.16.1~rc.1-linux` and RPM
+`0.16.1~rc.1_linux` (release `1`). Download and verify `SHA256SUMS.txt` alongside
+its cosign bundle; `release-build-source.json` records the product commit,
+packaging workflow commit and OCI digest. Record the exact hosted run and
+post-download smoke results. Software and packaging checks do not establish
+production resource stability, device HIL or long-duration delivery acceptance.

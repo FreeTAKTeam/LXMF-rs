@@ -62,13 +62,16 @@ jobs:
           set -euo pipefail
 
           manifests=(
+            "crates/libs/r3akt-event-broker/Cargo.toml"
             "vendor/zeromq/Cargo.toml"
             "crates/libs/lxmf-reference/Cargo.toml"
             "crates/libs/rns-core/Cargo.toml"
             "crates/libs/lxmf-core/Cargo.toml"
+            "crates/libs/lxmf-propagation/Cargo.toml"
             "crates/libs/rns-embedded-core/Cargo.toml"
             "crates/libs/rns-embedded-runtime/Cargo.toml"
             "crates/libs/rns-embedded-ffi/Cargo.toml"
+            "crates/libs/rns-bluetooth/Cargo.toml"
             "crates/libs/rns-transport/Cargo.toml"
             "crates/libs/rns-rpc/Cargo.toml"
             "crates/libs/meshchat-api/Cargo.toml"

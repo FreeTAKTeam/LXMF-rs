@@ -1,5 +1,4 @@
 impl Transport {
-
     pub async fn close_channel(
         &self,
         link_id: &AddressHash,
@@ -49,8 +48,7 @@ impl Transport {
         let sent = dispatch.sent_ifaces > 0;
         let mut handler = self.handler.lock().await;
         handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
-        let events = handler.resource_manager.drain_events();
-        super::resource_wire::publish_resource_events(&handler, events);
+        super::resource_wire::publish_resource_events(&mut handler).await;
         if sent {
             Ok(resource_hash)
         } else {
@@ -75,64 +73,6 @@ impl Transport {
         self.handler.lock().await.in_links.get(link_id).cloned()
     }
 
-    pub async fn link(&self, destination: DestinationDesc) -> Arc<Mutex<Link>> {
-        let link = self.handler.lock().await.out_links.get(&destination.address_hash).cloned();
-
-        if let Some(link) = link {
-            let status = link.lock().await.status();
-            log::debug!(
-                "[tp-diag] reuse_out_link destination={} status={:?}",
-                destination.address_hash,
-                status
-            );
-            if status != LinkStatus::Closed {
-                return link;
-            } else {
-                log::warn!("tp({}): link was closed", self.name);
-            }
-        }
-
-        let mut link = Link::new(destination, self.link_out_event_tx.clone());
-        let (next_hop_iface, hops) = {
-            let handler = self.handler.lock().await;
-            (
-                handler.path_table.next_hop_iface(&destination.address_hash),
-                handler.path_table.hops_to(&destination.address_hash),
-            )
-        };
-        let next_hop_mtu = match next_hop_iface {
-            Some(iface) => self.iface_manager.lock().await.mtu(&iface),
-            None => None,
-        };
-        link.set_establishment_timeout(
-            self.establishment_timeout_for(&destination.address_hash, next_hop_mtu, hops).await,
-        );
-        let packet = match next_hop_mtu {
-            Some(mtu) => link.request_with_mtu(mtu),
-            None => link.request(),
-        };
-
-        log::debug!(
-            "tp({}): create new link {} for destination {}",
-            self.name,
-            link.id(),
-            destination
-        );
-        log::debug!(
-            "[tp-diag] create_out_link destination={} link_id={}",
-            destination.address_hash,
-            link.id()
-        );
-
-        let link = Arc::new(Mutex::new(link));
-
-        self.handler.lock().await.out_links.insert(destination.address_hash, link.clone());
-
-        self.send_packet(packet).await;
-
-        link
-    }
-
     pub async fn request_path(
         &self,
         destination: &AddressHash,
@@ -149,19 +89,12 @@ impl Transport {
             on_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string())
         );
         let dispatch = if let Some(iface) = on_iface {
-            self.iface_manager
-                .lock()
-                .await
-                .send_path_request_on_iface(iface, packet)
-                .await
+            self.iface_manager.lock().await.send_path_request_on_iface(iface, packet).await
         } else {
             self.iface_manager
                 .lock()
                 .await
-                .send_path_request(TxMessage {
-                    tx_type: TxMessageType::Broadcast(None),
-                    packet,
-                })
+                .send_path_request(TxMessage { tx_type: TxMessageType::Broadcast(None), packet })
                 .await
         };
         log::debug!(
@@ -277,10 +210,7 @@ impl Transport {
         self.handler.lock().await.path_table.mark_path_unknown(destination)
     }
 
-    pub async fn next_hop_metrics(
-        &self,
-        destination: &AddressHash,
-    ) -> Option<NextHopMetrics> {
+    pub async fn next_hop_metrics(&self, destination: &AddressHash) -> Option<NextHopMetrics> {
         let interface = self.handler.lock().await.path_table.next_hop_iface(destination)?;
         let manager = self.iface_manager.lock().await;
         let bitrate = manager.announce_pacing(&interface)?.0;
@@ -305,9 +235,7 @@ impl Transport {
         self.handler.lock().await.inbound_queues.snapshot()
     }
 
-    pub async fn interface_traffic_snapshots(
-        &self,
-    ) -> Vec<crate::iface::InterfaceTrafficSnapshot> {
+    pub async fn interface_traffic_snapshots(&self) -> Vec<crate::iface::InterfaceTrafficSnapshot> {
         let announce_burst_ifaces = self.handler.lock().await.announce_limits.active_interfaces();
         let mut snapshots = self.iface_manager.lock().await.traffic_snapshots();
         for snapshot in &mut snapshots {
@@ -325,10 +253,9 @@ impl Transport {
                 .collect::<Vec<_>>();
             let announce_count =
                 children.iter().filter(|snapshot| snapshot.announce_burst_active).count() as u64;
-            let path_request_count = children
-                .iter()
-                .filter(|snapshot| snapshot.path_request_burst_active)
-                .count() as u64;
+            let path_request_count =
+                children.iter().filter(|snapshot| snapshot.path_request_burst_active).count()
+                    as u64;
             if let Some(parent_snapshot) =
                 snapshots.iter_mut().find(|snapshot| snapshot.address == parent)
             {
@@ -368,7 +295,10 @@ impl Transport {
         medium_path_timeout_for_bitrate(self.lowest_interface_bitrate().await)
     }
 
-    pub async fn path_status(&self, address: &AddressHash) -> crate::transport::TransportPathStatus {
+    pub async fn path_status(
+        &self,
+        address: &AddressHash,
+    ) -> crate::transport::TransportPathStatus {
         let handler = self.handler.lock().await;
         if let Some(entry) = handler.path_table.get(address) {
             crate::transport::TransportPathStatus {

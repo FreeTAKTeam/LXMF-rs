@@ -239,10 +239,14 @@ pub(crate) async fn spawn(
         status: status.clone(),
         label: iface.name.clone().unwrap_or_else(|| "<unnamed>".to_string()),
     };
-    let iface = iface_manager
-        .lock()
-        .await
-        .spawn(interface, |context| async move { ReticulumBleInterface::run(context).await });
+    let iface = crate::interfaces::common::spawn_configured(
+        &mut *iface_manager.lock().await,
+        interface,
+        |context| async move { ReticulumBleInterface::run(context).await },
+        rns_transport::iface::IfaceRole::Unicast,
+        iface,
+    )
+    .map_err(|error| format!("Reticulum BLE runtime policy could not be installed: {error}"))?;
     status.update(|status| status.iface = Some(iface.to_string()));
     Ok(ReticulumBleSpawnResult { iface, status })
 }
