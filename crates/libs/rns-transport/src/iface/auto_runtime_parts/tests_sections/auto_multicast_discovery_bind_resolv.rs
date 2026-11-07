@@ -1,5 +1,5 @@
     #[test]
-    fn auto_multicast_discovery_bind_resolves_link_scope_group_to_unspecified_bind() {
+    fn auto_multicast_discovery_bind_binds_the_link_scope_group_with_its_interface_scope() {
         let target = AutoDiscoverySocketBindTarget {
             kind: AutoDiscoverySocketKind::Multicast,
             ifname: "eth0".to_string(),
@@ -16,12 +16,31 @@
             })
             .expect("resolve multicast bind");
 
-        assert_eq!(resolved.bind_addr.to_string(), "[::]:29716");
+        assert_eq!(resolved.bind_addr.to_string(), "[ff12:0:d70b:fb1c:16e4:5e39:485e:31e1%7]:29716");
         assert_eq!(
             resolved.multicast_group_addr.to_string(),
             "[ff12:0:d70b:fb1c:16e4:5e39:485e:31e1%7]:29716"
         );
         assert_eq!(resolved.multicast_scope_id, 7);
+    }
+
+    #[test]
+    fn auto_multicast_discovery_bind_binds_a_wider_scope_group_unscoped() {
+        let target = AutoDiscoverySocketBindTarget {
+            kind: AutoDiscoverySocketKind::Multicast,
+            ifname: "eth0".to_string(),
+            bind_host: "ff0e:0:77b9:4bfd:9488:364b:4bbe:119d".to_string(),
+            bind_port: 48_555,
+            scope_ifname: None,
+            multicast_group_host: Some("ff0e:0:77b9:4bfd:9488:364b:4bbe:119d".to_string()),
+        };
+
+        let resolved = target
+            .resolve_multicast_bind(|_| panic!("a global-scope group bind is unscoped"))
+            .expect("resolve multicast bind");
+
+        assert_eq!(resolved.bind_addr.to_string(), "[ff0e:0:77b9:4bfd:9488:364b:4bbe:119d]:48555");
+        assert_eq!(resolved.multicast_scope_id, 0);
     }
 
     #[test]

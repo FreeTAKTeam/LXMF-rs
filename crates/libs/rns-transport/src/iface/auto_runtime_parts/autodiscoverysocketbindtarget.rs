@@ -60,6 +60,9 @@ impl AutoDiscoverySocketBindTarget {
         }
     }
 
+    /// Binds the group with the interface scope the listener carries, as the
+    /// reference does: on Linux a wildcard-bound member socket also receives
+    /// the other interfaces' copies of a group datagram.
     fn resolve_multicast_bind(
         &self,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
@@ -96,35 +99,12 @@ impl AutoDiscoverySocketBindTarget {
             }
             IpAddr::V4(group) => SocketAddr::from((group, self.bind_port)),
         };
-        let bind_addr = self.resolve_multicast_socket_bind_addr(&mut scope_id_for_ifname)?;
+        let bind_addr = self.resolve_bind_addr(&mut scope_id_for_ifname)?;
         Ok(AutoResolvedMulticastDiscoveryBind {
             bind_addr,
             multicast_group_addr,
             multicast_scope_id,
         })
-    }
-
-    fn resolve_multicast_socket_bind_addr(
-        &self,
-        scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
-    ) -> Result<SocketAddr, String> {
-        let bind_ip = self.bind_host.parse::<IpAddr>().map_err(|err| {
-            format!("parse auto discovery multicast bind host {}: {err}", self.bind_host)
-        })?;
-        if bind_ip.is_multicast() {
-            return Ok(match bind_ip {
-                IpAddr::V6(_) => SocketAddr::V6(SocketAddrV6::new(
-                    std::net::Ipv6Addr::UNSPECIFIED,
-                    self.bind_port,
-                    0,
-                    0,
-                )),
-                IpAddr::V4(_) => {
-                    SocketAddr::from((std::net::Ipv4Addr::UNSPECIFIED, self.bind_port))
-                }
-            });
-        }
-        self.resolve_bind_addr(scope_id_for_ifname)
     }
 }
 
