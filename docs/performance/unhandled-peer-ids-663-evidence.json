@@ -7,7 +7,7 @@
   "rustc": "1.99.1 stable",
   "bundled_sqlite": "3.53.2",
   "binary_sha256": "3dc1ead3ce501af1f22f4b7b1b32d0cdde6f3dd8f4b70327163fe201ca70602c",
-  "test_source_note": "Measured test binary precedes final ignored-test label correction (1.1 to 1.24 GiB) and extra sort-count assertion. Production query, fixture and measured loops are identical to 6858828f.",
+  "test_source_note": "Measured test binary precedes final ignored-test label correction (1.1 to 1.24 GiB) and extra sort-count assertion. Production query, fixture and measured loops are identical to 6858828f. Subsequently renamed the test module to soak_tests so source-only policy scanners recognize its test-only status; the measured workload is unchanged.",
   "fixture": {
     "fixture_db_bytes": 1334317056,
     "payload_hex_bytes_per_row": 10240,

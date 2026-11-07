@@ -38,7 +38,7 @@ The opt-in Linux workload is reproducible with:
 
 ```sh
 CARGO_BUILD_JOBS=2 cargo test -p reticulum-rs-rpc --lib \
-  storage::messages::unhandled_propagation::soak::sustained_unhandled_id_query_workload \
+  storage::messages::unhandled_propagation::soak_tests::sustained_unhandled_id_query_workload \
   -- --exact --ignored --nocapture
 ```
 
@@ -66,7 +66,7 @@ The four-phase run completed in 257.29 seconds, including fixture setup and
 completed-mark/reopen checks. Each phase made 120 calls returning the same
 100,000 ordered IDs. The production Rust source matches commit `6858828f`;
 [recorded counters and binary hash](unhandled-peer-ids-663-evidence.json) identify
-the measured debug test build, including its two subsequent test-only changes.
+the measured debug test build, including subsequent test-only changes.
 
 | Per call (two phases of each statement) | Baseline | Candidate |
 | --- | ---: | ---: |
