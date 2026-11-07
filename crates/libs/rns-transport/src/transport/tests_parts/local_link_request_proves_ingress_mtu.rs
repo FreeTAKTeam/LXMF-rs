@@ -2,13 +2,23 @@
 // interface carries. The proof confirms the capped value, since every send on
 // the link is sized by it.
 
-async fn responder_with_ingress_mtu(mtu: usize) -> (Transport, crate::iface::InterfaceChannel, DestinationDesc) {
+use crate::destination::link::Link;
+use crate::destination::{DestinationDesc, DestinationName, SingleInputDestination};
+use crate::identity::PrivateIdentity;
+use crate::iface::{IfaceRole, InterfaceChannel, InterfaceMode};
+use crate::transport::path::handle_link_request;
+use crate::transport::{Transport, TransportConfig};
+use rand_core::OsRng;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+async fn responder_with_ingress_mtu(mtu: usize) -> (Transport, InterfaceChannel, DestinationDesc) {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     let transport = Transport::new(TransportConfig::new("responder", &identity, true));
     let ingress = transport.iface_manager().lock().await.new_channel_with_role_mode_mtu(
         8,
-        crate::iface::IfaceRole::Unicast,
-        crate::iface::InterfaceMode::Full,
+        IfaceRole::Unicast,
+        InterfaceMode::Full,
         mtu,
     );
     let server = SingleInputDestination::new(
@@ -34,7 +44,7 @@ async fn negotiated_mtus(ingress_mtu: usize, signalled_mtu: usize) -> (usize, us
     let mut initiator = Link::new(desc, link_events);
     let request = initiator.request_with_mtu(signalled_mtu);
 
-    super::path::handle_link_request(&request, ingress_iface, responder.get_handler().lock().await).await;
+    handle_link_request(&request, ingress_iface, responder.get_handler().lock().await).await;
 
     let proof = ingress.tx_channel.recv().await.expect("the responder proves the link").packet;
     assert!(matches!(
