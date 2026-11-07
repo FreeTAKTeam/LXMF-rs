@@ -59,3 +59,36 @@ so deterministic query-plan/VM-step/sort deltas are stronger evidence than wall
 clock deltas. End-to-end delivery, acknowledgement and recovery protocols are
 unchanged by this read-only query; production MemoryHigh, sustained WAL behavior,
 swap and fresh delivery still require their own constrained acceptance evidence.
+
+## Recorded local result (2026-11-07)
+
+The four-phase run completed in 257.29 seconds, including fixture setup and
+completed-mark/reopen checks. Each phase made 120 calls returning the same
+100,000 ordered IDs. The production Rust source matches commit `6858828f`;
+[recorded counters and binary hash](unhandled-peer-ids-663-evidence.json) identify
+the measured debug test build, including its two subsequent test-only changes.
+
+| Per call (two phases of each statement) | Baseline | Candidate |
+| --- | ---: | ---: |
+| SQLite VM steps | 6,500,036 | 4,700,038 |
+| SQLite sorts | 1 | 0 |
+| Process logical reads | 25.34 MB | 18.54 MB |
+| Process logical writes | 6.80 MB | 0 |
+| Process CPU time | 304–310 ms | 251–253 ms |
+| Mean query wall time per phase | 320–377 ms | 251–256 ms |
+
+The candidate reduced deterministic VM work by 27.7% and removed the result sort.
+Each baseline phase generated about 816 MB of logical writes and each candidate
+phase generated zero. Physical reads were zero for both statements. Linux
+`write_bytes` was about 816 MB per baseline phase, but roughly 815 MB was also
+reported as cancelled writes; these counters must not be represented as net
+physical disk traffic or added together. These are per-process counters, not a
+trace attributing production `etilqs_` files.
+
+RSS ranged from 28,708 to 33,444 KiB across the four phases, and swap stayed zero.
+Candidate RSS stayed at 33,436 KiB after baseline allocations: this process reuse
+is not evidence of a lower heap footprint or cgroup file-cache ownership. Both
+candidate phases were stable over their sampled interval, but four minutes do
+not prove a long-term production plateau. The complete RPC library suite passed
+891 tests with 10 ignored (including this opt-in workload); formatting, module
+size/include ratchet and dependency-boundary checks also passed locally.
