@@ -328,7 +328,7 @@ async fn public_sdk_local_tcp_negotiates_and_polls_literal_ipv4_callback() {
         for _ in 0..3 {
             backend.poll_events(None, 1)?;
         }
-        Ok::<_, lxmf_sdk::SdkError>(())
+        Ok::<_, Box<lxmf_sdk::SdkError>>(())
     }).await.expect("SDK client thread");
     shutdown_tx.send(true).expect("command loop shutdown");
     server.await.expect("command loop task").expect("command loop shutdown");
