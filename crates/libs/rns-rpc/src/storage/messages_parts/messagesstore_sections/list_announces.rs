@@ -291,6 +291,7 @@ impl MessagesStore {
                 );
 ",
             )?;
+            message_budget::ensure_table(&tx)?;
             lxmf_propagation::storage::initialize(&tx)?;
             lxmf_propagation::identities::initialize(&tx)?;
             Self::ensure_multi_ticket_schema(&tx)?;
@@ -300,7 +301,6 @@ impl MessagesStore {
                 [],
             )?;
             Self::ensure_schema_column(&tx, "messages", "title", "title TEXT")?;
-            tx.execute("UPDATE messages SET title = '' WHERE title IS NULL", [])?;
             Self::ensure_schema_column(&tx, "messages", "fields", "fields TEXT")?;
             Self::ensure_schema_column(
                 &tx,
@@ -308,6 +308,8 @@ impl MessagesStore {
                 "receipt_status",
                 "receipt_status TEXT",
             )?;
+            message_budget::initialize(&tx)?;
+            tx.execute("UPDATE messages SET title = '' WHERE title IS NULL", [])?;
             Self::ensure_schema_column(&tx, "announces", "name", "name TEXT")?;
             Self::ensure_schema_column(&tx, "announces", "name_source", "name_source TEXT")?;
             Self::ensure_schema_column(&tx, "announces", "first_seen", "first_seen INTEGER")?;

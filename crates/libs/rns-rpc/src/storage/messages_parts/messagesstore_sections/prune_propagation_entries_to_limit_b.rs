@@ -199,20 +199,7 @@ impl MessagesStore {
         limit_bytes: u64,
     ) -> rusqlite::Result<Vec<String>> {
         Self::write_lock_and_run(write_state, |conn| {
-            let current_bytes: i64 = conn.query_row(
-                "SELECT COALESCE(SUM(
-                    LENGTH(id) +
-                    LENGTH(source) +
-                    LENGTH(destination) +
-                    LENGTH(title) +
-                    LENGTH(content) +
-                    LENGTH(direction) +
-                    COALESCE(LENGTH(fields), 0) +
-                    COALESCE(LENGTH(receipt_status), 0)
-                ), 0) FROM messages",
-                [],
-                |row| row.get(0),
-            )?;
+            let current_bytes = message_budget::total_for_prune(conn, limit_bytes)?;
             if current_bytes.max(0) as u64 <= limit_bytes {
                 return Ok(Vec::new());
             }

@@ -134,21 +134,8 @@ impl MessagesStore {
     pub fn message_storage_stats(&self) -> rusqlite::Result<MessageStorageStats> {
         self.with_read_conn(|conn| {
             let count = self.write_state.message_count_cache.load(Ordering::Relaxed);
-            let bytes: Option<i64> = conn.query_row(
-                "SELECT COALESCE(SUM(
-                    LENGTH(id) +
-                    LENGTH(source) +
-                    LENGTH(destination) +
-                    LENGTH(title) +
-                    LENGTH(content) +
-                    LENGTH(direction) +
-                    COALESCE(LENGTH(fields), 0) +
-                    COALESCE(LENGTH(receipt_status), 0)
-                ), 0) FROM messages",
-                [],
-                |row| row.get(0),
-            )?;
-            Ok(MessageStorageStats { count, bytes: bytes.unwrap_or(0).max(0) as u64 })
+            let bytes = message_budget::exact_total(conn)?;
+            Ok(MessageStorageStats { count, bytes: bytes.max(0) as u64 })
         })
     }
 

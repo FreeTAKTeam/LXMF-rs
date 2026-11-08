@@ -1336,3 +1336,11 @@ not a Python wire-parity promotion or hours-long resource acceptance. Count-page
 I/O, startup/index costs and residual daemon reads remain explicit in
 [the controlled report](../performance/retained-history-read-cost-663.md) and
 [the migration note](../migrations/announce-retention-bound-and-retry-index-663.md).
+
+The ordinary message-budget check also uses a persisted conservative length bound.
+Positive growth is charged before writes; deletion/uncertainty requires the original
+exact SUM before any pruning decision. Native synthetic controls preserve NULL,
+REPLACE/FAIL, rollback/reopen and individual-delete error semantics while bounding
+under-cap prune work across retained populations. These measurements do not
+attribute runtime reads or qualify production resources; see
+[the design and controlled evidence](../performance/message-budget-bound-663.md).
