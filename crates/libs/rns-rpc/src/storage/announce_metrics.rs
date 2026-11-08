@@ -64,6 +64,8 @@ pub(super) struct AnnounceMetrics {
     pub maintenance: super::operation_metrics::MaintenancePhaseMetrics,
     pub retained_at_last_sweep: AtomicU64,
     pub examined_total: AtomicU64,
+    pub under_window_skips_total: AtomicU64,
+    pub row_count_upper_bound: AtomicU64,
 }
 
 impl AnnounceMetrics {
@@ -78,6 +80,8 @@ impl AnnounceMetrics {
             "maintenance": self.maintenance.snapshot(),
             "retained_at_last_sweep": self.retained_at_last_sweep.load(Relaxed),
             "examined_total": self.examined_total.load(Relaxed),
+            "under_window_skips_total": self.under_window_skips_total.load(Relaxed),
+            "row_count_upper_bound": self.row_count_upper_bound.load(Relaxed),
         })
     }
 }

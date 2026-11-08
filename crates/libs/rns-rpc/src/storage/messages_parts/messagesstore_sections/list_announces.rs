@@ -163,6 +163,7 @@ impl MessagesStore {
         self.with_write_conn(|conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute("DELETE FROM announces", [])?;
+            tx.execute("UPDATE announce_retention_count SET upper_bound = 0 WHERE singleton = 1", [])?;
             tx.execute("DELETE FROM announce_identities", [])?;
             tx.execute("DELETE FROM announce_retention_cursor", [])?;
             tx.commit()?;
@@ -341,6 +342,16 @@ impl MessagesStore {
                     ON messages(direction, timestamp DESC);
                 CREATE INDEX IF NOT EXISTS idx_messages_receipt_status
                     ON messages(receipt_status);
+                CREATE INDEX IF NOT EXISTS idx_messages_retryable_destination
+                    ON messages(LOWER(destination), timestamp, id)
+                    WHERE direction = 'out' AND (
+                        receipt_status IS NULL OR TRIM(receipt_status) = '' OR (
+                            LOWER(TRIM(receipt_status)) NOT LIKE 'sent%'
+                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'sending%'
+                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'failed%'
+                            AND LOWER(TRIM(receipt_status)) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
+                        )
+                    );
                 CREATE INDEX IF NOT EXISTS idx_announces_timestamp_id_desc
                     ON announces(timestamp DESC, id DESC);
 ",

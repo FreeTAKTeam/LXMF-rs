@@ -3670,3 +3670,18 @@ actual TCP/service restart control preserves exact public keys and verifies fres
 bidirectional messages without scoped reannouncement after cleanup. This is a
 focused debug-binary correctness result; final retained-state resource acceptance
 remains open. See [the evidence](../performance/tunnel-identity-cleanup-663.md).
+
+## Issue 663 retained-history read work (2026-11-08)
+
+The completed b57/b360 four-hour ingress passed correctness, restart and retained
+identity checks but recorded regular reclaim and growing logical-read work.
+Announce retention now uses a persisted conservative bound to skip under-window
+walks, validates mutation revisions before resuming bounded cursor work, and
+seeks from the shorter indexed end after an exact new-window count. Current
+newest-N, latest-peer and non-null stamp protection survive deletion/replacement,
+restart and concurrent handles. The unchanged outbound retry query gains a partial
+index excluding completed rows. This is local storage correctness/cost evidence,
+not a Python wire-parity promotion or hours-long resource acceptance. Count-page
+I/O, startup/index costs and residual daemon reads remain explicit in
+[the controlled report](../performance/retained-history-read-cost-663.md) and
+[the migration note](../migrations/announce-retention-bound-and-retry-index-663.md).
