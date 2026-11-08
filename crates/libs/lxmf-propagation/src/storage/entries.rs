@@ -1,5 +1,8 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
+pub(super) const DELETE_UNHANDLED_PAYLOAD_MARKS: &str =
+    "DELETE FROM propagation_peer_entries WHERE transient_id = ?1 AND state = 'unhandled'";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PropagationEntryRecord {
     pub transient_id: String,
@@ -176,12 +179,7 @@ pub fn purge_propagation_entries_for_destination(
             params![transient_id, destination],
         )?;
         if affected > 0 {
-            conn.execute(
-                "DELETE FROM propagation_peer_entries
-                         WHERE transient_id = ?1
-                           AND state = 'unhandled'",
-                params![transient_id],
-            )?;
+            conn.execute(DELETE_UNHANDLED_PAYLOAD_MARKS, params![transient_id])?;
             purged = purged.saturating_add(affected);
         }
     }

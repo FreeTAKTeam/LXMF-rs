@@ -77,6 +77,12 @@ indexes for unhandled and completed marks, avoiding retained-history sorts for a
 small excess while preserving deletion order and transactional recovery. The
 [migration note](../migrations/propagation-global-quota-order-indexes.md) records
 startup/index costs; production #663 acceptance remains open.
+Payload eviction and recipient haves now search a partial transient-ID index
+when removing pending peer marks. Exact survivors, state transitions, rollback,
+reopening and daemon budget accounting are covered locally; unrelated history
+no longer adds work to that deletion. See the
+[migration and measured query cost](../migrations/propagation-payload-purge-index.md).
+The existing retention policy difference and production #663 acceptance remain.
 Refill now respects the global peer-entry limit. A trigger-maintained count is
 checked inside the insert transaction, and at the limit the pass is deferred
 rather than skipped. Quota and refill therefore no longer delete and recreate

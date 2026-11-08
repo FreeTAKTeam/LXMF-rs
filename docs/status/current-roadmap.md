@@ -56,6 +56,14 @@ regressions preserve exact quota ordering and database reopening; production
 resource/delivery acceptance remains open. See the
 [migration and costs](../migrations/propagation-global-quota-order-indexes.md).
 
+Payload eviction and recipient haves also use a shared partial transient-ID
+index to remove pending peer marks without scanning unrelated pending history
+for every payload. The actual deletion regression reduces 500,177 to 181 SQLite
+VM steps with 100,000 unrelated marks; rollback, state transitions, daemon budget
+triggers and reopening retain existing semantics. See the
+[migration and evidence](../migrations/propagation-payload-purge-index.md).
+This local query improvement does not close #663 production resource acceptance.
+
 The #608 I2P startup path now preserves nonempty legacy IFAC aliases literally,
 including whitespace, and falls back to them when canonical credentials are
 empty. A configured fake-SAM regression checks plaintext rejection before first
