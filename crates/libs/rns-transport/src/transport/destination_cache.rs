@@ -6,6 +6,9 @@ impl TransportHandler {
         // Prepared SINGLE proofs and live links can outlast their learned route.
         let mut referenced: HashSet<_> =
             self.packet_cache.lock().await.tracked_destinations().collect();
+        // Detached tunnels retain validated announcements for reconnection and
+        // source authentication until their paths expire during cleanup.
+        referenced.extend(self.tunnel_table.destinations());
         referenced.extend(self.link_table.destinations());
         referenced.extend(self.out_links.keys().copied());
         for link in self.in_links.values() {

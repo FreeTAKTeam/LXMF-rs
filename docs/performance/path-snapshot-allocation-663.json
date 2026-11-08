@@ -1,0 +1,63 @@
+{
+  "schema": "lxmf-rs-path-snapshot-allocation-663-v1",
+  "date_utc": "2026-11-07",
+  "baseline_production_source_commit": "7ee7cc91273ff14b3bf370090c6af8a2d04af351",
+  "measurement": "fresh exact-test process per codec and implementation; cap(stats) wrapping System allocator without an allocation limit",
+  "input": "100000 owned metadata entries, one random blob per path; allocations sampled after construction",
+  "build_profile": "debug test binary",
+  "cpu_affinity": [
+    2,
+    3
+  ],
+  "baseline_probe_binary_sha256": "247ada04c89296b68aa99dc038a9043ff2c8a9ba3e4653aa7847ea774587a786",
+  "candidate_codec_source_sha256": "fdacf67d34e541df6211948bd9412e492cedf72962ca30e22f00ddadaa87c02b",
+  "samples": {
+    "path_before": {
+      "elapsed_ns": 221213813,
+      "encoded_bytes": 13749957,
+      "entries": 100000,
+      "mode": "paths",
+      "peak_extra_requested_bytes": 75765824,
+      "retained_extra_requested_bytes": 25165824,
+      "sha256": "9054c7e719ffa2d28aa4722d4cf79788b1e0305dbdba067c87ae8a6d8a797448",
+      "total_requested_bytes": 100931632
+    },
+    "path_after": {
+      "elapsed_ns": 111976646,
+      "encoded_bytes": 13749957,
+      "entries": 100000,
+      "mode": "paths",
+      "peak_extra_requested_bytes": 25165824,
+      "retained_extra_requested_bytes": 25165824,
+      "sha256": "9054c7e719ffa2d28aa4722d4cf79788b1e0305dbdba067c87ae8a6d8a797448",
+      "total_requested_bytes": 50331632
+    },
+    "tunnel_before": {
+      "elapsed_ns": 450616962,
+      "encoded_bytes": 16699957,
+      "entries": 100000,
+      "mode": "tunnels",
+      "peak_extra_requested_bytes": 93171520,
+      "retained_extra_requested_bytes": 20971520,
+      "sha256": "adc1b47755a5b34151ac6b682d6bb9a9699e184a3c1ec2043af42ed80b70b9a0",
+      "total_requested_bytes": 114143008
+    },
+    "tunnel_after": {
+      "elapsed_ns": 151692015,
+      "encoded_bytes": 16699957,
+      "entries": 100000,
+      "mode": "tunnels",
+      "peak_extra_requested_bytes": 20971520,
+      "retained_extra_requested_bytes": 20971520,
+      "sha256": "adc1b47755a5b34151ac6b682d6bb9a9699e184a3c1ec2043af42ed80b70b9a0",
+      "total_requested_bytes": 41943008
+    }
+  },
+  "limitations": [
+    "Requested Rust allocation bytes are not RSS, native allocator retention or cgroup memory charges.",
+    "Codec probe excludes metadata snapshot collection, packet fingerprint work, filesystem I/O and cleanup.",
+    "One synthetic sample per codec/implementation; elapsed time is diagnostic, not a throughput acceptance gate.",
+    "In-place filtering and earlier metadata release are additional unquantified savings.",
+    "Production memory plateau requires a rebuilt daemon and constrained retained-state verification."
+  ]
+}

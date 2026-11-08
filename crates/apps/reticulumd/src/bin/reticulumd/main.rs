@@ -161,6 +161,10 @@ async fn main() {
         {
             log::error!("outbound shutdown owner failed: {error}");
         }
+        announce_persistence::finish_reticulum_path_table_persistence(
+            path_table_persistence.clone(),
+        )
+        .await;
         let mut unclean_interfaces = false;
         if let Some(mut owner) = interface_owner {
             if let Err(error) = owner.shutdown().await {
@@ -175,8 +179,7 @@ async fn main() {
                 unclean_receipts = true;
             }
         }
-        announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence)
-            .await;
+        announce_persistence::finish_packet_hashlist_persistence(path_table_persistence).await;
         if unclean_receipts || unclean_interfaces {
             std::process::exit(1);
         }
@@ -278,6 +281,8 @@ async fn run_daemon_loops(
             log::error!("[daemon] signal task failed: {error}");
         }
     }
+    announce_persistence::finish_reticulum_path_table_persistence(path_table_persistence.clone())
+        .await;
     let mut unclean_interfaces = false;
     if let Some(mut owner) = interface_owner {
         if let Err(error) = owner.shutdown().await {
@@ -292,7 +297,7 @@ async fn run_daemon_loops(
             unclean_receipts = true;
         }
     }
-    announce_persistence::flush_reticulum_path_table_if_configured(path_table_persistence).await;
+    announce_persistence::finish_packet_hashlist_persistence(path_table_persistence).await;
     if unclean_receipts || unclean_interfaces {
         std::process::exit(1);
     }

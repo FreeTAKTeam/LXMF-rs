@@ -337,6 +337,14 @@ delivered; the guest high-load profile still needs a fresh run.
 
 ## RCH resource regressions: issues 663, 657 and 655
 
+The 2026-11-07 persistence allocation follow-up removes full-table MessagePack
+value trees and duplicate path metadata vectors during checkpoint saves while
+retaining shared packet references and existing publication/cleanup rules.
+Fresh-process 100k-entry probes preserve exact bytes and reduce peak codec
+scratch from 75.8 MB to 25.2 MB (paths), and 93.2 MB to 21.0 MB (tunnels).
+See [allocation evidence and limits](../performance/path-snapshot-allocation-663.md);
+constrained daemon acceptance remains a separate gate.
+
 The 2026-11-07 #663 increment streams peer-status unhandled IDs through the
 existing folded covering index. Fusing state aggregation with ID ordering removes
 the previous temporary result sort; mixed-case completed-state precedence,
@@ -3623,3 +3631,34 @@ A separate control stress achieved negotiate p99 1.087 ms during saves and
 checkpoints; failed binds truthfully keep readiness at 503. Conditional PR 4
 is deferred until repeated-cycle or phase-specific evidence establishes its
 trigger. Details and prerelease evidence are in the regression package.
+
+The #663 retained-state restart follow-up also checkpoints before configured
+interface retirement removes the export identities, and fences later background
+saves with a shared asynchronous persistence gate. Real signed-UDP route tests
+fail on the prior shutdown ordering and restore successfully with the same live
+interface after the correction, in both daemon feature configurations. The
+checkpoint covers snapshot capture rather than later native arrivals; see
+[shutdown evidence](../performance/path-shutdown-checkpoint-663.md).
+
+The shutdown checkpoint also preserves replay hashes accepted after the route
+snapshot: a separate hash-list-only save runs after native interface shutdown
+and receipt draining, with background route persistence still fenced. The
+deterministic late-Proof regression retains the original route snapshot bytes;
+the accepted pre-retirement route boundary does not weaken replay persistence.
+
+The #663 snapshot codec preserves exact Python bytes while eliminating the
+whole-table MessagePack object tree and reserving counted output once. A
+100,000-route native-export probe reduces remaining scratch peak from 54.48 MB
+to 43.01 MB, with an extra metadata pass and a measured debug-time cost. This is
+allocation evidence, not cgroup acceptance: c37's constrained regular stage added
+four high events; exact-build retained-state recovery and hours-long no-continuing-
+reclaim acceptance remain open. See
+[the scoped measurements](../performance/path-snapshot-exact-output-663.md).
+
+The #663 restart authentication correction retains validated source identities
+while detached tunnel paths still reference them, and releases them after final
+tunnel expiry. A signed-cache regression fails before the fix; an independent
+actual TCP/service restart control preserves exact public keys and verifies fresh
+bidirectional messages without scoped reannouncement after cleanup. This is a
+focused debug-binary correctness result; final retained-state resource acceptance
+remains open. See [the evidence](../performance/tunnel-identity-cleanup-663.md).

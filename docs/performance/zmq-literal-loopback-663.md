@@ -37,3 +37,33 @@ negotiates SDK v2 and receives three event-poll replies over separate callback
 sockets. It contains no endpoint overrides and uses the default request timeout.
 The non-Windows configuration regression was observed failing before the fix:
 `tcp://localhost:9000` was returned for requested `tcp://127.0.0.1:9000`.
+
+## Explicit event-observer policy for qualification
+
+`resource_sdk_peer` additionally accepts an optional
+`--event-overflow-policy reject|drop-oldest` after its two endpoint arguments.
+Omitting it preserves `SdkConfig::desktop_full_default()` and its Reject policy.
+No SDK default, queue capacity, endpoint constructor or request deadline changes.
+Long qualification can explicitly request a rolling observer:
+
+```sh
+resource_sdk_peer tcp://127.0.0.1:9100 tcp://127.0.0.1:9101 \
+  --event-overflow-policy drop-oldest
+```
+
+All SDK sessions that start/configure the same daemon must use the same recorded
+policy: another start can change its global runtime event policy. The ready line
+reports the policy with basis `accepted_sdk_start_request`, not independent
+policy readback. Poll replies retain the full existing batch/token and add
+request/next cursors, returned-batch sequence boundaries, reported dropped count,
+gap/recovery fields and observation counters. Batch boundaries do not establish
+retained-log occupancy; cumulative dropped counts are recorded as a maximum,
+not summed across polls. Errors are recorded and remain fatal without resetting
+cursors, retrying automatically or extending deadlines.
+
+A previous qualification run reconciled all 31 message pairs as durably delivered
+while its SDK event observer reported 28. Exact event-log occupancy was not saved,
+so that discrepancy is not attributed conclusively to a particular queue or
+overflow event. This explicit supported observer configuration and audit output
+allow future tests to distinguish retained observations from canonical delivery;
+they do not replace message-ID/receipt/checkpoint reconciliation.

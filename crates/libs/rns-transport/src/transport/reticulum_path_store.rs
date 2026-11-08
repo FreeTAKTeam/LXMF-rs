@@ -3,6 +3,8 @@ use crate::transport::reticulum_announce_cache::{
     CacheWriteOutcome, CachedAnnounce, CachedAnnounceRestore, ReticulumAnnounceCache,
 };
 mod cleanup;
+#[path = "python_snapshot_codec.rs"]
+pub(super) mod python_snapshot_codec;
 mod state;
 use cleanup::clean_announce_cache_batch;
 pub use cleanup::AnnounceCacheCleanupReport;
@@ -114,19 +116,20 @@ impl Transport {
         let (kept_entries, tunnel_entries, packets) = {
             let handler = self.handler.lock().await;
             let iface_manager = self.iface_manager.lock().await;
-            let entries = handler.path_table.export_python_entries(now, now_unix_secs, |iface| {
-                Some((iface_manager.mode(iface)?, iface_manager.full_hash(iface)?))
-            });
-            let mut kept_entries = Vec::new();
+            let mut kept_entries =
+                handler.path_table.export_python_entries(now, now_unix_secs, |iface| {
+                    Some((iface_manager.mode(iface)?, iface_manager.full_hash(iface)?))
+                });
             let mut packets = Vec::new();
-            for entry in entries {
-                if let Some(packet) =
+            kept_entries.retain(|entry| {
+                let Some(packet) =
                     handler.announce_table.shared_cached_packet_for_destination(&entry.destination)
-                {
-                    packets.push((entry.packet_hash, entry.iface, packet));
-                    kept_entries.push(entry);
-                }
-            }
+                else {
+                    return false;
+                };
+                packets.push((entry.packet_hash, entry.iface, packet));
+                true
+            });
             let mut tunnel_entries =
                 handler.tunnel_table.export_python_entries(now, now_unix_secs, |iface| {
                     iface_manager.full_hash(iface)
@@ -156,6 +159,12 @@ impl Transport {
         let tunnel_payload = TunnelTable::encode_python_entries(&tunnel_entries)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode tunnel table"))?;
 
+        let kept_count = kept_entries.len();
+        let tunnel_paths = tunnel_entries.iter().map(|entry| entry.paths.len()).sum();
+        // Only the encoded bytes and shared packet references are needed below.
+        drop(kept_entries);
+        drop(tunnel_entries);
+
         tokio::fs::create_dir_all(&storage_path).await?;
         let announce_cache = ReticulumAnnounceCache::new(&storage_path);
         let verify_existing = cache_state.files.is_empty();
@@ -163,9 +172,8 @@ impl Transport {
         current_hashes.extend(packets.iter().map(|(packet_hash, _, _)| *packet_hash));
         cache_state.persisted_snapshot_matches_files = false;
         cache_state.retain_current_files(&current_hashes);
-        let tunnel_paths = tunnel_entries.iter().map(|entry| entry.paths.len()).sum();
         let mut report = PathTableSaveReport {
-            kept_entries: kept_entries.len(),
+            kept_entries: kept_count,
             tunnel_paths,
             records_examined: packets.len(),
             full_verification: verify_existing,
@@ -484,3 +492,7 @@ fn python_tunnel_path_entry_expired(
 
 #[cfg(test)]
 mod persistence_tests;
+
+#[cfg(test)]
+#[path = "snapshot_allocation_tests.rs"]
+mod snapshot_allocation_tests;

@@ -66,6 +66,7 @@ rnode-ble = ["dep:btleplug", "btleplug/serde", "dep:futures", "dep:uuid"]
 vrn76-kiss-ble = ["rnode-ble"]
 
 [dev-dependencies]
+cap = { version = "0.1.2", features = ["stats"] }
 criterion.workspace = true
 tempfile.workspace = true
 

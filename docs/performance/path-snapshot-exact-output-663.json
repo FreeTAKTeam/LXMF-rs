@@ -1,0 +1,519 @@
+{
+  "start_unix": 1794085788.3633952,
+  "parent_cpu_stat_before": "usage_usec 8296892877\nuser_usec 7214456944\nsystem_usec 1082435933\nnice_usec 0\nnr_periods 91815\nnr_throttled 2849\nthrottled_usec 165449961\nnr_bursts 0\nburst_usec 0\n",
+  "affinity": [
+    2,
+    3
+  ],
+  "baseline_binary_sha256": "8a91ab205283c2f4bb270d377b32d19c350e8baa1be52ef053648506a539dd77",
+  "candidate_binary_sha256": "a563f590e0c6d3fde616b3d519dafb59812a3f8bd1e0e38898f203213a8ae943",
+  "samples": [
+    {
+      "entries": 100000,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 25165824,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 54477376,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          54477376,
+          54477376,
+          107953872
+        ],
+        [
+          "metadata_released",
+          32505856,
+          54477376,
+          107953872
+        ],
+        [
+          "cleanup_hash_set",
+          36831248,
+          54477376,
+          112279264
+        ]
+      ],
+      "phase": "c37",
+      "export_refs_encode_elapsed_ns": 174306933
+    },
+    {
+      "entries": 100000,
+      "fixture_construction_prior_peak_extra": 8027242,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 13700005,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 43011557,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          43011557,
+          43011557,
+          71322245
+        ],
+        [
+          "metadata_released",
+          21040037,
+          43011557,
+          71322245
+        ],
+        [
+          "cleanup_hash_set",
+          25365429,
+          43011557,
+          75647637
+        ]
+      ],
+      "phase": "exact",
+      "export_refs_encode_elapsed_ns": 236437712
+    },
+    {
+      "entries": 100000,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 25165824,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 54477376,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          54477376,
+          54477376,
+          107953872
+        ],
+        [
+          "metadata_released",
+          32505856,
+          54477376,
+          107953872
+        ],
+        [
+          "cleanup_hash_set",
+          36831248,
+          54477376,
+          112279264
+        ]
+      ],
+      "phase": "c37",
+      "export_refs_encode_elapsed_ns": 173716912
+    },
+    {
+      "entries": 100000,
+      "fixture_construction_prior_peak_extra": 8027242,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 13700005,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 43011557,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          43011557,
+          43011557,
+          71322245
+        ],
+        [
+          "metadata_released",
+          21040037,
+          43011557,
+          71322245
+        ],
+        [
+          "cleanup_hash_set",
+          25365429,
+          43011557,
+          75647637
+        ]
+      ],
+      "phase": "exact",
+      "export_refs_encode_elapsed_ns": 223997462
+    },
+    {
+      "entries": 100000,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 25165824,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 54477376,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          54477376,
+          54477376,
+          107953872
+        ],
+        [
+          "metadata_released",
+          32505856,
+          54477376,
+          107953872
+        ],
+        [
+          "cleanup_hash_set",
+          36831248,
+          54477376,
+          112279264
+        ]
+      ],
+      "phase": "c37",
+      "export_refs_encode_elapsed_ns": 168596704
+    },
+    {
+      "entries": 100000,
+      "fixture_construction_prior_peak_extra": 8027242,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 13700005,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 43011557,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          43011557,
+          43011557,
+          71322245
+        ],
+        [
+          "metadata_released",
+          21040037,
+          43011557,
+          71322245
+        ],
+        [
+          "cleanup_hash_set",
+          25365429,
+          43011557,
+          75647637
+        ]
+      ],
+      "phase": "exact",
+      "export_refs_encode_elapsed_ns": 230424908
+    },
+    {
+      "entries": 100000,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 25165824,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 54477376,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          54477376,
+          54477376,
+          107953872
+        ],
+        [
+          "metadata_released",
+          32505856,
+          54477376,
+          107953872
+        ],
+        [
+          "cleanup_hash_set",
+          36831248,
+          54477376,
+          112279264
+        ]
+      ],
+      "phase": "c37",
+      "export_refs_encode_elapsed_ns": 168508544
+    },
+    {
+      "entries": 100000,
+      "fixture_construction_prior_peak_extra": 8027242,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 13700005,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 43011557,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          43011557,
+          43011557,
+          71322245
+        ],
+        [
+          "metadata_released",
+          21040037,
+          43011557,
+          71322245
+        ],
+        [
+          "cleanup_hash_set",
+          25365429,
+          43011557,
+          75647637
+        ]
+      ],
+      "phase": "exact",
+      "export_refs_encode_elapsed_ns": 220884468
+    },
+    {
+      "entries": 100000,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 25165824,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 54477376,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          54477376,
+          54477376,
+          107953872
+        ],
+        [
+          "metadata_released",
+          32505856,
+          54477376,
+          107953872
+        ],
+        [
+          "cleanup_hash_set",
+          36831248,
+          54477376,
+          112279264
+        ]
+      ],
+      "phase": "c37",
+      "export_refs_encode_elapsed_ns": 163617407
+    },
+    {
+      "entries": 100000,
+      "fixture_construction_prior_peak_extra": 8027242,
+      "metadata_vec_requested_bytes": 20971520,
+      "output_bytes": 13700005,
+      "output_capacity": 13700005,
+      "packet_reference_vec_requested_bytes": 7340032,
+      "peak_extra_requested_bytes": 43011557,
+      "random_blob_requested_bytes": 1000000,
+      "scope": "native export, production packet-reference layout, encoding and hash-set scratch; excludes packet bodies, I/O, lock latency and allocator RSS retention",
+      "stages_name_current_peak_total_requested_bytes": [
+        [
+          "native_export",
+          21971520,
+          21971520,
+          42942400
+        ],
+        [
+          "packet_references",
+          29311552,
+          29311552,
+          57622240
+        ],
+        [
+          "encoded_with_metadata",
+          43011557,
+          43011557,
+          71322245
+        ],
+        [
+          "metadata_released",
+          21040037,
+          43011557,
+          71322245
+        ],
+        [
+          "cleanup_hash_set",
+          25365429,
+          43011557,
+          75647637
+        ]
+      ],
+      "phase": "exact",
+      "export_refs_encode_elapsed_ns": 228971171
+    }
+  ],
+  "end_unix": 1794085797.4765475,
+  "parent_cpu_stat_after": "usage_usec 8306705001\nuser_usec 7223218916\nsystem_usec 1083486085\nnice_usec 0\nnr_periods 91906\nnr_throttled 2849\nthrottled_usec 165449961\nnr_bursts 0\nburst_usec 0\n",
+  "timing_scope": "export + packet-reference collection + encode, before metadata drop/hash-set construction",
+  "scope": "ownership microprobe, not actual Transport disk save or RSS/cgroup measurement",
+  "schema": "lxmf-rs-path-snapshot-exact-output-663-v1",
+  "baseline_production_commit": "c37f4c882fff5565459f5579852453f872773d7c",
+  "candidate_codec_source_sha256": "4b096a0260133bba4fc3bedd23705e989fa75febfc5d6abadd0a88e5b698dfd8",
+  "measurement": "Fresh isolated debug exact-test processes; cap(stats) over System allocator without allocation limit; five alternating baseline/candidate pairs",
+  "codec_samples": {
+    "path": {
+      "elapsed_ns": 184197930,
+      "encoded_bytes": 13749957,
+      "entries": 100000,
+      "mode": "paths",
+      "peak_extra_requested_bytes": 13749957,
+      "retained_extra_requested_bytes": 13749957,
+      "sha256": "9054c7e719ffa2d28aa4722d4cf79788b1e0305dbdba067c87ae8a6d8a797448",
+      "total_requested_bytes": 13749957
+    },
+    "tunnel": {
+      "elapsed_ns": 240330377,
+      "encoded_bytes": 16699957,
+      "entries": 100000,
+      "mode": "tunnels",
+      "peak_extra_requested_bytes": 16699957,
+      "retained_extra_requested_bytes": 16699957,
+      "sha256": "adc1b47755a5b34151ac6b682d6bb9a9699e184a3c1ec2043af42ed80b70b9a0",
+      "total_requested_bytes": 16699957
+    }
+  },
+  "summary": {
+    "c37": {
+      "peak_extra_requested_bytes": 54477376,
+      "cumulative_requested_bytes": 112279264,
+      "median_export_refs_encode_ms": 168.596704
+    },
+    "exact": {
+      "peak_extra_requested_bytes": 43011557,
+      "cumulative_requested_bytes": 75647637,
+      "median_export_refs_encode_ms": 228.971171
+    }
+  },
+  "limitations": [
+    "Stage peaks are cumulative process high-water minus the pre-export live allocation, not independently reset per-stage maxima. Candidate prior fixture high-water was 8027242 bytes, below the measured export peak.",
+    "Native metadata is real; packet-reference tuple layout is production shaped but all references share a dummy packet. No packet body allocation, cache lookup/filter cost, fingerprint work, filesystem I/O, lock latency, RSS retention or cgroup attribution is measured.",
+    "Elapsed time covers export, packet-reference construction and encoding only; later metadata release and HashSet construction contribute to memory accounting but not this timing.",
+    "Debug timings are diagnostic; no cgroup acceptance or release throughput claim follows from these allocator probes.",
+    "The c37 constrained actual-RCH regular stage retained high-event growth of +4 across checkpoints (+3/0/0/+1). New runtime budget acceptance and hours-long lanes remain pending."
+  ],
+  "final_validation": {
+    "integrated_main": "0364e5eb358b53f8935935ab905de009d9f18089",
+    "transport_library_tests": {
+      "passed": 1086,
+      "ignored": 16,
+      "failed": 0
+    },
+    "focused_codec_tests_passed": 7,
+    "diagnostics_scanner_tests_passed": 1,
+    "clippy": "reticulum-rs-transport + reticulumd, all-targets/all-features/no-deps, -D warnings: passed",
+    "format_module_size_include_ratchet_boundaries_diff": "passed",
+    "final_native_stage_probe": "passed; exact 43011557-byte peak and explicit export_refs_encode_elapsed_ns field"
+  }
+}

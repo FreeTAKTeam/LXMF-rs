@@ -1,0 +1,174 @@
+{
+  "review_unix": 1794089637.0860364,
+  "scope": "Focused actual TCP detached-tunnel auth regression; WIP debug candidate only; no resource/final paired acceptance",
+  "cases": {
+    "red-74c-asserted-1": {
+      "passed": false,
+      "driver_sha256": "c12d74eb65cd6fd794473ba7486cb8cdc96a307e1420b9073f0107eb9e2163aa",
+      "daemon_sha256": "e25eef846cc1ec6be10a65dc01be48a9bc9b95ba3f31c1fc16932f4adabd71d3",
+      "pre_send_assertions": {
+        "passed": true,
+        "expected_cleanup": "pruned",
+        "unmapped": 1,
+        "paths": 0,
+        "tunnel_paths": 1,
+        "source_identity_count": 0,
+        "removed_delta": 1
+      },
+      "public_keys_unchanged": true,
+      "postpair_duration_s": null,
+      "received": [
+        {
+          "role": "node0",
+          "id": "9fa615b64bbb91db28824806ac57ac4b451f664b74b8bebe1f23413cf87728c9",
+          "source": "60d8ddf1d54c48e9958c1ddae9fc32cf",
+          "destination": "9ad5913a39c6a17bc6ddea7717a4dfab",
+          "metadata": {
+            "method": 2,
+            "signature_checked": false,
+            "signature_status": "source_identity_unknown",
+            "signature_valid": false,
+            "timestamp_f64": 1794089417.2315445,
+            "transport_encrypted": true,
+            "transport_encryption": "Curve25519"
+          },
+          "receipt_status": null
+        },
+        {
+          "role": "node1",
+          "id": "2d118f0d42f1aaaedbc25cdb9c423271c2a9f9e3fa5695d58fcf9338aaae2489",
+          "source": "9ad5913a39c6a17bc6ddea7717a4dfab",
+          "destination": "60d8ddf1d54c48e9958c1ddae9fc32cf",
+          "metadata": {
+            "method": 2,
+            "signature_checked": true,
+            "signature_status": "verified",
+            "signature_valid": true,
+            "timestamp_f64": 1794089417.490029,
+            "transport_encrypted": true,
+            "transport_encryption": "Curve25519"
+          },
+          "receipt_status": null
+        }
+      ],
+      "shutdown": {
+        "rch": 0,
+        "node1": 0,
+        "node0": 0
+      },
+      "errors": [
+        "e-identity-restart/runtime-v3-asserted.py\", line 57, in pair\n    cursor,verified,diagnostics=verify_traffic(root,http,peer,destinations,incoming,outgoing,seen_in,seen_out,cursor,verify_records,admitted+60)\n                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/final-paired-harness-v3/recovery_scenarios.py\", line 70, in verify_traffic\n    raise TimeoutError(f'Appended recovery traffic failed unchanged60s receipt deadline: {last_error}')\nTimeoutError: Appended recovery traffic failed unchanged60s receipt deadline: Received payload not authenticated/encrypted: {'method': 2, 'signature_checked': False, 'signature_status': 'source_identity_unknown', 'signature_valid': False, 'timestamp_f64': 1794089417.2315445, 'transport_encrypted': True, 'transport_encryption': 'Curve25519'}\n"
+      ]
+    },
+    "green-91faf-asserted-1": {
+      "passed": true,
+      "driver_sha256": "c12d74eb65cd6fd794473ba7486cb8cdc96a307e1420b9073f0107eb9e2163aa",
+      "daemon_sha256": "91faf2d4d1ab142f48fa50131010b0ce1fce125c798c768d8d85c547cc0d3b65",
+      "pre_send_assertions": {
+        "passed": true,
+        "expected_cleanup": "retained",
+        "unmapped": 1,
+        "paths": 0,
+        "tunnel_paths": 1,
+        "source_identity_count": 1,
+        "removed_delta": 0
+      },
+      "public_keys_unchanged": true,
+      "postpair_duration_s": 5.3523036949991365,
+      "received": [
+        {
+          "role": "node0",
+          "id": "c87f6f494f6e0942f2146af46ede15ea699f84ede7b8ebb78dd0a96609885100",
+          "source": "9312d77867efde0e303d3434a054b487",
+          "destination": "7d367bdb1b93dce1f89ebed31c1dd1ba",
+          "metadata": {
+            "method": 2,
+            "signature_checked": true,
+            "signature_status": "verified",
+            "signature_valid": true,
+            "timestamp_f64": 1794089581.242325,
+            "transport_encrypted": true,
+            "transport_encryption": "Curve25519"
+          },
+          "receipt_status": null
+        },
+        {
+          "role": "node1",
+          "id": "2870508c3d66d160f596984e3f19204930da702cf989a6bc3e1114cd126dbb16",
+          "source": "7d367bdb1b93dce1f89ebed31c1dd1ba",
+          "destination": "9312d77867efde0e303d3434a054b487",
+          "metadata": {
+            "method": 2,
+            "signature_checked": true,
+            "signature_status": "verified",
+            "signature_valid": true,
+            "timestamp_f64": 1794089581.5226607,
+            "transport_encrypted": true,
+            "transport_encryption": "Curve25519"
+          },
+          "receipt_status": null
+        }
+      ],
+      "shutdown": {
+        "rch": 0,
+        "node1": 0,
+        "node0": 0
+      },
+      "errors": []
+    }
+  },
+  "all_controls_preserved": [
+    "Initial CLI startup error red-74c-1",
+    "Connected non-reproducing frozenbaseline PASS red-74c-2",
+    "Initial detached baseline RED red-74c-detached-1"
+  ],
+  "no_scoped_sdk_reannounce_after_restart": true,
+  "no_database_route_cache_rewrites": true,
+  "base_commit": "74c019c3c38b82448c10fc50ecca778b3b7ccf83",
+  "candidate_scope": "Base commit plus retained tunnel destination references in destination-cache cleanup; debug binary, not final release/resource acceptance",
+  "production_source_sha256": {
+    "crates/libs/rns-transport/src/transport/destination_cache.rs": "cac238de5e0626ff7423a6e58d351951e93d307aac341efe01b9c89dd3dc21fe",
+    "crates/libs/rns-transport/src/transport/tunnels.rs": "f2f6c353278db069b32ce71678d1398009d3b095f19ce41668d3c727d6d7004f"
+  },
+  "validation": {
+    "unit_red": "1 failed at retained tunnel key lookup after prune",
+    "destination_cleanup": "3 passed",
+    "tunnel_cache_restore_rejection": "4 passed (expired, malformed, missing, mismatched)",
+    "clippy": "transport and daemon all targets/all features passed",
+    "format": "passed",
+    "include_ratchet": "passed"
+  },
+  "artifact_sha256": {
+    "/workspace/scratch/source-identity-restart/red-green-evidence.json": "3fd85f41ee868488ece0ef1bdc12f62504c947fdedeef8b98c0dbe23434e3cea",
+    "/workspace/scratch/663-tunnel-identity-red.log": "76fa50f43a21a793aecaeb7259fa1b58d099f9e829ee85d38c5c89757bf18515",
+    "/workspace/scratch/663-tunnel-identity-green.log": "634a4b83ae417bb3ca724c7aa15d0a2161d9dacfa58468ce58e0cb618c2708cd",
+    "/workspace/scratch/663-tunnel-cache-rejection.log": "f4d56ceef3b0de4a32b512e5004c045623b7f07be3a561c7bcf55e445cc8077a",
+    "/workspace/scratch/663-tunnel-identity-clippy.log": "39cb196520666764fd9d41093055b296ae7574b7a33086ed15263264a94fcc19",
+    "/workspace/scratch/source-identity-restart/red-74c-asserted-1/result.json": "9bf87c2d9a83f9ec5af47f0708f0c6f962d538403b61e53e8c12ff27e223295a",
+    "/workspace/scratch/source-identity-restart/red-74c-asserted-1/manifest.json": "7ef10ffb4e5ed4619f3e457298be89f52ef8c8b03e3879f560f38b620700eb1e",
+    "/workspace/scratch/source-identity-restart/red-74c-asserted-1/executed-driver.py": "c12d74eb65cd6fd794473ba7486cb8cdc96a307e1420b9073f0107eb9e2163aa",
+    "/workspace/scratch/source-identity-restart/red-74c-asserted-1/pre-send-detached-assertions.json": "21552e45db3e56f0e3e866946bf96f2aea290f06d205c1a28d89cd7a46d8fad1",
+    "/workspace/scratch/source-identity-restart/green-91faf-asserted-1/result.json": "982eaf82be3b98d35404cd649e5cffacabcb044c851d46b2ad5b361234d50f72",
+    "/workspace/scratch/source-identity-restart/green-91faf-asserted-1/manifest.json": "35ef5fc254cab143712606b82ec15e87d09ae8065150e71adcd5469e64fb2f68",
+    "/workspace/scratch/source-identity-restart/green-91faf-asserted-1/executed-driver.py": "c12d74eb65cd6fd794473ba7486cb8cdc96a307e1420b9073f0107eb9e2163aa",
+    "/workspace/scratch/source-identity-restart/green-91faf-asserted-1/pre-send-detached-assertions.json": "888f5749686780c292732650fb8f812cb369ea6373fbabcc129543de88d3e06b"
+  },
+  "preceding_retained_run": {
+    "revision": "74c019c3c38b82448c10fc50ecca778b3b7ccf83",
+    "identity_proof": {
+      "active_union_tunnel_destinations": 100000,
+      "retained_seed_destinations": 99997,
+      "valid_signed_cached_announces": 100000,
+      "passed": true
+    },
+    "regular_checkpoint_high_deltas": [
+      6,
+      0,
+      0,
+      0
+    ],
+    "regular_strict_pressure_gate_passed": false,
+    "hours_long_resource_acceptance": "pending; finite early episode is not a plateau proof",
+    "source_authentication_after_primary_restart": "failed; encrypted inbound source_identity_unknown despite retained route/cache identity proof"
+  }
+}
