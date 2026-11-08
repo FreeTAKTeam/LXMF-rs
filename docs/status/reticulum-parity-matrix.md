@@ -1479,3 +1479,13 @@ and passes with exact persisted public keys and fresh verified bidirectional
 messages, without scoped reannouncement. This is local debug-binary evidence;
 full retained-state resource acceptance remains open. See
 [the authentication regression](../performance/tunnel-identity-cleanup-663.md).
+
+## Issue 663 checkpoint capacity follow-up (2026-11-08)
+
+Path checkpoints reserve owned vectors from actual interface/cache-eligible active
+rows and every retained tunnel reference under the existing guards. The public
+stateful exporter, exact snapshot bytes/order, detached/mixed tunnel references,
+shared packets, publication, cleanup and shutdown remain unchanged. Controlled
+100k/sparse/mixed tests show lower requested allocation with an explicit extra-walk
+CPU trade-off; they do not promote a Python parity row or establish daemon resource
+acceptance. See [the source-level evidence](../performance/checkpoint-snapshot-capacity-663.md).

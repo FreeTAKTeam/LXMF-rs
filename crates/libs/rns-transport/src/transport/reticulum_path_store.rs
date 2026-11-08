@@ -5,6 +5,7 @@ use crate::transport::reticulum_announce_cache::{
 mod cleanup;
 #[path = "python_snapshot_codec.rs"]
 pub(super) mod python_snapshot_codec;
+mod snapshot;
 mod state;
 use cleanup::clean_announce_cache_batch;
 pub use cleanup::AnnounceCacheCleanupReport;
@@ -113,45 +114,17 @@ impl Transport {
         }
         let now = std::time::Instant::now();
         let now_unix_secs = now_unix_secs();
-        let (kept_entries, tunnel_entries, packets) = {
+        let snapshot::Snapshot { kept_entries, tunnel_entries, packets, .. } = {
             let handler = self.handler.lock().await;
             let iface_manager = self.iface_manager.lock().await;
-            let mut kept_entries =
-                handler.path_table.export_python_entries(now, now_unix_secs, |iface| {
-                    Some((iface_manager.mode(iface)?, iface_manager.full_hash(iface)?))
-                });
-            let mut packets = Vec::new();
-            kept_entries.retain(|entry| {
-                let Some(packet) =
-                    handler.announce_table.shared_cached_packet_for_destination(&entry.destination)
-                else {
-                    return false;
-                };
-                packets.push((entry.packet_hash, entry.iface, packet));
-                true
-            });
-            let mut tunnel_entries =
-                handler.tunnel_table.export_python_entries(now, now_unix_secs, |iface| {
-                    iface_manager.full_hash(iface)
-                });
-            for tunnel in &mut tunnel_entries {
-                tunnel.paths.retain(|path| {
-                    let Some(packet) = handler
-                        .announce_table
-                        .shared_cached_packet_for_destination(&path.destination)
-                    else {
-                        return false;
-                    };
-                    let iface = path
-                        .interface_hash
-                        .map(|hash| AddressHash::new_from_hash(&hash))
-                        .unwrap_or(path.destination);
-                    packets.push((path.packet_hash, iface, packet));
-                    true
-                });
-            }
-            tunnel_entries.retain(|entry| !entry.paths.is_empty());
-            (kept_entries, tunnel_entries, packets)
+            snapshot::capture(
+                &handler.path_table,
+                &handler.tunnel_table,
+                &handler.announce_table,
+                now,
+                now_unix_secs,
+                |iface| (iface_manager.mode(iface), iface_manager.full_hash(iface)),
+            )?
         };
 
         let payload = PathTable::encode_python_entries(&kept_entries)

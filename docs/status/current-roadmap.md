@@ -3685,3 +3685,13 @@ not a Python wire-parity promotion or hours-long resource acceptance. Count-page
 I/O, startup/index costs and residual daemon reads remain explicit in
 [the controlled report](../performance/retained-history-read-cost-663.md) and
 [the migration note](../migrations/announce-retention-bound-and-retry-index-663.md).
+
+## Issue 663 checkpoint capacity follow-up (2026-11-08)
+
+Path checkpoints reserve owned vectors from actual interface/cache-eligible active
+rows and every retained tunnel reference under the existing guards. The public
+stateful exporter, exact snapshot bytes/order, detached/mixed tunnel references,
+shared packets, publication, cleanup and shutdown remain unchanged. Controlled
+100k/sparse/mixed tests show lower requested allocation with an explicit extra-walk
+CPU trade-off; they do not promote a Python parity row or establish daemon resource
+acceptance. See [the source-level evidence](../performance/checkpoint-snapshot-capacity-663.md).
