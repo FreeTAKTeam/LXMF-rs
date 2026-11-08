@@ -1,3 +1,4 @@
+use super::entries::DELETE_UNHANDLED_PAYLOAD_MARKS;
 use rusqlite::{params, Connection};
 
 pub fn prune_propagation_entries_to_limit_bytes_with_priorities(
@@ -85,12 +86,7 @@ pub fn prune_propagation_entries_page(
             params![transient_id],
         )?;
         if affected > 0 {
-            conn.execute(
-                "DELETE FROM propagation_peer_entries
-                         WHERE transient_id = ?1
-                           AND state = 'unhandled'",
-                params![transient_id],
-            )?;
+            conn.execute(DELETE_UNHANDLED_PAYLOAD_MARKS, params![transient_id])?;
             total = total.saturating_sub(size_bytes);
             pruned.push(transient_id);
         }

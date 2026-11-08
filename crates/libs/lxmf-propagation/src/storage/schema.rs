@@ -34,6 +34,9 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_unhandled_rank
                     ON propagation_peer_entries(peer, updated_at DESC, transient_id DESC)
                     WHERE state = 'unhandled';
+                CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_unhandled_payload
+                    ON propagation_peer_entries(transient_id)
+                    WHERE state = 'unhandled';
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_global_unhandled
                     ON propagation_peer_entries(updated_at, transient_id, peer)
                     WHERE state = 'unhandled';
