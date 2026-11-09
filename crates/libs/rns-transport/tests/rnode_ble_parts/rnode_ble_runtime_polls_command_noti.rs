@@ -115,7 +115,7 @@ fn rnode_ble_command_monitor_accepts_valid_startup_responses() {
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
 
     monitor
-        .accept_notification(&RnodeBleNotification {
+        .accept_notification(&RnodeBleNotification { order: Vec::new(),
             packets: Vec::new(),
             commands: valid_startup_commands(config),
         })
@@ -132,7 +132,7 @@ fn rnode_ble_command_monitor_exposes_rnode_protocol_state() {
     commands.push((CMD_ERROR, vec![ERROR_MEMORY_LOW]));
 
     monitor
-        .accept_notification(&RnodeBleNotification { packets: vec![vec![0x01, 0x02]], commands })
+        .accept_notification(&RnodeBleNotification { order: Vec::new(), packets: vec![vec![0x01, 0x02]], commands })
         .expect("valid command responses");
 
     assert_eq!(monitor.probe_status().platform, Some(PLATFORM_ESP32));
@@ -152,7 +152,7 @@ fn rnode_ble_command_monitor_status_json_reports_ble_bearer() {
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
 
     monitor
-        .accept_notification(&RnodeBleNotification {
+        .accept_notification(&RnodeBleNotification { order: Vec::new(),
             packets: Vec::new(),
             commands: valid_startup_commands(config),
         })
@@ -195,7 +195,7 @@ fn rnode_ble_command_monitor_rejects_fatal_hardware_errors() {
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::from_secs(1));
 
     let err = monitor
-        .accept_notification(&RnodeBleNotification {
+        .accept_notification(&RnodeBleNotification { order: Vec::new(),
             packets: Vec::new(),
             commands: vec![(CMD_ERROR, vec![ERROR_TXFAILED])],
         })

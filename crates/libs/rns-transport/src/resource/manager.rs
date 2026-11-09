@@ -291,7 +291,7 @@ impl ResourceManager {
                 stats.last_window = concluded_window;
             }
             if let Some(payload) = payload {
-                self.finish_inbound_payload(hash, *link.id(), payload);
+                self.finish_inbound_payload(hash, *link.id(), payload, link.last_signal());
             }
         }
         if let Some(packet) = proof_packet {

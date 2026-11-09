@@ -3677,6 +3677,14 @@ bidirectional messages without scoped reannouncement after cleanup. This is a
 focused debug-binary correctness result; final retained-state resource acceptance
 remains open. See [the evidence](../performance/tunnel-identity-cleanup-663.md).
 
+## Outgoing Link packet-signal isolation (#750)
+
+Data ingress checks the outgoing Link ID before updating its packet-signal reading,
+matching outbound proof selection. A native `handle_data` regression alternates
+valid encrypted packets between two established outgoing Links and verifies exact
+plaintext/event signals plus unchanged RSSI, SNR and quality on the other Link in
+both directions. Interface/crypto policy is unchanged; this does not establish
+physical RNode acceptance or promote a carrier parity row.
 ## Issue 663 retained-history read work (2026-11-08)
 
 The completed b57/b360 four-hour ingress passed correctness, restart and retained

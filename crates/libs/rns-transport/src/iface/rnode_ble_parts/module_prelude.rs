@@ -48,6 +48,7 @@ use crate::iface::lora::{
 use crate::kiss::{
     encode_data_frame, KissCommand, KissDecodeError, KissFrame, KissStreamDecoder, CMD_READY,
 };
+use crate::transport::PacketSignal;
 
 pub const RNODE_BLE_SERVICE_UUID: &str = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 
@@ -150,6 +151,26 @@ pub struct RnodeBleKissIoStats {
 pub struct RnodeBleNotification {
     pub packets: Vec<Vec<u8>>,
     pub commands: Vec<(u8, Vec<u8>)>,
+    /// The frames as decoded, so a signal stat pairs with the packet it preceded.
+    pub order: Vec<RnodeBleFrameKind>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RnodeBleFrameKind {
+    Command,
+    Packet,
+}
+
+impl RnodeBleNotification {
+    /// The decode order when it covers every frame; one built or edited by hand reads as its commands, then its packets.
+    fn frame_order(&self) -> Vec<RnodeBleFrameKind> {
+        if self.order.len() == self.packets.len() + self.commands.len() {
+            return self.order.clone();
+        }
+        let mut order = vec![RnodeBleFrameKind::Command; self.commands.len()];
+        order.extend(std::iter::repeat_n(RnodeBleFrameKind::Packet, self.packets.len()));
+        order
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

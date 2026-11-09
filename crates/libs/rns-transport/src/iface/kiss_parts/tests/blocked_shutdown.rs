@@ -100,7 +100,7 @@ fn options(
         payload_adapter: KissPayloadAdapter::Raw,
         strip_command_port_nibble: false,
         command_tx: None,
-        data_rx_tx: None,
+        rnode_signal: None,
         management_frame_rx: Some(Arc::new(tokio::sync::Mutex::new(management))),
         runtime_status: Some(status),
     }

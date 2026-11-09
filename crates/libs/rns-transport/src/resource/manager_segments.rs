@@ -197,6 +197,7 @@ impl ResourceManager {
         segment_hash: Hash,
         link_id: AddressHash,
         payload: ResourcePayload,
+        signal: Option<crate::transport::PacketSignal>,
     ) {
         let segment = payload.segmentation;
         if segment.total_segments == 1 {
@@ -209,6 +210,7 @@ impl ResourceManager {
                     request_id: payload.request_id,
                     is_request: payload.is_request,
                     is_response: payload.is_response,
+                    signal,
                 }),
             });
             return;
@@ -283,6 +285,7 @@ impl ResourceManager {
                         request_id: assembly.request_id,
                         is_request: assembly.is_request,
                         is_response: assembly.is_response,
+                        signal,
                     }),
                 });
             }

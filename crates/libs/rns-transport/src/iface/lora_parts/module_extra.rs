@@ -4,11 +4,9 @@ where
 {
     let stream_cancel = run.cancel.child_token();
     let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
-    let (data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
     let probe_status_task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
-        run.interface,
+        run.interface.clone(),
         command_rx,
-        data_rx,
         stream_cancel.clone(),
         Some(run.startup_response_timeout),
     ));
@@ -29,7 +27,7 @@ where
             payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: false,
             command_tx: Some(command_tx),
-            data_rx_tx: Some(data_rx_tx),
+            rnode_signal: Some(KissRnodeSignal { radio: run.interface, cache: run.packet_signals }),
             management_frame_rx: Some(run.management_frame_rx),
             runtime_status: None,
         },
@@ -71,7 +69,6 @@ impl Interface for LoraInterface {
 async fn record_probe_status_commands_with_startup_timeout(
     interface: Arc<std::sync::Mutex<LoraInterface>>,
     mut command_rx: tokio::sync::mpsc::Receiver<KissCommandFrame>,
-    mut data_rx: tokio::sync::mpsc::Receiver<()>,
     cancel: tokio_util::sync::CancellationToken,
     startup_response_timeout: Option<Duration>,
 ) {
@@ -143,13 +140,6 @@ async fn record_probe_status_commands_with_startup_timeout(
                         err
                     ),
                 }
-            }
-            data = data_rx.recv() => {
-                if data.is_none() {
-                    break;
-                }
-                let mut guard = interface.lock().expect("lora interface mutex poisoned");
-                guard.record_inbound_data_frame();
             }
         }
     }

@@ -1480,6 +1480,14 @@ messages, without scoped reannouncement. This is local debug-binary evidence;
 full retained-state resource acceptance remains open. See
 [the authentication regression](../performance/tunnel-identity-cleanup-663.md).
 
+## Outgoing Link packet-signal isolation (#750)
+
+Data ingress checks the outgoing Link ID before updating its packet-signal reading,
+matching outbound proof selection. A native `handle_data` regression alternates
+valid encrypted packets between two established outgoing Links and verifies exact
+plaintext/event signals plus unchanged RSSI, SNR and quality on the other Link in
+both directions. Interface/crypto policy is unchanged; this does not establish
+physical RNode acceptance or promote a carrier parity row.
 ## Issue 663 checkpoint capacity follow-up (2026-11-08)
 
 Path checkpoints reserve owned vectors from actual interface/cache-eligible active

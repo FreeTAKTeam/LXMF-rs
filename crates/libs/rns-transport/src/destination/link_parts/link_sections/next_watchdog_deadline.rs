@@ -112,6 +112,7 @@ impl Link {
                 address_hash: self.destination.address_hash,
                 event,
                 close_reason,
+                signal: self.last_signal,
             })
             .is_err()
         {
@@ -265,6 +266,18 @@ impl Link {
 
     pub fn id(&self) -> &LinkId {
         &self.id
+    }
+
+    /// Remembers the signal of the latest inbound packet a bearer reported one for, as `Link.__update_phy_stats` does.
+    pub fn note_signal(&mut self, signal: Option<PacketSignal>) {
+        if signal.is_some() {
+            self.last_signal = signal;
+        }
+    }
+
+    #[must_use]
+    pub fn last_signal(&self) -> Option<PacketSignal> {
+        self.last_signal
     }
 
     pub(crate) fn validate_packet_proof(&self, packet: &Packet) -> Result<Hash, RnsError> {

@@ -135,4 +135,5 @@ struct LoraStreamRun {
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<crate::iface::TxMessage>>>,
     ifac_state: IfacState,
     ifac_violations: Arc<std::sync::atomic::AtomicU64>,
+    packet_signals: crate::transport::PacketSignalCache,
 }

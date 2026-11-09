@@ -25,6 +25,7 @@ use crate::{
     packet::{
         DestinationType, Header, Packet, PacketContext, PacketDataBuffer, PacketType, PACKET_MDU,
     },
+    transport::PacketSignal,
 };
 
 use super::DestinationDesc;

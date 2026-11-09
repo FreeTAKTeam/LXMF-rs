@@ -72,6 +72,7 @@ impl<B> RnodeBearerKissInterface<B> {
         let iface_address = context.channel.address;
         let ifac_state = context.channel.ifac_state.clone();
         let ifac_violations = context.channel.ifac_violations.clone();
+        let packet_signals = context.channel.packet_signals.clone();
         let (rx_channel, mut tx_channel) = context.channel.split();
         let (label, endpoint, backend, config, lora, status) = {
             let mut guard = context.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -281,10 +282,13 @@ impl<B> RnodeBearerKissInterface<B> {
                     }
                 }
                 Ok(Some(notification)) => {
-                    if let Err(error) = monitor.accept_notification(&notification) {
-                        set_error_status(&status, &error);
-                        break;
-                    }
+                    let signals = match monitor.accept_notification(&notification) {
+                        Ok(signals) => signals,
+                        Err(error) => {
+                            set_error_status(&status, &error);
+                            break;
+                        }
+                    };
                     if !radio_config_sent && monitor.is_detected() {
                         radio_config_sent = true;
                         let Some(result) = run_or_cancel(
@@ -315,7 +319,9 @@ impl<B> RnodeBearerKissInterface<B> {
                         traffic,
                         runtime.io_stats(),
                     );
+                    let mut signals = signals.into_iter();
                     for payload in notification.packets {
+                        let signal = signals.next().flatten();
                         traffic.rx_packets = traffic.rx_packets.saturating_add(1);
                         traffic.rx_bytes = traffic
                             .rx_bytes
@@ -331,6 +337,9 @@ impl<B> RnodeBearerKissInterface<B> {
                         );
                         match decode_packet_ifac(&ifac_state, &payload) {
                             Ok(packet) => {
+                                if let Some(signal) = signal {
+                                    packet_signals.record(packet.hash(), signal);
+                                }
                                 let result = run_or_cancel(
                                     rx_channel.send(RxMessage {
                                         address: iface_address,

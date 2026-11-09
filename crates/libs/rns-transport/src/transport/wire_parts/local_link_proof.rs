@@ -32,6 +32,7 @@ async fn handle_outbound_link_proof(
                 handler.packet_cache.lock().await.remember_hash(packet.hash());
             }
         }
+        link.note_signal(handler.packet_signal_for(packet));
         if let LinkHandleResult::Activated = link.handle_packet(packet, iface) {
             rtt_messages.push(TxMessage {
                 tx_type: TxMessageType::Direct(iface),

@@ -191,17 +191,6 @@ pub async fn run_kiss_stream_with_ifac<IO>(
                                                     status.data_frames_rx =
                                                         status.data_frames_rx.saturating_add(1);
                                                 });
-                                                if let Some(data_rx_tx) = &options.data_rx_tx {
-                                                    if let Err(err) = data_rx_tx.try_send(()) {
-                                                        log::warn!("KISS data notification dropped: {err}");
-                                                        update_kiss_status(&options, |status| {
-                                                            status.data_notifications_dropped = status
-                                                                .data_notifications_dropped
-                                                                .saturating_add(1);
-                                                            status.last_error = Some(err.to_string());
-                                                        });
-                                                    }
-                                                }
                                                 let Some(payload) = options.payload_adapter.inbound(&payload) else {
                                                     update_kiss_status(&options, |status| {
                                                         status.ax25_drops =
@@ -213,6 +202,12 @@ pub async fn run_kiss_stream_with_ifac<IO>(
                                                 };
                                                 match decode_packet_ifac(&ifac_state, &payload) {
                                                     Ok(packet) => {
+                                                    if let Some(rnode) = &options.rnode_signal {
+                                                        let signal = rnode.radio.lock().expect("lora interface mutex poisoned").take_packet_signal();
+                                                        if let Some(signal) = signal {
+                                                            rnode.cache.record(packet.hash(), signal);
+                                                        }
+                                                    }
                                                     match rx_channel
                                                         .send(RxMessage {
                                                             address: options.iface_address,
@@ -277,6 +272,14 @@ pub async fn run_kiss_stream_with_ifac<IO>(
                                                     status.command_frames_rx =
                                                         status.command_frames_rx.saturating_add(1);
                                                 });
+                                                if let Some(rnode) = options.rnode_signal.as_ref().filter(|_| KissRnodeSignal::is_stat(command)) {
+                                                    // In frame order, so the data frame that follows takes them.
+                                                    let recorded = rnode.radio.lock().expect("lora interface mutex poisoned").record_command_response(command, &payload);
+                                                    if let Err(err) = recorded {
+                                                        log::warn!("ignored malformed RNode signal stat command=0x{command:02x} err={err}");
+                                                    }
+                                                    continue;
+                                                }
                                                 if let Some(command_tx) = &options.command_tx {
                                                     if let Err(err) =
                                                         command_tx.try_send(KissCommandFrame { command, payload })

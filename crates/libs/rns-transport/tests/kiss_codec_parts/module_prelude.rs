@@ -253,7 +253,7 @@ async fn run_kiss_stream_reports_unknown_command_frames() {
             payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: Some(command_tx),
-            data_rx_tx: None,
+            rnode_signal: None,
             management_frame_rx: None,
             runtime_status: None,
         },
@@ -271,55 +271,6 @@ async fn run_kiss_stream_reports_unknown_command_frames() {
         .expect("command callback")
         .expect("command frame");
     assert_eq!(command, KissCommandFrame { command: CMD_P, payload: vec![1, 74] });
-
-    cancel.cancel();
-    drop(peer);
-    worker.await.expect("worker exits");
-}
-
-#[tokio::test]
-async fn run_kiss_stream_reports_inbound_data_frames_for_status_hooks() {
-    let (mut peer, stream) = tokio::io::duplex(256);
-    let (rx_send, _rx_recv) = tokio::sync::mpsc::channel(1);
-    let (_tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
-    let tx_recv = Arc::new(tokio::sync::Mutex::new(tx_recv));
-    let (data_rx_tx, mut data_rx) = tokio::sync::mpsc::channel(KISS_TEST_CALLBACK_CHANNEL_CAPACITY);
-    let cancel = CancellationToken::new();
-
-    let worker_cancel = cancel.clone();
-    let worker = tokio::spawn(run_kiss_stream(
-        stream,
-        KissStreamOptions {
-            iface_address: AddressHash::default(),
-            device: "test-rnode".to_string(),
-            mtu: 64,
-            flow_control: false,
-            flow_control_timeout: KISS_FLOW_CONTROL_TIMEOUT,
-            read_frame_timeout: KISS_READ_FRAME_TIMEOUT,
-            initial_frames: Vec::new(),
-            shutdown_frames: Vec::new(),
-            id_beacon: None,
-            activity_probe: None,
-            payload_adapter: KissPayloadAdapter::Raw,
-            strip_command_port_nibble: false,
-            command_tx: None,
-            data_rx_tx: Some(data_rx_tx),
-            management_frame_rx: None,
-            runtime_status: None,
-        },
-        worker_cancel,
-        rx_send,
-        tx_recv,
-    ));
-
-    tokio::io::AsyncWriteExt::write_all(&mut peer, &encode_data_frame(b"not-a-packet"))
-        .await
-        .expect("write data frame");
-
-    tokio::time::timeout(std::time::Duration::from_secs(1), data_rx.recv())
-        .await
-        .expect("data callback")
-        .expect("data frame notification");
 
     cancel.cancel();
     drop(peer);
@@ -353,7 +304,7 @@ async fn run_kiss_stream_updates_runtime_status_for_data_rx_and_tx() {
             payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: None,
-            data_rx_tx: None,
+            rnode_signal: None,
             management_frame_rx: None,
             runtime_status: Some(runtime_status.clone()),
         },
@@ -435,7 +386,7 @@ async fn run_kiss_stream_writes_outbound_management_command_frames() {
             payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: false,
             command_tx: None,
-            data_rx_tx: None,
+            rnode_signal: None,
             management_frame_rx: Some(management_rx),
             runtime_status: None,
         },
@@ -491,7 +442,7 @@ async fn run_kiss_stream_drops_stale_partial_data_frame_after_python_read_timeou
     let tx_recv = Arc::new(tokio::sync::Mutex::new(tx_recv));
     let (command_tx, mut command_rx) =
         tokio::sync::mpsc::channel(KISS_TEST_CALLBACK_CHANNEL_CAPACITY);
-    let (data_rx_tx, mut data_rx) = tokio::sync::mpsc::channel(KISS_TEST_CALLBACK_CHANNEL_CAPACITY);
+    let runtime_status = KissInterface::new("test-kiss-read-timeout", 1200).runtime_status_handle();
     let cancel = CancellationToken::new();
 
     let worker_cancel = cancel.clone();
@@ -511,9 +462,9 @@ async fn run_kiss_stream_drops_stale_partial_data_frame_after_python_read_timeou
             payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: Some(command_tx),
-            data_rx_tx: Some(data_rx_tx),
+            rnode_signal: None,
             management_frame_rx: None,
-            runtime_status: None,
+            runtime_status: Some(runtime_status.clone()),
         },
         worker_cancel,
         rx_send,
@@ -534,9 +485,11 @@ async fn run_kiss_stream_drops_stale_partial_data_frame_after_python_read_timeou
         .expect("command frame");
     assert_eq!(command, KissCommandFrame { command: CMD_P, payload: vec![1, 74] });
 
-    let stale_data =
-        tokio::time::timeout(std::time::Duration::from_millis(80), data_rx.recv()).await;
-    assert!(stale_data.is_err(), "stale partial data frame should be dropped after timeout");
+    assert_eq!(
+        runtime_status.snapshot().data_frames_rx,
+        0,
+        "stale partial data frame should be dropped after timeout"
+    );
 
     cancel.cancel();
     drop(peer);
@@ -568,7 +521,7 @@ async fn run_kiss_stream_flow_control_allows_first_packet_after_python_configura
             payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: None,
-            data_rx_tx: None,
+            rnode_signal: None,
             management_frame_rx: None,
             runtime_status: None,
         },

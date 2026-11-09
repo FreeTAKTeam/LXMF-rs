@@ -107,7 +107,7 @@ fn rnode_queue_admission_sends_one_packet_per_ready_response() {
 }
 
 fn startup_notification_without_radio_state(config: LoraConfig) -> RnodeBleNotification {
-    RnodeBleNotification {
+    RnodeBleNotification { order: Vec::new(),
         commands: vec![
             (CMD_DETECT, vec![DETECT_RESP]),
             (CMD_FW_VERSION, vec![1, 83]),
@@ -253,7 +253,7 @@ fn payload_writes_wait_when_radio_state_arrives_before_startup_validation() {
     let config = LoraConfig::us915_default();
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
     monitor
-        .accept_notification(&RnodeBleNotification {
+        .accept_notification(&RnodeBleNotification { order: Vec::new(),
             commands: vec![(CMD_RADIO_STATE, vec![RADIO_STATE_ON])],
             packets: Vec::new(),
         })
@@ -345,7 +345,7 @@ async fn shutdown_can_prefix_display_disable_for_display_capable_rnode() {
     let mut monitor =
         RnodeBleCommandMonitor::new(LoraConfig::us915_default(), Duration::from_secs(1));
     monitor
-        .accept_notification(&RnodeBleNotification {
+        .accept_notification(&RnodeBleNotification { order: Vec::new(),
             commands: vec![
                 (CMD_DETECT, vec![DETECT_RESP]),
                 (CMD_FW_VERSION, vec![1, 52]),

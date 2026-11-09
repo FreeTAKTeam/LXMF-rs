@@ -1,13 +1,17 @@
 #[test]
-fn lora_interface_clears_python_per_packet_signal_stats_after_inbound_data() {
+fn lora_interface_takes_python_per_packet_signal_stats_with_the_data_frame() {
     let mut iface = LoraInterface::new("COM9", 115_200, LoraConfig::us915_default());
 
     iface.record_command_response(CMD_SF, &[9]).expect("spreading factor");
     iface.record_command_response(CMD_STAT_RSSI, &[97]).expect("rssi");
     iface.record_command_response(CMD_STAT_SNR, &[0xF8]).expect("negative snr");
 
-    iface.record_inbound_data_frame();
+    let signal = iface.take_packet_signal().expect("the stats ahead of the frame");
+    assert_eq!(signal.rssi, Some(-60.0));
+    assert_eq!(signal.snr, Some(-2.0));
+    assert_eq!(signal.q, Some(57.9));
 
+    assert_eq!(iface.take_packet_signal(), None, "the next frame starts clean");
     let status = iface.radio_status();
     assert_eq!(status.rssi_dbm, None);
     assert_eq!(status.snr_db, None);

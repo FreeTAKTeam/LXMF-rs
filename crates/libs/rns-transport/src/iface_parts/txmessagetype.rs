@@ -214,6 +214,8 @@ pub struct InterfaceChannel {
     pub ifac_state: IfacState,
     pub ifac_violations: Arc<AtomicU64>,
     pub ifac_default_size_bytes: usize,
+    /// Where this interface's bearer records the signal it heard a packet at.
+    pub packet_signals: crate::transport::PacketSignalCache,
     online: Arc<AtomicBool>,
 }
 
@@ -239,6 +241,7 @@ impl InterfaceChannel {
             stop,
             IfacRuntime::disabled(crate::iface::DEFAULT_IFAC_SIZE_BYTES),
             Arc::new(AtomicBool::new(true)),
+            crate::transport::PacketSignalCache::default(),
         )
     }
 
@@ -249,6 +252,7 @@ impl InterfaceChannel {
         stop: CancellationToken,
         ifac: IfacRuntime,
         online: Arc<AtomicBool>,
+        packet_signals: crate::transport::PacketSignalCache,
     ) -> Self {
         Self {
             address,
@@ -258,6 +262,7 @@ impl InterfaceChannel {
             ifac_state: ifac.state,
             ifac_violations: ifac.violations,
             ifac_default_size_bytes: ifac.default_size_bytes,
+            packet_signals,
             online,
         }
     }
@@ -335,4 +340,5 @@ pub struct InterfaceManager {
     rx_send: InterfaceRxSender,
     ifaces: Vec<LocalInterface>,
     worker_tasks: std::collections::HashMap<AddressHash, tokio::task::JoinHandle<()>>,
+    packet_signals: crate::transport::PacketSignalCache,
 }

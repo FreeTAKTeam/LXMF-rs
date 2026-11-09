@@ -304,6 +304,7 @@ impl NativeRnodeBleKissInterface {
         let iface_address = context.channel.address;
         let ifac_state = context.channel.ifac_state.clone();
         let ifac_violations = context.channel.ifac_violations.clone();
+        let packet_signals = context.channel.packet_signals.clone();
         let (rx_channel, mut tx_channel) = context.channel.split();
         let (
             label,
@@ -562,15 +563,19 @@ impl NativeRnodeBleKissInterface {
                                 label
                             );
                         }
+                        let mut signals = Vec::new();
                         if let Some(monitor) = command_monitor.as_mut() {
-                            if let Err(err) = monitor.accept_notification(&notification) {
-                                log::warn!(
-                                    "RNode BLE command response validation failed iface={} err={}",
-                                    label,
-                                    err
-                                );
-                                reconnect_needed = true;
-                                break;
+                            match monitor.accept_notification(&notification) {
+                                Ok(paired) => signals = paired,
+                                Err(err) => {
+                                    log::warn!(
+                                        "RNode BLE command response validation failed iface={} err={}",
+                                        label,
+                                        err
+                                    );
+                                    reconnect_needed = true;
+                                    break;
+                                }
                             }
                             if let Some(status) = rnode_status.as_ref() {
                                 RnodeBleRuntimeStatusHandle::new(status.clone()).update_runtime_status(
@@ -601,9 +606,14 @@ impl NativeRnodeBleKissInterface {
                         if reconnect_needed {
                             break;
                         }
+                        let mut signals = signals.into_iter();
                         for payload in notification.packets {
+                            let signal = signals.next().flatten();
                             match decode_packet_ifac(&ifac_state, &payload) {
                                 Ok(packet) => {
+                                    if let Some(signal) = signal {
+                                        packet_signals.record(packet.hash(), signal);
+                                    }
                                     log::debug!(
                                         "RNode BLE rx packet len={} iface={}",
                                         payload.len(),

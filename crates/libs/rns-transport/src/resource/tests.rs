@@ -28,6 +28,8 @@ mod tests {
     include!("tests_fault_injection.rs");
     include!("tests_reader.rs");
     include!("tests_completion.rs");
+    #[path = "signal.rs"]
+    mod signal;
     include!("tests_request_cleanup.rs");
 
     fn resource_packet(context: PacketContext, payload: &[u8], destination: AddressHash) -> Packet {

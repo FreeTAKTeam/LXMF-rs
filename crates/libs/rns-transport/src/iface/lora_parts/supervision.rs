@@ -29,6 +29,7 @@ impl LoraInterface {
 
         let online = context.channel.online.clone();
         online.store(false, std::sync::atomic::Ordering::Release);
+        let packet_signals = context.channel.packet_signals.clone();
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
         let mut active_backoff = reconnect_backoff;
@@ -96,6 +97,7 @@ impl LoraInterface {
                             tx_channel: tx_channel.clone(),
                             ifac_state: ifac_state.clone(),
                             ifac_violations: ifac_violations.clone(),
+                            packet_signals: packet_signals.clone(),
                         },
                     )
                     .await;
@@ -155,6 +157,7 @@ impl LoraInterface {
                             tx_channel: tx_channel.clone(),
                             ifac_state: ifac_state.clone(),
                             ifac_violations: ifac_violations.clone(),
+                            packet_signals: packet_signals.clone(),
                         },
                     )
                     .await;

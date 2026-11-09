@@ -73,7 +73,7 @@ async fn kiss_stream_ifac_rejects_wrong_key_and_authenticates_ingress_egress() {
             payload_adapter: adapter.clone(),
             strip_command_port_nibble: false,
             command_tx: None,
-            data_rx_tx: None,
+            rnode_signal: None,
             management_frame_rx: None,
             runtime_status: Some(runtime_status.clone()),
         },

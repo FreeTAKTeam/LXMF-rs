@@ -168,7 +168,7 @@ impl KissTcpClientInterface {
                     payload_adapter: KissPayloadAdapter::Raw,
                     strip_command_port_nibble: true,
                     command_tx: None,
-                    data_rx_tx: None,
+                    rnode_signal: None,
                     management_frame_rx: None,
                     runtime_status: Some(runtime_status.clone()),
                 },
@@ -226,9 +226,30 @@ pub struct KissStreamOptions {
     pub payload_adapter: KissPayloadAdapter,
     pub strip_command_port_nibble: bool,
     pub command_tx: Option<tokio::sync::mpsc::Sender<KissCommandFrame>>,
-    pub data_rx_tx: Option<tokio::sync::mpsc::Sender<()>>,
+    /// Set for an RNode: the two signal stats ahead of a data frame are recorded with that frame.
+    pub rnode_signal: Option<KissRnodeSignal>,
     pub management_frame_rx: Option<Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>>,
     pub runtime_status: Option<KissRuntimeStatusHandle>,
+}
+
+/// An RNode's radio status and the cache its per-packet signal is recorded into.
+#[derive(Clone)]
+pub struct KissRnodeSignal {
+    pub radio: Arc<Mutex<crate::iface::lora::LoraInterface>>,
+    pub cache: crate::transport::PacketSignalCache,
+}
+
+impl KissRnodeSignal {
+    /// Whether `command` is one of the two stats the radio sends ahead of a data frame.
+    pub(crate) fn is_stat(command: u8) -> bool {
+        matches!(command, crate::iface::lora::CMD_STAT_RSSI | crate::iface::lora::CMD_STAT_SNR)
+    }
+}
+
+impl std::fmt::Debug for KissRnodeSignal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KissRnodeSignal").finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

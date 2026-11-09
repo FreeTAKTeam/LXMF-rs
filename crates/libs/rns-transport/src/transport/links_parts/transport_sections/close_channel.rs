@@ -338,22 +338,11 @@ impl Transport {
     /// Records per-packet radio metadata for local-client management queries.
     /// Entries use Python Reticulum's 512-item FIFO retention limit.
     pub async fn record_packet_signal(&self, packet_hash: Hash, signal: PacketSignal) {
-        let mut handler = self.handler.lock().await;
-        handler.packet_signal_cache.push_back((packet_hash, signal));
-        while handler.packet_signal_cache.len() > 512 {
-            handler.packet_signal_cache.pop_front();
-        }
+        self.handler.lock().await.packet_signal_cache.record(packet_hash, signal);
     }
 
     pub async fn packet_signal(&self, packet_hash: &Hash) -> Option<PacketSignal> {
-        self.handler
-            .lock()
-            .await
-            .packet_signal_cache
-            .iter()
-            .rev()
-            .find(|(hash, _)| hash == packet_hash)
-            .map(|(_, signal)| *signal)
+        self.handler.lock().await.packet_signal_cache.get(packet_hash)
     }
 
     pub async fn expire_paths_for_identity(&self, identity: &AddressHash) -> usize {

@@ -22,6 +22,7 @@ impl Transport {
         let iface_manager = InterfaceManager::new(128);
 
         let rx_receiver = iface_manager.receiver();
+        let packet_signals = iface_manager.packet_signals();
 
         let iface_manager = Arc::new(Mutex::new(iface_manager));
 
@@ -71,7 +72,7 @@ impl Transport {
             single_out_destinations_removed_total: 0,
             blackholed_identities: HashMap::new(),
             announce_limits: AnnounceLimits::new(),
-            packet_signal_cache: VecDeque::new(),
+            packet_signal_cache: packet_signals,
             network_identity: None,
             discovery_enabled: false,
             out_links: HashMap::new(),
@@ -129,6 +130,7 @@ impl Transport {
                                     request_id: payload.request_id(),
                                     hops: None,
                                     interface: None,
+                                    signal: event.signal,
                                 };
                                 let proof_consumer = received_data_with_proof_tx
                                     .send(ReceivedDataWithProof {

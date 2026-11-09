@@ -75,6 +75,8 @@ include!("tests_parts/packet_proof_correlation.rs");
 include!("tests_parts/prepared_packet_proof.rs");
 
 include!("tests_parts/single_destination_delivery_proof.rs");
+#[path = "tests_parts/packet_signal_delivery.rs"]
+mod packet_signal_delivery;
 
 include!("tests_parts/link_broadcast_helpers_route_via_bound_iface.rs");
 

@@ -18,6 +18,7 @@ async fn link_in_payload_is_forwarded_to_received_data() {
                 address_hash,
                 event: LinkEvent::Data(Box::new(payload)),
                 close_reason: None,
+                signal: Some(PacketSignal { rssi: Some(-98.0), snr: Some(7.5), q: None }),
             })
             .is_ok(),
         "link input forwarder remains subscribed"
@@ -31,6 +32,7 @@ async fn link_in_payload_is_forwarded_to_received_data() {
     assert_eq!(received.destination, link_id);
     assert_eq!(received.data.as_slice(), b"hello");
     assert_eq!(received.payload_mode, ReceivedPayloadMode::FullWire);
+    assert_eq!(received.signal.and_then(|signal| signal.rssi), Some(-98.0), "the link's last signal rides with its data");
 }
 
 #[tokio::test]
@@ -53,6 +55,7 @@ async fn link_out_payload_is_forwarded_to_received_data() {
                 address_hash,
                 event: LinkEvent::Data(Box::new(payload)),
                 close_reason: None,
+                signal: None,
             })
             .is_ok(),
         "link output forwarder remains subscribed"

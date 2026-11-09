@@ -301,9 +301,17 @@ impl LoraInterface {
         Ok(accepted)
     }
 
-    pub fn record_inbound_data_frame(&mut self) {
-        self.radio_status.rssi_dbm = None;
-        self.radio_status.snr_db = None;
+    /// The signal reported ahead of the data frame just decoded, taken so the next frame starts clean.
+    pub fn take_packet_signal(&mut self) -> Option<PacketSignal> {
+        let status = &mut self.radio_status;
+        if status.rssi_dbm.is_none() && status.snr_db.is_none() {
+            return None;
+        }
+        Some(PacketSignal {
+            rssi: status.rssi_dbm.take().map(f64::from),
+            snr: status.snr_db.take(),
+            q: status.signal_quality_percent,
+        })
     }
 
     pub fn is_detected(&self) -> bool {

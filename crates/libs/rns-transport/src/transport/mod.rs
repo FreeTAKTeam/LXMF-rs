@@ -9,7 +9,7 @@ use path_requests::PathRequests;
 use path_requests::TagBytes;
 use path_table::PathTable;
 use rand_core::OsRng;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -72,7 +72,9 @@ mod inbound_queues;
 mod link_packet_receipt;
 mod link_table;
 mod packet_cache;
+mod packet_signal;
 pub use link_packet_receipt::LinkPacketReceipt;
+pub use packet_signal::{PacketSignal, PacketSignalCache};
 mod destination_cache;
 mod destination_proof;
 pub use destination_proof::{DestinationProof, ReceivedDataWithProof};
@@ -180,6 +182,8 @@ pub struct ReceivedData {
     pub request_id: Option<[u8; 16]>,
     pub hops: Option<u8>,
     pub interface: Option<Vec<u8>>,
+    /// The RNode's reading of this packet, or of the Link's last; `None` off a bearer that reports none.
+    pub signal: Option<PacketSignal>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,7 +265,7 @@ pub(crate) struct TransportHandler {
     blackholed_identities: HashMap<AddressHash, Option<f64>>,
 
     announce_limits: AnnounceLimits,
-    packet_signal_cache: VecDeque<(Hash, PacketSignal)>,
+    packet_signal_cache: PacketSignalCache,
     network_identity: Option<PrivateIdentity>,
     discovery_enabled: bool,
 
@@ -347,13 +351,6 @@ pub struct Transport {
     iface_manager: Arc<Mutex<InterfaceManager>>,
     path_table_persistence: reticulum_path_store::PathTablePersistence,
     cancel: CancellationToken,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct PacketSignal {
-    pub rssi: Option<f64>,
-    pub snr: Option<f64>,
-    pub q: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
