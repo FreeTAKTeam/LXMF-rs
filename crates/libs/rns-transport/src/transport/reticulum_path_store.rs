@@ -7,7 +7,7 @@ mod cleanup;
 pub(super) mod python_snapshot_codec;
 mod snapshot;
 mod state;
-use cleanup::clean_announce_cache_batch;
+use cleanup::clean_announce_cache_batch_for_fingerprints;
 pub use cleanup::AnnounceCacheCleanupReport;
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -141,10 +141,8 @@ impl Transport {
         tokio::fs::create_dir_all(&storage_path).await?;
         let announce_cache = ReticulumAnnounceCache::new(&storage_path);
         let verify_existing = cache_state.files.is_empty();
-        let mut current_hashes = HashSet::with_capacity(packets.len());
-        current_hashes.extend(packets.iter().map(|(packet_hash, _, _)| *packet_hash));
         cache_state.persisted_snapshot_matches_files = false;
-        cache_state.retain_current_files(&current_hashes);
+        cache_state.retain_current_files(packets.iter().map(|(packet_hash, _, _)| *packet_hash));
         let mut report = PathTableSaveReport {
             kept_entries: kept_count,
             tunnel_paths,
@@ -176,9 +174,12 @@ impl Transport {
             tokio::fs::write(storage_path.join("destination_table"), payload).await?;
             tokio::fs::write(storage_path.join("tunnels"), tunnel_payload).await?;
             cache_state.persisted_snapshot_matches_files = true;
-            let cleanup = clean_announce_cache_batch(
+            // The retain pass removed extras; the successful loop inserted every current
+            // hash. Map keys now equal the snapshot reference union, including
+            // duplicate active/tunnel references with differing interfaces.
+            let cleanup = clean_announce_cache_batch_for_fingerprints(
                 &storage_path,
-                &current_hashes,
+                &cache_state.files,
                 &mut cache_state.cleanup_scan,
             )
             .await
@@ -469,3 +470,6 @@ mod persistence_tests;
 #[cfg(test)]
 #[path = "snapshot_allocation_tests.rs"]
 mod snapshot_allocation_tests;
+
+#[cfg(test)]
+mod lifetime_tests;

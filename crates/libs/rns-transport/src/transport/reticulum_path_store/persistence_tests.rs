@@ -8,7 +8,7 @@ fn removed_routes_are_pruned_from_the_persistence_cache() {
     state.files.insert(retained, [1; 32]);
     state.files.insert(removed, [2; 32]);
 
-    state.retain_current_files(&HashSet::from([retained]));
+    state.retain_current_files([retained].into_iter());
 
     assert_eq!(state.files.len(), 1);
     assert!(state.files.contains_key(&retained));

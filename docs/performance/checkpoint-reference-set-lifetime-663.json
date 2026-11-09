@@ -1,0 +1,114 @@
+{
+  "schema": "lxmf-checkpoint-reference-set-lifetime-v1",
+  "base_commit": "c5313eef31875adc68a1bd04c644232b4226b075",
+  "unchanged_capacity_evidence_commit": "b72feec8af2d17f7ee1e45b9785560586cd2bbc5",
+  "scope": "In-memory ownership model of production retain helper and old reference-set span. No filesystem, daemon RSS/cgroup or resource qualification result. This is a different interval from the earlier capture/encode capacity experiment; reductions must not be added.",
+  "fixture": {
+    "current_hashes": 100000,
+    "packet_references": 100003,
+    "duplicate_interface_references": 3,
+    "current_keys_initially_absent": 10,
+    "initial_unreferenced_key": 1
+  },
+  "results": {
+    "retained": {
+      "after_release_requested_live_bytes": 0,
+      "after_retain_requested_live_bytes": 4325392,
+      "construction_global_peak_extra_requested_bytes": 4325392,
+      "current_hashes": 100000,
+      "duplicate_interface_last_fingerprint_preserved": true,
+      "final_map_keys_equal_snapshot_union": true,
+      "fixture_prior_peak_extra_requested_bytes": 0,
+      "mode": "retained",
+      "packet_refs": 100003,
+      "publication_requested_live_bytes": 4325392,
+      "scope": "production retaining helper versus old ownership span; in-memory lifetime model only, no filesystem/RSS/cgroup or construction-peak reduction claim",
+      "set_capacity_observed": 114688,
+      "total_requested_bytes": 4325392
+    },
+    "scoped": {
+      "after_release_requested_live_bytes": 0,
+      "after_retain_requested_live_bytes": 0,
+      "construction_global_peak_extra_requested_bytes": 4325392,
+      "current_hashes": 100000,
+      "duplicate_interface_last_fingerprint_preserved": true,
+      "final_map_keys_equal_snapshot_union": true,
+      "fixture_prior_peak_extra_requested_bytes": 0,
+      "mode": "scoped",
+      "packet_refs": 100003,
+      "publication_requested_live_bytes": 0,
+      "scope": "production retaining helper versus old ownership span; in-memory lifetime model only, no filesystem/RSS/cgroup or construction-peak reduction claim",
+      "set_capacity_observed": null,
+      "total_requested_bytes": 4325392
+    }
+  },
+  "interpretation": {
+    "construction_total_and_peak_unchanged": true,
+    "only_later_requested_live_overlap_removed": true,
+    "no_combined_peak_or_resident_memory_prediction": true
+  },
+  "validation": {
+    "combined_budget_controls_passed": 19,
+    "transport_persistence_capacity_codec_state_passed": 14,
+    "transport_explicit_probes_ignored": 4,
+    "cache_and_each_metadata_failure_gates_passed": 2,
+    "cleanup_membership_controls_passed": 3,
+    "dirty_cache_verification_passed": 1,
+    "signed_route_restore_passed": 1,
+    "signed_tunnel_cleanup_restore_passed": 1,
+    "strict_rpc_transport_library_test_clippy_passed": true,
+    "architecture_checks_passed": true,
+    "static_checks": [
+      {
+        "name": "fmt",
+        "argv": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0
+      },
+      {
+        "name": "module-includes",
+        "argv": [
+          "bash",
+          "tools/scripts/check-module-size.sh"
+        ],
+        "exit": 0
+      },
+      {
+        "name": "diff",
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit": 0
+      }
+    ]
+  },
+  "source_sha256": {
+    "crates/libs/rns-transport/src/transport/packet_disk_cache/tests.rs": "b4341131eee6fa28b7281d5406f91e090d073ab529c2be77948efea797a11922",
+    "crates/libs/rns-transport/src/transport/reticulum_path_store.rs": "43d867405bf7e8972259087655674e7feb95a5aa8ec11e2d48c564ef5144311e",
+    "crates/libs/rns-transport/src/transport/reticulum_path_store/cleanup.rs": "0cd8a27d67a355b383d7447ad8eec6afb49a918e42d6f11ed4fc90a86159e21d",
+    "crates/libs/rns-transport/src/transport/reticulum_path_store/persistence_tests.rs": "261f14b84a6526d42e06c3682a7c51e60d6def63b529f6ee27bccb111300f987",
+    "crates/libs/rns-transport/src/transport/reticulum_path_store/state.rs": "eb6b828b94d0f209ca3267c13f42d7d136e27fa7df1d0e72c59778f29d062441",
+    "crates/libs/rns-transport/src/transport/tests_parts/unchanged_path_cache.rs": "a34b49f882f6387df71404e2aba6aaa8eac99bd89b51e9dac5fd1087212bea9e",
+    "crates/libs/rns-transport/src/transport/reticulum_path_store/lifetime_tests.rs": "ba3ff9711628446b53cd2740d5f3b7f12091881a258950489ae1e22eedfe76ac"
+  },
+  "artifact_sha256": {
+    "lifetime-retained.log": "a8d04e1aa8cae45746e2385651f5d01b5e392d81878ea95992180bea36e84876",
+    "lifetime-scoped.log": "10ad8af4e76fd3f337082f38268c3e4052ec0f6965c816712fd41f925fc54acd",
+    "combined-budget-focused.log": "820facd834840fcd8c7d04db924acfc6d7afe07f714feb9bf82b1aeac3dad625",
+    "combined-transport-persistence.log": "77cd8e8f775cc9a38db2231675e399666043da2fdd28acf9946742059621f7d9",
+    "snapshot-failure-gates.log": "0f90bec3571247bca233b4e79dfeb9233b007502c1f4789a5d72d6a3f56b7239",
+    "cleanup-membership-parity.log": "ca8caf517ac0cd07654d2f4edcda7402d2d36298dea43559e916947608384238",
+    "dirty-cache-verification.log": "de105c0f650a90c8096513ae68d915dc931cbc9696a4f054db52c6c096061863",
+    "signed-route-restore.log": "f43af9f7e3efa9c831c27984237aa9c0650898d8d3843f37c6515b5603771611",
+    "signed-tunnel-cleanup-restore.log": "a2494713aaa89c14c234afb870d33bb1b004ac58677cf69531483ddbed4c1049",
+    "combined-strict-clippy.log": "3ba8d44750f0a0784907216daf800da07f8d0586ebcca46d792f402dd2a3cb58",
+    "combined-architecture.log": "7bc734aafc6825af3d48c85a815e91c681d713fc740359481fbf731f943cc985"
+  }
+}

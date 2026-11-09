@@ -1489,3 +1489,10 @@ shared packets, publication, cleanup and shutdown remain unchanged. Controlled
 100k/sparse/mixed tests show lower requested allocation with an explicit extra-walk
 CPU trade-off; they do not promote a Python parity row or establish daemon resource
 acceptance. See [the source-level evidence](../performance/checkpoint-snapshot-capacity-663.md).
+
+The checkpoint reference-set follow-up also releases temporary membership scratch
+before asynchronous file processing and reuses successful fingerprint-map keys for
+cleanup. Construction allocation and cleanup/error gates remain unchanged. Its
+[synthetic lifetime evidence](../performance/checkpoint-reference-set-lifetime-663.md)
+is separate from the earlier capture-capacity result and cannot be added into a
+combined peak/RSS or resource-acceptance claim.
