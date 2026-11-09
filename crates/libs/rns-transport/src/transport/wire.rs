@@ -170,6 +170,9 @@ pub(super) async fn handle_data<'a>(
         let mut proof_packets = Vec::new();
         for link in handler.out_links.values() {
             let mut link = link.lock().await;
+            if *link.id() != packet.destination {
+                continue;
+            }
             link.note_signal(signal);
             let result = link.handle_packet(packet, iface);
             if let LinkHandleResult::Proof(proof_packet) = result {
