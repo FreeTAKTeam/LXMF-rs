@@ -52,6 +52,10 @@ for publication status, downloads and exact-build validation. Production resourc
 and retention acceptance remain open. Rust 1.88 or newer is required; use an
 exact release tag to reproduce published artifacts.
 
+Current main/source builds require Rust 1.89 for the patched bundled SQLite
+dependency; the tagged release requirements above remain historical. See the
+[security migration note](docs/migrations/sqlite-3-54-security.md).
+
 The canonical release reference remains Python Reticulum 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`, with Python LXMF 0.9.6 at
 `727830cefda83d9c6e3982b48675425f3f988f9c`. The separate Reticulum 1.5.5

@@ -21,8 +21,10 @@ WAL/FULL (`DaemonStored`). RCH separately commits its inbox and stored position
 commits business state, completion and outbound intents together (`RchApplied`
 or `RchRejected`). Neither custody acknowledgement means peer `Delivered`.
 
-The bundled native engine is SQLite 3.53.2 (rusqlite 0.40.2,
-libsqlite3-sys 0.38.2). Durable startup rejects in-memory storage, unsupported
+Current source bundles SQLite 3.54.1 (rusqlite 0.41.1, libsqlite3-sys 0.39.1)
+after the [security update](../../migrations/sqlite-3-54-security.md). Earlier
+named evidence used SQLite 3.53.2 (rusqlite 0.40.2, libsqlite3-sys 0.38.2) and
+remains historical. Durable startup rejects in-memory storage, unsupported
 writer versions and native engines before 3.51.3. WAL/FULL is checked on durable
 connections; these settings still depend on filesystem/device synchronization
 and do not replicate a lost disk. Process SIGKILL tests are not power-cut tests.

@@ -12,6 +12,9 @@
 - Pin an exact tag or commit for reproducible integration. See the
   [v0.14.0 migration guide](../migrations/v0.14.0-zmq.md) for Rust 1.88,
   envelope construction, and optional durable-custody requirements.
+- Current main/source builds require Rust 1.89; the
+  [SQLite security migration](../migrations/sqlite-3-54-security.md) explains the
+  dependency/MSRV change without changing named historical release evidence.
 - Python Reticulum compatibility is assessed against version `1.5.2` at commit
   `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The version is diagnostic; the
   commit remains the reproducible compatibility identity.
