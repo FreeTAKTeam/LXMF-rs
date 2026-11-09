@@ -5,14 +5,15 @@ and benchmark work. It is intentionally not a CI gate.
 
 ## Toolchain Boundary
 
-The main workspace and standalone runner at `tools/e2e-runner/` both require
-Rust 1.88 or newer. The runner's separate lockfile isolates its benchmark
-dependencies from the workspace packages.
+The main workspace requires Rust 1.89 or newer. The standalone runner at
+`tools/e2e-runner/` retains its independent Rust 1.88 minimum; its separate
+lockfile isolates benchmark dependencies from workspace packages. Rust 1.89
+can build both the maintained workspace and the runner.
 
-Install the runner toolchain:
+Install the workspace toolchain:
 
 ```bash
-rustup toolchain install 1.88.0 --profile minimal
+rustup toolchain install 1.89.0 --profile minimal
 ```
 
 The runner is excluded from the root Cargo workspace through its own empty
@@ -22,7 +23,7 @@ graph.
 
 ## Prerequisites
 
-- Rust 1.88.0 through `rustup`
+- Rust 1.89.0 through `rustup` when building the maintained workspace
 - A reachable Docker daemon
 - Docker Compose; the runner uses the local plugin when available and otherwise
   uses the containerised Testcontainers Compose client

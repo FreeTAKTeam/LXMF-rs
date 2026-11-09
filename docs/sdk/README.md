@@ -8,6 +8,10 @@ SDK contract is v2.6, with schema namespace `v2` and negotiated protocol version
 `2`; v2.5 requests remain accepted. Domain contracts that retain a v2.5 heading
 still define those domains. Package versions and contract versions are separate.
 
+Current main/source builds require Rust 1.89 for the patched bundled SQLite
+dependency. The versioned release requirements above remain historical; see the
+[security migration note](../migrations/sqlite-3-54-security.md).
+
 ## Reading Order
 
 1. [Quickstart](quickstart.md)

@@ -27,7 +27,7 @@ Before adding a local dependency edge, check
 
 ## Bootstrap
 
-Use Rust 1.88 or newer. The checkout selects the stable toolchain; the build
+Use Rust 1.89 or newer. The checkout selects the stable toolchain; the build
 matrix also checks the declared minimum. The Bash bootstrap script requires
 `rustup`, Cargo, and the native build tools needed by the selected targets.
 

@@ -11,6 +11,12 @@ inventory and upgrade requirements. Exact-source release validation and
 publication remain to be recorded; preparing this train does not promote any
 parity row or close the operational and external-client acceptance work below.
 
+Current main/source builds use the patched bundled SQLite dependency and require
+Rust 1.89. Independent Bluetooth/Rust 1.85 and named historical Rust 1.88 or
+SQLite 3.53.2 evidence remain unchanged. New-engine storage/retention/broker
+validation is separate; see the
+[security migration note](../migrations/sqlite-3-54-security.md).
+
 The [#746 local LinkRequest MTU increment](https://github.com/FreeTAKTeam/LXMF-rs/pull/746)
 caps signalled MTU at the receiving interface's MTU before constructing and
 proving a local Link. AutoInterface host channels now register the reference's

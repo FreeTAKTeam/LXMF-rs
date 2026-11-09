@@ -5,7 +5,7 @@ with Unix and TCP RPC compatibility entry points.
 
 ## Prerequisites
 
-- Rust 1.88 or newer; repository builds use `rust-toolchain.toml`.
+- Rust 1.89 or newer; repository builds use `rust-toolchain.toml`.
 - A running `reticulumd` endpoint. The minimal client below uses an explicitly
   enabled local ZeroMQ listener.
 - An actual peer destination for delivery; `LXMF_DESTINATION` in the example
