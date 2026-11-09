@@ -28,7 +28,7 @@ boundaries are described in the [release notes](release-notes-v0.16.0.md) and
 
 ## Build from source
 
-The workspace requires Rust 1.88 or newer; `rust-toolchain.toml` selects
+The workspace requires Rust 1.89 or newer; `rust-toolchain.toml` selects
 stable with `rustfmt` and `clippy`. The bootstrap helper checks the
 Rust toolchains, installs the repository's Cargo tools, fetches locked
 dependencies, and runs a formatting smoke check:

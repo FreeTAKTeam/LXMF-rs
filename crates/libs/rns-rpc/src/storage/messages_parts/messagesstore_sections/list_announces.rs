@@ -163,6 +163,7 @@ impl MessagesStore {
         self.with_write_conn(|conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute("DELETE FROM announces", [])?;
+            tx.execute("UPDATE announce_retention_count SET upper_bound = 0 WHERE singleton = 1", [])?;
             tx.execute("DELETE FROM announce_identities", [])?;
             tx.execute("DELETE FROM announce_retention_cursor", [])?;
             tx.commit()?;
@@ -290,6 +291,7 @@ impl MessagesStore {
                 );
 ",
             )?;
+            message_budget::ensure_table(&tx)?;
             lxmf_propagation::storage::initialize(&tx)?;
             lxmf_propagation::identities::initialize(&tx)?;
             Self::ensure_multi_ticket_schema(&tx)?;
@@ -299,7 +301,6 @@ impl MessagesStore {
                 [],
             )?;
             Self::ensure_schema_column(&tx, "messages", "title", "title TEXT")?;
-            tx.execute("UPDATE messages SET title = '' WHERE title IS NULL", [])?;
             Self::ensure_schema_column(&tx, "messages", "fields", "fields TEXT")?;
             Self::ensure_schema_column(
                 &tx,
@@ -307,6 +308,8 @@ impl MessagesStore {
                 "receipt_status",
                 "receipt_status TEXT",
             )?;
+            message_budget::initialize(&tx)?;
+            tx.execute("UPDATE messages SET title = '' WHERE title IS NULL", [])?;
             Self::ensure_schema_column(&tx, "announces", "name", "name TEXT")?;
             Self::ensure_schema_column(&tx, "announces", "name_source", "name_source TEXT")?;
             Self::ensure_schema_column(&tx, "announces", "first_seen", "first_seen INTEGER")?;
@@ -341,6 +344,16 @@ impl MessagesStore {
                     ON messages(direction, timestamp DESC);
                 CREATE INDEX IF NOT EXISTS idx_messages_receipt_status
                     ON messages(receipt_status);
+                CREATE INDEX IF NOT EXISTS idx_messages_retryable_destination
+                    ON messages(LOWER(destination), timestamp, id)
+                    WHERE direction = 'out' AND (
+                        receipt_status IS NULL OR TRIM(receipt_status) = '' OR (
+                            LOWER(TRIM(receipt_status)) NOT LIKE 'sent%'
+                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'sending%'
+                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'failed%'
+                            AND LOWER(TRIM(receipt_status)) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
+                        )
+                    );
                 CREATE INDEX IF NOT EXISTS idx_announces_timestamp_id_desc
                     ON announces(timestamp DESC, id DESC);
 ",

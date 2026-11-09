@@ -73,3 +73,61 @@ async fn repeated_path_save_preserves_unchanged_announce_file_and_restores_valid
     assert!(restored.has_path(&learned.destination).await);
     assert!(restored.destination_identity(&learned.destination).await.is_some());
 }
+
+
+fn stale_unreferenced_announce(storage: &std::path::Path) -> std::path::PathBuf {
+    let path=cached_announce_path(storage,&Hash::new([0xaa;crate::hash::HASH_SIZE]));
+    std::fs::create_dir_all(path.parent().expect("cache directory")).expect("cache directory");
+    std::fs::write(&path,b"stale orphan").expect("orphan");
+    let file=std::fs::File::options().write(true).open(&path).expect("orphan file");
+    file.set_times(std::fs::FileTimes::new().set_modified(std::time::UNIX_EPOCH+Duration::from_secs(1))).expect("age orphan");
+    path
+}
+
+#[tokio::test]
+async fn failed_snapshot_metadata_write_never_cleans_before_both_files_succeed() {
+    let temp=tempfile::tempdir().expect("storage");
+    let identity=PrivateIdentity::new_from_rand(OsRng);
+    let transport=Transport::new(TransportConfig::new("metadata-error-gate",&identity,true));
+    let iface=*transport.iface_manager().lock().await.new_channel(16).address();
+    let _learned=learn_cached_path(&transport,iface,"metadata-error-gate").await;
+    transport.save_reticulum_path_table(temp.path()).await.expect("initial checkpoint");
+    for filename in ["destination_table","tunnels"] {
+        let orphan=stale_unreferenced_announce(temp.path());
+        let blocked=temp.path().join(filename);
+        std::fs::remove_file(&blocked).expect("remove fixture metadata");
+        std::fs::create_dir(&blocked).expect("block metadata write");
+        assert!(transport.save_reticulum_path_table_report(temp.path()).await.is_err());
+        assert!(orphan.exists(),"failed {filename} write must not clean old files");
+        assert!(transport.clean_reticulum_announce_cache_batch(temp.path()).await.expect("gated maintenance").is_none());
+        std::fs::remove_dir(&blocked).expect("remove failure fixture");
+        let report=transport.save_reticulum_path_table_report(temp.path()).await.expect("repair checkpoint");
+        assert_eq!(report.kept_entries,1);
+        assert_eq!(report.skipped_known,1,"known cache bytes still use the unchanged fast path");
+        assert_eq!(report.cleanup_removed,1);
+        assert!(!orphan.exists());
+    }
+}
+
+#[tokio::test]
+async fn failed_snapshot_cache_write_keeps_cleanup_gated_and_next_save_verifies() {
+    let temp=tempfile::tempdir().expect("storage");
+    let identity=PrivateIdentity::new_from_rand(OsRng);
+    let transport=Transport::new(TransportConfig::new("cache-error-gate",&identity,true));
+    let iface=*transport.iface_manager().lock().await.new_channel(16).address();
+    let learned=learn_cached_path(&transport,iface,"cache-error-gate").await;
+    let orphan=stale_unreferenced_announce(temp.path());
+    let blocked=cached_announce_path(temp.path(),&learned.packet.hash());
+    std::fs::create_dir(&blocked).expect("block cached packet file");
+    assert!(transport.save_reticulum_path_table_report(temp.path()).await.is_err());
+    assert!(orphan.exists());
+    assert!(!temp.path().join("destination_table").exists());
+    assert!(!temp.path().join("tunnels").exists());
+    assert!(transport.clean_reticulum_announce_cache_batch(temp.path()).await.expect("gated maintenance").is_none());
+    std::fs::remove_dir(&blocked).expect("remove cache failure fixture");
+    let report=transport.save_reticulum_path_table_report(temp.path()).await.expect("repair checkpoint");
+    assert!(report.full_verification);
+    assert_eq!(report.written,1);
+    assert_eq!(report.cleanup_removed,1);
+    assert!(!orphan.exists());
+}

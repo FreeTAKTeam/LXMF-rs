@@ -1,3 +1,19 @@
+const RETRYABLE_OUTBOUND_FOR_DESTINATION_SQL: &str = "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status
+                 FROM messages
+                 WHERE LOWER(destination) = LOWER(?1)
+                   AND direction = 'out'
+                   AND (
+                        receipt_status IS NULL
+                        OR TRIM(receipt_status) = ''
+                        OR (
+                            LOWER(TRIM(receipt_status)) NOT LIKE 'sent%'
+                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'sending%'
+                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'failed%'
+                            AND LOWER(TRIM(receipt_status)) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
+                        )
+                   )
+                 ORDER BY timestamp ASC, id ASC";
+
 impl MessagesStore {
 
     pub fn list_messages(
@@ -101,23 +117,7 @@ impl MessagesStore {
         destination: &str,
     ) -> rusqlite::Result<Vec<MessageRecord>> {
         self.with_read_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status
-                 FROM messages
-                 WHERE LOWER(destination) = LOWER(?1)
-                   AND direction = 'out'
-                   AND (
-                        receipt_status IS NULL
-                        OR TRIM(receipt_status) = ''
-                        OR (
-                            LOWER(TRIM(receipt_status)) NOT LIKE 'sent%'
-                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'sending%'
-                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'failed%'
-                            AND LOWER(TRIM(receipt_status)) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
-                        )
-                   )
-                 ORDER BY timestamp ASC, id ASC",
-            )?;
+            let mut stmt = conn.prepare(RETRYABLE_OUTBOUND_FOR_DESTINATION_SQL)?;
             let mut rows = stmt.query(params![destination])?;
             let mut records = Vec::new();
             while let Some(row) = rows.next()? {
@@ -134,21 +134,8 @@ impl MessagesStore {
     pub fn message_storage_stats(&self) -> rusqlite::Result<MessageStorageStats> {
         self.with_read_conn(|conn| {
             let count = self.write_state.message_count_cache.load(Ordering::Relaxed);
-            let bytes: Option<i64> = conn.query_row(
-                "SELECT COALESCE(SUM(
-                    LENGTH(id) +
-                    LENGTH(source) +
-                    LENGTH(destination) +
-                    LENGTH(title) +
-                    LENGTH(content) +
-                    LENGTH(direction) +
-                    COALESCE(LENGTH(fields), 0) +
-                    COALESCE(LENGTH(receipt_status), 0)
-                ), 0) FROM messages",
-                [],
-                |row| row.get(0),
-            )?;
-            Ok(MessageStorageStats { count, bytes: bytes.unwrap_or(0).max(0) as u64 })
+            let bytes = message_budget::exact_total(conn)?;
+            Ok(MessageStorageStats { count, bytes: bytes.max(0) as u64 })
         })
     }
 

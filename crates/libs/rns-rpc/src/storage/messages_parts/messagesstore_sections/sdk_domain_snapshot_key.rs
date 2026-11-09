@@ -108,20 +108,20 @@ impl MessagesStore {
         Ok(())
     }
 
-    fn with_write_conn<T>(&self,f:impl FnOnce(&Connection)->rusqlite::Result<T>)->rusqlite::Result<T> {
+    fn with_write_conn<T>(&self,f:impl FnOnce(&mut Connection)->rusqlite::Result<T>)->rusqlite::Result<T> {
         self.with_control_conn(|conn| {super::broker::mutation_admission(conn,true)?; f(conn)})
     }
     fn with_control_conn<T>(
         &self,
-        f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+        f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
     ) -> rusqlite::Result<T> {
         let started = std::time::Instant::now();
-        let conn = self.write_state.conn.lock().expect("messages sqlite write mutex poisoned");
+        let mut conn = self.write_state.conn.lock().expect("messages sqlite write mutex poisoned");
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         self.write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
         Self::reclaim_wal_recorded(&self.write_state, &conn)?;
-        f(&conn).map_err(super::broker::map_commit_error)
+        f(&mut conn).map_err(super::broker::map_commit_error)
     }
 
     /// Counts a broker/control writer while it waits for the connection so refill
@@ -187,7 +187,7 @@ impl MessagesStore {
             self.read_ops_total.fetch_add(1, Ordering::Relaxed);
             f(&conn)
         } else {
-            self.with_control_conn(f)
+            self.with_control_conn(|conn| f(conn))
         }
     }
 
@@ -225,15 +225,15 @@ impl MessagesStore {
     }
     fn write_lock_and_run_base<T>(
         write_state: &WriteState,
-        f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+        f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
     ) -> rusqlite::Result<T> {
         let started = std::time::Instant::now();
-        let conn = Self::write_lock_priority(write_state);
+        let mut conn = Self::write_lock_priority(write_state);
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
         Self::reclaim_wal_recorded(write_state, &conn)?;
-        f(&conn).map_err(super::broker::map_commit_error)
+        f(&mut conn).map_err(super::broker::map_commit_error)
     }
 
     fn insert_message_direct(

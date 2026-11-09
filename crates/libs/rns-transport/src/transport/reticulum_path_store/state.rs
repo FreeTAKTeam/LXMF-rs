@@ -14,7 +14,14 @@ impl Default for PathTablePersistence {
 }
 
 impl AnnounceCacheState {
-    pub(super) fn retain_current_files(&mut self, current_hashes: &HashSet<Hash>) {
-        self.files.retain(|hash, _| current_hashes.contains(hash));
+    pub(super) fn retain_current_files(
+        &mut self,
+        current_hashes: impl ExactSizeIterator<Item = Hash>,
+    ) {
+        // Keep this ownership synchronous: the temporary membership set must
+        // be dropped before packet-cache or metadata I/O starts.
+        let mut retained = HashSet::with_capacity(current_hashes.len());
+        retained.extend(current_hashes);
+        self.files.retain(|hash, _| retained.contains(hash));
     }
 }

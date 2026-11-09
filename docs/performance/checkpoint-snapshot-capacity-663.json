@@ -1,0 +1,433 @@
+{
+  "schema": "lxmf-checkpoint-capacity-source-evidence-v1",
+  "base_commit": "435b0f1de03602d9d9e2984c7f86cce6a69bc3fa",
+  "scope": "Owned synthetic native PathTable/TunnelTable/AnnounceTable capture and serialization only. No daemon RSS/cgroup or sustained qualification claim. No retained-runtime telemetry is part of this record.",
+  "fixtures": {
+    "native_paths": 100000,
+    "packet_material": "Owned default packets in the actual cache/queue APIs; signed restore correctness is covered separately by the passing library tests.",
+    "dense": {
+      "eligible_active": 100000,
+      "eligible_tunnel_refs": 0
+    },
+    "sparse": {
+      "eligible_active": 10,
+      "eligible_tunnel_refs": 0
+    },
+    "mixed": {
+      "eligible_active": 20000,
+      "eligible_tunnel_refs": 60,
+      "retained_tunnels": 5,
+      "cases": "Missing mode/hash/cache, detached paths, duplicate destination hashes with distinct interface variants, and an empty tunnel."
+    }
+  },
+  "protocol": {
+    "comparison": "Three baseline/candidate/candidate/baseline blocks for each case; six fresh-process samples per algorithm/case,36 total. Legacy reference is compiled in the same final test binary.",
+    "cpu_affinity": [
+      2
+    ],
+    "allocator": "Safe cap statistics around System in test executable; requested layouts, not resident/native allocator bytes.",
+    "timing_scope": "capture() only; excludes fixture creation, serialization, oracle comparisons and digest work; synthetic stable interface map rather than runtime lock acquisition.",
+    "oracle_scope": "Exact metadata, encoded bytes, original iteration order and Arc identity compared old/new on the same immutable fixture after measurement. Random HashMap iteration order may differ across fresh processes.",
+    "profile": "Default release; no RUSTFLAGS, encoded Rust flags, release-profile overrides or native-lint settings in probe environment.",
+    "sparse_peak_caveat": "Candidate sparse global high-water equals the disclosed fixture-construction prior peak; it is not an isolated capture peak."
+  },
+  "summary": {
+    "dense": {
+      "legacy": {
+        "active_rows": 100000,
+        "capture_elapsed_ns": {
+          "median": 79118387.0,
+          "min": 74639610,
+          "max": 91424935,
+          "values": [
+            91424935,
+            85346553,
+            75278811,
+            74824772,
+            82957963,
+            74639610
+          ]
+        },
+        "capture_encode_total_requested_bytes": 71372198,
+        "capture_retained_requested_bytes": 29311552,
+        "capture_total_requested_bytes": 57622240,
+        "eligible_active_count": 100000,
+        "eligible_tunnel_reference_count": 0,
+        "encoded_retained_requested_bytes": 43061510,
+        "fixture_prior_peak_extra_requested_bytes": 0,
+        "global_peak_extra_requested_bytes": 43061510,
+        "interface_lookup_calls": 100000,
+        "metadata_capacity": 131072,
+        "metadata_capacity_bytes": 20971520,
+        "metadata_len": 100000,
+        "native_paths": 100000,
+        "old_new_exact_bytes_order_and_shared_refs_equal": true,
+        "packet_ref_capacity": 131072,
+        "packet_ref_len": 100000,
+        "packet_reference_capacity_bytes": 7340032,
+        "packet_refs": 100000,
+        "path_output_bytes": 13749957,
+        "reserved_fill_pointers_capacities_unchanged": false,
+        "tunnel_output_bytes": 1,
+        "tunnel_rows": 0
+      },
+      "candidate": {
+        "active_rows": 100000,
+        "capture_elapsed_ns": {
+          "median": 82589650.0,
+          "min": 80683069,
+          "max": 86297817,
+          "values": [
+            84858364,
+            80683069,
+            80745010,
+            81568665,
+            86297817,
+            83610635
+          ]
+        },
+        "capture_encode_total_requested_bytes": 36349958,
+        "capture_retained_requested_bytes": 22600000,
+        "capture_total_requested_bytes": 22600000,
+        "eligible_active_count": 100000,
+        "eligible_tunnel_reference_count": 0,
+        "encoded_retained_requested_bytes": 36349958,
+        "fixture_prior_peak_extra_requested_bytes": 0,
+        "global_peak_extra_requested_bytes": 36349958,
+        "interface_lookup_calls": 200000,
+        "metadata_capacity": 100000,
+        "metadata_capacity_bytes": 16000000,
+        "metadata_len": 100000,
+        "native_paths": 100000,
+        "old_new_exact_bytes_order_and_shared_refs_equal": true,
+        "packet_ref_capacity": 100000,
+        "packet_ref_len": 100000,
+        "packet_reference_capacity_bytes": 5600000,
+        "packet_refs": 100000,
+        "path_output_bytes": 13749957,
+        "reserved_fill_pointers_capacities_unchanged": true,
+        "tunnel_output_bytes": 1,
+        "tunnel_rows": 0
+      }
+    },
+    "sparse": {
+      "legacy": {
+        "active_rows": 10,
+        "capture_elapsed_ns": {
+          "median": 25853329.5,
+          "min": 22065381,
+          "max": 28898494,
+          "values": [
+            22139661,
+            26456453,
+            27383551,
+            22065381,
+            25250206,
+            28898494
+          ]
+        },
+        "capture_encode_total_requested_bytes": 42945342,
+        "capture_retained_requested_bytes": 20972516,
+        "capture_total_requested_bytes": 42943968,
+        "eligible_active_count": 10,
+        "eligible_tunnel_reference_count": 0,
+        "encoded_retained_requested_bytes": 20973890,
+        "fixture_prior_peak_extra_requested_bytes": 8026710,
+        "global_peak_extra_requested_bytes": 21971520,
+        "interface_lookup_calls": 100000,
+        "metadata_capacity": 131072,
+        "metadata_capacity_bytes": 20971520,
+        "metadata_len": 10,
+        "native_paths": 100000,
+        "old_new_exact_bytes_order_and_shared_refs_equal": true,
+        "packet_ref_capacity": 16,
+        "packet_ref_len": 10,
+        "packet_reference_capacity_bytes": 896,
+        "packet_refs": 10,
+        "path_output_bytes": 1373,
+        "reserved_fill_pointers_capacities_unchanged": false,
+        "tunnel_output_bytes": 1,
+        "tunnel_rows": 0
+      },
+      "candidate": {
+        "active_rows": 10,
+        "capture_elapsed_ns": {
+          "median": 5202414.5,
+          "min": 4826995,
+          "max": 5379041,
+          "values": [
+            5246404,
+            5379041,
+            5158425,
+            4826995,
+            5300414,
+            5144715
+          ]
+        },
+        "capture_encode_total_requested_bytes": 3634,
+        "capture_retained_requested_bytes": 2260,
+        "capture_total_requested_bytes": 2260,
+        "eligible_active_count": 10,
+        "eligible_tunnel_reference_count": 0,
+        "encoded_retained_requested_bytes": 3634,
+        "fixture_prior_peak_extra_requested_bytes": 8026710,
+        "global_peak_extra_requested_bytes": 8026710,
+        "interface_lookup_calls": 200000,
+        "metadata_capacity": 10,
+        "metadata_capacity_bytes": 1600,
+        "metadata_len": 10,
+        "native_paths": 100000,
+        "old_new_exact_bytes_order_and_shared_refs_equal": true,
+        "packet_ref_capacity": 10,
+        "packet_ref_len": 10,
+        "packet_reference_capacity_bytes": 560,
+        "packet_refs": 10,
+        "path_output_bytes": 1373,
+        "reserved_fill_pointers_capacities_unchanged": true,
+        "tunnel_output_bytes": 1,
+        "tunnel_rows": 0
+      }
+    },
+    "mixed": {
+      "legacy": {
+        "active_rows": 20000,
+        "capture_elapsed_ns": {
+          "median": 25321135.5,
+          "min": 21524352,
+          "max": 26506989,
+          "values": [
+            25552842,
+            26503572,
+            21524352,
+            26506989,
+            25059805,
+            25089429
+          ]
+        },
+        "capture_encode_total_requested_bytes": 17165740,
+        "capture_retained_requested_bytes": 7290830,
+        "capture_total_requested_bytes": 14418420,
+        "eligible_active_count": 20000,
+        "eligible_tunnel_reference_count": 60,
+        "encoded_retained_requested_bytes": 10038150,
+        "fixture_prior_peak_extra_requested_bytes": 5150,
+        "global_peak_extra_requested_bytes": 10038150,
+        "interface_lookup_calls": 100004,
+        "metadata_capacity": 32768,
+        "metadata_capacity_bytes": 5242880,
+        "metadata_len": 20000,
+        "native_paths": 100000,
+        "old_new_exact_bytes_order_and_shared_refs_equal": true,
+        "packet_ref_capacity": 32768,
+        "packet_ref_len": 20060,
+        "packet_reference_capacity_bytes": 1835008,
+        "packet_refs": 20060,
+        "path_output_bytes": 2739991,
+        "reserved_fill_pointers_capacities_unchanged": false,
+        "tunnel_output_bytes": 7329,
+        "tunnel_rows": 5
+      },
+      "candidate": {
+        "active_rows": 20000,
+        "capture_elapsed_ns": {
+          "median": 30621043.5,
+          "min": 28553751,
+          "max": 32809618,
+          "values": [
+            32809618,
+            29078669,
+            31719231,
+            31678631,
+            29563456,
+            28553751
+          ]
+        },
+        "capture_encode_total_requested_bytes": 7284188,
+        "capture_retained_requested_bytes": 4536302,
+        "capture_total_requested_bytes": 4536868,
+        "eligible_active_count": 20000,
+        "eligible_tunnel_reference_count": 60,
+        "encoded_retained_requested_bytes": 7283622,
+        "fixture_prior_peak_extra_requested_bytes": 5150,
+        "global_peak_extra_requested_bytes": 7283622,
+        "interface_lookup_calls": 200004,
+        "metadata_capacity": 20000,
+        "metadata_capacity_bytes": 3200000,
+        "metadata_len": 20000,
+        "native_paths": 100000,
+        "old_new_exact_bytes_order_and_shared_refs_equal": true,
+        "packet_ref_capacity": 20060,
+        "packet_ref_len": 20060,
+        "packet_reference_capacity_bytes": 1123360,
+        "packet_refs": 20060,
+        "path_output_bytes": 2739991,
+        "reserved_fill_pointers_capacities_unchanged": true,
+        "tunnel_output_bytes": 7329,
+        "tunnel_rows": 5
+      }
+    }
+  },
+  "parity": {
+    "all36_same_fixture_old_new_metadata_bytes_order_shared_refs_equal": true,
+    "all18_candidate_reserved_fill_pointers_capacities_unchanged": true,
+    "portable_capacity_contract": "No assertion that try_reserve_exact guarantees Vec.capacity()==len; no-fill growth and a tolerant local allocation regression budget are enforced."
+  },
+  "red": {
+    "test": "dense_checkpoint_capacity_tracks_eligible_rows_without_growth_slack",
+    "legacy_metadata_capacity_bytes": 20971520,
+    "legacy_packet_reference_capacity_bytes": 7340032,
+    "useful_layout_bytes": 21600000,
+    "local_slack_budget_bytes": 1048576,
+    "verdict": "Genuine owned-vector allocation regression RED, not a daemon memory acceptance gate."
+  },
+  "validation": {
+    "full_transport_library": {
+      "passed": 1095,
+      "ignored": 17
+    },
+    "final_focused_capacity": {
+      "passed": 6,
+      "ignored": 1
+    },
+    "strict_clippy": {
+      "command": "cargo clippy -p reticulum-rs-transport --release --lib --tests --all-features --no-deps -- -D warnings",
+      "passed": true,
+      "native_prerequisite": "Verified matching development/runtime packages from signed official Debian13/trixie repository in an owned prefix; PKG_CONFIG settings applied only to lint process. No source/dependency feature or production profile change."
+    },
+    "static_checks": [
+      {
+        "name": "fmt",
+        "argv": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0
+      },
+      {
+        "name": "modules",
+        "argv": [
+          "bash",
+          "tools/scripts/check-module-size.sh"
+        ],
+        "exit": 0
+      },
+      {
+        "name": "boundaries",
+        "argv": [
+          "bash",
+          "tools/scripts/check-boundaries.sh"
+        ],
+        "exit": 0
+      },
+      {
+        "name": "diff",
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit": 0
+      }
+    ]
+  },
+  "toolchain": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "source_sha256": {
+    "crates/libs/rns-transport/src/transport/announce_table.rs": "7f20bc056854836de9431af41ef325f47310994d0661acfc990dc906d51fbbcb",
+    "crates/libs/rns-transport/src/transport/path_table.rs": "a43bfa583afb94f282478627d536d770b18dd7458b7c3bc9d6f8c98901cf3902",
+    "crates/libs/rns-transport/src/transport/reticulum_path_store.rs": "fc7775649641a698b31ba861748f7d5b515fc56d4d496e25f43f9d1f7160773d",
+    "crates/libs/rns-transport/src/transport/snapshot_allocation_tests.rs": "b13dc781241e5b501a313bdc9ecf2d8dec5c0a73845ef713fc27d436c903441e",
+    "crates/libs/rns-transport/src/transport/tunnels.rs": "7bd83d1fb5c83619c22f8785c98cd307a4e90d4b51af632f22aed7bac4092faa",
+    "crates/libs/rns-transport/src/transport/reticulum_path_store/snapshot.rs": "8ddcc184afcb28b2f9d5c86cf2a721cbac6485672c8c0d8852996761c9df1674",
+    "crates/libs/rns-transport/src/transport/reticulum_path_store/snapshot/tests/mod.rs": "f70cdb4662dd9b651d5777355fc1a9ccbdea3d87fede598d77d7c6b89a4a8f51"
+  },
+  "final_probe": {
+    "sha256": "b6ee63a8bc1b46b0e3ddd542271e823bc92474f5012cb0874cfa9b0afa5e4345",
+    "bytes": 23502992,
+    "allocated_bytes": 23506944,
+    "mode": "0o555"
+  },
+  "artifact_sha256": {
+    "sparse-block2-2-candidate.log": "c24d30d365efc1ed12f2d3bd789eafd7718648a1f772db2288a3e673cd64c0f4",
+    "capacity-green-closure-setup-failure.json": "3fff0d057a3a73d8dc3e2608e9105015cbf3336fb592b5c5485594a1203df4fe",
+    "dense-block1-4-legacy.log": "4ae0c34990df3eff7f64affc76030040d94a7af261f8668827be0f08c3220c5e",
+    "boundaries.log": "e280aefc0284963995b157047ae44cae83764aae4db5915ea018a8b15c60890c",
+    "full-transport-library.log": "6bfbee3f85abd0fa50c16857401532ff14ae3d632d0fc497b2719eaf9a72b0c4",
+    "capacity-green-closure-setup-failure.log": "a674a258c058bde0170b1d462bd356e8be3c08dfc236c8bb4631e8603865dd1b",
+    "dense-block2-2-candidate.log": "0d594af7958859997947a6f506f32779a978098af50aa17b5bfb71664da239d3",
+    "sparse-block1-1-legacy.log": "8878f7b6c0dd9dd0258fdaa1ca3c80669dad6d6456f6c9f29d4f4e99dfdd8824",
+    "scoped-clippy-owned-native.json": "514c14bad812437591c233e08c89372b1abba782f03bdcf5b42b86b6016ec5cd",
+    "mixed-block2-2-candidate.log": "0932cac1b8b08bb9bf7005a6954bdb43d263d28856660434d28287e92b5ad9cb",
+    "dense-block2-4-legacy.log": "0e97c86f360d9a16da87e692b8ef73d8391a1f7fd53b2bc810164d00f494b373",
+    "mixed-block1-2-candidate.log": "7174ca878f9101b5d0c160b372d22e14fde5a86f7c42c788739e44c6248796b4",
+    "sparse-block2-1-legacy.log": "39cb995d0634ece9e6e514093c105b3dc7b30e866342c3d5d5c228ed21c03ce5",
+    "dense-block3-1-legacy.log": "99e5e677e61d48d0ce911127dbd07938d84bf6c687dd7c8a4f88001e046bba1c",
+    "sparse-block3-2-candidate.log": "34f84bfa5767addac555d7be4262d683d9783b8ff4c736a4793b76b62710ac78",
+    "capacity-red.json": "8194757b5df3754a2159ddd8f16a22265919b6fefd4b24670299382ea6226f6d",
+    "capacity-green.log": "5547da2f8959ae2fbd4c7970a99878d0b79f396b1a712adf471b3cc319553242",
+    "scoped-clippy.log": "81003900e3fed90d630c46dbdfe4e16ca033f04cd07cf21169fe3e80af59f1de",
+    "scoped-clippy-final.log": "f7fb8e92b569c7eac8b9f7ca61a5f9b746d8d1c314e15f423ffdb890e45d7dd6",
+    "scoped-clippy-verified-native.log": "f9d88f4dd4bf60c219df9f97c7141a62280b57a93ce99593ed6ec609b65a50d2",
+    "final-focused-capacity.json": "d93eaaa7585e6ac753669bbc352429eb73e76cbfba20381d7f2bf2a3970d2070",
+    "dense-block3-2-candidate.log": "a0d5c51a1fabddfb2565bb4c08cf1ca34725f385bc38930d7714b628b5286762",
+    "mixed-block2-3-candidate.log": "135a8e421975ece68dcb547f4277055d4e6c3c9c8575ff67bed7a104b7f57a04",
+    "module-check.log": "7ca1c09cac5a1c34f629e4dfc0d38213403ba37a609283db31e204a0f86bf1b5",
+    "mixed-block3-2-candidate.log": "77e593cdeef87d4443cd61211294378a77042f35f86d60d4fe661ff92ebaa157",
+    "capacity-red-import-setup-failure.log": "2f94358f5633e9a014f0f01775b725deec3ee039dd8e34d0e0d3aae0b44fedea",
+    "mixed-block2-4-legacy.log": "0987e6af186790a278ecb33e98bfdaef4a3c54416be1b5e39111db0b6e9f8b45",
+    "mixed-block1-3-candidate.log": "222e82d1cdd9b9492c0cd489f6856ac98afdfdf17a3dd32f39971b9c9faf00fe",
+    "modules.log": "7ca1c09cac5a1c34f629e4dfc0d38213403ba37a609283db31e204a0f86bf1b5",
+    "full-transport-library.json": "995c4fb40ec7bde958f688fbf151c262b4286b04185f11422fdc7671ed7a8ae1",
+    "scoped-clippy-owned-native.log": "de5cbb1f5d430109ca2264178b286dadb8d5c18cea3d2f5a4e9b133e740db485",
+    "scoped-clippy.json": "8d294c7fe84805287ebba835a11b651515e32529006e07876f9f7dc685395395",
+    "dense-block2-3-candidate.log": "afd5d0a91f771ec04085f915fcf5f8a5c16c2db807447f6bc74e8b61eaad6224",
+    "scoped-clippy-final.json": "2ad973a2ba9b847397e7f3a2951f7d9c733e65ef47120339158a9972c6beef0d",
+    "persistence-integration.json": "a019896d943719dae696036e0b211ef25e4fa4bae5fc515134d0a4cc2fa13a7c",
+    "dense-block1-1-legacy.log": "0937a3430708bcf7c70c88444e3bfd28be03a148e729ee104356cf6376f6f5b8",
+    "capacity-red-import-setup-failure.json": "51e42d36110c868378b65e940a3152d1ebc27a43dcd678319b8722cc244e4cc9",
+    "static-checks.json": "99edaf7a3e4c8161d94153db7ca516e3cbc015754c19e250c34e5786412268ff",
+    "lint-native-feature-fingerprint.json": "66182d93f54d578cc22fd96e7cd833ea47bebf956014a51fa738575a914af878",
+    "native-build-prerequisite-sudo-unavailable.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-build-prerequisite.log": "6b148446bfe39f767bb32a948ed9ddeecb08a1e1e8016faec261013f04ffe49b",
+    "diff.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mixed-block2-1-legacy.log": "88c9c15d547d634c5d9e7d0656340954b85eacc1a7107690758fecf7b7b6828e",
+    "sparse-block3-1-legacy.log": "ded834dccd742ef42e85e38107e7932ba7c065810d8ac88651b6a12f7e14e3a9",
+    "mixed-block3-4-legacy.log": "015b83ab136737cd39f422e3a2947fa5fe6e7bd762c23864271d46bfea82db08",
+    "dense-block1-2-candidate.log": "149e46c6201b271d75984204432a2fe55bb9542daf2fe148964997fc2b90d763",
+    "sparse-block1-2-candidate.log": "7f06a15ef9246ef2e5d02cf91d922fb6ae3fcb111f521bf57e587530cc19f9e6",
+    "sparse-block3-3-candidate.log": "1bbeab5ffedf954a3b6b9a8cdf6ecc5415ac555379f771d80f16f34e8fc881f9",
+    "legacy-red-source-binding.json": "49a57a63a9dbfdaaa4bc10ded2a49b5631bbd29da46fc1156664200ea7a532d5",
+    "capacity-green.json": "9741684c435cb0a9463b82cb53f0ee1abed3c9e4917bf861acf3c7ec938317b8",
+    "dense-block3-4-legacy.log": "4a849bf7e55eeda327796ec5cd6d9d4bed37eec937d9b2c2c82840ac62d362a3",
+    "sparse-block2-4-legacy.log": "fe67800c62b5f16c58b031fd89db0cdd9bfdb00fb9cc09aeb16552a12a8596d8",
+    "final-focused-capacity.log": "e913dfb020a8e43e9ebb74ee0673b4f6c304b26f44120897bf6ef7e7773e4fc6",
+    "mixed-block1-1-legacy.log": "1a9760d3a685d07121056ab5346e5c0c7dd7ad007344d9fd29ae3a4f94274225",
+    "dense-block3-3-candidate.log": "4f953588537104275142cf46a3710d1ab4eba5ba1e80e5ef363b234dd7bf1a93",
+    "fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dense-block2-1-legacy.log": "c551569666dabbfd348bbc200dea7dd314a51cb115867416a6b4e24bd570d0a8",
+    "sparse-block2-3-candidate.log": "557751867be9ec0475c04669e0191af79e7b0f32e07b7ab6d01b0e4f5d156529",
+    "mixed-block3-3-candidate.log": "a599e8d783167be980178195db239ecce69610ac60bcf1b07f0821cac915d297",
+    "controlled-probe-window.json": "7d3a6565ea65a9ff410275d2debd5930f34971b6d61b89f8484756f3a553694f",
+    "native-build-prerequisite.json": "008dc5797f0487c3c4abb774d082d331c3d0963fa4bece6624c083a00b160074",
+    "mixed-block1-4-legacy.log": "5553c3be7f34009230735da3cba6fdaa6da2a50624ab089d2780928b2aa06bf0",
+    "mixed-block3-1-legacy.log": "881f220b6261b07f0961c972fb9b97fbcfffe555c315440e894d3ec341e66e48",
+    "sparse-block3-4-legacy.log": "1e3ce061a8f19a413202afceeb2a304979f21e192460f6ac765f60fd13c2373c",
+    "sparse-block1-3-candidate.log": "00b3844bdc716114c6c5eca5caef37aaa90003764b4a4eefa9e741d65f8d1839",
+    "legacy-extraction-red.patch": "8beb1a5db45d2429e7e6d589b321a29b9d425cf18bb00b20dc4d19625c18f60e",
+    "dense-block1-3-candidate.log": "6f0c36f44798fb8269ebf5dd702fdb7e4193686df50a5bc1b9361e0ad52e4270",
+    "sparse-block1-4-legacy.log": "4f345365e40c56de6ca82f50ee074e43225e2bc4362ed9319aefba5970c122a4",
+    "persistence-integration.log": "cf46bd314947d712100768f8dc05ce087957a8557af953df5dcb80376d516b79",
+    "capacity-red.log": "7764851e0e089ee463be785a39c6a1bd6a9546988d813bd9ac962580cdbeebe3",
+    "frozen-final-probe.json": "7b279b867601dde3c53296525abb86c0d23a23832f701d660756f68678a77010",
+    "scoped-clippy-verified-native.json": "9a8087dae950c70da8a24af28582347a6be7586a7bd80ca11269a238c1da50d9"
+  },
+  "excluded_setup_attempts": [
+    "Initial test-helper import path failed to compile; not product RED.",
+    "First new closure fixture needed an explicit argument type; not product RED.",
+    "A nonexistent standalone path_and_tunnel_persistence target was selected; signed persistence cases actually passed as part of the full library suite.",
+    "Missing system DBus metadata and its transitive libsystemd metadata blocked early Clippy attempts; strict check passed after verified owned-prefix prerequisites.",
+    "Host configured snapshot endpoint was blocked; approved official mirror with normal signature/package verification supplied the lint-only prerequisite."
+  ]
+}

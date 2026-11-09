@@ -184,7 +184,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [stable, "1.88.0"]
+        toolchain: [stable, "1.89.0"]
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux BLE build dependencies

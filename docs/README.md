@@ -7,7 +7,9 @@ documents.
 
 The current release train is [v0.16.0](release-notes-v0.16.0.md), with Rust
 1.88 as its minimum. Guides describe the maintained source; versioned release
-notes and evidence describe their named immutable tags.
+notes and evidence describe their named immutable tags. Maintained source
+builds now require Rust 1.89 for the patched bundled SQLite dependency; see the
+[security migration note](migrations/sqlite-3-54-security.md).
 
 ## Start here
 
