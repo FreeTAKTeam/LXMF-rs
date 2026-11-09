@@ -161,7 +161,7 @@ fn publisher_and_application_state_rollback_together_on_event_failure() {
 fn application_owned_transaction_can_atomically_embed_generic_publication() {
     let dir = tempfile::tempdir().unwrap();
     let mut conn = Connection::open(dir.path().join("embedded.sqlite")).unwrap();
-    storage::configure_profile(&conn, Config::default().budget_bytes).unwrap();
+    storage::configure_profile(&mut conn, Config::default().budget_bytes).unwrap();
     conn.execute_batch("CREATE TABLE app(value TEXT)").unwrap();
     {
         let tx = conn.transaction().unwrap();

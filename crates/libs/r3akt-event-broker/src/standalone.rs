@@ -18,16 +18,16 @@ pub struct Broker {
 impl Broker {
     pub fn open(path: impl AsRef<Path>, config: Config) -> rusqlite::Result<Self> {
         config.validate()?;
-        let connection = Connection::open(path)?;
+        let mut connection = Connection::open(path)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        storage::configure_profile_with_limits(&connection, config.budget_bytes, config.limits)?;
-        storage::physical_guard::single_transaction(&connection, |conn| {
+        storage::configure_profile_with_limits(&mut connection, config.budget_bytes, config.limits)?;
+        storage::physical_guard::single_transaction(&mut connection, |conn| {
             let tx = conn.unchecked_transaction()?;
             schema::initialize(&tx, config)?;
             tx.commit().map_err(storage::physical_guard::map_commit_error)
         })?;
         // Reinstall the profile after schema creation so startup and ordinary commits share guards.
-        storage::configure_profile_with_limits(&connection, config.budget_bytes, config.limits)?;
+        storage::configure_profile_with_limits(&mut connection, config.budget_bytes, config.limits)?;
         Ok(Self { connection, config })
     }
 
@@ -35,7 +35,7 @@ impl Broker {
         &mut self,
         action: impl FnOnce(&mut Session<'_>) -> rusqlite::Result<T>,
     ) -> rusqlite::Result<T> {
-        storage::physical_guard::single_transaction(&self.connection, |conn| {
+        storage::physical_guard::single_transaction(&mut self.connection, |conn| {
             let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
             let result = action(&mut Session::new(&tx, self.config)?)?;
             tx.commit().map_err(storage::physical_guard::map_commit_error)?;

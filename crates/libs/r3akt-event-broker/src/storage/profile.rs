@@ -22,11 +22,11 @@ pub fn enabled(conn: &Connection) -> rusqlite::Result<bool> {
 }
 
 /// Configure the durability profile before beginning a migration transaction.
-pub fn configure_profile(conn: &Connection, budget: i64) -> rusqlite::Result<()> {
+pub fn configure_profile(conn: &mut Connection, budget: i64) -> rusqlite::Result<()> {
     configure_profile_with_limits(conn, budget, Limits::default())
 }
 pub fn configure_profile_with_limits(
-    conn: &Connection,
+    conn: &mut Connection,
     budget: i64,
     limits: Limits,
 ) -> rusqlite::Result<()> {

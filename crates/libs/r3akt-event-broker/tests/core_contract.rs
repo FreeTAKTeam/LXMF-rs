@@ -49,7 +49,7 @@ fn independent_consumers_scan_invisible_positions_and_replay_across_limit_change
     let mut conn = Connection::open(directory.path().join("journal.db")).expect("disk database");
     let budget = 32 * 1024 * 1024;
     let limits = Limits { max_batch_bytes: 8192, max_batch_events: 3 };
-    storage::configure_profile_with_limits(&conn, budget, limits).expect("durable profile");
+    storage::configure_profile_with_limits(&mut conn, budget, limits).expect("durable profile");
     let tx = conn.transaction().expect("one application transaction");
     assert!(storage::initialize_schema(&tx, budget).expect("generic schema"));
     resume(&tx, "first");
@@ -96,7 +96,7 @@ fn journal_mutations_rollback_with_application_state_and_bounds_preserve_positio
     let mut conn = Connection::open(directory.path().join("journal.db")).expect("disk database");
     let budget = 32 * 1024 * 1024;
     let limits = Limits { max_batch_bytes: 8192, max_batch_events: 2 };
-    storage::configure_profile_with_limits(&conn, budget, limits).expect("durable profile");
+    storage::configure_profile_with_limits(&mut conn, budget, limits).expect("durable profile");
     {
         let tx = conn.transaction().expect("schema transaction");
         storage::initialize_schema(&tx, budget).expect("generic schema");

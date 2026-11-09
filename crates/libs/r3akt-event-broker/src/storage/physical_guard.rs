@@ -32,7 +32,7 @@ fn fits(database: u64, wal: u64, transaction: u64, budget: u64, ordinary: bool) 
         })
         .is_some_and(|n| n <= budget)
 }
-pub fn install(conn: &Connection, budget: u64) -> rusqlite::Result<()> {
+pub fn install(conn: &mut Connection, budget: u64) -> rusqlite::Result<()> {
     let (database, transaction) = limits(conn)?;
     let path = conn
         .path()
@@ -61,7 +61,7 @@ pub fn install(conn: &Connection, budget: u64) -> rusqlite::Result<()> {
     }
     install_hook(conn, budget, true)
 }
-fn install_hook(conn: &Connection, budget: u64, multiple: bool) -> rusqlite::Result<()> {
+fn install_hook(conn: &mut Connection, budget: u64, multiple: bool) -> rusqlite::Result<()> {
     let (database, transaction) = limits(conn)?;
     let path = conn
         .path()
@@ -83,7 +83,7 @@ fn install_hook(conn: &Connection, budget: u64, multiple: bool) -> rusqlite::Res
     }))
 }
 pub fn single_transaction<T>(
-    conn: &Connection,
+    conn: &mut Connection,
     f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
 ) -> rusqlite::Result<T> {
     if !enabled(conn)? {
@@ -131,14 +131,14 @@ mod tests {
         let path = directory.path().join("spill.db");
         let mut setup = Connection::open(&path).unwrap();
         let budget = 32 * 1024 * 1024;
-        super::super::configure_profile(&setup, budget).unwrap();
+        super::super::configure_profile(&mut setup, budget).unwrap();
         let setup_tx = setup.transaction().unwrap();
         super::super::initialize_schema(&setup_tx, budget).unwrap();
         setup_tx.commit().unwrap();
-        let conn = Connection::open(&path).unwrap();
+        let mut conn = Connection::open(&path).unwrap();
         conn.pragma_update(None, "max_page_count", budget / 4 / 4096).unwrap();
         conn.execute_batch("PRAGMA synchronous=FULL;PRAGMA wal_autocheckpoint=0;PRAGMA cache_size=4;CREATE TABLE spill(value BLOB);INSERT INTO spill VALUES(zeroblob(2000000));PRAGMA wal_checkpoint(TRUNCATE);").unwrap();
-        install(&conn, budget as u64).unwrap();
+        install(&mut conn, budget as u64).unwrap();
         let reader = Connection::open(&path).unwrap();
         reader.execute_batch("BEGIN;SELECT * FROM spill;").unwrap();
         mutation(&conn, true).unwrap();
