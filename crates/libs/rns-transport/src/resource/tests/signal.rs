@@ -1,3 +1,5 @@
+use super::*;
+
 #[test]
 fn a_completed_inbound_resource_carries_the_links_last_signal() {
     let (mut sender_link, mut receiver_link) = resource_link_pair();

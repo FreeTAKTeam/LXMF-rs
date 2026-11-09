@@ -1,3 +1,5 @@
+use super::*;
+
 #[tokio::test]
 async fn a_packet_heard_with_a_signal_delivers_it_with_the_data() {
     let receiver_identity = PrivateIdentity::new_from_rand(OsRng);
@@ -67,5 +69,9 @@ fn a_link_keeps_the_last_signal_a_bearer_reported() {
     link.note_signal(Some(PacketSignal { rssi: Some(-90.0), snr: Some(4.0), q: None }));
     link.note_signal(None);
 
-    assert_eq!(link.last_signal().and_then(|signal| signal.rssi), Some(-90.0), "a packet with no reading leaves the last");
+    assert_eq!(
+        link.last_signal().and_then(|signal| signal.rssi),
+        Some(-90.0),
+        "a packet with no reading leaves the last"
+    );
 }

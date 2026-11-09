@@ -1,3 +1,5 @@
+use super::*;
+
 #[test]
 fn notification_pairs_signal_stats_with_the_packet_they_precede() {
     let config = LoraConfig::us915_default();
@@ -21,7 +23,8 @@ fn notification_pairs_signal_stats_with_the_packet_they_precede() {
         "the stats pair with the packet they precede; a packet with none ahead carries none"
     );
 
-    let trailing = session.accept_notification_events(&encode_data_frame(b"third")).expect("decode");
+    let trailing =
+        session.accept_notification_events(&encode_data_frame(b"third")).expect("decode");
     let signals = monitor.accept_notification(&trailing).expect("accept");
     assert_eq!(
         signals,
