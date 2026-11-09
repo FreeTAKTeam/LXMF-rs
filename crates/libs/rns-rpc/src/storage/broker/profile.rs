@@ -1,7 +1,7 @@
 use super::*;
 pub use r3akt_event_broker::storage::{enabled, physical_admission};
 /// Startup-only LXMF migration using the shared profile and the existing writer.
-pub fn enable(conn: &Connection, budget: i64) -> rusqlite::Result<()> {
+pub fn enable(conn: &mut Connection, budget: i64) -> rusqlite::Result<()> {
     r3akt_event_broker::storage::configure_profile(conn, budget)?;
     let budget = if enabled(conn)? {
         conn.query_row("SELECT budget FROM broker_meta", [], |r| r.get(0))?
@@ -42,7 +42,7 @@ pub fn enable(conn: &Connection, budget: i64) -> rusqlite::Result<()> {
     }
     tx.commit()
 }
-pub fn restore_profile(conn: &Connection) -> rusqlite::Result<()> {
+pub fn restore_profile(conn: &mut Connection) -> rusqlite::Result<()> {
     if enabled(conn)? {
         let budget: i64 = conn.query_row("SELECT budget FROM broker_meta", [], |r| r.get(0))?;
         enable(conn, budget)?;
