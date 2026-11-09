@@ -304,6 +304,10 @@ impl AnnounceTable {
             .or_else(|| self.cache.get(destination).map(|entry| (*entry.packet).clone()))
     }
 
+    pub(crate) fn has_cached_packet_for_destination(&self, destination: &AddressHash) -> bool {
+        self.map.contains_key(destination) || self.cache.packet(destination).is_some()
+    }
+
     /// Shared cached packet handle for persistence batches that outlive the
     /// table lock. Cloning the `Arc` avoids copying the packet payload.
     pub(crate) fn shared_cached_packet_for_destination(

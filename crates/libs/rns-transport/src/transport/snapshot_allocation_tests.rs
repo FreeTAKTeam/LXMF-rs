@@ -9,7 +9,8 @@ use std::time::Instant;
 // Safe instrumentation only in the library test binary, without an allocation
 // limit. The daemon already uses cap; no production allocator is changed.
 #[global_allocator]
-static ALLOCATOR: cap::Cap<std::alloc::System> = cap::Cap::new(std::alloc::System, usize::MAX);
+pub(super) static ALLOCATOR: cap::Cap<std::alloc::System> =
+    cap::Cap::new(std::alloc::System, usize::MAX);
 
 pub(super) fn path_entry(index: usize, blobs: usize) -> PythonPathEntry {
     let hash = Hash::new_from_slice(&index.to_be_bytes());

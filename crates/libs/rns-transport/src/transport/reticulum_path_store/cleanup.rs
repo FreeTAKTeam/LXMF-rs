@@ -1,6 +1,6 @@
 use super::*;
 use crate::transport::packet_disk_cache::ReticulumPacketDiskCache;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -54,31 +54,7 @@ impl Transport {
     }
 }
 
-pub(super) async fn clean_announce_cache_batch(
-    storage_path: &Path,
-    retained_hashes: &HashSet<Hash>,
-    scan: &mut Option<tokio::fs::ReadDir>,
-) -> io::Result<AnnounceCacheCleanupReport> {
-    let started = Instant::now();
-    let (examined, removed, bytes_removed, scan_complete) =
-        ReticulumPacketDiskCache::new(storage_path)
-            .clean_announces_batch_for_hashes(
-                retained_hashes,
-                scan,
-                ANNOUNCE_CACHE_CLEAN_BATCH,
-                ANNOUNCE_CACHE_CLEAN_GRACE,
-            )
-            .await?;
-    Ok(AnnounceCacheCleanupReport {
-        examined,
-        removed,
-        bytes_removed,
-        scan_complete,
-        duration_ns: started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
-    })
-}
-
-async fn clean_announce_cache_batch_for_fingerprints(
+pub(super) async fn clean_announce_cache_batch_for_fingerprints(
     storage_path: &Path,
     fingerprints: &HashMap<Hash, [u8; 32]>,
     scan: &mut Option<tokio::fs::ReadDir>,

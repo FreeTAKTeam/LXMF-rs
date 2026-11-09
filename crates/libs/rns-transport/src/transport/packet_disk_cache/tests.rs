@@ -77,3 +77,61 @@ async fn announce_cleanup_grace_protects_recent_unreferenced_files() {
         (0, 0, 0, true)
     );
 }
+
+#[tokio::test]
+async fn announce_cleanup_fingerprint_map_matches_hash_set_membership() {
+    let hashes = (1..=5).map(|value| Hash::new([value; HASH_SIZE])).collect::<Vec<_>>();
+    let retained = HashSet::from([hashes[0], hashes[1]]);
+    let mut fingerprints = HashMap::from([(hashes[0], [1; 32]), (hashes[1], [2; 32])]);
+    // A repeated packet on another interface replaces its fingerprint, not
+    // membership. Cleanup must consult only the final map's keys.
+    fingerprints.insert(hashes[1], [3; 32]);
+    let mut survivors = Vec::new();
+    for map in [false, true] {
+        let root = tempfile::tempdir().expect("cache root");
+        let cache = ReticulumPacketDiskCache::new(root.path());
+        let dir = root.path().join("cache/announces");
+        std::fs::create_dir_all(&dir).expect("cache directory");
+        for hash in &hashes {
+            let path = dir.join(hex::encode(hash.as_slice()));
+            std::fs::write(&path, b"cached").expect("cache entry");
+            age(&path);
+        }
+        let mut scan = None;
+        let mut totals = (0, 0, 0);
+        loop {
+            let batch = if map {
+                cache
+                    .clean_announces_batch_for_fingerprints(
+                        &fingerprints,
+                        &mut scan,
+                        2,
+                        Duration::ZERO,
+                    )
+                    .await
+            } else {
+                cache
+                    .clean_announces_batch_for_hashes(&retained, &mut scan, 2, Duration::ZERO)
+                    .await
+            }
+            .expect("bounded cleanup");
+            assert!(batch.0 <= 2);
+            totals.0 += batch.0;
+            totals.1 += batch.1;
+            totals.2 += batch.2;
+            if batch.3 {
+                break;
+            }
+        }
+        assert_eq!(totals, (5, 3, 18));
+        survivors.push(
+            hashes
+                .iter()
+                .filter(|hash| dir.join(hex::encode(hash.as_slice())).exists())
+                .copied()
+                .collect::<Vec<_>>(),
+        );
+    }
+    assert_eq!(survivors[0], survivors[1]);
+    assert_eq!(survivors[0], [hashes[0], hashes[1]]);
+}

@@ -1488,3 +1488,19 @@ valid encrypted packets between two established outgoing Links and verifies exac
 plaintext/event signals plus unchanged RSSI, SNR and quality on the other Link in
 both directions. Interface/crypto policy is unchanged; this does not establish
 physical RNode acceptance or promote a carrier parity row.
+## Issue 663 checkpoint capacity follow-up (2026-11-08)
+
+Path checkpoints reserve owned vectors from actual interface/cache-eligible active
+rows and every retained tunnel reference under the existing guards. The public
+stateful exporter, exact snapshot bytes/order, detached/mixed tunnel references,
+shared packets, publication, cleanup and shutdown remain unchanged. Controlled
+100k/sparse/mixed tests show lower requested allocation with an explicit extra-walk
+CPU trade-off; they do not promote a Python parity row or establish daemon resource
+acceptance. See [the source-level evidence](../performance/checkpoint-snapshot-capacity-663.md).
+
+The checkpoint reference-set follow-up also releases temporary membership scratch
+before asynchronous file processing and reuses successful fingerprint-map keys for
+cleanup. Construction allocation and cleanup/error gates remain unchanged. Its
+[synthetic lifetime evidence](../performance/checkpoint-reference-set-lifetime-663.md)
+is separate from the earlier capture-capacity result and cannot be added into a
+combined peak/RSS or resource-acceptance claim.

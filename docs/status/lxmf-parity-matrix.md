@@ -1321,3 +1321,26 @@ recover from typed writer deadlines; admission keeps operation-ID reconciliation
 Timeout metadata also supports existing category-based clients. Local parked-writer,
 recovery and real ZMQ control stress passed; long-duration custody/delivery and
 production resource acceptance remain open in the regression package.
+
+## Issue 663 retained-history read work (2026-11-08)
+
+The completed b57/b360 four-hour ingress passed correctness, restart and retained
+identity checks but recorded regular reclaim and growing logical-read work.
+Announce retention now uses a persisted conservative bound to skip under-window
+walks, validates mutation revisions before resuming bounded cursor work, and
+seeks from the shorter indexed end after an exact new-window count. Current
+newest-N, latest-peer and non-null stamp protection survive deletion/replacement,
+restart and concurrent handles. The unchanged outbound retry query gains a partial
+index excluding completed rows. This is local storage correctness/cost evidence,
+not a Python wire-parity promotion or hours-long resource acceptance. Count-page
+I/O, startup/index costs and residual daemon reads remain explicit in
+[the controlled report](../performance/retained-history-read-cost-663.md) and
+[the migration note](../migrations/announce-retention-bound-and-retry-index-663.md).
+
+The ordinary message-budget check also uses a persisted conservative length bound.
+Positive growth is charged before writes; deletion/uncertainty requires the original
+exact SUM before any pruning decision. Native synthetic controls preserve NULL,
+REPLACE/FAIL, rollback/reopen and individual-delete error semantics while bounding
+under-cap prune work across retained populations. These measurements do not
+attribute runtime reads or qualify production resources; see
+[the design and controlled evidence](../performance/message-budget-bound-663.md).

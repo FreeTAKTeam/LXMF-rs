@@ -3685,3 +3685,42 @@ valid encrypted packets between two established outgoing Links and verifies exac
 plaintext/event signals plus unchanged RSSI, SNR and quality on the other Link in
 both directions. Interface/crypto policy is unchanged; this does not establish
 physical RNode acceptance or promote a carrier parity row.
+## Issue 663 retained-history read work (2026-11-08)
+
+The completed b57/b360 four-hour ingress passed correctness, restart and retained
+identity checks but recorded regular reclaim and growing logical-read work.
+Announce retention now uses a persisted conservative bound to skip under-window
+walks, validates mutation revisions before resuming bounded cursor work, and
+seeks from the shorter indexed end after an exact new-window count. Current
+newest-N, latest-peer and non-null stamp protection survive deletion/replacement,
+restart and concurrent handles. The unchanged outbound retry query gains a partial
+index excluding completed rows. This is local storage correctness/cost evidence,
+not a Python wire-parity promotion or hours-long resource acceptance. Count-page
+I/O, startup/index costs and residual daemon reads remain explicit in
+[the controlled report](../performance/retained-history-read-cost-663.md) and
+[the migration note](../migrations/announce-retention-bound-and-retry-index-663.md).
+
+The ordinary message-budget check also uses a persisted conservative length bound.
+Positive growth is charged before writes; deletion/uncertainty requires the original
+exact SUM before any pruning decision. Native synthetic controls preserve NULL,
+REPLACE/FAIL, rollback/reopen and individual-delete error semantics while bounding
+under-cap prune work across retained populations. These measurements do not
+attribute runtime reads or qualify production resources; see
+[the design and controlled evidence](../performance/message-budget-bound-663.md).
+
+## Issue 663 checkpoint capacity follow-up (2026-11-08)
+
+Path checkpoints reserve owned vectors from actual interface/cache-eligible active
+rows and every retained tunnel reference under the existing guards. The public
+stateful exporter, exact snapshot bytes/order, detached/mixed tunnel references,
+shared packets, publication, cleanup and shutdown remain unchanged. Controlled
+100k/sparse/mixed tests show lower requested allocation with an explicit extra-walk
+CPU trade-off; they do not promote a Python parity row or establish daemon resource
+acceptance. See [the source-level evidence](../performance/checkpoint-snapshot-capacity-663.md).
+
+The checkpoint reference-set follow-up also releases temporary membership scratch
+before asynchronous file processing and reuses successful fingerprint-map keys for
+cleanup. Construction allocation and cleanup/error gates remain unchanged. Its
+[synthetic lifetime evidence](../performance/checkpoint-reference-set-lifetime-663.md)
+is separate from the earlier capture-capacity result and cannot be added into a
+combined peak/RSS or resource-acceptance claim.

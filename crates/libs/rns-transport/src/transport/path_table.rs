@@ -46,6 +46,29 @@ pub struct PathEntry {
 }
 
 impl PathEntry {
+    pub(super) fn to_python_entry(
+        &self,
+        destination: AddressHash,
+        now: Instant,
+        unix: f64,
+        mode: InterfaceMode,
+        interface_hash: Hash,
+    ) -> PythonPathEntry {
+        let age = now.checked_duration_since(self.timestamp).unwrap_or_default();
+        let timestamp_secs = unix - age.as_secs_f64();
+        PythonPathEntry {
+            destination,
+            timestamp_secs,
+            received_from: self.received_from,
+            hops: self.hops,
+            expires_secs: timestamp_secs + path_timeout_for_mode(mode).as_secs_f64(),
+            random_blobs: self.random_blobs.clone(),
+            iface: self.iface,
+            interface_hash,
+            packet_hash: self.packet_hash,
+        }
+    }
+
     /// Final-hop forwarding invariant: a path with at most one remaining hop
     /// must leave transport mode before transmission. Reference Reticulum's
     /// inbound forwarding branch strips `HEADER_2` when
@@ -374,6 +397,11 @@ impl PathTable {
         self.map.get(destination).map(|entry| entry.random_blobs.clone()).unwrap_or_default()
     }
 
+    /// Borrowed route order for persistence while the handler guard is held.
+    pub(super) fn entries(&self) -> impl Iterator<Item = (&AddressHash, &PathEntry)> {
+        self.map.iter()
+    }
+
     pub fn export_python_entries<F>(
         &self,
         now: Instant,
@@ -387,19 +415,7 @@ impl PathTable {
             .iter()
             .filter_map(|(destination, entry)| {
                 let (mode, interface_hash) = iface_info(&entry.iface)?;
-                let age = now.checked_duration_since(entry.timestamp).unwrap_or_default();
-                let timestamp_secs = now_unix_secs - age.as_secs_f64();
-                Some(PythonPathEntry {
-                    destination: *destination,
-                    timestamp_secs,
-                    received_from: entry.received_from,
-                    hops: entry.hops,
-                    expires_secs: timestamp_secs + path_timeout_for_mode(mode).as_secs_f64(),
-                    random_blobs: entry.random_blobs.clone(),
-                    iface: entry.iface,
-                    interface_hash,
-                    packet_hash: entry.packet_hash,
-                })
+                Some(entry.to_python_entry(*destination, now, now_unix_secs, mode, interface_hash))
             })
             .collect()
     }

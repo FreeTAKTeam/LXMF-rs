@@ -111,6 +111,11 @@ impl TunnelTable {
         self.tunnels.values().flat_map(|tunnel| tunnel.paths.keys().copied())
     }
 
+    #[cfg(test)]
+    pub(super) fn attach_for_snapshot_test(&mut self, id: Hash, iface: AddressHash, now: Instant) {
+        let _restored_paths = self.handle_tunnel(id, iface, now);
+    }
+
     fn handle_tunnel(
         &mut self,
         tunnel_id: Hash,
