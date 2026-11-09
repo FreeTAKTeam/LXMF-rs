@@ -20,6 +20,9 @@ include!("rnode_ble_parts/runtime_status_handle.rs");
 include!("rnode_ble_parts/runtime_tests.rs");
 
 #[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/signal_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
 include!("rnode_ble_parts/issue_614_eof_idle_tests.rs");
 
 #[cfg(all(test, feature = "rnode-ble"))]

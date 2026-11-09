@@ -5,6 +5,11 @@ use super::*;
 use crate::iface::InterfaceMode;
 
 impl TransportHandler {
+    /// The signal a bearer recorded for this packet, if it heard one.
+    pub(super) fn packet_signal_for(&self, packet: &Packet) -> Option<PacketSignal> {
+        self.packet_signal_cache.get(&packet.hash())
+    }
+
     async fn note_link_packet_sent(&self, packet: &Packet) {
         let link = if packet.header.packet_type == PacketType::LinkRequest {
             let requested_id = crate::destination::link::LinkId::from(packet);
