@@ -20,14 +20,22 @@ impl Broker {
         config.validate()?;
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        storage::configure_profile_with_limits(&mut connection, config.budget_bytes, config.limits)?;
+        storage::configure_profile_with_limits(
+            &mut connection,
+            config.budget_bytes,
+            config.limits,
+        )?;
         storage::physical_guard::single_transaction(&mut connection, |conn| {
             let tx = conn.unchecked_transaction()?;
             schema::initialize(&tx, config)?;
             tx.commit().map_err(storage::physical_guard::map_commit_error)
         })?;
         // Reinstall the profile after schema creation so startup and ordinary commits share guards.
-        storage::configure_profile_with_limits(&mut connection, config.budget_bytes, config.limits)?;
+        storage::configure_profile_with_limits(
+            &mut connection,
+            config.budget_bytes,
+            config.limits,
+        )?;
         Ok(Self { connection, config })
     }
 

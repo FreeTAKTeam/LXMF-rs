@@ -83,7 +83,7 @@ fn restart_replays_issued_batch_and_old_ack_without_position_reuse() {
     let conn = rusqlite::Connection::open(&path).unwrap();
     assert_eq!(
         conn.query_row("SELECT sqlite_version()", [], |r| r.get::<_, String>(0)).unwrap(),
-        "3.53.2"
+        "3.54.1"
     );
     assert_eq!(fetch(&store, 128, MAX_BATCH_BYTES), first);
     ack(&store, &first).unwrap();
