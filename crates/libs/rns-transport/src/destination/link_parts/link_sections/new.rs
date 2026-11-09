@@ -49,6 +49,7 @@ impl Link {
             channel_medium_rate_rounds: 0,
             event_tx,
             data_signal: None,
+            last_signal: None,
         }
     }
 

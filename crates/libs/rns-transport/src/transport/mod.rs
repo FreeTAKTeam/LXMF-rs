@@ -180,6 +180,8 @@ pub struct ReceivedData {
     pub request_id: Option<[u8; 16]>,
     pub hops: Option<u8>,
     pub interface: Option<Vec<u8>>,
+    /// The RNode's reading of this packet, or of the Link's last; `None` off a bearer that reports none.
+    pub signal: Option<PacketSignal>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,7 +263,7 @@ pub(crate) struct TransportHandler {
     blackholed_identities: HashMap<AddressHash, Option<f64>>,
 
     announce_limits: AnnounceLimits,
-    packet_signal_cache: VecDeque<(Hash, PacketSignal)>,
+    packet_signal_cache: PacketSignalCache,
     network_identity: Option<PrivateIdentity>,
     discovery_enabled: bool,
 
@@ -318,6 +320,11 @@ struct QueuedInbound {
 }
 
 impl TransportHandler {
+    /// The signal a bearer recorded for this packet, if it heard one.
+    pub(super) fn packet_signal_for(&self, packet: &Packet) -> Option<PacketSignal> {
+        self.packet_signal_cache.get(&packet.hash())
+    }
+
     fn local_hops_delta_for_packet(&self, packet: &Packet) -> Option<u8> {
         let local_hops_delta = self.config.local_hops_delta;
         if self.config.connected_to_shared_instance
@@ -354,6 +361,38 @@ pub struct PacketSignal {
     pub rssi: Option<f64>,
     pub snr: Option<f64>,
     pub q: Option<f64>,
+}
+
+/// Per-packet radio metadata by packet hash: the bearers that hear it record
+/// it, the transport reads it. Python Reticulum's 512-entry local-client cache.
+#[derive(Debug, Clone, Default)]
+pub struct PacketSignalCache(Arc<std::sync::Mutex<VecDeque<(Hash, PacketSignal)>>>);
+
+impl PacketSignalCache {
+    const CAPACITY: usize = 512;
+
+    pub fn record(&self, packet_hash: Hash, signal: PacketSignal) {
+        let mut entries = self.0.lock().expect("packet signal cache mutex poisoned");
+        entries.push_back((packet_hash, signal));
+        while entries.len() > Self::CAPACITY {
+            entries.pop_front();
+        }
+    }
+
+    #[must_use]
+    pub fn get(&self, packet_hash: &Hash) -> Option<PacketSignal> {
+        self.0
+            .lock()
+            .expect("packet signal cache mutex poisoned")
+            .iter()
+            .rev()
+            .find(|(hash, _)| hash == packet_hash)
+            .map(|(_, signal)| *signal)
+    }
+
+    pub fn clear(&self) {
+        self.0.lock().expect("packet signal cache mutex poisoned").clear();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

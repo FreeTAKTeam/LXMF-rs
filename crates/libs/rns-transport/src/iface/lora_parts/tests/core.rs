@@ -10,18 +10,19 @@ include!("../ifac_runtime_tests.rs");
 #[path = "supervisor.rs"]
 mod supervisor;
 
+#[path = "packet_signal.rs"]
+mod packet_signal;
+
 #[tokio::test]
 async fn command_response_task_cancels_stream_on_fatal_rnode_error() {
     let iface =
         Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
     let cancel = CancellationToken::new();
     let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
-    let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
     let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
         iface.clone(),
         command_rx,
-        data_rx,
         cancel.clone(),
         None,
     ));
@@ -48,12 +49,10 @@ async fn command_response_task_keeps_stream_on_malformed_rnode_response() {
         Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
     let cancel = CancellationToken::new();
     let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
-    let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
     let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
         iface.clone(),
         command_rx,
-        data_rx,
         cancel.clone(),
         None,
     ));
@@ -76,53 +75,15 @@ async fn command_response_task_keeps_stream_on_malformed_rnode_response() {
 }
 
 #[tokio::test]
-async fn command_response_task_clears_signal_stats_on_inbound_data_frame() {
-    let iface =
-        Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
-    {
-        let mut guard = iface.lock().expect("lora interface mutex poisoned");
-        guard.record_command_response(CMD_SF, &[9]).expect("spreading factor");
-        guard.record_command_response(CMD_STAT_RSSI, &[97]).expect("rssi");
-        guard.record_command_response(CMD_STAT_SNR, &[0xF8]).expect("negative snr");
-    }
-
-    let cancel = CancellationToken::new();
-    let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
-    let (data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
-
-    let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
-        iface.clone(),
-        command_rx,
-        data_rx,
-        cancel.clone(),
-        None,
-    ));
-
-    data_rx_tx.send(()).await.expect("send data frame event");
-
-    tokio::time::sleep(Duration::from_millis(20)).await;
-    drop(command_tx);
-    drop(data_rx_tx);
-    task.await.expect("command task");
-
-    let status = iface.lock().expect("lora interface mutex poisoned").radio_status();
-    assert_eq!(status.rssi_dbm, None);
-    assert_eq!(status.snr_db, None);
-    assert_eq!(status.signal_quality_percent, Some(57.9));
-}
-
-#[tokio::test]
 async fn command_response_task_cancels_stream_on_missing_startup_responses_after_deadline() {
     let iface =
         Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
     let cancel = CancellationToken::new();
     let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
-    let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
     let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
         iface.clone(),
         command_rx,
-        data_rx,
         cancel.clone(),
         Some(Duration::from_millis(10)),
     ));
@@ -148,12 +109,10 @@ async fn command_response_task_keeps_stream_when_startup_responses_validate_befo
         Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
     let cancel = CancellationToken::new();
     let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
-    let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
     let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
         iface.clone(),
         command_rx,
-        data_rx,
         cancel.clone(),
         Some(Duration::from_millis(200)),
     ));
@@ -201,12 +160,10 @@ async fn command_response_task_clears_stale_startup_state_for_new_stream() {
 
     let cancel = CancellationToken::new();
     let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
-    let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
     let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
         iface.clone(),
         command_rx,
-        data_rx,
         cancel.clone(),
         Some(Duration::from_millis(200)),
     ));
@@ -279,6 +236,7 @@ async fn lora_management_handle_writes_runtime_command_frame_over_duplex() {
             tx_channel,
             ifac_state: Arc::new(std::sync::RwLock::new(None)),
             ifac_violations: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            packet_signals: crate::transport::PacketSignalCache::default(),
         },
     ));
 
@@ -452,6 +410,7 @@ async fn a_peer_that_stops_answering_the_probe_ends_the_stream() {
             tx_channel: Arc::new(tokio::sync::Mutex::new(tx_recv)),
             ifac_state: Arc::new(std::sync::RwLock::new(None)),
             ifac_violations: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            packet_signals: crate::transport::PacketSignalCache::default(),
         },
     ));
 

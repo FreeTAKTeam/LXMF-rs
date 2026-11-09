@@ -149,7 +149,6 @@ pub struct KissRuntimeStatus {
     pub eof_count: u64,
     pub flow_control_timeouts: u64,
     pub ax25_drops: u64,
-    pub data_notifications_dropped: u64,
     pub command_notifications_dropped: u64,
     pub last_error: Option<String>,
 }
@@ -229,7 +228,6 @@ impl KissRuntimeStatus {
             eof_count: 0,
             flow_control_timeouts: 0,
             ax25_drops: 0,
-            data_notifications_dropped: 0,
             command_notifications_dropped: 0,
             last_error: None,
         }
@@ -278,10 +276,6 @@ impl KissRuntimeStatus {
         root.insert("eof_count".to_string(), self.eof_count.into());
         root.insert("flow_control_timeouts".to_string(), self.flow_control_timeouts.into());
         root.insert("ax25_drops".to_string(), self.ax25_drops.into());
-        root.insert(
-            "data_notifications_dropped".to_string(),
-            self.data_notifications_dropped.into(),
-        );
         root.insert(
             "command_notifications_dropped".to_string(),
             self.command_notifications_dropped.into(),
@@ -620,7 +614,7 @@ impl KissInterface {
                     payload_adapter: payload_adapter.clone(),
                     strip_command_port_nibble: true,
                     command_tx: None,
-                    data_rx_tx: None,
+                    rnode_signal: None,
                     management_frame_rx: None,
                     runtime_status: Some(runtime_status.clone()),
                 },

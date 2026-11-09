@@ -33,6 +33,7 @@ pub(super) async fn handle_resource_proof(
         // `Link::handle_packet`; keep the link watchdog's inbound activity
         // anchor in sync with the wire traffic.
         link.note_inbound(packet.context);
+        link.note_signal(handler.packet_signal_for(&packet));
         let mut responses = std::mem::take(&mut handler.resource_response_packets);
         handler.resource_manager.handle_packet_into(&packet, &mut link, &mut responses);
         publish_resource_events_for_link(&mut handler, *link.id(), Some(&mut link));
@@ -81,6 +82,7 @@ pub(super) async fn handle_link_resource_packet<'a>(
     // are still live link traffic and must prevent the active-link watchdog
     // from closing a long transfer.
     link.note_inbound(packet.context);
+    link.note_signal(handler.packet_signal_for(packet));
     log::debug!(
         "[resource-diag] wire_resource_packet node={} link={} ctx={:02x} has_ingress={}",
         handler.config.name,

@@ -267,6 +267,8 @@ pub struct ResourceComplete {
     pub request_id: Option<Vec<u8>>,
     pub is_request: bool,
     pub is_response: bool,
+    /// The link's last heard signal when the transfer completed.
+    pub signal: Option<crate::transport::PacketSignal>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

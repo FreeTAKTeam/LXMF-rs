@@ -43,6 +43,7 @@ async fn lora_production_stream_rejects_wrong_ifac_and_authenticates_ingress_egr
     });
     let receiver = manager.receiver();
     let ifac_violations = context.channel.ifac_violations.clone();
+    let packet_signals = context.channel.packet_signals.clone();
     let (rx_channel, tx_channel) = context.channel.split();
     let (stream, mut peer_stream) = tokio::io::duplex(4_096);
     let cancel = CancellationToken::new();
@@ -67,6 +68,7 @@ async fn lora_production_stream_rejects_wrong_ifac_and_authenticates_ingress_egr
             tx_channel: Arc::new(tokio::sync::Mutex::new(tx_channel)),
             ifac_state: ifac_state.clone(),
             ifac_violations: ifac_violations.clone(),
+            packet_signals,
         },
     ));
 

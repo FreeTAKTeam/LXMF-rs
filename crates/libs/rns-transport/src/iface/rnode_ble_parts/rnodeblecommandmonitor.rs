@@ -12,40 +12,51 @@ impl RnodeBleCommandMonitor {
         }
     }
 
+    /// Records the notification's commands and pairs each packet with the signal reported ahead of it, in order.
     pub fn accept_notification(
         &mut self,
         notification: &RnodeBleNotification,
-    ) -> Result<(), String> {
-        for (command, payload) in &notification.commands {
-            let result = self.lora.record_command_response(*command, payload);
-            let fatal = match &result {
-                Ok(_) => false,
-                Err(err) => self.lora.last_command_error() == Some(err.as_str()),
-            };
-            match (result, fatal) {
-                (Ok(_), _) => {
-                    if matches!(*command, CMD_STAT_RX | CMD_STAT_TX) && payload.len() == 4 {
-                        let value = u32::from_be_bytes([
-                            payload[0], payload[1], payload[2], payload[3],
-                        ]);
-                        let counter = if *command == CMD_STAT_RX { "stat_rx" } else { "stat_tx" };
-                        log::info!("RNode radio counter counter={counter} value={value}");
-                    }
+    ) -> Result<Vec<Option<PacketSignal>>, String> {
+        let mut commands = notification.commands.iter();
+        let mut signals = Vec::with_capacity(notification.packets.len());
+        for kind in notification.frame_order() {
+            match kind {
+                RnodeBleFrameKind::Command => {
+                    let Some((command, payload)) = commands.next() else { break };
+                    self.record_command(*command, payload)?;
                 }
-                (Err(err), true) => return Err(err),
-                (Err(err), false) => {
-                    log::warn!(
-                        "ignored malformed RNode BLE command response command=0x{:02x} err={}",
-                        command,
-                        err
-                    );
-                }
+                RnodeBleFrameKind::Packet => signals.push(self.lora.take_packet_signal()),
             }
         }
-        for _ in &notification.packets {
-            self.lora.record_inbound_data_frame();
+        Ok(signals)
+    }
+
+    fn record_command(&mut self, command: u8, payload: &[u8]) -> Result<(), String> {
+        let result = self.lora.record_command_response(command, payload);
+        let fatal = match &result {
+            Ok(_) => false,
+            Err(err) => self.lora.last_command_error() == Some(err.as_str()),
+        };
+        match (result, fatal) {
+            (Ok(_), _) => {
+                if matches!(command, CMD_STAT_RX | CMD_STAT_TX) && payload.len() == 4 {
+                    let value =
+                        u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+                    let counter = if command == CMD_STAT_RX { "stat_rx" } else { "stat_tx" };
+                    log::info!("RNode radio counter counter={counter} value={value}");
+                }
+                Ok(())
+            }
+            (Err(err), true) => Err(err),
+            (Err(err), false) => {
+                log::warn!(
+                    "ignored malformed RNode BLE command response command=0x{:02x} err={}",
+                    command,
+                    err
+                );
+                Ok(())
+            }
         }
-        Ok(())
     }
 
     #[must_use]
@@ -398,6 +409,7 @@ impl RnodeBleKissSession {
                         .is_some_and(|beacon| beacon.matches_payload(&payload));
                     if !is_id_beacon {
                         notification.packets.push(payload);
+                        notification.order.push(RnodeBleFrameKind::Packet);
                     }
                 }
                 KissFrame::Command(KissCommand::Ready) => {
@@ -415,6 +427,7 @@ impl RnodeBleKissSession {
                 }
                 KissFrame::Command(KissCommand::Unknown(command, payload)) => {
                     notification.commands.push((command, payload));
+                    notification.order.push(RnodeBleFrameKind::Command);
                 }
             }
         }

@@ -311,6 +311,7 @@ mod tests {
             request_id,
             is_request: false,
             is_response,
+            signal: None,
         }
     }
 

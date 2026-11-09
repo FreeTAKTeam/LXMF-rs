@@ -1353,7 +1353,6 @@ mod tests {
             status.eof_count = 7;
             status.flow_control_timeouts = 8;
             status.ax25_drops = 9;
-            status.data_notifications_dropped = 10;
             status.command_notifications_dropped = 11;
             status.last_error = Some("simulated kiss read failure".to_string());
         });
@@ -1404,7 +1403,6 @@ mod tests {
         assert_eq!(status["eof_count"].as_u64(), Some(7));
         assert_eq!(status["flow_control_timeouts"].as_u64(), Some(8));
         assert_eq!(status["ax25_drops"].as_u64(), Some(9));
-        assert_eq!(status["data_notifications_dropped"].as_u64(), Some(10));
         assert_eq!(status["command_notifications_dropped"].as_u64(), Some(11));
         assert_eq!(status["last_error"].as_str(), Some("simulated kiss read failure"));
     }

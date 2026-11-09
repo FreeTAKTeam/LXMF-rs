@@ -9,7 +9,14 @@ impl InterfaceManager {
             rx_send,
             ifaces: Vec::new(),
             worker_tasks: std::collections::HashMap::new(),
+            packet_signals: crate::transport::PacketSignalCache::default(),
         }
+    }
+
+    /// The cache every channel this manager hands out records packet signals into.
+    #[must_use]
+    pub fn packet_signals(&self) -> crate::transport::PacketSignalCache {
+        self.packet_signals.clone()
     }
 
     pub fn new_channel(&mut self, tx_cap: usize) -> InterfaceChannel {
@@ -113,6 +120,7 @@ impl InterfaceManager {
                 default_size_bytes: ifac_default_size_bytes,
             },
             online,
+            self.packet_signals.clone(),
         )
     }
 

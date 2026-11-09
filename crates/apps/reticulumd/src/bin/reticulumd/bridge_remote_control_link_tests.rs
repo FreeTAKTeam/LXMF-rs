@@ -150,6 +150,7 @@ async fn wait_for_link_request_response_ignores_terminal_resource_without_policy
             request_id: None,
             hops: None,
             interface: None,
+            signal: None,
         })
         .is_ok());
 
@@ -189,6 +190,7 @@ async fn wait_for_link_request_response_fails_on_link_close_signal() {
                 request_id: None,
                 hops: None,
                 interface: None,
+                signal: None,
             })
             .is_ok(),
         "send link-close signal"

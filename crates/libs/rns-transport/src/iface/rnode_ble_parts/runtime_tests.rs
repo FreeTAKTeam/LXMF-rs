@@ -107,7 +107,7 @@ fn rnode_queue_admission_sends_one_packet_per_ready_response() {
 }
 
 fn startup_notification_without_radio_state(config: LoraConfig) -> RnodeBleNotification {
-    RnodeBleNotification {
+    RnodeBleNotification { order: Vec::new(),
         commands: vec![
             (CMD_DETECT, vec![DETECT_RESP]),
             (CMD_FW_VERSION, vec![1, 83]),
@@ -253,7 +253,7 @@ fn payload_writes_wait_when_radio_state_arrives_before_startup_validation() {
     let config = LoraConfig::us915_default();
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
     monitor
-        .accept_notification(&RnodeBleNotification {
+        .accept_notification(&RnodeBleNotification { order: Vec::new(),
             commands: vec![(CMD_RADIO_STATE, vec![RADIO_STATE_ON])],
             packets: Vec::new(),
         })
@@ -345,7 +345,7 @@ async fn shutdown_can_prefix_display_disable_for_display_capable_rnode() {
     let mut monitor =
         RnodeBleCommandMonitor::new(LoraConfig::us915_default(), Duration::from_secs(1));
     monitor
-        .accept_notification(&RnodeBleNotification {
+        .accept_notification(&RnodeBleNotification { order: Vec::new(),
             commands: vec![
                 (CMD_DETECT, vec![DETECT_RESP]),
                 (CMD_FW_VERSION, vec![1, 52]),
@@ -452,4 +452,51 @@ fn stale_windows_paired_address_does_not_authorize_a_different_scanned_device() 
     assert!(!rnode_ble_paired_address_allows("11:22:33:44:55:66", Some(&paired_addresses)));
     assert!(rnode_ble_paired_address_allows("aa-bb-cc-dd-ee-ff", Some(&paired_addresses)));
     assert!(rnode_ble_paired_address_allows("11:22:33:44:55:66", None));
+}
+
+#[test]
+fn notification_pairs_signal_stats_with_the_packet_they_precede() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::from_secs(60));
+    let mut session = RnodeBleKissSession::new(RnodeBleKissConfig::default());
+    let mut bytes = encode_command_frame(CMD_SF, &[9]);
+    bytes.extend(encode_command_frame(crate::iface::lora::CMD_STAT_RSSI, &[97]));
+    bytes.extend(encode_command_frame(crate::iface::lora::CMD_STAT_SNR, &[0xF8]));
+    bytes.extend(encode_data_frame(b"first"));
+    bytes.extend(encode_data_frame(b"second"));
+    bytes.extend(encode_command_frame(crate::iface::lora::CMD_STAT_RSSI, &[107]));
+    let notification = session.accept_notification_events(&bytes).expect("decode");
+    assert_eq!(notification.packets.len(), 2);
+    assert_eq!(notification.order.len(), 6);
+
+    let signals = monitor.accept_notification(&notification).expect("accept");
+
+    assert_eq!(
+        signals,
+        vec![Some(PacketSignal { rssi: Some(-60.0), snr: Some(-2.0), q: Some(57.9) }), None],
+        "the stats pair with the packet they precede; a packet with none ahead carries none"
+    );
+
+    let trailing = session.accept_notification_events(&encode_data_frame(b"third")).expect("decode");
+    let signals = monitor.accept_notification(&trailing).expect("accept");
+    assert_eq!(
+        signals,
+        vec![Some(PacketSignal { rssi: Some(-50.0), snr: None, q: Some(57.9) })],
+        "stats at the end of one notification wait for the next frame; quality is the last known"
+    );
+}
+
+#[test]
+fn a_hand_built_notification_reads_as_commands_then_packets() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::from_secs(60));
+    let notification = RnodeBleNotification {
+        packets: vec![b"data".to_vec()],
+        commands: vec![(CMD_SF, vec![9]), (crate::iface::lora::CMD_STAT_RSSI, vec![97])],
+        order: Vec::new(),
+    };
+
+    let signals = monitor.accept_notification(&notification).expect("accept");
+
+    assert_eq!(signals, vec![Some(PacketSignal { rssi: Some(-60.0), snr: None, q: None })]);
 }

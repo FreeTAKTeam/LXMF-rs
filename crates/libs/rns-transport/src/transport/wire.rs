@@ -47,12 +47,14 @@ pub(super) async fn handle_proof(
     // Responder-side links live in `in_links`, but they can still originate
     // proved Link packets (Channel messages in particular). A Link proof is
     // addressed to exactly one link ID, so avoid locking unrelated links.
-    let inbound_link = {
+    let (inbound_link, signal) = {
         let handler = handler.lock().await;
-        handler.in_links.get(&packet.destination).cloned()
+        (handler.in_links.get(&packet.destination).cloned(), handler.packet_signal_for(&packet))
     };
     if let Some(link) = inbound_link {
-        link.lock().await.handle_packet(&packet, iface);
+        let mut link = link.lock().await;
+        link.note_signal(signal);
+        link.handle_packet(&packet, iface);
     }
 
     let mut handler = handler.lock().await;
@@ -138,6 +140,7 @@ pub(super) async fn handle_data<'a>(
     }
     handler.packet_cache.lock().await.note_source(packet, iface);
     let mut data_handled = false;
+    let signal = handler.packet_signal_for(packet);
 
     if packet.header.destination_type == DestinationType::Link {
         if resource_wire::is_link_resource_packet(packet)
@@ -155,6 +158,7 @@ pub(super) async fn handle_data<'a>(
         let mut link_packets = Vec::new();
         if let Some(link) = handler.in_links.get(&packet.destination).cloned() {
             let mut link = link.lock().await;
+            link.note_signal(signal);
             let result = link.handle_packet(packet, iface);
             if let LinkHandleResult::KeepAlive = result {
                 link_packets.push(link.keep_alive_packet(KEEP_ALIVE_RESPONSE));
@@ -166,6 +170,7 @@ pub(super) async fn handle_data<'a>(
         let mut proof_packets = Vec::new();
         for link in handler.out_links.values() {
             let mut link = link.lock().await;
+            link.note_signal(signal);
             let result = link.handle_packet(packet, iface);
             if let LinkHandleResult::Proof(proof_packet) = result {
                 proof_packets.push(proof_packet);
@@ -255,6 +260,7 @@ pub(super) async fn handle_data<'a>(
                 },
                 hops: Some(packet.header.hops),
                 interface: packet.transport.map(|value| value.as_slice().to_vec()),
+                signal,
             };
             let proof = (deferred && packet.context == PacketContext::None)
                 .then(|| DestinationProof::new(packet, iface));

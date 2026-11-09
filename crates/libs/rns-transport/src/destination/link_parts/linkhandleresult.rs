@@ -53,6 +53,8 @@ pub struct LinkEventData {
     /// Present only for `LinkEvent::Closed` and matches the pinned Python
     /// `Link.teardown_reason` value.
     pub close_reason: Option<LinkCloseReason>,
+    /// The link's last heard signal when the event was posted; see `Link::note_signal`.
+    pub signal: Option<PacketSignal>,
 }
 
 pub struct Link {
@@ -101,4 +103,5 @@ pub struct Link {
     channel_medium_rate_rounds: u8,
     event_tx: tokio::sync::broadcast::Sender<LinkEventData>,
     data_signal: Option<(u8, tokio::sync::watch::Sender<bool>)>,
+    last_signal: Option<PacketSignal>,
 }
