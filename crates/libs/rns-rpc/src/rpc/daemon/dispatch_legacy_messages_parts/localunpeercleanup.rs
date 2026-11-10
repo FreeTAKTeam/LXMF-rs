@@ -378,6 +378,7 @@ fn validate_peer_sync_wanted_ids_in_offer(
 }
 
 fn validate_peer_sync_full_offer_payloads(
+    store: &MessagesStore,
     pending_propagation: &[PropagationEntryRecord],
     transfer_limit_bytes: Option<usize>,
     sync_limit_bytes: Option<usize>,
@@ -395,12 +396,7 @@ fn validate_peer_sync_full_offer_payloads(
             continue;
         }
         cumulative_size = next_size;
-        hex::decode(entry.payload_hex.as_str()).map_err(|err| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("invalid propagation payload hex: {err}"),
-            )
-        })?;
+        decode_peer_sync_transfer(store, entry)?;
     }
     Ok(())
 }
@@ -413,10 +409,23 @@ fn peer_sync_resource_data_size(payloads: &[Vec<u8>]) -> Result<u64, std::io::Er
     Ok(packed.len() as u64)
 }
 
+/// Peer sync selects on metadata-only entries; the payload is read here, once
+/// its entry fits the offer, instead of loading the peer's whole queue (#663).
 fn decode_peer_sync_transfer(
+    store: &MessagesStore,
     entry: &PropagationEntryRecord,
 ) -> Result<(JsonValue, Vec<u8>), std::io::Error> {
-    let payload_bytes = hex::decode(entry.payload_hex.as_str()).map_err(|err| {
+    let transient_id = entry.transient_id.as_str();
+    let payload_hex = store
+        .propagation_payload_hex(transient_id)
+        .map_err(std::io::Error::other)?
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("propagation entry {transient_id} left the store during peer sync"),
+            )
+        })?;
+    let payload_bytes = hex::decode(payload_hex.as_str()).map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!("invalid propagation payload hex: {err}"),
@@ -426,7 +435,7 @@ fn decode_peer_sync_transfer(
         json!({
             "transient_id": entry.transient_id,
             "destination": entry.destination,
-            "payload_hex": entry.payload_hex,
+            "payload_hex": payload_hex,
             "received_at": entry.received_at,
             "size_bytes": entry.size_bytes,
             "stamp_value": entry.stamp_value,

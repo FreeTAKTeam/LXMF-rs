@@ -1,3 +1,27 @@
+// No ORDER BY: SQLite's sorter would carry every `payload_hex` and spill the
+// peer's whole queue to an `etilqs_` temp file on each peer sync (#663). The
+// rows are materialized anyway, so the caller-visible order is applied in Rust.
+// `?2` false leaves `payload_hex` empty without reading the payload column.
+const PEER_UNHANDLED_ENTRIES_SQL: &str =
+    "SELECT e.transient_id, e.destination, CASE WHEN ?2 THEN e.payload_hex ELSE '' END,
+            e.received_at, e.size_bytes, e.stamp_value
+     FROM propagation_entries e
+     INNER JOIN (
+        SELECT transient_id,
+               CASE
+                   WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                   WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                   WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                   WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                   ELSE 'unhandled'
+               END AS state
+        FROM propagation_peer_entries
+        WHERE LOWER(peer) = LOWER(?1)
+        GROUP BY transient_id
+     ) p
+        ON p.transient_id = e.transient_id
+     WHERE p.state = 'unhandled'";
+
 impl MessagesStore {
     pub fn remove_stale_peer_unhandled_propagation_ids(
         &self,
@@ -75,29 +99,44 @@ impl MessagesStore {
         &self,
         peer: &str,
     ) -> rusqlite::Result<Vec<PropagationEntryRecord>> {
+        self.peer_unhandled_entries(peer, true)
+    }
+
+    /// Same rows and order with an empty `payload_hex`, so peer sync can select
+    /// on size and age before reading any payload (#663).
+    pub fn list_peer_unhandled_propagation_metadata(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<Vec<PropagationEntryRecord>> {
+        self.peer_unhandled_entries(peer, false)
+    }
+
+    /// Exact-ID payload lookup for an entry returned by the metadata listing.
+    pub fn propagation_payload_hex(&self, transient_id: &str) -> rusqlite::Result<Option<String>> {
         self.with_read_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT e.transient_id, e.destination, e.payload_hex, e.received_at, e.size_bytes, e.stamp_value
-                 FROM propagation_entries e
-                 INNER JOIN (
-                    SELECT transient_id,
-                           CASE
-                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
-                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
-                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
-                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
-                               ELSE 'unhandled'
-                           END AS state
-                    FROM propagation_peer_entries
-                    WHERE LOWER(peer) = LOWER(?1)
-                    GROUP BY transient_id
-                 ) p
-                    ON p.transient_id = e.transient_id
-                 WHERE p.state = 'unhandled'
-                 ORDER BY e.received_at ASC, e.transient_id ASC",
-            )?;
-            let rows = stmt.query_map(params![peer], propagation_entry_from_row)?;
-            rows.collect()
+            conn.query_row(
+                "SELECT payload_hex FROM propagation_entries WHERE transient_id = ?1",
+                params![transient_id],
+                |row| row.get(0),
+            )
+            .optional()
+        })
+    }
+
+    fn peer_unhandled_entries(
+        &self,
+        peer: &str,
+        with_payload: bool,
+    ) -> rusqlite::Result<Vec<PropagationEntryRecord>> {
+        self.with_read_conn(|conn| {
+            let mut stmt = conn.prepare(PEER_UNHANDLED_ENTRIES_SQL)?;
+            let rows = stmt.query_map(params![peer, with_payload], propagation_entry_from_row)?;
+            let mut entries = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+            entries.sort_by(|left, right| {
+                (left.received_at, &left.transient_id)
+                    .cmp(&(right.received_at, &right.transient_id))
+            });
+            Ok(entries)
         })
     }
 
