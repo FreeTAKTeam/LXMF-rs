@@ -108,7 +108,7 @@ impl RpcDaemon {
             .remove_stale_peer_completed_propagation_ids(peer_key)
             .map_err(std::io::Error::other)?;
         let mut pending_propagation =
-            self.store.list_peer_unhandled_propagation(peer_key).map_err(std::io::Error::other)?;
+            self.store.list_peer_unhandled_propagation_metadata(peer_key).map_err(std::io::Error::other)?;
         let mut propagation_transfer_limited = 0usize;
         let mut propagation_transfer_limited_bytes = 0u64;
         let mut propagation_transfer_limited_ids = Vec::new();
@@ -233,7 +233,7 @@ impl RpcDaemon {
         let mut selected_offer_entries = std::collections::HashMap::new();
         if selected_response_ids.is_none() {
             validate_peer_sync_full_offer_payloads(
-                pending_propagation.as_slice(), transfer_limit_bytes, sync_limit_bytes,
+                &self.store, pending_propagation.as_slice(), transfer_limit_bytes, sync_limit_bytes,
                 cumulative_size,
             )?;
         }
@@ -267,7 +267,7 @@ impl RpcDaemon {
                 if selected_response_ids.is_some() {
                     selected_offer_entries.insert(transient_id.clone(), entry);
                 } else {
-                    let (propagation_message, payload_bytes) = decode_peer_sync_transfer(&entry)?;
+                    let (propagation_message, payload_bytes) = decode_peer_sync_transfer(&self.store, &entry)?;
                     propagation_transfer_marks.push((
                         transient_id.clone(),
                         propagation_message,
@@ -288,7 +288,7 @@ impl RpcDaemon {
                 let Some(entry) = selected_offer_entries.get(wanted_id) else {
                     continue;
                 };
-                let (propagation_message, payload_bytes) = decode_peer_sync_transfer(entry)?;
+                let (propagation_message, payload_bytes) = decode_peer_sync_transfer(&self.store, entry)?;
                 selected_transfers.push((
                     wanted_id.clone(),
                     entry.size_bytes,
@@ -342,7 +342,7 @@ impl RpcDaemon {
             loop {
                 let mut retry_pending = self
                     .store
-                    .list_peer_unhandled_propagation(peer_key)
+                    .list_peer_unhandled_propagation_metadata(peer_key)
                     .map_err(std::io::Error::other)?;
                 if retry_pending.is_empty() {
                     break;
@@ -395,13 +395,8 @@ impl RpcDaemon {
                     }
                     batch_cumulative_size = next_size;
                     let transient_id = entry.transient_id.clone();
-                    let payload_bytes = hex::decode(entry.payload_hex.as_str()).map_err(|err| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("invalid propagation payload hex: {err}"),
-                        )
-                    })?;
-                    let propagation_message = json!({ "transient_id": entry.transient_id, "destination": entry.destination, "payload_hex": entry.payload_hex, "received_at": entry.received_at, "size_bytes": entry.size_bytes, "stamp_value": entry.stamp_value, });
+                    let (propagation_message, payload_bytes) =
+                        decode_peer_sync_transfer(&self.store, &entry)?;
                     self.store
                         .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
                         .map_err(std::io::Error::other)?;

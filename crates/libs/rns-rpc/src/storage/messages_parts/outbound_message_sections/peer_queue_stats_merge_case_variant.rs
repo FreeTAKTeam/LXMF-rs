@@ -438,3 +438,57 @@
             }
         );
     }
+
+    #[test]
+    fn peer_unhandled_entries_keep_their_order_without_a_payload_sort() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        // (id byte, received_at): insertion order differs from the listed order,
+        // and two entries tie on `received_at`.
+        let entries: Vec<_> = [("cc", 200), ("bb", 100), ("aa", 200), ("dd", 50)]
+            .into_iter()
+            .map(|(id, received_at)| PropagationEntryRecord {
+                transient_id: id.repeat(32),
+                destination: "33".repeat(16),
+                payload_hex: id.repeat(8),
+                received_at,
+                size_bytes: 8,
+                stamp_value: None,
+            })
+            .collect();
+        for entry in &entries {
+            store.upsert_propagation_entry(entry).expect("entry");
+            store
+                .mark_peer_unhandled_propagation("peer-order", entry.transient_id.as_str())
+                .expect("mark unhandled");
+        }
+
+        let listed: Vec<_> = store
+            .list_peer_unhandled_propagation("peer-order")
+            .expect("unhandled entries")
+            .into_iter()
+            .map(|entry| entry.transient_id)
+            .collect();
+        assert_eq!(listed, ["dd", "bb", "aa", "cc"].map(|id| id.repeat(32)));
+
+        // The metadata listing differs only by leaving every payload unread.
+        let metadata =
+            store.list_peer_unhandled_propagation_metadata("peer-order").expect("metadata");
+        let metadata_ids: Vec<_> = metadata.iter().map(|entry| entry.transient_id.clone()).collect();
+        assert_eq!(metadata_ids, listed);
+        assert!(metadata.iter().all(|entry| entry.payload_hex.is_empty() && entry.size_bytes == 8));
+        assert_eq!(
+            store.propagation_payload_hex(listed[0].as_str()).expect("payload"),
+            Some("dd".repeat(8))
+        );
+        assert_eq!(store.propagation_payload_hex("missing").expect("missing payload"), None);
+
+        let plan = store
+            .with_read_conn(|conn| {
+                conn.prepare(&format!("EXPLAIN QUERY PLAN {PEER_UNHANDLED_ENTRIES_SQL}"))?
+                    .query_map(params!["peer-order", false], |row| row.get::<_, String>(3))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .expect("explain unhandled entries")
+            .join(" ");
+        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+    }

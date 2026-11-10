@@ -1154,3 +1154,39 @@ No production change, cache eviction, synthetic soak or #709 work was performed;
 Final local validation: RPC library suite **889 passed, 9 pre-existing ignored**
 (50.05 seconds); scoped RPC/propagation all-target/all-feature Clippy passed.
 Workspace formatting, dependency boundaries, module-size and diff checks passed.
+
+
+## Peer-sync payload sort removal, 2026-11-09
+
+A query-plan sweep of every SQL literal in the non-test `rns-rpc`,
+`lxmf-propagation` and `reticulumd` storage code against the current schema
+found one remaining full `USE TEMP B-TREE FOR ORDER BY` on a recurring daemon
+path: `MessagesStore::list_peer_unhandled_propagation`. Every `peer_sync`,
+including the one each 300-second propagation maintenance pass issues for its
+selected peer, ordered the peer's whole unhandled queue by
+`(received_at, transient_id)` in SQL. SQLite's sorter carries the selected
+columns, so each `payload_hex` went through it and the sort spilled to an
+`etilqs_` temporary file once it passed the ~2 MiB default sorter budget.
+
+The statement now has no `ORDER BY`; the already-materialized rows are ordered
+in Rust with the same key, so callers see the same order. A regression asserts
+the order (including a `received_at` tie) and the absence of a temporary
+B-tree in the production statement's plan.
+
+Peer sync also no longer loads the peer's whole queue of payloads. It lists
+metadata-only entries (`list_peer_unhandled_propagation_metadata`: same rows and
+order, empty `payload_hex`), applies stamp, transfer-limit and sync-limit
+selection on size and age as before, and reads each payload by exact ID only
+when its entry fits the offer. The pre-mark validation of a full offer reads
+and drops one payload at a time, so those entries are read twice. An entry that
+leaves the store between listing and payload read now fails that sync with
+`NotFound` instead of being sent from the earlier snapshot. With no sync limit
+every transferable payload is still loaded, because the response carries them.
+
+Limits: the sweep reads plans on an empty schema with the host SQLite and
+skips broker and owned-store tables that the daemon store does not create. The
+remaining flags are bounded `LAST TERM OF ORDER BY` tie sorts, ID-only sorts,
+and two store APIs with no daemon caller. No temporary or heap
+bytes were measured, and no soak or production run was performed; this does
+not establish that this statement produced the production `etilqs_` writes.
+#663 remains open.
