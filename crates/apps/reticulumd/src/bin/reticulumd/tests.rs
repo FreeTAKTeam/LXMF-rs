@@ -26,6 +26,10 @@ include!("tests/announce_cache_maintenance.rs");
 
 include!("tests_parts/durable_broker_bootstrap.rs");
 
+#[cfg(feature = "zmq-pipeline-rpc")]
+#[path = "tests/durable_broker_session_lifecycle.rs"]
+mod durable_broker_session_lifecycle;
+
 include!("tests_parts/bootstrap_strict_mode_panics_on_lora.rs");
 
 include!("tests_parts/propagation_node_toml_config.rs");
