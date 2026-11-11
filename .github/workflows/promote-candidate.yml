@@ -1,0 +1,69 @@
+name: Promote verified release candidate
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful canonical candidate build run
+        required: true
+        type: string
+      tag:
+        description: Prerelease tag
+        required: true
+        type: string
+      source_commit:
+        description: Verified product commit
+        required: true
+        type: string
+      checksums_sha256:
+        description: SHA256 of the locally verified SHA256SUMS.txt
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: promote-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ inputs.run_id }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      CHECKSUMS_SHA256: ${{ inputs.checksums_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate candidate source and build
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re, subprocess, json
+          from pathlib import Path
+          for key, pattern in [('RUN_ID', r'[0-9]+'), ('SOURCE_COMMIT', r'[0-9a-f]{40}'), ('CHECKSUMS_SHA256', r'[0-9a-f]{64}')]:
+              if not re.fullmatch(pattern, os.environ[key]):
+                  raise SystemExit('Invalid ' + key)
+          import sys
+          sys.path.insert(0, 'tools/scripts')
+          from release_config import classify_tag
+          if classify_tag(os.environ['RELEASE_TAG'])['prerelease'] != 'true':
+              raise SystemExit('Promotion requires a prerelease')
+          run = json.loads(subprocess.check_output(['gh', 'api', 'repos/' + os.environ['GH_REPO'] + '/actions/runs/' + os.environ['RUN_ID']]))
+          if run['conclusion'] != 'success' or run['path'] != '.github/workflows/release.yml' or run['event'] != 'workflow_dispatch':
+              raise SystemExit('Candidate must be a successful canonical manual build')
+          if run['head_sha'] != os.environ['SOURCE_COMMIT']:
+              raise SystemExit('Candidate build head must match verified source')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', os.environ['SOURCE_COMMIT'], 'origin/main'], check=True)
+          version = subprocess.check_output(['git', 'show', os.environ['SOURCE_COMMIT'] + ':VERSION'], text=True).strip()
+          if version != os.environ['RELEASE_TAG'].removeprefix('v'):
+              raise SystemExit('Version mismatch')
+          PY
+          gh run download "$RUN_ID" -n "release-assets-${RELEASE_TAG#v}" -D candidate
+      - name: Verify approved bytes and publish them unchanged
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/promote_candidate.py

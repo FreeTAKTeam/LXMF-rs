@@ -102,6 +102,7 @@ def main():
     prepare.add_argument("--tag", required=True)
     prepare.add_argument("--publish", choices=("true", "false"), required=True)
     prepare.add_argument("--output")
+    prepare.add_argument("--source-commit", default="")
     classify = commands.add_parser("classify")
     classify.add_argument("--tag", required=True)
     classify.add_argument("--version-file", type=Path, required=True)
@@ -112,9 +113,17 @@ def main():
     try:
         if args.command == "prepare":
             classify_tag(args.tag)  # Reject malformed or shell-active refs before invoking Git.
-            source = git("rev-parse", "--verify", f"refs/tags/{args.tag}^{{commit}}")
+            if args.source_commit:
+                if args.publish != "false" or not re.fullmatch(r"[0-9a-f]{40}", args.source_commit):
+                    raise ValueError("candidate source requires a full commit SHA and publish=false")
+                source = git("rev-parse", "--verify", f"{args.source_commit}^{{commit}}")
+                if source != args.source_commit:
+                    raise ValueError("candidate source must identify a commit object directly")
+                subprocess.run(["git", "merge-base", "--is-ancestor", source, "HEAD"], check=True)
+            else:
+                source = git("rev-parse", "--verify", f"refs/tags/{args.tag}^{{commit}}")
             metadata = release_metadata(args.tag, git("show", f"{source}:VERSION"))
-            metadata.update(tag=args.tag, checkout_ref=args.tag, source_commit=source, publish=args.publish)
+            metadata.update(tag=args.tag, checkout_ref=source if args.source_commit else args.tag, source_commit=source, publish=args.publish)
             emit(metadata, args.output)
         elif args.command == "classify":
             metadata = release_metadata(args.tag, args.version_file.read_text())
