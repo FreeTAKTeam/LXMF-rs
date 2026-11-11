@@ -31,17 +31,36 @@ def main():
     root = Path('candidate')
     tag, source = os.environ['RELEASE_TAG'], os.environ['SOURCE_COMMIT']
     expected = validate_files(root, os.environ['CHECKSUMS_SHA256'], tag, source)
-    # The workflow token suppresses recursive tag/release publishing workflows.
-    subprocess.run(['gh', 'release', 'create', tag, '--draft', '--prerelease',
-                    '--latest=false', '--target', source, '--title', 'LXMF-rs ' + tag,
-                    '--notes-file', str(root / 'RELEASE_NOTES.md')], check=True)
+    def api(path, payload=None):
+        command = ['gh', 'api', 'repos/' + os.environ['GH_REPO'] + '/' + path]
+        if payload is not None:
+            command += ['--method', 'POST', '--input', '-']
+        return json.loads(subprocess.check_output(command, input=json.dumps(payload) if payload is not None else None, text=True))
+    provenance = json.loads((root / 'release-build-source.json').read_text())
+    expected_run = os.environ['GITHUB_SERVER_URL'] + '/' + os.environ['GH_REPO'] + '/actions/runs/' + os.environ['RUN_ID']
+    if provenance.get('publish') is not False or provenance['workflow_commit'] != source or provenance['workflow_run'] != expected_run:
+        raise ValueError('Candidate provenance does not match the approved unpublished run')
+    # A workflow token suppresses recursive publishers; creating a new ref rejects existing tags.
+    api('git/refs', {'ref': 'refs/tags/' + tag, 'sha': source})
+    release = api('releases', {'tag_name': tag, 'target_commitish': source,
+                              'name': 'LXMF-rs ' + tag, 'draft': True, 'prerelease': True,
+                              'make_latest': 'false', 'body': (root / 'RELEASE_NOTES.md').read_text()})
+    release_id = release['id']
+    if not release['draft'] or not release['prerelease'] or release['tag_name'] != tag:
+        raise ValueError('Unexpected draft response')
     subprocess.run(['gh', 'release', 'upload', tag, *map(str, sorted(root.iterdir()))], check=True)
-    release = json.loads(subprocess.check_output([
-        'gh', 'api', 'repos/' + os.environ['GH_REPO'] + '/releases/tags/' + tag]))
+    release = api('releases/' + str(release_id))
     actual = {a['name']: a['digest'] for a in release['assets']}
-    if actual != expected or not release['draft']:
+    if (actual != expected or not release['draft'] or not release['prerelease']
+            or release['tag_name'] != tag or release['target_commitish'] != source
+            or any(a['state'] != 'uploaded' for a in release['assets'])):
         raise ValueError('Draft assets differ from the verified candidate; leaving draft unpublished')
-    subprocess.run(['gh', 'release', 'edit', tag, '--draft=false', '--prerelease', '--latest=false'], check=True)
+    ref = api('git/ref/tags/' + tag)
+    if ref['object']['type'] != 'commit' or ref['object']['sha'] != source:
+        raise ValueError('Release tag moved; leaving draft unpublished')
+    subprocess.run(['gh', 'api', '--method', 'PATCH',
+                    'repos/' + os.environ['GH_REPO'] + '/releases/' + str(release_id),
+                    '--input', '-'], input=json.dumps({'draft': False, 'prerelease': True, 'make_latest': 'false'}), text=True, check=True)
 
 
 if __name__ == '__main__':

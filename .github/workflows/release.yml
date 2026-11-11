@@ -561,8 +561,9 @@ jobs:
             --arg ref "${GITHUB_REF}" \
             --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --arg image "${OCI_IMAGE_DIGEST}" \
+            --argjson publish "${{ needs.prepare.outputs.publish }}" \
             '{release_tag:$tag, product_commit:$product, workflow_commit:$workflow,
-              workflow_ref:$ref, workflow_run:$run, oci_image_digest:$image}' \
+              workflow_ref:$ref, workflow_run:$run, oci_image_digest:$image, publish:$publish}' \
             > release-assets/release-build-source.json
       - name: Generate checksums
         shell: bash

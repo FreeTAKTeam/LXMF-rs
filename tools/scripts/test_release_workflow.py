@@ -183,6 +183,41 @@ class PromotionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_files(root, digest, 'v1.2.3-rc.1', source)
 
+    def test_promotion_uses_draft_id_and_verifies_assets_before_publication(self):
+        from unittest.mock import patch
+        import promote_candidate
+        source = 'a' * 40
+        env = {'RELEASE_TAG': 'v1.2.3-rc.1', 'SOURCE_COMMIT': source,
+               'CHECKSUMS_SHA256': 'b' * 64, 'GH_REPO': 'test/repo',
+               'RUN_ID': '42', 'GITHUB_SERVER_URL': 'https://github.com'}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'candidate'
+            root.mkdir()
+            (root / 'RELEASE_NOTES.md').write_text('Candidate')
+            (root / 'release-build-source.json').write_text(json.dumps({
+                'publish': False, 'workflow_commit': source,
+                'workflow_run': 'https://github.com/test/repo/actions/runs/42'}))
+            expected = {'package': 'sha256:digest'}
+            draft = {'id': 123, 'draft': True, 'prerelease': True,
+                     'tag_name': env['RELEASE_TAG'], 'target_commitish': source,
+                     'assets': [{'name': 'package', 'digest': 'sha256:digest', 'state': 'uploaded'}]}
+            outputs = [json.dumps({}), json.dumps(draft), json.dumps(draft),
+                       json.dumps({'object': {'type': 'commit', 'sha': source}})]
+            old = os.getcwd()
+            try:
+                os.chdir(temporary)
+                with patch.dict(os.environ, env), patch.object(promote_candidate, 'validate_files', return_value=expected), \
+                     patch.object(subprocess, 'check_output', side_effect=outputs) as read, \
+                     patch.object(subprocess, 'run') as write:
+                    promote_candidate.main()
+                    self.assertIn('repos/test/repo/releases/123', read.call_args_list[2].args[0])
+                    final = write.call_args_list[-1]
+                    self.assertIn('PATCH', final.args[0])
+                    self.assertIn('repos/test/repo/releases/123', final.args[0])
+                    self.assertFalse(json.loads(final.kwargs['input'])['draft'])
+            finally:
+                os.chdir(old)
+
 
 class ReleaseWorkflowWiringTests(unittest.TestCase):
     def test_stable_crate_publication_requires_a_successful_published_release(self):

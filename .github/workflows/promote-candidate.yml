@@ -26,6 +26,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   promote:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
