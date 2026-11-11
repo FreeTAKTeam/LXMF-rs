@@ -28,3 +28,9 @@ Release package checksums, source provenance and install/upgrade/restart/deliver
 results must be verified before publication. Existing local session-expiry and
 RCH custody checks do not qualify production, physical radios or long soaks.
 This is a prerelease and does not promote the stable/latest release channel.
+
+The GitHub prerelease includes binary archives, platform packages, and crate
+SBOMs. This promotion does not publish an OCI image or crates.io versions.
+SHA-256 checksums accompany the packages. This candidate path does not produce a
+cosign checksum bundle, and Windows and macOS signing depends on available
+signing credentials.
