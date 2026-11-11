@@ -102,6 +102,7 @@ impl RpcDaemon {
         Ok(json!({
             "peer_records": peers,
             "zmq_pipeline": self.zmq_pipeline_metrics.snapshot(),
+            "durable_broker_sessions": self.broker_session_counts()?,
             "peer_inventory": {"handled_ids": handled, "unhandled_ids": unhandled, "owned_buffer_bytes": inventory_bytes},
             "legacy_events": {"items": legacy_events, "heap_bytes_lower_bound": legacy_bytes},
             "sdk_events": {"items": sdk_events, "heap_bytes_lower_bound": sdk_bytes},

@@ -177,3 +177,188 @@ fn encoded_projection_limit_counts_json_escapes_and_leaves_envelope_headroom() {
     assert!(validate_projection_size(&value).is_err());
     assert!(validate_projection_size(&json!({"announces":[]})).is_ok());
 }
+
+#[test]
+fn broker_session_capacity_recovers_across_more_than_4096_abandoned_routes() {
+    use super::sessions::{BROKER_SESSION_IDLE_TTL as TTL, MAX_BROKER_SESSIONS as MAX};
+    use std::time::Instant;
+
+    let daemon = RpcDaemon::with_store(
+        MessagesStore::in_memory().expect("messages"),
+        "legacy-identity".into(),
+    );
+    let start = Instant::now();
+    let active = r#"["alice","active-route"]"#;
+    let negotiate = |route: &str, now| {
+        daemon.admit_broker_session(route.to_owned(), now).map_err(|error| error.code)
+    };
+    negotiate(active, start).expect("active negotiation");
+    // The pre-existing legacy entry consumes a slot, just as it did before expiry.
+    let rounds = [(start, start + TTL / 2), (start + TTL, start + TTL + TTL / 4)];
+    for (round, (now, touch)) in rounds.into_iter().enumerate() {
+        for route in 0..MAX - 2 {
+            negotiate(&format!(r#"["alice","round-{round}-route-{route}"]"#), now)
+                .expect("admit fresh route");
+        }
+        assert_eq!(
+            negotiate(r#"["alice","overflow"]"#, now).unwrap_err(),
+            "SDK_STORAGE_WRITE_BUSY",
+            "all registry entries are live"
+        );
+        let mut request = daemon.begin_broker_session_request(active, touch);
+        assert!(matches!(request, BrokerSessionUse::InFlight(_)), "active route survives");
+        request.accepted_at(touch);
+    }
+    let now = start + TTL * 2;
+    let pin = daemon.begin_broker_session_request(active, now);
+    assert!(matches!(pin, BrokerSessionUse::InFlight(_)), "accepted activity kept the route live");
+    negotiate(r#"["alice","new-after-two-full-rounds"]"#, now).expect("retired routes free slots");
+    // An in-flight request may still access the grants beyond the idle deadline.
+    negotiate(r#"["alice","after-in-flight-deadline"]"#, now + TTL)
+        .expect("sweep while active request is still in flight");
+    assert!(daemon.sdk_identity_sessions.lock().unwrap().entries.contains_key(active));
+    negotiate(active, now + TTL).expect("renegotiation does not replace an in-flight route");
+    drop(pin); // rejected requests do not extend the idle deadline
+    assert!(matches!(
+        daemon.begin_broker_session_request(active, now + TTL),
+        BrokerSessionUse::Expired
+    ));
+    let counts = daemon.broker_session_counts().expect("aggregate lifecycle counts");
+    assert_eq!(counts["current"], 1);
+    assert_eq!(counts["expired_total"], 2 * (MAX - 2) + 2);
+    assert!(daemon
+        .sdk_identity_sessions
+        .lock()
+        .unwrap()
+        .entries
+        .contains_key(crate::rpc::LEGACY_RPC_SESSION_ID));
+}
+
+#[test]
+fn session_expiry_recovers_durable_checkpoints_and_operation_idempotency() {
+    use super::sessions::BROKER_SESSION_IDLE_TTL as TTL;
+
+    let dir = tempfile::tempdir().expect("persistent test store");
+    let store = MessagesStore::open(&dir.path().join("lifecycle.db")).expect("messages");
+    store.enable_durable_broker(32 * 1024 * 1024).expect("durable broker");
+    let daemon = RpcDaemon::with_store_and_bridge(store, "lifecycle".into(), Arc::new(Bridge));
+    daemon.set_service_identity_bridge(Arc::new(IdentityBridge));
+    let configuration = daemon.handle_rpc(RpcRequest {
+        id: 0,
+        method: "sdk_negotiate_v2".into(),
+        params: Some(json!({
+            "supported_contract_versions": [2], "requested_capabilities": [],
+            "config": {
+                "profile": "desktop-full", "bind_mode": "remote", "auth_mode": "token",
+                "rpc_backend": {"token_auth": {"issuer": "issuer", "audience": "audience",
+                    "shared_secret": "fixture-secret", "jti_cache_ttl_ms": 30000, "clock_skew_ms": 0}}
+            }
+        })),
+    }).expect("configure authenticated fixture");
+    assert!(configuration.error.is_none(), "{:?}", configuration.error);
+
+    let call =
+        |subject, sequence, method, params| request(&daemon, subject, sequence, method, params);
+    let alice = |sequence, method, params| {
+        let response = call("alice", sequence, method, params);
+        assert!(response.error.is_none(), "{method}: {:?}", response.error);
+        response.result.expect("durable RPC result")
+    };
+    let negotiate = json!({"ack_meaning":"stored"});
+    let import =
+        json!({"bundle_base64":base64::engine::general_purpose::STANDARD.encode(vec![7u8;64])});
+    let identity = "service-identity";
+    let destination = "00112233445566778899aabbccddeeff";
+    let resume =
+        json!({"identity":identity, "consumer_id":"lifecycle", "stored":0, "journal_id":null});
+    let fetch =
+        json!({"identity":identity, "consumer_id":"lifecycle", "max_events":8, "max_bytes":16384});
+
+    alice(1, "sdk_broker_negotiate_v1", negotiate.clone());
+    alice(2, "sdk_identity_import_v2", import.clone());
+    alice(3, "sdk_identity_activate_v2", json!({"identity":identity}));
+    let initial = alice(4, "sdk_broker_resume_v1", resume);
+    daemon
+        .accept_inbound(MessageRecord {
+            id: "restart-message".into(),
+            source: "11".repeat(16),
+            destination: destination.into(),
+            title: String::new(),
+            content: "before expiry".into(),
+            timestamp: 1,
+            direction: "in".into(),
+            fields: None,
+            receipt_status: None,
+        })
+        .expect("commit inbound custody");
+    let issued = alice(5, "sdk_broker_fetch_v1", fetch.clone());
+    assert_eq!(issued["events"][0]["payload"]["message"]["id"], "restart-message");
+    let admission = json!({
+        "identity":identity, "operation_id":"out-before-expiry", "destination":"22".repeat(16),
+        "title":"", "content":"before expiry", "fields":null, "options":{"method":"direct"}
+    });
+    let admitted = alice(6, "sdk_broker_admit_v1", admission.clone());
+
+    let scope = r#"["alice","same-route"]"#;
+    let last_accepted = || {
+        daemon.sdk_identity_sessions.lock().unwrap().entries[scope]
+            .broker_activity
+            .expect("active negotiated route")
+            .last_accepted
+    };
+    let before_invalid = last_accepted();
+    let invalid = call("alice", 7, "sdk_broker_fetch_v1", json!({"identity":"forged"}));
+    assert_eq!(invalid.error.unwrap().code, "SDK_SECURITY_IDENTITY_FORBIDDEN");
+    let wrong_principal = call("bob", 7, "sdk_broker_fetch_v1", fetch.clone());
+    assert_eq!(wrong_principal.error.unwrap().code, "SDK_BROKER_NEGOTIATION_REQUIRED");
+    assert_eq!(last_accepted(), before_invalid, "rejected requests do not renew");
+    assert!(matches!(
+        daemon.begin_broker_session_request(scope, before_invalid + TTL),
+        BrokerSessionUse::Expired
+    ));
+    assert!(daemon.sdk_identities.lock().unwrap().contains_key(identity));
+    let expired = call("alice", 8, "sdk_broker_fetch_v1", fetch.clone());
+    assert_eq!(expired.error.unwrap().code, "SDK_BROKER_NEGOTIATION_REQUIRED");
+
+    alice(9, "sdk_broker_negotiate_v1", negotiate);
+    let no_grants = call("alice", 10, "sdk_broker_fetch_v1", fetch.clone());
+    assert_eq!(no_grants.error.unwrap().code, "SDK_SECURITY_IDENTITY_FORBIDDEN");
+    alice(11, "sdk_identity_import_v2", import);
+    alice(12, "sdk_identity_activate_v2", json!({"identity":identity}));
+    assert_eq!(alice(13, "sdk_broker_fetch_v1", fetch.clone()), issued);
+    let stored = alice(
+        14,
+        "sdk_broker_ack_stored_v1",
+        json!({
+            "identity":identity, "consumer_id":issued["consumer_id"], "journal_id":issued["journal_id"],
+            "end":issued["end"], "receipt":issued["receipt"]
+        }),
+    );
+    assert_eq!(stored["stored"], issued["end"]);
+    let resumed = alice(
+        15,
+        "sdk_broker_resume_v1",
+        json!({
+            "identity":identity, "consumer_id":issued["consumer_id"], "journal_id":initial["journal_id"],
+            "stored":stored["stored"]
+        }),
+    );
+    assert_eq!(resumed["stored"], stored["stored"]);
+    let readmitted = alice(16, "sdk_broker_admit_v1", admission);
+    assert_eq!(readmitted["message_id"], admitted["message_id"]);
+    assert!(daemon.owns_durable_message(admitted["message_id"].as_str().unwrap()).unwrap());
+    // A sweep triggered by another route leaves no tombstone. Ordinary calls
+    // then follow unnegotiated behavior, and durable calls still request restoration.
+    let expire_at = last_accepted() + TTL;
+    daemon.sdk_identity_sessions.lock().unwrap().reap_idle(expire_at);
+    let counts = daemon.broker_session_counts().expect("counts after sweep");
+    assert_eq!(counts["current"], 0);
+    assert_eq!(counts["expired_total"], 2);
+    let activate = json!({"identity":identity});
+    let ordinary = call("alice", 17, "sdk_identity_activate_v2", activate.clone());
+    let unnegotiated = call("bob", 17, "sdk_identity_activate_v2", activate);
+    assert_eq!(ordinary.error.unwrap().code, unnegotiated.error.unwrap().code);
+    let expired = call("alice", 18, "sdk_broker_fetch_v1", fetch);
+    assert_eq!(expired.error.unwrap().code, "SDK_BROKER_NEGOTIATION_REQUIRED");
+    daemon.shutdown_outbound_workers();
+}

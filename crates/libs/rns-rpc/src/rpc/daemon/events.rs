@@ -1,3 +1,4 @@
+use super::sdk_broker::BrokerSessionUse;
 use super::*;
 use serde::Serialize;
 
@@ -185,7 +186,26 @@ impl RpcDaemon {
     ) -> Result<Vec<u8>, std::io::Error> {
         let request: RpcRequest = codec::decode_frame(bytes)
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-        let response = super::with_rpc_session(session_id, || self.handle_rpc(request))?;
+        let mut broker_request =
+            if super::RPC_ZMQ_PRINCIPAL.with(|context| context.borrow().is_some()) {
+                self.begin_broker_session_request(session_id, std::time::Instant::now())
+            } else {
+                BrokerSessionUse::Untracked
+            };
+        let response = if matches!(broker_request, BrokerSessionUse::Expired)
+            && request.method != "sdk_broker_negotiate_v1"
+        {
+            self.sdk_error_response(
+                request.id,
+                "SDK_BROKER_NEGOTIATION_REQUIRED",
+                "durable SDK session expired; negotiate and restore its service identity",
+            )
+        } else {
+            super::with_rpc_session(session_id, || self.handle_rpc(request))?
+        };
+        if response.error.is_none() {
+            broker_request.accepted_at(std::time::Instant::now());
+        }
         codec::encode_frame(&response).map_err(std::io::Error::other)
     }
 

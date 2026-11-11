@@ -2,6 +2,9 @@ use super::*;
 use crate::broker::{AckStoredRequest, FetchRequest, ResumeRequest, CAPABILITY};
 use crate::storage::broker::{BrokerCommand, BrokerError};
 
+mod sessions;
+pub(super) use sessions::BrokerSessionUse;
+
 impl RpcDaemon {
     /// Dispatch queued durable messages. Returns whether any were pending so the
     /// caller can back off its polling while the queue is empty (issue 663: this
@@ -77,8 +80,9 @@ impl RpcDaemon {
                 .sdk_identity_sessions
                 .lock()
                 .expect("identity sessions poisoned")
+                .entries
                 .get(&current_rpc_session_id())
-                .is_some_and(|s| s.broker_negotiated)
+                .is_some_and(|s| s.broker_activity.is_some())
     }
     #[allow(clippy::result_large_err)]
     fn broker_dispatch(&self, request: RpcRequest) -> Result<JsonValue, RpcError> {
@@ -110,16 +114,7 @@ impl RpcDaemon {
                     "session/principal exceeds durable protocol limits",
                 ));
             }
-            let mut sessions =
-                self.sdk_identity_sessions.lock().expect("identity sessions poisoned");
-            if !sessions.contains_key(&session) && sessions.len() >= 4096 {
-                return Err(RpcError::new(
-                    "SDK_STORAGE_WRITE_BUSY",
-                    "negotiated session capacity exhausted",
-                ));
-            }
-            sessions.entry(session).or_default().broker_negotiated = true;
-            drop(sessions);
+            self.admit_broker_session(session, std::time::Instant::now())?;
             return Ok(json!({"capability":CAPABILITY,"ack_meaning":"stored","writer_version":1,
                 "runtime_id":self.identity_hash,"active_contract_version":2,
                 "effective_capabilities":Self::sdk_supported_capabilities(),"effective_limits":Self::sdk_effective_limits_for_profile("desktop_local"),
@@ -130,8 +125,9 @@ impl RpcDaemon {
             .sdk_identity_sessions
             .lock()
             .expect("identity sessions poisoned")
+            .entries
             .get(&session)
-            .is_some_and(|s| s.broker_negotiated)
+            .is_some_and(|s| s.broker_activity.is_some())
         {
             return Err(RpcError::new(
                 "SDK_BROKER_NEGOTIATION_REQUIRED",
