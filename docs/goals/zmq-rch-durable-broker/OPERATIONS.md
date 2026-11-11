@@ -75,6 +75,35 @@ budget. Ordinary mutations have one attempt; an uncertain durable admission is
 reconciled using its persisted operation ID before resubmission. RCH schedules
 later logical attempts with 0.5-second exponential backoff capped at 30 seconds.
 
+## Negotiated SDK sessions
+
+A negotiated durable session is scoped to the authenticated principal and ZeroMQ
+session identifier. It expires after five minutes of monotonic idle time.
+Successful authenticated operations renew that interval. Requests in progress
+hold their session until they finish. Rejected requests do not renew it.
+The daemon checks expiry when a session is used and sweeps idle entries when
+admitting a new session or collecting resource diagnostics. The identity
+session registry retains its 4,096-entry admission limit. When no slot can be
+reclaimed, a fresh session receives `SDK_STORAGE_WRITE_BUSY`.
+
+A durable operation on an expired session receives
+`SDK_BROKER_NEGOTIATION_REQUIRED`. Restore the session by negotiating again,
+importing and activating the same service identity, and resuming with the same
+authenticated principal, consumer ID and stored checkpoint. The RCH durable
+actor does this on its next logical request after detecting the error. A
+request that directly discovers its own session has expired returns the same
+error for ordinary SDK calls. When admission or diagnostics has already removed
+the entry, those calls follow their normal unnegotiated-session behavior.
+
+Expiry drops the session's in-memory grants. Registered service identities,
+messages, issued replay ranges, consumer checkpoints, operation receipts and
+custody remain available through the restored session. The extended daemon
+status exposes `resources.durable_broker_sessions.current` and
+`resources.durable_broker_sessions.expired_total` for the current daemon
+process. Legacy sessions and ZeroMQ sessions that have never negotiated
+durable custody follow their existing lifecycle. There is no scoped close
+request in this protocol. `sdk_shutdown_v2` is a daemon-wide SDK operation.
+
 ## Finite capacity and retention
 
 | Boundary | Initial limit and behavior |

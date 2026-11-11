@@ -42,9 +42,21 @@ pub trait ServiceIdentityBridge: Send + Sync {
     ) -> Result<ServiceIdentityRecord, std::io::Error>;
 }
 
+#[derive(Default)]
+struct SdkIdentitySessions {
+    entries: HashMap<String, SdkIdentitySession>,
+    expired_total: usize,
+}
+
 #[derive(Debug, Clone, Default)]
 struct SdkIdentitySession {
-    broker_negotiated: bool,
+    broker_activity: Option<BrokerSessionActivity>,
     authorized_identities: HashSet<String>,
     active_identity: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BrokerSessionActivity {
+    last_accepted: std::time::Instant,
+    in_flight: usize,
 }

@@ -166,11 +166,11 @@ impl RpcDaemon {
         let mut sdk_identities = HashMap::new();
         sdk_identities
             .insert(identity_hash.clone(), Self::default_sdk_identity(identity_hash.as_str()));
-        let mut sdk_identity_sessions = HashMap::new();
-        sdk_identity_sessions.insert(
+        let mut sdk_identity_sessions = SdkIdentitySessions::default();
+        sdk_identity_sessions.entries.insert(
             super::LEGACY_RPC_SESSION_ID.to_owned(),
             SdkIdentitySession {
-                broker_negotiated: false,
+                broker_activity: None,
                 authorized_identities: HashSet::from([identity_hash.clone()]),
                 active_identity: Some(identity_hash.clone()),
             },

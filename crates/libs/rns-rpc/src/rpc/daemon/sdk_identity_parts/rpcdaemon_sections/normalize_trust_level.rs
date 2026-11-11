@@ -36,7 +36,7 @@ impl RpcDaemon {
             .sdk_identity_sessions
             .lock()
             .expect("sdk_identity_sessions mutex poisoned");
-        let session = sessions.entry(session_id).or_default();
+        let session = sessions.entries.entry(session_id).or_default();
         session.authorized_identities.insert(identity.to_owned());
         if session.active_identity.is_none() {
             session.active_identity = Some(identity.to_owned());
@@ -50,7 +50,7 @@ impl RpcDaemon {
             .sdk_identity_sessions
             .lock()
             .expect("sdk_identity_sessions mutex poisoned");
-        let session = sessions.get(session_id.as_str()).cloned().unwrap_or_default();
+        let session = sessions.entries.get(session_id.as_str()).cloned().unwrap_or_default();
         if let Some(identity) = requested.and_then(Self::normalize_non_empty) {
             return if session.authorized_identities.contains(identity.as_str()) {
                 Ok(identity)
@@ -103,6 +103,7 @@ impl RpcDaemon {
             .sdk_identity_sessions
             .lock()
             .expect("sdk_identity_sessions mutex poisoned")
+            .entries
             .get(session_id.as_str())
             .map(|session| session.authorized_identities.clone())
             .unwrap_or_default();
@@ -184,6 +185,7 @@ impl RpcDaemon {
             .sdk_identity_sessions
             .lock()
             .expect("sdk_identity_sessions mutex poisoned")
+            .entries
             .get(session_id.as_str())
             .map(|session| session.authorized_identities.clone())
             .unwrap_or_default();
@@ -397,7 +399,7 @@ impl RpcDaemon {
             .sdk_identity_sessions
             .lock()
             .expect("sdk_identity_sessions mutex poisoned");
-        let session = sessions.entry(session_id).or_default();
+        let session = sessions.entries.entry(session_id).or_default();
         if !session.authorized_identities.contains(identity.as_str()) {
             return Ok(self.sdk_error_response(
                 request.id,
