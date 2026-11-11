@@ -8,8 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Existing release tag to build (for example v0.9.9-rc.6)
+        description: Release tag or untagged candidate label
         required: true
+        type: string
+      source_commit:
+        description: Exact ancestor commit for an unpublished candidate (publish must be false)
+        required: false
+        default: ""
         type: string
       publish:
         description: Publish the GitHub release, container image, and optional Homebrew update
@@ -47,10 +52,12 @@ jobs:
         shell: bash
         env:
           RELEASE_INPUT_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+          RELEASE_SOURCE_INPUT: ${{ inputs.source_commit || '' }}
           RELEASE_INPUT_PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
         run: |
           python3 tools/scripts/release_config.py prepare \
             --tag "$RELEASE_INPUT_TAG" --publish "$RELEASE_INPUT_PUBLISH" \
+            --source-commit "$RELEASE_SOURCE_INPUT" \
             --output "$GITHUB_OUTPUT"
 
   sdk-wrapper-parity:
@@ -63,6 +70,7 @@ jobs:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
       - name: Install Linux BLE build dependencies
         run: |
+          if [[ -f tools/scripts/ci-ubuntu-apt-mirror.sh ]]; then bash tools/scripts/ci-ubuntu-apt-mirror.sh; fi
           sudo apt-get update
           sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
@@ -94,6 +102,7 @@ jobs:
       - name: Install native Linux musl toolchain
         if: runner.os == 'Linux' && matrix.use_cross == false
         run: |
+          if [[ -f tools/scripts/ci-ubuntu-apt-mirror.sh ]]; then bash tools/scripts/ci-ubuntu-apt-mirror.sh; fi
           sudo apt-get update
           sudo apt-get install -y musl-tools
       - name: Install cross
@@ -137,9 +146,8 @@ jobs:
           cp README.md dist/README.md
 
           archive_stem="lxmf-rs_${RELEASE_VERSION}_${{ matrix.artifact_arch }}"
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            7z a -tzip "dist/${archive_stem}.zip" dist/bin dist/README.md
-          else
+          # Windows packaging creates the final ZIP after signing.
+          if [[ "${RUNNER_OS}" != "Windows" ]]; then
             tar -C dist -czf "dist/${archive_stem}.tar.gz" bin README.md
           fi
       - uses: actions/upload-artifact@v4
@@ -178,6 +186,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -f tools/scripts/ci-ubuntu-apt-mirror.sh ]]; then bash tools/scripts/ci-ubuntu-apt-mirror.sh; fi
           sudo apt-get update
           sudo apt-get install -y gettext-base
           mkdir -p package-root/usr/bin target
@@ -529,14 +538,18 @@ jobs:
           find artifacts -type f \( \
             -name '*.tar.gz' -o -name '*.zip' -o -name '*.deb' -o \
             -name '*.rpm' -o -name '*.msi' -o -name '*.json' \
-          \) -exec cp {} release-assets/ \;
+          \) -print0 | while IFS= read -r -d '' file; do
+            destination="release-assets/$(basename "$file")"
+            test ! -e "$destination" || { echo "Duplicate release asset: $destination" >&2; exit 1; }
+            cp "$file" "$destination"
+          done
           test "$(find release-assets -type f | wc -l)" -gt 0
       - name: Stage tagged release notes
         id: release-notes
         shell: bash
         run: |
           set -euo pipefail
-          notes="refs/tags/${RELEASE_TAG}:docs/release-notes-v${RELEASE_VERSION}.md"
+          notes="${RELEASE_SOURCE_COMMIT}:docs/release-notes-v${RELEASE_VERSION}.md"
           if git cat-file -e "${notes}"; then
             git show "${notes}" > release-assets/RELEASE_NOTES.md
             echo 'path=release-assets/RELEASE_NOTES.md' >> "${GITHUB_OUTPUT}"
@@ -551,8 +564,9 @@ jobs:
             --arg ref "${GITHUB_REF}" \
             --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --arg image "${OCI_IMAGE_DIGEST}" \
+            --argjson publish "${{ needs.prepare.outputs.publish }}" \
             '{release_tag:$tag, product_commit:$product, workflow_commit:$workflow,
-              workflow_ref:$ref, workflow_run:$run, oci_image_digest:$image}' \
+              workflow_ref:$ref, workflow_run:$run, oci_image_digest:$image, publish:$publish}' \
             > release-assets/release-build-source.json
       - name: Generate checksums
         shell: bash

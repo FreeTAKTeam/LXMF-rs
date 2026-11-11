@@ -123,6 +123,101 @@ class ReleaseConfigurationTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(result.stdout, "")
 
+    def test_unpublished_candidate_requires_exact_reachable_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
+            git("init", "-q")
+            git("config", "user.name", "Release Test")
+            git("config", "user.email", "release@example.invalid")
+            (root / "VERSION").write_text("1.2.3-rc.1\n")
+            git("add", "VERSION")
+            git("commit", "-qm", "candidate")
+            source = git("rev-parse", "HEAD")
+            command = ["python3", str(ROOT / "tools/scripts/release_config.py"),
+                       "prepare", "--tag", "v1.2.3-rc.1", "--source-commit"]
+            result = subprocess.run(command + [source, "--publish", "false"],
+                                    cwd=root, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = dict(line.split("=", 1) for line in result.stdout.splitlines())
+            self.assertEqual(output["checkout_ref"], source)
+            self.assertEqual(output["publish"], "false")
+            git("tag", "-a", "candidate", "-m", "candidate")
+            tag_object = git("rev-parse", "refs/tags/candidate")
+            unrelated = subprocess.check_output(
+                ["git", "commit-tree", "HEAD^{tree}"], cwd=root, input="unrelated\n", text=True).strip()
+            for commit, publish in [(source, "true"), ("HEAD", "false"),
+                                    ("0" * 40, "false"), (tag_object, "false"),
+                                    (unrelated, "false")]:
+                result = subprocess.run(command + [commit, "--publish", publish],
+                                        cwd=root, text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+
+
+class PromotionTests(unittest.TestCase):
+    def test_only_approved_complete_source_matched_bytes_are_accepted(self):
+        import hashlib
+        from promote_candidate import validate_files
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = 'a' * 40
+            (root / 'release-build-source.json').write_text(json.dumps(
+                {'product_commit': source, 'release_tag': 'v1.2.3-rc.1'}))
+            (root / 'package.tar.gz').write_bytes(b'qualified package')
+            content = ''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n'
+                              for p in sorted(root.iterdir()))
+            (root / 'SHA256SUMS.txt').write_text(content)
+            digest = hashlib.sha256(content.encode()).hexdigest()
+            self.assertEqual(len(validate_files(root, digest, 'v1.2.3-rc.1', source)), 3)
+            with self.assertRaises(ValueError):
+                validate_files(root, '0' * 64, 'v1.2.3-rc.1', source)
+            with self.assertRaises(ValueError):
+                validate_files(root, digest, 'v1.2.3-rc.1', 'b' * 40)
+            (root / 'extra').write_bytes(b'unchecked')
+            with self.assertRaises(ValueError):
+                validate_files(root, digest, 'v1.2.3-rc.1', source)
+            (root / 'extra').unlink()
+            (root / 'package.tar.gz').write_bytes(b'changed')
+            with self.assertRaises(ValueError):
+                validate_files(root, digest, 'v1.2.3-rc.1', source)
+
+    def test_promotion_uses_draft_id_and_verifies_assets_before_publication(self):
+        from unittest.mock import patch
+        import promote_candidate
+        source = 'a' * 40
+        env = {'RELEASE_TAG': 'v1.2.3-rc.1', 'SOURCE_COMMIT': source,
+               'CHECKSUMS_SHA256': 'b' * 64, 'GH_REPO': 'test/repo',
+               'RUN_ID': '42', 'GITHUB_SERVER_URL': 'https://github.com'}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'candidate'
+            root.mkdir()
+            (root / 'RELEASE_NOTES.md').write_text('Candidate')
+            (root / 'release-build-source.json').write_text(json.dumps({
+                'publish': False, 'workflow_commit': source,
+                'workflow_run': 'https://github.com/test/repo/actions/runs/42'}))
+            expected = {'package': 'sha256:digest'}
+            draft = {'id': 123, 'draft': True, 'prerelease': True,
+                     'tag_name': env['RELEASE_TAG'], 'target_commitish': source,
+                     'assets': [{'name': 'package', 'digest': 'sha256:digest', 'state': 'uploaded'}]}
+            outputs = [json.dumps({}), json.dumps(draft), json.dumps(draft),
+                       json.dumps({'object': {'type': 'commit', 'sha': source}})]
+            old = os.getcwd()
+            try:
+                os.chdir(temporary)
+                with patch.dict(os.environ, env), patch.object(promote_candidate, 'validate_files', return_value=expected), \
+                     patch.object(subprocess, 'check_output', side_effect=outputs) as read, \
+                     patch.object(subprocess, 'run') as write:
+                    promote_candidate.main()
+                    self.assertIn('repos/test/repo/releases/123', read.call_args_list[2].args[0])
+                    final = write.call_args_list[-1]
+                    self.assertIn('PATCH', final.args[0])
+                    self.assertIn('repos/test/repo/releases/123', final.args[0])
+                    self.assertFalse(json.loads(final.kwargs['input'])['draft'])
+            finally:
+                os.chdir(old)
+
 
 class ReleaseWorkflowWiringTests(unittest.TestCase):
     def test_stable_crate_publication_requires_a_successful_published_release(self):
