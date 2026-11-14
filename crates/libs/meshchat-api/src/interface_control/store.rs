@@ -189,6 +189,7 @@ fn interface_json(value: &toml::Value) -> Result<Value, ApiError> {
         let meshchat_kind = match kind {
             "auto" => "AutoInterface",
             "tcp_client" => "TCPClientInterface",
+            "backbone_client" => "BackboneClientInterface",
             "tcp_server" => "TCPServerInterface",
             "udp" => "UDPInterface",
             "serial" => "SerialInterface",

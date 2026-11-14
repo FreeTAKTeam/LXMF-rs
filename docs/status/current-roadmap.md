@@ -606,6 +606,13 @@ remains open as deferred capability work, not a completed bare-metal fix.
 
 ## MeshChat application API (development)
 
+The development MeshChat migration now includes an offline native inspector and
+transactional legacy-history merge used by YARA's consent flow. It preserves
+message hashes/attachments/historical metadata, leaves existing rows unchanged,
+and marks imported outbound records nonretryable. Fixture API/browser/restart
+verification and Windows package qualification are tracked by YARA's
+`docs/goals/meshchat-profile-import/PLAN.md`; this does not promote callable parity.
+
 The opt-in loopback `meshchat-api` crate exposes a partial MeshChat 2.4.0
 HTTP/WebSocket compatibility layer from `reticulumd`. Text and file/image
 messaging, conversation/history reads, cancellation, deletion, local
