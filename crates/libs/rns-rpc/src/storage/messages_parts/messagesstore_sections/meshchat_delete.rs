@@ -9,10 +9,14 @@ impl MessagesStore {
         self.with_read_conn(|conn| {
             let comparison = if descending { "<" } else { ">" };
             let ordering = if descending { "DESC" } else { "ASC" };
+            let timestamp = "CASE WHEN receipt_status = 'cancelled' AND json_valid(fields) \
+                THEN COALESCE(json_extract(fields, '$._meshchat_import.timestamp'), timestamp) ELSE timestamp END";
             let query = format!(
                 "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status, rowid \
                  FROM messages WHERE (LOWER(source) = LOWER(?1) OR LOWER(destination) = LOWER(?1)) \
-                 AND (?2 IS NULL OR rowid {comparison} ?2) ORDER BY rowid {ordering} LIMIT ?3"
+                 AND (?2 IS NULL OR ({timestamp}, rowid) {comparison} \
+                     ((SELECT {timestamp} FROM messages WHERE rowid = ?2), ?2)) \
+                 ORDER BY ({timestamp}) {ordering}, rowid {ordering} LIMIT ?3"
             );
             let mut statement = conn.prepare(&query)?;
             let mut rows = statement.query(params![destination, after_id, limit.min(i64::MAX as usize) as i64])?;

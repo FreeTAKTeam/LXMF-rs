@@ -172,8 +172,8 @@ impl<'a> fmt::Display for OutputBuffer<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[ 0x")?;
 
-        for i in 0..self.offset {
-            write!(f, "{:0>2x}", self.buffer[i])?;
+        for byte in &self.buffer[..self.offset] {
+            write!(f, "{:0>2x}", byte)?;
         }
 
         write!(f, " ]",)
@@ -184,8 +184,8 @@ impl<const N: usize> fmt::Display for StaticBuffer<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[ 0x")?;
 
-        for i in 0..self.len {
-            write!(f, "{:0>2x}", self.buffer[i])?;
+        for byte in &self.buffer[..self.len] {
+            write!(f, "{:0>2x}", byte)?;
         }
 
         write!(f, " ]",)

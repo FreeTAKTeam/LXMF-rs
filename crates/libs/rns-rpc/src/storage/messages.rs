@@ -3,6 +3,7 @@ include!("messages_parts/module_prelude.rs");
 mod announce_projection;
 mod announce_retention;
 mod handled_propagation;
+mod meshchat_import;
 mod message_budget;
 mod unhandled_propagation;
 
