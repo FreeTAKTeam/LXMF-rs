@@ -1,3 +1,5 @@
+mod imported_history;
+
 use crate::{ApiError, ApiResult, AppState};
 use axum::{
     extract::{Path, Query, State},
@@ -361,7 +363,7 @@ pub(super) fn stored_message(record: &Value) -> Value {
             fields.insert("telemetry".into(), sideband_telemetry(&bytes));
         }
     }
-    json!({
+    let mut message = json!({
         "hash":record.get("id"),"source_hash":record.get("source"),
         "destination_hash":record.get("destination"),"is_incoming":incoming,
         "state":state,"progress":if state == "delivered" {100.0} else {0.0},
@@ -371,7 +373,11 @@ pub(super) fn stored_message(record: &Value) -> Value {
         "content":record.get("content").and_then(Value::as_str).unwrap_or(""),
         "fields":fields,"timestamp":timestamp,"rssi":null,"snr":null,"quality":null,
         "id":0,"created_at":timestamp.to_string(),"updated_at":timestamp.to_string()
-    })
+    });
+    if status == "cancelled" {
+        imported_history::apply(&mut message, raw_fields);
+    }
+    message
 }
 
 fn sideband_telemetry(bytes: &[u8]) -> Value {

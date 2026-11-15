@@ -18,6 +18,7 @@ pub(super) fn save_interface(
     const SUPPORTED: &[&str] = &[
         "AutoInterface",
         "TCPClientInterface",
+        "BackboneClientInterface",
         "TCPServerInterface",
         "UDPInterface",
         "RNodeInterface",
@@ -75,7 +76,9 @@ pub(super) fn save_interface(
 
 fn validate_required(kind: &str, body: &Value) -> Result<(), ApiError> {
     let keys: &[(&str, &str)] = match kind {
-        "TCPClientInterface" => &[("target_host", "Target Host"), ("target_port", "Target Port")],
+        "TCPClientInterface" | "BackboneClientInterface" => {
+            &[("target_host", "Target Host"), ("target_port", "Target Port")]
+        }
         "TCPServerInterface" => &[("listen_ip", "Listen IP"), ("listen_port", "Listen Port")],
         "UDPInterface" => &[
             ("listen_ip", "Listen IP"),
@@ -126,6 +129,15 @@ fn editable_fields(kind: &str) -> &'static [&'static str] {
             "target_port",
             "kiss_framing",
             "i2p_tunneled",
+            "bitrate",
+            "mode",
+            "network_name",
+            "passphrase",
+            "ifac_size",
+        ],
+        "BackboneClientInterface" => &[
+            "target_host",
+            "target_port",
             "bitrate",
             "mode",
             "network_name",

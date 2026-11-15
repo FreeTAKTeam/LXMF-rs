@@ -250,3 +250,42 @@ async fn display_name_patch_reaches_daemon_and_rejects_empty_names() {
         call(app, "PATCH", "/api/v1/config", Some(json!({"config":{"display_name":"  "}}))).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn backbone_client_interfaces_can_be_added_and_edited() {
+    let temp = tempfile::tempdir().expect("temp directory");
+    let path = temp.path().join("daemon.toml");
+    std::fs::write(&path, "[[interfaces]]\nname = \"short\"\ntype = \"backbone_client\"\nenabled = true\ntarget_host = \"127.0.0.1\"\ntarget_port = 4242\n").expect("fixture");
+    let app = config_router(path.clone());
+    let (status, listed) = call(app.clone(), "GET", "/api/v1/reticulum/interfaces", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed["interfaces"]["short"]["type"], "BackboneClientInterface");
+
+    let (status, _) = call(app.clone(), "POST", "/api/v1/reticulum/interfaces/add", Some(json!({
+        "name":"backbone", "type":"BackboneClientInterface", "target_host":"127.0.0.1", "target_port":"37428"
+    }))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = call(app.clone(), "POST", "/api/v1/reticulum/interfaces/add", Some(json!({
+        "name":"backbone", "type":"BackboneClientInterface", "target_host":"10.0.0.2", "target_port":"4242",
+        "allow_overwriting_interface": true
+    }))).await;
+    assert_eq!(status, StatusCode::OK);
+    let parsed: toml::Value =
+        toml::from_str(&std::fs::read_to_string(&path).expect("saved config")).expect("valid TOML");
+    let saved = &parsed["interfaces"][1];
+    assert_eq!(saved["type"].as_str(), Some("BackboneClientInterface"));
+    assert_eq!(saved["target_host"].as_str(), Some("10.0.0.2"));
+    assert_eq!(saved["target_port"].as_integer(), Some(4242));
+
+    let (status, body) = call(
+        app,
+        "POST",
+        "/api/v1/reticulum/interfaces/add",
+        Some(json!({
+            "name":"missing", "type":"BackboneClientInterface", "target_port":"4242"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["message"], "Target Host is required");
+}

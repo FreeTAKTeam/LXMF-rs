@@ -356,6 +356,24 @@ async fn announce_updates_profile_timestamp() {
     assert!(value["config"]["last_announced_at"].as_u64().is_some());
 }
 
+#[test]
+fn imported_meshchat_history_preserves_presentation_without_exposing_metadata() {
+    let record = json!({"id":"message-hash","source":"source","destination":"destination",
+        "direction":"out","receipt_status":"cancelled","timestamp":100,"title":"title","content":"body",
+        "fields":{"file_attachments":[{"file_name":"test.txt","file_bytes":"aGk="}],
+            "_meshchat_import":{"state":"sent","progress":100.0,"timestamp":100.75,"method":"direct",
+                "created_at":"2026-10-01 00:00:00","updated_at":"2026-10-01 00:00:01"}}});
+    let message = chat::stored_message(&record);
+    assert_eq!(message["hash"], "message-hash");
+    assert_eq!(message["timestamp"], 100.75);
+    assert_eq!(message["state"], "sent");
+    assert_eq!(message["method"], "direct");
+    assert_eq!(message["fields"]["file_attachments"][0]["file_bytes"], "aGk=");
+    assert!(message["fields"].get("_meshchat_import").is_none());
+    assert_eq!(message["created_at"], "2026-10-01 00:00:00");
+    assert_eq!(message["imported"], true);
+}
+
 #[tokio::test]
 async fn config_patch_rejects_daemon_keys_without_claiming_success() {
     let daemon = Arc::new(RpcDaemon::test_instance());

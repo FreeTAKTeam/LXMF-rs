@@ -44,10 +44,16 @@ fn daemon_snapshot(root: &std::path::Path) -> PathBuf {
         .output()
         .expect("build current daemon");
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    // Cargo >= 1.100 nests test binaries under target/<profile>/build/<pkg>/<hash>/out.
     let test_exe = std::env::current_exe().expect("test executable");
-    let target = test_exe.parent().and_then(std::path::Path::parent).expect("target directory");
+    let daemon = test_exe
+        .ancestors()
+        .skip(1)
+        .map(|dir| dir.join(format!("reticulumd{}", std::env::consts::EXE_SUFFIX)))
+        .find(|candidate| candidate.is_file())
+        .expect("locate built reticulumd next to the test target directory");
     let snapshot = root.join("reticulumd");
-    std::fs::copy(target.join("reticulumd"), &snapshot).expect("freeze one daemon for all runs");
+    std::fs::copy(daemon, &snapshot).expect("freeze one daemon for all runs");
     snapshot
 }
 

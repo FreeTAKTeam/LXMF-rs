@@ -27,17 +27,14 @@ fn resolve_test_binary(name: &str, provided: Option<&str>) -> PathBuf {
         return PathBuf::from(path);
     }
 
+    // Cargo >= 1.100 nests test binaries under target/<profile>/build/<pkg>/<hash>/out.
     let current_exe = std::env::current_exe().expect("current test executable path");
-    let deps_dir = current_exe.parent().expect("test executable parent");
-    let target_dir = deps_dir.parent().expect("target debug dir");
-    let mut candidates = vec![target_dir.join(name)];
-    if !std::env::consts::EXE_SUFFIX.is_empty() {
-        candidates.push(target_dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX)));
-    }
-
-    candidates
-        .into_iter()
-        .find(|candidate| candidate.exists())
+    let file_name = format!("{name}{}", std::env::consts::EXE_SUFFIX);
+    current_exe
+        .ancestors()
+        .skip(1)
+        .map(|dir| dir.join(&file_name))
+        .find(|candidate| candidate.is_file())
         .unwrap_or_else(|| panic!("failed to locate {name} test binary"))
 }
 
