@@ -1,4 +1,6 @@
-use crate::rnsh_parts::network::{close_link, establish_link, wait_for_destination, Runtime};
+use crate::rnsh_parts::network::{
+    close_outbound_link, establish_link, wait_for_destination, Runtime,
+};
 use crate::rnsh_parts::process::{run_command, send_stdin, CommandSpec};
 use crate::rnsh_parts::protocol::{
     CommandExitedMessage, ErrorMessage, ExecuteCommandMessage, NoopMessage, StreamDataMessage,
@@ -238,7 +240,7 @@ pub(crate) async fn initiate(
         };
         let outcome = runtime.transport.send_link_packet_on_bound_iface(&link, packet).await;
         if !matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast) {
-            close_link(&runtime.transport, &link).await;
+            close_outbound_link(runtime, &link).await;
             return Err(io::Error::other(format!("could not send identity packet: {outcome:?}")));
         }
     }
@@ -252,7 +254,7 @@ pub(crate) async fn initiate(
     let peer_version =
         wait_for_version(&mut message_rx, &queue_overflowed, runtime.timeout).await?;
     if peer_version.protocol_version != PROTOCOL_VERSION {
-        close_link(&runtime.transport, &link).await;
+        close_outbound_link(runtime, &link).await;
         return Err(io::Error::other("remote rnsh protocol version is incompatible"));
     }
 
@@ -283,7 +285,7 @@ pub(crate) async fn initiate(
         resize_task.abort();
         let _ = (&mut resize_task).await;
     }
-    close_link(&runtime.transport, &link).await;
+    close_outbound_link(runtime, &link).await;
     return_code
 }
 
