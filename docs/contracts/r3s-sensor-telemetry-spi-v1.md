@@ -185,3 +185,11 @@ Outbound TAK adapter: export one selected parent sensor as in existing R3S/1, an
 Existing: R3S/1 cone/pose format, ownership and projection exist in REM/RCH. Proposed: new SPI upsert/remove events, persistence, plugin APIs, RCH northbound projection and ATAK/UAS SPI adapter. This document is a review target, **not evidence of implementation**.
 
 Before adopting this extension as an active LXMF-rs registry entry: coordinate provisional SID 128 allocation; add shared reference codecs and golden MessagePack fixtures; implement REM/RCH access control and deletion semantics; test physical UAS and radio paths; resolve RCH broker cancellation/re-authorization limitations. Keep the SDK v2 telemetry methods and schema backward compatible; do not claim that this changes native LXMF or Python Reticulum specifications.
+
+## 9. Mandatory REM/RCH map presentation
+
+The canonical, cross-application map graphics requirements and test matrix are maintained in [RCH's R3S map visual acceptance document](https://github.com/FreeTAKTeam/Reticulum-Community-Hub/blob/docs/r3s-map-visual-acceptance/docs/r3s-map-visual-requirements.md) (review branch; update to main after merge).
+
+For either native consumer, an ATAK-style view MUST show the authoritative origin icon/callsign, independent sensor azimuth arrow, translucent FOV/range sector, and a **separate** reported/estimated SPI crosshair with its source and uncertainty. The sensor's ground-range wedge is only a planar display sector. Display-limit is not a measurement; stale or unsynchronized overlays are not live targets.
+
+The native R3AKT model owns geometry and status. REM and RCH MapLibre clients render the same native projections and support per-origin/sensor/SPI visibility, selection, locate, theme/style restoration and mobile/desktop-appropriate details. Existing automated source-feature checks do not replace rendered-geometry and visual-regression tests. Implementing SPI wire events alone is **insufficient** to satisfy visual acceptance.
