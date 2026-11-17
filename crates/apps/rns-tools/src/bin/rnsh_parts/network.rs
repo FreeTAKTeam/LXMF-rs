@@ -7,7 +7,7 @@ use rns_transport::identity::{Identity, PrivateIdentity};
 use rns_transport::iface::tcp_client::{TcpClient, TcpRuntimeStatusHandle};
 use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::iface::{IfaceRole, InterfaceMode};
-use rns_transport::transport::{Transport, TransportConfig};
+use rns_transport::transport::{SendPacketOutcome, Transport, TransportConfig};
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::PathBuf;
@@ -30,7 +30,10 @@ pub(crate) struct Runtime {
     pub(crate) default_command: Vec<String>,
     pub(crate) no_remote_command: bool,
     pub(crate) remote_command_as_args: bool,
+    pub(crate) tcp_clients: Vec<TcpRuntimeStatusHandle>,
 }
+
+const TEARDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
 struct SessionTask {
     cancel: watch::Sender<bool>,
@@ -82,6 +85,7 @@ pub(crate) async fn run(cli: &Cli) -> io::Result<i64> {
         default_command: cli.default_command(),
         no_remote_command: cli.no_remote_command,
         remote_command_as_args: cli.remote_command_as_args,
+        tcp_clients,
     };
 
     if let Some(period) = cli.announce {
@@ -169,19 +173,50 @@ pub(crate) async fn establish_link(
     Ok((link, link_id))
 }
 
+/// Returns whether a teardown packet was handed to an interface.
 pub(crate) async fn close_link(
     transport: &Transport,
     link: &Arc<Mutex<rns_transport::destination::link::Link>>,
-) {
+) -> bool {
     let packet = {
         let mut guard = link.lock().await;
         (guard.status() != rns_transport::destination::link::LinkStatus::Closed)
             .then(|| guard.teardown())
             .flatten()
     };
-    if let Some(packet) = packet {
-        let _ = transport.send_link_packet_on_bound_iface(link, packet).await;
+    let Some(packet) = packet else { return false };
+    let outcome = transport.send_link_packet_on_bound_iface(link, packet).await;
+    let sent = matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
+    if !sent {
+        log::debug!("rnsh Link teardown packet was not sent: {outcome:?}");
     }
+    sent
+}
+
+/// Closes an initiator Link and waits briefly until the teardown frame reaches
+/// the TCP socket, because the process exits next and would drop queued frames,
+/// leaving the listener's command alive until the Link goes stale.
+pub(crate) async fn close_outbound_link(
+    runtime: &Runtime,
+    link: &Arc<Mutex<rns_transport::destination::link::Link>>,
+) {
+    let written_before = tcp_bytes_tx(&runtime.tcp_clients);
+    if !close_link(&runtime.transport, link).await || runtime.tcp_clients.is_empty() {
+        return;
+    }
+    let flushed = timeout(TEARDOWN_FLUSH_TIMEOUT, async {
+        while tcp_bytes_tx(&runtime.tcp_clients) <= written_before {
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    if flushed.is_err() {
+        log::debug!("rnsh Link teardown frame was not confirmed written before exit");
+    }
+}
+
+fn tcp_bytes_tx(clients: &[TcpRuntimeStatusHandle]) -> u64 {
+    clients.iter().filter_map(|client| client.to_json()["bytes_tx"].as_u64()).sum()
 }
 
 async fn serve(runtime: Runtime) -> io::Result<()> {

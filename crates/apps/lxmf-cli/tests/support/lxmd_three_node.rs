@@ -50,10 +50,11 @@ fn resolve_test_binary_if_present(name: &str, provided: Option<&str>) -> Option<
         return Some(PathBuf::from(path));
     }
 
+    // Cargo >= 1.100 nests test binaries under target/<profile>/build/<pkg>/<hash>/out.
     let current_exe = std::env::current_exe().expect("current test executable path");
-    let deps_dir = current_exe.parent().expect("test executable parent");
-    let target_dir = deps_dir.parent().expect("target debug dir");
-    binary_candidates(target_dir, name).into_iter().find(|candidate| candidate.exists())
+    current_exe.ancestors().skip(1).find_map(|dir| {
+        binary_candidates(dir, name).into_iter().find(|candidate| candidate.is_file())
+    })
 }
 
 pub fn resolve_test_binary(name: &str, provided: Option<&str>) -> PathBuf {
