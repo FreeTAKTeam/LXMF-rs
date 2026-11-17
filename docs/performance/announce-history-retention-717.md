@@ -357,3 +357,30 @@ at the first batch that deletes nothing):
 | 100 new events | 1,024 (0 deleted, 100 rows over bound) | 100 (converged) |
 
 This is a synthetic single-process probe, not cgroup, PSI or production evidence.
+
+Production-shaped run (same probe, 1,700,000 announces: 225,000 protected
+one-row peers plus 1,475,000 busy-peer events, default 100,000-row window):
+
+| Measure | `origin/main` | candidate |
+|---|---:|---:|
+| Drain to bound (rows examined / wall) | 1,376,256 / 7.3 s | 1,375,000 / 7.7 s |
+| 30 quiet ticks, rows examined | 15,872 | 0 |
+| 100 new events, rows examined | 1,024 (0 deleted) | 100 (converged) |
+| Retained rows after ingest | 325,100 (over bound) | 325,000 |
+| Fixture build, 1.7M single-row inserts | 1:31 | 3:60 |
+| Database file after drain | 410 MB | 492 MB |
+| Peak RSS | 103 MiB | 105 MiB |
+
+Costs: each insert also maintains the protection hint (about 85 µs extra per
+announce here; both runs shared the CPU), and the column plus two partial
+indexes add about 20% to the file. At production's ~1 announce/s the insert cost
+is negligible; the file growth is the trade for not re-reading protected history.
+
+Query plans on these databases:
+- candidates, main: `SEARCH announces USING COVERING INDEX idx_announces_timestamp_id_desc ((timestamp,id)<(?,?))`, which walks protected rows too.
+- candidates, candidate: `SEARCH announces USING COVERING INDEX idx_announces_retention_eligible ((timestamp,id)<(?,?))`.
+- insert-trigger demote: `SEARCH announces USING INDEX idx_announces_retention_protected (peer=?)`, with latest lookups on `idx_announces_peer_latest`.
+- payload quota, main: `SCAN propagation_entries USING COVERING INDEX idx_propagation_entries_retention_cover`; candidate: `SEARCH propagation_entries_bytes USING INTEGER PRIMARY KEY`.
+
+Not measured: cgroup file/anon memory, PSI, physical I/O, or multi-hour cycles
+under the 768 MiB / two-core gate.

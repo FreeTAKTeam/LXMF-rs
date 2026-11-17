@@ -1,5 +1,5 @@
 //! Synthetic #717 protected-floor probe. Never point this at a live database.
-//! Run in release mode: announce_floor_717 <new-db-path> [protected_peers] [window]
+//! Run in release mode: announce_floor_717 <new-db-path> [protected_peers] [window] [busy_events]
 use rns_rpc::{AnnounceRecord, MessagesStore};
 use serde_json::json;
 use std::{error::Error, path::Path, time::Instant};
@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let protected: u64 = args.get(2).map(|s| s.parse()).transpose()?.unwrap_or(50_000);
     let window: u64 = args.get(3).map(|s| s.parse()).transpose()?.unwrap_or(10_000);
+    let busy: u64 = args.get(4).map(|s| s.parse()).transpose()?.unwrap_or(2 * window);
     let store = MessagesStore::open(path)?;
     let mut id = 0;
     // Old peers: one protected latest row each, below the recent window.
@@ -48,7 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         store.insert_announce(&record(id, format!("old-{peer:08}"), id as i64))?;
     }
     // One busy peer fills the window and leaves `window` disposable older events.
-    for _ in 0..2 * window {
+    for _ in 0..busy {
         id += 1;
         store.insert_announce(&record(id, "busy".into(), id as i64))?;
     }
@@ -58,7 +59,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             json!({"phase": phase, "calls": calls, "rows_examined": examined, "wall_ms": ms})
         );
     };
+    let started = Instant::now();
+    eprintln!("fixture rows={id}");
     report("drain", sweep(&store, window, 0)?);
+    eprintln!("drain finished in {} ms", started.elapsed().as_millis());
     report("quiet_30_ticks", sweep(&store, window, 29)?);
     for _ in 0..100 {
         id += 1;
