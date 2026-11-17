@@ -345,3 +345,15 @@ peers, 20-row window, a peer whose latest event and latest stamp differ) shows
 quiet sweeps visit zero rows and ingest visits only newly eligible rows.
 `protection_backfill_classifies_existing_rows` covers the upgrade. The
 production A/B under the #663 resource gate has not been run.
+
+Local A/B with `examples/announce_floor_717.rs` (release build; 50,000
+protected one-row peers, 10,000-row window, 20,000 busy-peer events; a phase ends
+at the first batch that deletes nothing):
+
+| Phase | `origin/main` rows examined | candidate rows examined |
+|---|---:|---:|
+| Initial drain | 11,264 | 10,000 |
+| 30 quiet ticks | 15,872 | 0 |
+| 100 new events | 1,024 (0 deleted, 100 rows over bound) | 100 (converged) |
+
+This is a synthetic single-process probe, not cgroup, PSI or production evidence.
