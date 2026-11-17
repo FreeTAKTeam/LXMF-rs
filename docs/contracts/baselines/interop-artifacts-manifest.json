@@ -162,6 +162,11 @@
       "sha256": "decbb4f6745eac2aacd5798c29e27d0ebbd3eada9043c50356b1f51c296d5915"
     },
     {
+      "path": "docs/contracts/r3s-sensor-telemetry-spi-v1.md",
+      "bytes": 17961,
+      "sha256": "b65f9bfc7ee518f4f5591210b407da42295947e2976652b2833e22c693730814"
+    },
+    {
       "path": "docs/contracts/release-b-rpc-success-responses.md",
       "bytes": 828,
       "sha256": "461b593adbcf7a26783c84f359803df743c0bbc859a81e8cdccae36d19e857f4"
@@ -258,8 +263,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-telemetry.md",
-      "bytes": 582,
-      "sha256": "d5e453414403d314b745ff0fd74c85f519c911121f3aafcd7dc93ecd83eda0b5"
+      "bytes": 1315,
+      "sha256": "c0f2f017f3032dfc47c6d1792290d6c59c8e2ee07af0cf831215ddb21850ebf3"
     },
     {
       "path": "docs/contracts/sdk-v2-topics.md",
