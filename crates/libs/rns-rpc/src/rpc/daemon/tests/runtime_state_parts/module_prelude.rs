@@ -397,7 +397,7 @@ fn bridge_backed_send_schedules_without_waiting_on_slow_delivery() {
                     "content": "hello"
                 }),
             ));
-            let _ = done_tx.send(second);
+            done_tx.send(second).expect("receiver outlives the scoped sender");
         });
         let second = done_rx.recv_timeout(StdDuration::from_secs(5));
         // Release before asserting so the scope can join even on failure.
