@@ -66,9 +66,17 @@ pub(super) struct AnnounceMetrics {
     pub examined_total: AtomicU64,
     pub under_window_skips_total: AtomicU64,
     pub row_count_upper_bound: AtomicU64,
+    pub settled_skips_total: AtomicU64,
+    /// (upper bound, window revision, max rows) at the last finished sweep.
+    settled_sweep: std::sync::Mutex<Option<(i64, i64, i64)>>,
 }
 
 impl AnnounceMetrics {
+    pub fn settled_sweep(&self) -> std::sync::MutexGuard<'_, Option<(i64, i64, i64)>> {
+        // The value is a plain skip hint; a poisoned lock still holds a valid one.
+        self.settled_sweep.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     pub fn snapshot(&self) -> serde_json::Value {
         serde_json::json!({
             "history": self.history.snapshot(),
@@ -82,6 +90,7 @@ impl AnnounceMetrics {
             "examined_total": self.examined_total.load(Relaxed),
             "under_window_skips_total": self.under_window_skips_total.load(Relaxed),
             "row_count_upper_bound": self.row_count_upper_bound.load(Relaxed),
+            "settled_skips_total": self.settled_skips_total.load(Relaxed),
         })
     }
 }

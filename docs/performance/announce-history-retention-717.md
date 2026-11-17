@@ -318,3 +318,30 @@ and both receipt-owner tests. The focused regression also verifies multiple
 completed case variants deduplicate. Formatting, strict affected-package Clippy,
 boundary/module checks, document links and JSON validation passed. The original
 snapshot SHA-256 was checked again and is unchanged.
+
+## Preview 40 follow-up: eligible-only sweeps (2026-11-17)
+
+Preview 40 reported 82.62 million candidate visits for 202,389 deletes: a
+protected floor (latest event / latest non-null stamp per peer) above the window
+was re-tested on every sweep, and a finished sweep restarted on the next
+one-second tick.
+
+- `announces.retention_protected` is a trigger-maintained hint (insert, update
+  of `peer/timestamp/id/stamp_cost`, delete of a protected row). Sweeps select
+  candidates from the partial index `idx_announces_retention_eligible`, so
+  protected rows are never visited. The DELETE keeps its own latest/stamp
+  guards, so a stale hint can only cost a visit, never delete a protected row.
+  Existing databases classify every row once in the opening schema transaction.
+- A finished sweep records `(upper_bound, window_revision, max_rows)`. Every
+  announce write moves one of these, so an unchanged triple returns at once
+  without SQL scans (`settled_skips_total`).
+- The daemon timer drains backlog at one batch per second and waits 30 seconds
+  after a batch that deletes nothing. Under steady ingest the window seek and
+  final count therefore run at most twice a minute; the bound is reached up to
+  30 seconds later than before.
+
+Regression: `protected_floor_above_window_is_not_rescanned` (2,400 protected
+peers, 20-row window, a peer whose latest event and latest stamp differ) shows
+quiet sweeps visit zero rows and ingest visits only newly eligible rows.
+`protection_backfill_classifies_existing_rows` covers the upgrade. The
+production A/B under the #663 resource gate has not been run.

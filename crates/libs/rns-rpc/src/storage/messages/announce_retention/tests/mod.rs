@@ -90,9 +90,9 @@ fn protected_rows_do_not_starve_old_history_and_clear_resets_cursor() {
         let peer = if id >= 500 { format!("p-{id}") } else { "old".into() };
         store.insert_announce(&record(id, &peer, id as i64, None)).unwrap();
     }
+    // Protected rows are never candidates, so the first batch reaches old history.
+    assert_eq!(store.prune_announce_history_batch(0).unwrap(), 499);
     assert_eq!(store.prune_announce_history_batch(0).unwrap(), 0);
-    assert!(store.prune_announce_history_batch(0).unwrap() > 0);
-    store.prune_announce_history_batch(0).unwrap();
     assert_eq!(store.list_announces(2000, None, None).unwrap().len(), 601);
     store.clear_announces().unwrap();
     assert!(store.list_announces(1, None, None).unwrap().is_empty());
@@ -791,4 +791,72 @@ fn full_batch_unknown_changes_refresh_cursor_and_publish_stored_upper_bound() {
             assert_eq!(cardinality(&store), (20, 20));
         }
     }
+}
+
+#[test]
+fn protected_floor_above_window_is_not_rescanned() {
+    // #717: 2,400 old peers each own one protected latest row, above a 20-row window.
+    let store = MessagesStore::in_memory().unwrap();
+    for id in 0..2400 {
+        store.insert_announce(&record(id, &format!("old-{id}"), id as i64, Some(1))).unwrap();
+    }
+    // A busy peer whose older stamped row stays protected after newer unstamped events.
+    store.insert_announce(&record(5000, "busy", 3000, Some(9))).unwrap();
+    for id in 5001..5100 {
+        store.insert_announce(&record(id, "busy", id as i64, None)).unwrap();
+    }
+    let examined =
+        || store.operation_metrics_snapshot()["announces"]["examined_total"].as_u64().unwrap();
+    let mut removed = 0;
+    while let n @ 1.. = store.prune_announce_history_batch(20).unwrap() {
+        removed += n;
+    }
+    assert_eq!(removed, 99 - 20);
+    let after_first = examined();
+    let skips =
+        || store.operation_metrics_snapshot()["announces"]["settled_skips_total"].as_u64().unwrap();
+    let skips_before = skips();
+    assert!(after_first <= 99, "first sweep examined protected rows: {after_first}");
+    // Quiet: no further candidate visits.
+    for _ in 0..5 {
+        assert_eq!(store.prune_announce_history_batch(20).unwrap(), 0);
+    }
+    assert_eq!(examined(), after_first);
+    assert_eq!(skips() - skips_before, 5);
+    // Ingest: work scales with newly eligible rows, not the protected floor.
+    for id in 6000..6010 {
+        store.insert_announce(&record(id, "busy", id as i64, None)).unwrap();
+    }
+    assert_eq!(store.prune_announce_history_batch(20).unwrap(), 10);
+    assert!(examined() - after_first <= 10);
+    assert_eq!(store.latest_announce_stamp_cost_for("busy").unwrap(), Some(9));
+    assert_eq!(store.latest_announce_stamp_cost_for("old-7").unwrap(), Some(1));
+    assert_eq!(store.list_announces(10_000, None, None).unwrap().len(), 2400 + 1 + 20);
+}
+
+#[test]
+fn protection_backfill_classifies_existing_rows() {
+    let store = MessagesStore::in_memory().unwrap();
+    for id in 0..30 {
+        store.insert_announce(&record(id, "p", id as i64, (id == 3).then_some(4))).unwrap();
+    }
+    store
+        .with_write_conn(|conn| {
+            conn.execute_batch(
+                "DROP TRIGGER announce_retention_protect_insert;
+                 DROP TRIGGER announce_retention_protect_update;
+                 DROP TRIGGER announce_retention_protect_delete;
+                 DROP INDEX idx_announces_retention_eligible;
+                 DROP INDEX idx_announces_retention_protected;
+                 ALTER TABLE announces DROP COLUMN retention_protected;",
+            )?;
+            MessagesStore::init_announce_retention(conn)
+        })
+        .unwrap();
+    let mut removed = 0;
+    while let n @ 1.. = store.prune_announce_history_batch(5).unwrap() {
+        removed += n;
+    }
+    assert_eq!(removed, 30 - 5 - 1);
+    assert_eq!(store.latest_announce_stamp_cost_for("p").unwrap(), Some(4));
 }

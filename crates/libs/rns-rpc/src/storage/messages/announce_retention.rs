@@ -62,6 +62,57 @@ impl MessagesStore {
         if count_missing {
             conn.execute("UPDATE announce_retention_cursor SET window_revision=NULL", [])?;
         }
+        Self::init_announce_protection(conn)
+    }
+
+    /// Maintains a per-row protection hint so sweeps seek only unprotected
+    /// history. The hint only narrows candidates; the DELETE keeps its own
+    /// latest/stamp guards, so a stale hint can never remove a protected row.
+    fn init_announce_protection(conn: &Connection) -> rusqlite::Result<()> {
+        let backfill = !Self::schema_has_column(conn, "announces", "retention_protected")?;
+        Self::ensure_schema_column(
+            conn,
+            "announces",
+            "retention_protected",
+            "retention_protected INTEGER NOT NULL DEFAULT 1",
+        )?;
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_announces_retention_eligible
+                ON announces(timestamp DESC, id DESC) WHERE retention_protected = 0;
+             CREATE INDEX IF NOT EXISTS idx_announces_retention_protected
+                ON announces(peer) WHERE retention_protected = 1;",
+        )?;
+        let reprotect = |peer: &str| {
+            format!(
+                "UPDATE announces SET retention_protected = 0 WHERE peer = {peer}
+                   AND retention_protected = 1 AND id IS NOT {latest} AND id IS NOT {stamp};
+                 UPDATE announces SET retention_protected = 1
+                   WHERE id IN ({latest}, {stamp}) AND retention_protected = 0;",
+                latest = format!("(SELECT a.id FROM announces a WHERE a.peer = {peer} ORDER BY a.timestamp DESC, a.id DESC LIMIT 1)"),
+                stamp = format!("(SELECT a.id FROM announces a WHERE a.peer = {peer} AND a.stamp_cost IS NOT NULL ORDER BY a.timestamp DESC, a.id DESC LIMIT 1)"),
+            )
+        };
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER IF NOT EXISTS announce_retention_protect_insert
+             AFTER INSERT ON announces BEGIN {new} END;
+             CREATE TRIGGER IF NOT EXISTS announce_retention_protect_update
+             AFTER UPDATE OF peer, timestamp, id, stamp_cost ON announces BEGIN {old} {new} END;
+             CREATE TRIGGER IF NOT EXISTS announce_retention_protect_delete
+             AFTER DELETE ON announces WHEN OLD.retention_protected = 1 BEGIN {old} END;",
+            new = reprotect("NEW.peer"),
+            old = reprotect("OLD.peer"),
+        ))?;
+        if backfill {
+            // One-time migration: existing rows default to protected until classified.
+            conn.execute(
+                "UPDATE announces SET retention_protected = 0
+                 WHERE id IS NOT (SELECT a.id FROM announces a WHERE a.peer = announces.peer
+                                  ORDER BY a.timestamp DESC, a.id DESC LIMIT 1)
+                 AND id IS NOT (SELECT a.id FROM announces a WHERE a.peer = announces.peer
+                                AND a.stamp_cost IS NOT NULL ORDER BY a.timestamp DESC, a.id DESC LIMIT 1)",
+                [],
+            )?;
+        }
         Ok(())
     }
 
@@ -82,6 +133,13 @@ impl MessagesStore {
             )?;
             // An upper bound proves there is no out-of-window row, even when
             // a previously active cursor remains after deletion or limit changes.
+            // Nothing changed since the last finished sweep: every announce
+            // write moves the upper bound or revision, so the result is unchanged.
+            if *metrics.settled_sweep() == Some((upper_bound, revision, max_rows)) {
+                tx.commit()?;
+                metrics.settled_skips_total.fetch_add(1, Ordering::Relaxed);
+                return Ok(0);
+            }
             if upper_bound <= max_rows {
                 tx.execute("DELETE FROM announce_retention_cursor", [])?;
                 tx.commit()?;
@@ -103,11 +161,11 @@ impl MessagesStore {
             };
             let candidates = if let Some((ts, id)) = boundary {
                 let sql = if resume {
-                    "SELECT timestamp, id FROM announces WHERE (timestamp, id) < (?1, ?2)
-                     ORDER BY timestamp DESC, id DESC LIMIT 512"
+                    "SELECT timestamp, id FROM announces WHERE retention_protected = 0
+                     AND (timestamp, id) < (?1, ?2) ORDER BY timestamp DESC, id DESC LIMIT 512"
                 } else {
-                    "SELECT timestamp, id FROM announces WHERE (timestamp, id) <= (?1, ?2)
-                     ORDER BY timestamp DESC, id DESC LIMIT 512"
+                    "SELECT timestamp, id FROM announces WHERE retention_protected = 0
+                     AND (timestamp, id) <= (?1, ?2) ORDER BY timestamp DESC, id DESC LIMIT 512"
                 };
                 let mut statement = tx.prepare(sql)?;
                 metrics.candidates.measure(&mut statement, |statement| {
@@ -174,6 +232,8 @@ impl MessagesStore {
                 metrics.retained_at_last_sweep.store(retained as u64, Ordering::Relaxed);
             }
             metrics.row_count_upper_bound.store(committed_upper as u64, Ordering::Relaxed);
+            *metrics.settled_sweep() =
+                retained.is_some().then_some((committed_upper, revision_after, max_rows));
             Ok(removed)
         }), |removed| *removed)
     }
