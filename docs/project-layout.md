@@ -1,7 +1,9 @@
 # Workspace and Package Guide
 
-LXMF-rs is a Cargo workspace with explicit library, application, embedded, and
-tooling boundaries. The root [`Cargo.toml`](../Cargo.toml) is the source of
+Fabric's current Reticulum/LXMF implementation is a Cargo workspace with
+explicit library, application, embedded, and tooling boundaries. The existing
+technical package names and dependency structure are unchanged by the rebrand;
+see the [project purpose](fabric.md). The root [`Cargo.toml`](../Cargo.toml) is the source of
 truth for active members and allowed workspace-local dependency edges.
 
 The workspace uses resolver 2, Rust edition 2021, and a minimum Rust version
@@ -12,7 +14,7 @@ independent Bluetooth leaf uses edition 2024 and retains its Rust 1.85 minimum.
 ## Directory layout
 
 ```text
-LXMF-rs/
+Fabric/
 ├── crates/
 │   ├── libs/          reusable protocol, SDK, runtime, and embedded crates
 │   └── apps/          daemons and command-line applications

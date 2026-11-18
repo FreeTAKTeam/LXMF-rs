@@ -13,6 +13,8 @@ builds now require Rust 1.89 for the patched bundled SQLite dependency; see the
 
 ## Start here
 
+- [Fabric purpose and boundaries](fabric.md): project identity, shipped
+  capabilities, application boundaries, and planned IP-native communication.
 - [Getting started](getting-started.md): install, build, run, and validate the
   project.
 - [Three main applications and their binaries](project-layout.md#applications-and-binaries):

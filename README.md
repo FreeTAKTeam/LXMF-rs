@@ -1,4 +1,4 @@
-# LXMF-rs — Reticulum and LXMF in Rust
+# Fabric — Communication infrastructure in Rust
 
 [![Latest release](https://img.shields.io/github/v/release/FreeTAKTeam/LXMF-rs?sort=semver)](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
 [![Crates.io](https://img.shields.io/crates/v/lxmf)](https://crates.io/crates/lxmf)
@@ -6,11 +6,20 @@
 [![License](https://img.shields.io/badge/license-EPL--2.0-blue.svg)](LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FreeTAKTeam/LXMF-rs)
 
-LXMF-rs is a Rust implementation of the
-[Reticulum](https://reticulum.network/) networking stack and the
-[LXMF](https://github.com/markqvist/LXMF) messaging stack. The workspace
-provides reusable libraries, a typed SDK, host daemons and command-line tools,
-plus embedded and FFI surfaces.
+**Fabric** is FreeTAKTeam's reusable communication infrastructure for
+R3AKT and other applications. It provides communication capabilities without
+owning application workflows, user experience, or business semantics.
+
+Fabric's current implementation is the Rust
+[Reticulum](https://reticulum.network/) networking stack and
+[LXMF](https://github.com/markqvist/LXMF) messaging stack, formerly presented
+under the project name **LXMF-rs**. The workspace provides reusable libraries,
+a typed SDK, host daemons, command-line tools, and embedded/FFI surfaces.
+Existing crate names, binaries, protocols, public APIs, and releases are
+unchanged. See [Fabric's purpose, current scope, and boundaries](docs/fabric.md).
+
+A distinct, high-speed IP publish/subscribe capability is planned, but is not
+part of the currently shipped Reticulum/LXMF implementation.
 
 
 ## Our position on independent Reticulum implementations
@@ -178,7 +187,7 @@ full gate and evidence boundaries.
 
 ## License
 
-LXMF-rs is distributed under the [Eclipse Public License 2.0](LICENSE).
+Fabric's existing Rust implementation is distributed under the [Eclipse Public License 2.0](LICENSE).
 The same file contains an explicit [GPL version 2 or later secondary-license
 notice](LICENSE#L280); availability under that secondary license follows the conditions in
 the EPL and that notice. Cargo records the existing arrangement as

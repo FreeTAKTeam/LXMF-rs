@@ -1,7 +1,8 @@
 # Getting Started
 
-This guide covers the shortest supported paths for installing LXMF-rs,
-building a checkout, running the host tools, and adding the Rust libraries to
+This guide covers the shortest supported paths for installing Fabric's
+existing Reticulum/LXMF toolchain, building a checkout, running the host tools,
+and adding the Rust libraries to
 an application.
 
 ## Install a stable release
