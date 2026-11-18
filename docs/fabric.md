@@ -76,3 +76,14 @@ those references. Until then, existing repository URLs are authoritative.
 
 The goal is a clear project-level identity without an unnecessary migration
 for existing Reticulum/LXMF users.
+
+## Brand assets
+
+The Fabric brand uses the same cyan-and-white visual treatment as R3AKT.
+The source PNGs are retained at their original resolution:
+
+- [Complete logo](assets/fabric/Fabric_full.png) — full logo with dark background.
+- [Logo only](assets/fabric/Fabric_logo_only.png) — symbol with transparent background.
+- [Name only](assets/fabric/Fabric_name_only.png) — wordmark with transparent background.
+
+![Fabric complete logo](assets/fabric/Fabric_full.png)
