@@ -318,3 +318,69 @@ and both receipt-owner tests. The focused regression also verifies multiple
 completed case variants deduplicate. Formatting, strict affected-package Clippy,
 boundary/module checks, document links and JSON validation passed. The original
 snapshot SHA-256 was checked again and is unchanged.
+
+## Preview 40 follow-up: eligible-only sweeps (2026-11-17)
+
+Preview 40 reported 82.62 million candidate visits for 202,389 deletes: a
+protected floor (latest event / latest non-null stamp per peer) above the window
+was re-tested on every sweep, and a finished sweep restarted on the next
+one-second tick.
+
+- `announces.retention_protected` is a trigger-maintained hint (insert, update
+  of `peer/timestamp/id/stamp_cost`, delete of a protected row). Sweeps select
+  candidates from the partial index `idx_announces_retention_eligible`, so
+  protected rows are never visited. The DELETE keeps its own latest/stamp
+  guards, so a stale hint can only cost a visit, never delete a protected row.
+  Existing databases classify every row once in the opening schema transaction.
+- A finished sweep records `(upper_bound, window_revision, max_rows)`. Every
+  announce write moves one of these, so an unchanged triple returns at once
+  without SQL scans (`settled_skips_total`).
+- The daemon timer drains backlog at one batch per second and waits 30 seconds
+  after a batch that deletes nothing. Under steady ingest the window seek and
+  final count therefore run at most twice a minute; the bound is reached up to
+  30 seconds later than before.
+
+Regression: `protected_floor_above_window_is_not_rescanned` (2,400 protected
+peers, 20-row window, a peer whose latest event and latest stamp differ) shows
+quiet sweeps visit zero rows and ingest visits only newly eligible rows.
+`protection_backfill_classifies_existing_rows` covers the upgrade. The
+production A/B under the #663 resource gate has not been run.
+
+Local A/B with `examples/announce_floor_717.rs` (release build; 50,000
+protected one-row peers, 10,000-row window, 20,000 busy-peer events; a phase ends
+at the first batch that deletes nothing):
+
+| Phase | `origin/main` rows examined | candidate rows examined |
+|---|---:|---:|
+| Initial drain | 11,264 | 10,000 |
+| 30 quiet ticks | 15,872 | 0 |
+| 100 new events | 1,024 (0 deleted, 100 rows over bound) | 100 (converged) |
+
+This is a synthetic single-process probe, not cgroup, PSI or production evidence.
+
+Production-shaped run (same probe, 1,700,000 announces: 225,000 protected
+one-row peers plus 1,475,000 busy-peer events, default 100,000-row window):
+
+| Measure | `origin/main` | candidate |
+|---|---:|---:|
+| Drain to bound (rows examined / wall) | 1,376,256 / 7.3 s | 1,375,000 / 7.7 s |
+| 30 quiet ticks, rows examined | 15,872 | 0 |
+| 100 new events, rows examined | 1,024 (0 deleted) | 100 (converged) |
+| Retained rows after ingest | 325,100 (over bound) | 325,000 |
+| Fixture build, 1.7M single-row inserts | 1:31 | 3:60 |
+| Database file after drain | 410 MB | 492 MB |
+| Peak RSS | 103 MiB | 105 MiB |
+
+Costs: each insert also maintains the protection hint (about 85 µs extra per
+announce here; both runs shared the CPU), and the column plus two partial
+indexes add about 20% to the file. At production's ~1 announce/s the insert cost
+is negligible; the file growth is the trade for not re-reading protected history.
+
+Query plans on these databases:
+- candidates, main: `SEARCH announces USING COVERING INDEX idx_announces_timestamp_id_desc ((timestamp,id)<(?,?))`, which walks protected rows too.
+- candidates, candidate: `SEARCH announces USING COVERING INDEX idx_announces_retention_eligible ((timestamp,id)<(?,?))`.
+- insert-trigger demote: `SEARCH announces USING INDEX idx_announces_retention_protected (peer=?)`, with latest lookups on `idx_announces_peer_latest`.
+- payload quota, main: `SCAN propagation_entries USING COVERING INDEX idx_propagation_entries_retention_cover`; candidate: `SEARCH propagation_entries_bytes USING INTEGER PRIMARY KEY`.
+
+Not measured: cgroup file/anon memory, PSI, physical I/O, or multi-hour cycles
+under the 768 MiB / two-core gate.

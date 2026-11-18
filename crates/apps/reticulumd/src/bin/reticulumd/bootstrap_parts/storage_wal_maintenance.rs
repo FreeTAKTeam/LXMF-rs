@@ -88,16 +88,28 @@ fn spawn_propagation_storage_maintenance(daemon: Arc<RpcDaemon>) {
     });
 }
 
+const ANNOUNCE_HISTORY_IDLE_INTERVAL: Duration = Duration::from_secs(30);
+
 fn spawn_announce_history_maintenance(daemon: Arc<RpcDaemon>, max_rows: u64) {
     tokio::spawn(async move {
+        // Drain backlog at one batch per second; once a sweep deletes nothing,
+        // wait longer so steady ingest does not restart a full window seek every tick.
+        let mut delay = Duration::from_secs(1);
         loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(delay).await;
             let daemon = Arc::clone(&daemon);
-            match tokio::task::spawn_blocking(move || daemon.maintain_announce_history(max_rows)).await {
-                Ok(Ok(_)) => {}
-                Ok(Err(error)) => log::warn!("[daemon] announce history maintenance failed: {error}"),
-                Err(error) => log::error!("[daemon] announce history maintenance worker failed: {error}"),
-            }
+            delay = match tokio::task::spawn_blocking(move || daemon.maintain_announce_history(max_rows)).await {
+                Ok(Ok(0)) => ANNOUNCE_HISTORY_IDLE_INTERVAL,
+                Ok(Ok(_)) => Duration::from_secs(1),
+                Ok(Err(error)) => {
+                    log::warn!("[daemon] announce history maintenance failed: {error}");
+                    ANNOUNCE_HISTORY_IDLE_INTERVAL
+                }
+                Err(error) => {
+                    log::error!("[daemon] announce history maintenance worker failed: {error}");
+                    ANNOUNCE_HISTORY_IDLE_INTERVAL
+                }
+            };
         }
     });
 }

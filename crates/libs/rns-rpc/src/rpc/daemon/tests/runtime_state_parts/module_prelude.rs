@@ -3,7 +3,7 @@ use std::sync::{
     mpsc as std_mpsc, Mutex as StdMutex,
 };
 
-use std::time::{Duration as StdDuration, Instant as StdInstant};
+use std::time::Duration as StdDuration;
 
 struct PendingOutboundBridge;
 
@@ -381,27 +381,32 @@ fn bridge_backed_send_schedules_without_waiting_on_slow_delivery() {
         .recv_timeout(StdDuration::from_secs(1))
         .expect("delivery worker should start first delivery");
 
-    let started = StdInstant::now();
-    let second = daemon
-        .handle_rpc(rpc_request(
-            13,
-            "send_message_v2",
-            json!({
-                "id": "slow-bridge-2",
-                "source": "src",
-                "destination": "dst",
-                "title": "",
-                "content": "hello"
-            }),
-        ))
-        .expect("second send");
-    assert!(second.error.is_none());
-    assert!(
-        started.elapsed() < StdDuration::from_millis(20),
-        "send_message_v2 should enqueue delivery work instead of waiting on a slow bridge"
-    );
-
-    release_tx.send(()).expect("release slow bridge");
+    // The bridge stays blocked until released, so a send that waited on it could
+    // never return here. Deterministic, unlike a wall-clock bound under load.
+    let (done_tx, done_rx) = std_mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let second = daemon.handle_rpc(rpc_request(
+                13,
+                "send_message_v2",
+                json!({
+                    "id": "slow-bridge-2",
+                    "source": "src",
+                    "destination": "dst",
+                    "title": "",
+                    "content": "hello"
+                }),
+            ));
+            done_tx.send(second).expect("receiver outlives the scoped sender");
+        });
+        let second = done_rx.recv_timeout(StdDuration::from_secs(5));
+        // Release before asserting so the scope can join even on failure.
+        release_tx.send(()).expect("release slow bridge");
+        let second = second
+            .expect("send_message_v2 should enqueue delivery work instead of waiting on a slow bridge")
+            .expect("second send");
+        assert!(second.error.is_none());
+    });
 }
 
 #[test]

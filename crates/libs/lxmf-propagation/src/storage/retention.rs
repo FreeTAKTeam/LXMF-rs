@@ -23,9 +23,8 @@ pub fn prune_propagation_entries_page(
     limit_bytes: u64,
     prioritised_destinations: &[String],
 ) -> rusqlite::Result<Vec<String>> {
-    // shortcut: rescan size metadata each page; add an authoritative byte counter only if this scan dominates.
     let total: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(size_bytes), 0) FROM propagation_entries",
+        "SELECT total FROM propagation_entries_bytes WHERE singleton = 1",
         [],
         |row| row.get(0),
     )?;
@@ -185,5 +184,50 @@ mod paging_tests {
             ["id-00001"],
             "age selects the window before priority orders its candidates"
         );
+    }
+}
+
+#[cfg(test)]
+mod byte_total_tests {
+    use super::*;
+
+    fn total(conn: &Connection) -> i64 {
+        conn.query_row("SELECT total FROM propagation_entries_bytes", [], |row| row.get(0))
+            .expect("total")
+    }
+
+    #[test]
+    fn byte_total_tracks_insert_upsert_delete_prune_and_reopen() {
+        let conn = Connection::open_in_memory().expect("database");
+        crate::storage::initialize(&conn).expect("schema");
+        conn.execute_batch(
+            "INSERT INTO propagation_entries VALUES('a','d','00',1,10,NULL),('b','d','00',2,20,NULL);",
+        )
+        .expect("insert");
+        assert_eq!(total(&conn), 30);
+        let record = crate::storage::PropagationEntryRecord {
+            transient_id: "a".into(),
+            destination: "d".into(),
+            payload_hex: "00".into(),
+            received_at: 3,
+            size_bytes: 5,
+            stamp_value: None,
+        };
+        crate::storage::upsert_propagation_entry(&conn, &record).expect("upsert");
+        assert_eq!(total(&conn), 25);
+        // Under budget: no work and no full-table SUM is needed.
+        assert!(prune_propagation_entries_page(&conn, 25, &[]).expect("under").is_empty());
+        assert_eq!(prune_propagation_entries_page(&conn, 24, &[]).expect("over"), ["b"]);
+        assert_eq!(total(&conn), 5);
+        conn.execute("DELETE FROM propagation_entries", []).expect("delete");
+        assert_eq!(total(&conn), 0);
+        // Drift (e.g. a write made before the triggers existed) is reconciled on open.
+        conn.execute_batch(
+            "INSERT INTO propagation_entries VALUES('c','d','00',1,7,NULL);
+             UPDATE propagation_entries_bytes SET total = 999;",
+        )
+        .expect("drift");
+        crate::storage::initialize(&conn).expect("reopen");
+        assert_eq!(total(&conn), 7);
     }
 }

@@ -359,6 +359,14 @@ scratch from 75.8 MB to 25.2 MB (paths), and 93.2 MB to 21.0 MB (tunnels).
 See [allocation evidence and limits](../performance/path-snapshot-allocation-663.md);
 constrained daemon acceptance remains a separate gate.
 
+The 2026-11-17 #717/#663 increment makes announce retention visit only
+unprotected history (trigger-maintained hint plus partial index), skips sweeps
+when nothing changed, and backs the idle timer off to 30 seconds. Payload quota
+reads a trigger-maintained byte total instead of summing the table on every
+page. See [announce retention](../performance/announce-history-retention-717.md)
+and [the 663 record](../performance/rch-resource-fixes-663.md); the production
+resource gate remains open.
+
 The 2026-11-07 #663 increment streams peer-status unhandled IDs through the
 existing folded covering index. Fusing state aggregation with ID ordering removes
 the previous temporary result sort; mixed-case completed-state precedence,

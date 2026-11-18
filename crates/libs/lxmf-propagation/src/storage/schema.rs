@@ -42,5 +42,29 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
                     WHERE state = 'unhandled';
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_global_completed
                     ON propagation_peer_entries(updated_at, transient_id, peer)
-                    WHERE state IN ('handled', 'transferred', 'received', 'transfer_limited');")
+                    WHERE state IN ('handled', 'transferred', 'received', 'transfer_limited');")?;
+    // Payload quota checks read this trigger-maintained total instead of summing
+    // the table; each open reconciles it once with an exact SUM.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS propagation_entries_bytes (
+            singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+            total INTEGER NOT NULL
+         );
+         INSERT INTO propagation_entries_bytes(singleton, total)
+            VALUES(1, (SELECT COALESCE(SUM(MAX(size_bytes, 0)), 0) FROM propagation_entries))
+            ON CONFLICT(singleton) DO UPDATE SET total = excluded.total;
+         CREATE TRIGGER IF NOT EXISTS propagation_entries_bytes_insert
+         AFTER INSERT ON propagation_entries BEGIN
+            UPDATE propagation_entries_bytes SET total = total + MAX(NEW.size_bytes, 0);
+         END;
+         CREATE TRIGGER IF NOT EXISTS propagation_entries_bytes_update
+         AFTER UPDATE OF size_bytes ON propagation_entries BEGIN
+            UPDATE propagation_entries_bytes
+               SET total = total - MAX(OLD.size_bytes, 0) + MAX(NEW.size_bytes, 0);
+         END;
+         CREATE TRIGGER IF NOT EXISTS propagation_entries_bytes_delete
+         AFTER DELETE ON propagation_entries BEGIN
+            UPDATE propagation_entries_bytes SET total = total - MAX(OLD.size_bytes, 0);
+         END;",
+    )
 }

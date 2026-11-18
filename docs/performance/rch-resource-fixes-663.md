@@ -1190,3 +1190,16 @@ and two store APIs with no daemon caller. No temporary or heap
 bytes were measured, and no soak or production run was performed; this does
 not establish that this statement produced the production `etilqs_` writes.
 #663 remains open.
+
+## Payload quota byte total, 2026-11-17
+
+Preview 40 reported 0.93 TiB of logical reads over 16,182 payload passes; each
+page of `prune_propagation_entries_page` summed `size_bytes` over the whole
+table before it could return under quota. `propagation_entries_bytes` now
+holds a total maintained by AFTER INSERT / UPDATE OF size_bytes / DELETE
+triggers (the upsert uses `ON CONFLICT DO UPDATE`, so no REPLACE delete is
+missed) and reconciled with one exact SUM each time the schema is opened.
+Under-budget passes read one row. Weighted eviction, the 4,096-candidate window
+and custody marks are unchanged. Covered by
+`byte_total_tracks_insert_upsert_delete_prune_and_reopen`. Not yet measured
+under the resource gate.
