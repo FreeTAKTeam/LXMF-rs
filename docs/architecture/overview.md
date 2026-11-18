@@ -1,4 +1,10 @@
-# LXMF-rs Architecture
+# Fabric architecture
+
+Fabric is the communication layer for R3AKT and a reusable Rust infrastructure
+project for other applications. Its existing Reticulum/LXMF implementation is
+described here; the [project purpose](../fabric.md) distinguishes existing
+capabilities from separately planned IP-native communication. No source-level
+or wire-level architecture changes are implied by the project rebrand.
 
 The [package guide](../project-layout.md) maps the current workspace. The
 release baseline and evidence limits live in the [roadmap](../status/current-roadmap.md);
