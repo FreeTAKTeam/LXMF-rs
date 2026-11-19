@@ -76,6 +76,10 @@ impl ResourceManager {
                 return;
             }
         }
+        if self.advertisement_exceeds_link_admission(&advertisement, link.id()) {
+            Self::reject_advertisement(link, advertisement.hash, responses);
+            return;
+        }
         let resource_hash = advertisement.hash;
         if self.incoming.get(&resource_hash).is_some_and(|receiver| receiver.is_active()) {
             log::debug!("[resource-diag] advertisement_duplicate hash={resource_hash}");
@@ -95,7 +99,7 @@ impl ResourceManager {
                 return;
             };
             if !link.response_resource_allowed(id, advertisement.data_size) {
-                Self::reject_response_advertisement(link, resource_hash, responses);
+                Self::reject_advertisement(link, resource_hash, responses);
                 return;
             }
         }
@@ -119,7 +123,7 @@ impl ResourceManager {
                 resource_hash,
                 advertisement.data_size,
             ) {
-                Self::reject_response_advertisement(link, resource_hash, responses);
+                Self::reject_advertisement(link, resource_hash, responses);
                 return;
             }
             link.start_response_resource(resource_hash, advertisement.data_size);
@@ -168,8 +172,8 @@ impl ResourceManager {
         };
     }
 
-    fn reject_response_advertisement(link: &Link, hash: Hash, responses: &mut Vec<Packet>) {
-        log::warn!("rejecting response Resource link={} resource={}", link.id(), hash);
+    fn reject_advertisement(link: &Link, hash: Hash, responses: &mut Vec<Packet>) {
+        log::warn!("rejecting inbound Resource link={} resource={}", link.id(), hash);
         match build_link_packet(
             link,
             PacketType::Data,
@@ -178,7 +182,7 @@ impl ResourceManager {
         ) {
             Ok(packet) => responses.push(packet),
             Err(error) => log::warn!(
-                "response Resource rejection frame failed link={} resource={} error={}",
+                "inbound Resource rejection frame failed link={} resource={} error={}",
                 link.id(),
                 hash,
                 error

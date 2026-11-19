@@ -30,6 +30,8 @@ mod tests {
     include!("tests_completion.rs");
     #[path = "signal.rs"]
     mod signal;
+    #[path = "link_admission.rs"]
+    mod link_admission;
     include!("tests_request_cleanup.rs");
 
     fn resource_packet(context: PacketContext, payload: &[u8], destination: AddressHash) -> Packet {

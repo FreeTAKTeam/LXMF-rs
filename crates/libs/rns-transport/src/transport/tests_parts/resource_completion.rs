@@ -148,3 +148,46 @@ async fn retained_resource_completion_survives_dispatch_failure_without_map_look
     assert_eq!(completion.wait().await.expect("observed failure"), ResourceOutcome::Failed);
     assert!(transport.get_handler().lock().await.resource_manager.has_no_outbound_state());
 }
+
+/// Issue #766: the reader path registers completion before dispatch and
+/// honours an explicit no-compression request (RPP sends logical bytes).
+#[tokio::test]
+async fn reader_resource_completion_is_registered_before_dispatch() {
+    use crate::resource::ResourceOutcome;
+
+    let local = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("reader-completion", &local, false));
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("rpp", "receive"),
+    };
+    let (outbound, _) = activated_link_pair(destination, &signer);
+    let link_id = *outbound.id();
+    transport
+        .get_handler()
+        .lock()
+        .await
+        .out_links
+        .insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
+    let payload = vec![0u8; 4096];
+    let mut observed = None;
+    let result = transport
+        .send_resource_from_reader_with_completion(
+            &link_id,
+            std::io::Cursor::new(payload.clone()),
+            payload.len() as u64,
+            Some(vec![0xc4, 0x01, 0x35]),
+            false,
+            |hash, completion| {
+                assert_eq!(completion.current(), None, "registration precedes dispatch");
+                observed = Some((hash, completion));
+            },
+        )
+        .await;
+    assert!(matches!(result, Err(RnsError::ConnectionError)));
+    let (_, mut completion) = observed.expect("registration survives send error");
+    assert_eq!(completion.wait().await.expect("retained outcome"), ResourceOutcome::Failed);
+}

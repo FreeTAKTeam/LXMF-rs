@@ -195,6 +195,7 @@ impl ResourceManager {
     }
 
     pub fn remove_link_state(&mut self, link_id: AddressHash) {
+        self.link_admission.remove(&link_id);
         self.remove_transfer_state(CleanupScope::Link(link_id));
     }
 
