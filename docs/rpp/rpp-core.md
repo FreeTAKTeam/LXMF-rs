@@ -49,7 +49,7 @@ no daemon, LXMF, RCH or REM code. Only the optional `rns` feature pulls in
 
 | Module | Responsibility |
 |---|---|
-| `cbor` | Strict RFC 8949 §4.2.1 deterministic codec: rejects floats, tags, negatives, indefinite lengths, duplicate/unsorted keys, overlong heads, trailing bytes, >12 nesting, >1 KiB text, and checks declared lengths before allocating. |
+| `cbor` (re-exported from `rdo-core`) | Strict RFC 8949 §4.2.1 deterministic codec: rejects floats, tags, negatives, indefinite lengths, duplicate/unsorted keys, overlong heads, trailing bytes, >12 nesting, >1 KiB text, and checks declared lengths before allocating. |
 | `manifest`, `manifest_build` | Signed manifest build/verify: package ID, owner signature, H, file/chunk partition, path safety, directory collisions, extensions/critical IDs, RDO owner binding and `rpp.receive` derivation. `FileDraft::from_reader` hashes a file one chunk at a time. |
 | `publication` | RDO revision verification for the Package, Manifest and File references, and comparison against the signed manifest. |
 | `control`, `selection` | The seven commands, header rules, RDO v1 result wrapper and index/range selections. |
@@ -112,8 +112,8 @@ loopback RNS test:
 
 ### Not yet done
 
-- Python/Rust network interop for RPP and the RDO network gate; the RC1
-  interoperability claim stays gated on them.
+- Python/Rust network interop for RPP itself. The RDO network gate now
+  passes in both directions; see [rdo-core](rdo-core.md).
 - Transport-level loss injection and LoRa-MTU runs of the RNS test.
 - Replay state is in memory; requests issued before a restart are refused
   through their expiry instead of persisted.

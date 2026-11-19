@@ -14,14 +14,13 @@ default = []
 rns = ["dep:rns-transport", "dep:tokio", "dep:rmpv"]
 
 [dependencies]
+rdo-core.workspace = true
 rns-transport = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 rmpv = { workspace = true, optional = true }
-ed25519-dalek = { workspace = true, features = ["rand_core"] }
 log.workspace = true
 rand_core = { workspace = true, features = ["getrandom"] }
 sha2.workspace = true
-x25519-dalek = { workspace = true, features = ["static_secrets"] }
 thiserror.workspace = true
 
 [dev-dependencies]

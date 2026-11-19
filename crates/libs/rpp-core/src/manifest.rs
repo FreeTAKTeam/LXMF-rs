@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 use crate::cbor::{self, Fields, Value};
 use crate::error::{Result, RppError};
+use crate::identity::ReceiveDestination;
 use crate::identity::{sha256, Destination, Digest, PublicIdentity, Signature};
 
 pub const VERSION: u64 = 3;
@@ -155,7 +156,7 @@ fn parse_manifest(mut fields: Fields) -> Result<Manifest> {
                 .into_array()?
                 .into_iter()
                 .map(Value::into_fixed::<32>)
-                .collect::<Result<Vec<_>>>()?;
+                .collect::<rdo_core::Result<Vec<_>>>()?;
             let distinct: HashSet<_> = list.iter().collect();
             if list.is_empty() || distinct.len() != list.len() {
                 return Err(RppError::InvalidManifest(

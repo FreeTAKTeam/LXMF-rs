@@ -8,6 +8,7 @@ use crate::control::{
     MAX_WINDOW,
 };
 use crate::error::{Result, RppError};
+use crate::identity::ReceiveDestination;
 use crate::identity::{sha256, Destination, PublicIdentity};
 use crate::manifest::VerifiedManifest;
 use crate::replay::{ReplayCache, ReplayKey};

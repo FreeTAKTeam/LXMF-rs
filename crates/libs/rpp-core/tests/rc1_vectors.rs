@@ -7,6 +7,7 @@ use common::*;
 use rpp_core::cbor;
 use rpp_core::control::{Control, RppResult};
 use rpp_core::publication::{Publication, PublicationKind};
+use rpp_core::ReceiveDestination;
 use rpp_core::{RppError, VerifiedManifest};
 
 #[test]

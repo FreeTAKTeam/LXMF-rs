@@ -6,7 +6,7 @@
 //! REM dependency. The optional `rns` feature adds an async adapter onto
 //! `reticulum-rs-transport`. See `docs/rpp/rpp-core.md`.
 
-pub mod cbor;
+pub use rdo_core::cbor;
 pub mod control;
 pub mod error;
 pub mod identity;
@@ -24,7 +24,7 @@ pub mod store;
 
 pub use control::{Body, Control, Header, RppResult, Status};
 pub use error::{Result, RppError};
-pub use identity::{Destination, Digest, PublicIdentity, SigningIdentity};
+pub use identity::{Destination, Digest, PublicIdentity, ReceiveDestination, SigningIdentity};
 pub use manifest::{OwnerBinding, VerifiedManifest};
 pub use manifest_build::{FileDraft, ManifestDraft};
 pub use publisher::{Outbound, Publisher, Served};

@@ -190,13 +190,13 @@ impl Control {
         let unsupported = |error| ControlError { request_id: None, error };
         let map = cbor::decode(bytes, MAX_CONTROL, false)
             .and_then(Value::into_map)
-            .map_err(unsupported)?;
+            .map_err(|error| unsupported(error.into()))?;
         let mut fields = Fields::new(map);
         let (command, header) = decode_header(&mut fields).map_err(unsupported)?;
         let request_id = Some(header.request_id);
         let body = check_extensions(&mut fields)
             .and_then(|()| decode_body(command, &mut fields))
-            .and_then(|body| fields.finish().map(|()| body))
+            .and_then(|body| Ok(fields.finish().map(|()| body)?))
             .and_then(|body| {
                 let lifetime = header.expires.checked_sub(header.issued);
                 if lifetime.is_some_and(|secs| (1..=MAX_LIFETIME_SECS).contains(&secs)) {

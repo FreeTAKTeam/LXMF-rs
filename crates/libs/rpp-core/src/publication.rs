@@ -1,12 +1,14 @@
 //! RDO publication references for the RPP Package, Manifest and File types
 //! (RDO shared-Identity owner binding v1 revision format).
 
-use crate::cbor::{self, Fields, Value};
+use rdo_core::revision::Revision;
+
+use crate::cbor::Fields;
 use crate::error::{Result, RppError};
-use crate::identity::{sha256, Destination, Digest, PublicIdentity};
+use crate::identity::{Destination, Digest, PublicIdentity};
 use crate::manifest::VerifiedManifest;
 
-pub const MAX_REVISION: usize = 48 * 1024;
+pub use rdo_core::revision::MAX_REVISION;
 const ONTOLOGY: &str = "https://freetakteam.github.io/rpp/ontology#";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,36 +36,17 @@ pub struct Publication {
 impl Publication {
     /// Verifies the revision signature against the resolved owner Identity.
     pub fn verify(bytes: &[u8], owner: &PublicIdentity) -> Result<Self> {
-        let items = cbor::decode(bytes, MAX_REVISION, true)?.into_array()?;
-        let [version, object, parent, kind, body, signature]: [Value; 6] =
-            items.try_into().map_err(|_| RppError::Malformed("revision must have six items"))?;
-        if version.as_uint()? != 1 {
-            return Err(RppError::UnsupportedVersion(version.as_uint()?));
-        }
-        let signed = cbor::encode(&Value::Array(vec![
-            Value::Text("rdo.revision.v1".into()),
-            Value::Uint(1),
-            object.clone(),
-            parent.clone(),
-            kind.clone(),
-            body.clone(),
-        ]));
-        owner.verify(&signed, &signature.into_fixed()?)?;
-
-        let kind = match kind.into_text()?.strip_prefix(ONTOLOGY) {
+        let revision = Revision::verify(bytes, owner)?;
+        let kind = match revision.type_iri.strip_prefix(ONTOLOGY) {
             Some("Package") => PublicationKind::Package,
             Some("Manifest") => PublicationKind::Manifest,
             Some("File") => PublicationKind::File,
             _ => return Err(RppError::InvalidPublication("unknown revision type")),
         };
-        let parent_is_null = parent == Value::Null;
-        if !parent_is_null && parent.into_fixed::<32>().is_err() {
-            return Err(RppError::Malformed("revision parent"));
-        }
-        if kind != PublicationKind::File && !parent_is_null {
+        if kind != PublicationKind::File && revision.parent.is_some() {
             return Err(RppError::InvalidPublication("Package and Manifest are genesis-only"));
         }
-        let mut fields = Fields::new(body.into_map()?);
+        let mut fields = Fields::new(revision.body);
         let package_destination = fields.fixed(0)?;
         let manifest_destination = fields.fixed(1)?;
         let package_id = fields.fixed(2)?;
@@ -75,8 +58,8 @@ impl Publication {
         fields.finish()?;
         Ok(Self {
             kind,
-            object: object.into_fixed()?,
-            revision_id: sha256(bytes),
+            object: revision.object,
+            revision_id: revision.id,
             package_destination,
             manifest_destination,
             package_id,

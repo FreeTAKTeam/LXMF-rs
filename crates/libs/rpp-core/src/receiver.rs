@@ -9,6 +9,7 @@ use crate::control::{
     MAX_BUNDLE_BYTES, MAX_WINDOW,
 };
 use crate::error::{Result, RppError};
+use crate::identity::ReceiveDestination;
 use crate::identity::{sha256, Digest, PublicIdentity};
 use crate::manifest::{OwnerBinding, VerifiedManifest, MAX_SIGNED_MANIFEST};
 use crate::publication::Publication;
