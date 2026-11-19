@@ -82,7 +82,22 @@ policy (`Policy` closure) and the transport.
   Package Destinations with `add_destination`.
 
 Callers still resolve the Package `DestinationDesc` and owner binding through
-RDO, and register/announce Package Destinations.
+RDO, and register/announce Package Destinations. `PublisherService` ignores
+requests for Destinations it does not publish, and an already active Link to
+the Package (for example after an RDO READ) is reused instead of waited on.
+
+### One-file sharing (`rpp_core::rns_share`, feature `rns`)
+
+`ShareNode` packages the above for applications (REM peer sharing, RCH
+serving): `publish_file` signs a one-file Package (64 KiB chunks) and its RDO
+Package record; `serve` republishes from persisted `SharedPackage` bytes after
+restart; `offer` lets one recipient pull and sends an Offer to its
+`rpp.receive` inbox; the inbox resolves the Package owner through RDO before
+answering `defer`; `fetch` resolves the Package, READs the signed publication
+record over `/rdo/1/op`, pulls and returns the promoted, verified file. Only
+offered recipients may READ or pull. `tests/rns_share.rs` covers publish,
+Offer, verified fetch of a 300 KB file and refusal of a peer that was not
+offered the Package.
 
 ### Conformance evidence
 

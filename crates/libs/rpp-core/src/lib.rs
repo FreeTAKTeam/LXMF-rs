@@ -19,6 +19,8 @@ pub mod receiver;
 pub mod replay;
 #[cfg(feature = "rns")]
 pub mod rns;
+#[cfg(feature = "rns")]
+pub mod rns_share;
 pub mod selection;
 pub mod store;
 

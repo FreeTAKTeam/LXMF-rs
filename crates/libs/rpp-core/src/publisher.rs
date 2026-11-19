@@ -111,6 +111,11 @@ impl<S: PackageSource> Publisher<S> {
         self.packages.insert(manifest.manifest.package_destination, Package { manifest, source });
     }
 
+    /// True when `destination` is a Package this publisher serves.
+    pub fn publishes(&self, destination: &Destination) -> bool {
+        self.packages.contains_key(destination)
+    }
+
     pub fn receipts(&self) -> &[ReceiptRecord] {
         &self.receipts
     }
