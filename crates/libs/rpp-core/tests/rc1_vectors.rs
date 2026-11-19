@@ -102,12 +102,18 @@ fn codec_and_manifest_negative_cases() {
         let error = match case["kind"].as_str().expect("kind") {
             "control" => match Control::decode(&input) {
                 Err(error) => error.error,
-                Ok(_) => continue, // policy-level case, see transfer tests
+                Ok(_) => {
+                    // Well-formed requests refused by policy; see transfer.rs.
+                    let policy = ["unauthorized_pull", "expired_pull", "exceeds_budget"];
+                    assert!(policy.contains(&name), "{name}: decoded but expected {expect}");
+                    continue;
+                }
             },
             "manifest" => {
                 VerifiedManifest::verify(&input, &binding(&fixtures, "resume101")).expect_err(name)
             }
-            _ => continue, // resource / receipt cases run in the transfer tests
+            "resource" | "emit_receipt" => continue, // run in transfer.rs
+            other => panic!("{name}: unknown negative kind {other}"),
         };
         let matched = match expect {
             "malformed" => matches!(error, RppError::Malformed(_)),
