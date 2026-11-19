@@ -342,28 +342,27 @@ fn receiver_rejects_malicious_publisher_input() {
             .write_chunk(&setup.manifest, index, &setup.chunks[index as usize])
             .expect("test step");
     }
-    let mut pull = pull(&setup, &me, dir.path(), 1);
+    // exceeds_budget: the fixture's 33-byte plan against its accepted maximum.
+    let budget = negative(&fixtures, "exceeds_budget");
+    let maximum = budget["accepted_maximum"].as_u64().expect("test step");
+    let mut pull = pull(&setup, &me, dir.path(), maximum);
     let request =
         Control::decode(&pull.next_requests(NOW).expect("test step").remove(0)).expect("test step");
-    let plan_reply = |payload: &[u8], payload_len: u64| {
-        let plan = Control {
-            header: request.header,
-            body: Body::ResourcePlan {
-                indexes: vec![17, 63],
-                payload_len,
-                bundle_digest: sha256(payload),
-                plan_id: request.header.request_id,
-            },
-        };
-        RppResult {
-            request_id: request.header.request_id,
-            status: Status::Applied,
-            value: Some(plan.encode()),
-        }
-        .encode()
+    let mut plan = Control::decode(&hex(&budget["input_hex"])).expect("test step");
+    let Body::ResourcePlan { payload_len, plan_id, .. } = &mut plan.body else {
+        panic!("exceeds_budget fixture is a ResourcePlan");
     };
-    // exceeds_budget: plan larger than the accepted maximum (1 byte here).
-    assert_eq!(pull.on_response(&plan_reply(&[0x11, 0x3f], 2), NOW), Err(RppError::LimitExceeded));
+    assert!(*payload_len > maximum, "fixture plan must exceed its accepted maximum");
+    // The fixture's request ID is fixed; rebind the plan to this pull's fresh ID.
+    *plan_id = request.header.request_id;
+    plan.header = request.header;
+    let reply = RppResult {
+        request_id: request.header.request_id,
+        status: Status::Applied,
+        value: Some(plan.encode()),
+    }
+    .encode();
+    assert_eq!(pull.on_response(&reply, NOW), Err(RppError::LimitExceeded));
 
     let mut pull = self::pull(&setup, &me, dir.path(), 32);
     let request =
