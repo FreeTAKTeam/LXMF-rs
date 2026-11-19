@@ -477,6 +477,9 @@ impl ResourceProof {
     }
 }
 
+mod link_admission;
+pub use link_admission::LinkResourceAdmission;
+
 include!("resource/sender.rs");
 include!("resource/receiver.rs");
 include!("resource/receiver_request.rs");

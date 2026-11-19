@@ -3739,3 +3739,22 @@ cleanup. Construction allocation and cleanup/error gates remain unchanged. Its
 [synthetic lifetime evidence](../performance/checkpoint-reference-set-lifetime-663.md)
 is separate from the earlier capture-capacity result and cannot be added into a
 combined peak/RSS or resource-acceptance claim.
+
+## RPP 0.3 RC1 engine and Resource contract (#766, #767; 2026-11-19)
+
+`reticulum-rs-transport` adds two public Resource APIs for application
+protocols: a reader-backed send with explicit compression control and a
+completion receiver registered before dispatch, and a per-Link inbound budget
+(`LinkResourceAdmission`) that refuses over-size or over-concurrency
+advertisements before any receiver state exists. Native regressions cover both.
+The new transport-independent `rpp-core` crate implements the RPP 0.3 RC1 wire
+profile: it reproduces every RC1 fixture byte (manifests with signatures,
+commands, results, RDO publication records), rejects the codec/manifest
+negative cases, and runs an in-process sender/receiver that resumes after a
+simulated crash with the cached manifest and only the missing chunks, ending in
+`complete_verified`. Its optional `rns` feature runs the engines over public
+Link requests and native Resources; a two-transport loopback TCP test
+interrupts a pull, resumes it over a new identified Link with the cached
+manifest and reaches `complete_verified`. Python network interop, loss/LoRa
+runs, REM priority lanes and the RDO network gate remain open; see
+[the contract](../rpp/rpp-core.md). No Python parity row changes.

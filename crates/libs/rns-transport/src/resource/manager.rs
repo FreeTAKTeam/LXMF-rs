@@ -10,6 +10,7 @@ pub struct ResourceManager {
     retry_interval: Duration,
     retry_limit: u8,
     link_stats: HashMap<AddressHash, LinkStats>,
+    link_admission: HashMap<AddressHash, LinkResourceAdmission>,
 }
 
 impl ResourceManager {

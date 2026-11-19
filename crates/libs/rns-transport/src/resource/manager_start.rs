@@ -18,6 +18,7 @@ impl ResourceManager {
             retry_interval,
             retry_limit,
             link_stats: HashMap::new(),
+            link_admission: HashMap::new(),
         }
     }
 
