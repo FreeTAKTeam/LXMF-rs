@@ -160,12 +160,20 @@ impl<S: PackageSource + Send + 'static> PublisherService<S> {
             rmpv::Value::Binary(served.response),
         ]);
         let mut encoded = Vec::new();
-        if rmpv::encode::write_value(&mut encoded, &envelope).is_err() {
-            return;
-        }
-        if let Err(error) = self.transport.send_response(&link_id, request_id, encoded, None).await
-        {
-            log::warn!("rpp: response on link {link_id} failed: {error:?}");
+        let sent = match rmpv::encode::write_value(&mut encoded, &envelope) {
+            Ok(()) => self
+                .transport
+                .send_response(&link_id, request_id, encoded, None)
+                .await
+                .map_err(|error| transport_error("send response", error)),
+            Err(error) => Err(transport_error("response envelope", error)),
+        };
+        if let Err(error) = sent {
+            log::warn!("rpp: response on link {link_id} failed: {error}");
+            if served.outbound.is_some() {
+                // The planned Resource is dropped; free its window slot.
+                lock(&self.engine).resource_concluded(link_bytes(&link_id));
+            }
             return;
         }
         let Some(outbound) = served.outbound else { return };

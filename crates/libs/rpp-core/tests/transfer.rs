@@ -103,7 +103,6 @@ fn drive<S: PackageSource>(
             let early = stats.bundles % 2 == 1;
             if early {
                 if let Some(out) = &served.outbound {
-                    assert!(pull.admits_resource(&out.metadata, out.payload.len() as u64));
                     pull.on_resource(&out.metadata, &out.payload).expect("early resource");
                 }
             }
@@ -399,7 +398,6 @@ fn receiver_rejects_malicious_publisher_input() {
 
     let unassociated: [u8; 16] =
         fixed(hex(&negative(&fixtures, "unassociated_resource")["metadata_hex"]));
-    assert!(!pull.admits_resource(&unassociated, 2));
     assert_eq!(pull.on_resource(&unassociated, &[0x11, 0x3f]), Err(RppError::NoAcceptedPlan));
 }
 
@@ -573,4 +571,30 @@ fn applied_manifest_request_is_not_repeated_while_resource_is_in_flight() {
     assert!(pull.next_requests(NOW).expect("test step").is_empty());
     pull.on_resource(&id, &setup.manifest.bytes).expect("test step");
     assert!(pull.progress().has_manifest);
+}
+
+/// An abandoned plan stops holding a window slot once it expires.
+#[test]
+fn expired_unaccepted_plan_frees_the_window() {
+    let setup = resume_setup();
+    let fixtures = fixtures();
+    let me = setup.recipient.public();
+    let mut publisher = publisher(&setup.manifest, MemorySource(setup.chunks.clone()));
+    let destination = setup.manifest.manifest.package_destination;
+    let link = [12; 16];
+    let first = hex(&fixtures["commands"]["MissingChunks"]["cbor_hex"]); // window 1
+    let status = |served: Option<rpp_core::Served>| {
+        RppResult::decode(&served.expect("served").response).expect("result").status
+    };
+    assert_eq!(
+        status(publisher.handle(link, destination, Some(&me), &first, NOW)),
+        Status::Applied
+    );
+
+    let mut later = Control::decode(&first).expect("control");
+    later.header.request_id = [0x40; 16];
+    later.header.issued = NOW + 200;
+    later.header.expires = NOW + 300;
+    let served = publisher.handle(link, destination, Some(&me), &later.encode(), NOW + 200);
+    assert_eq!(status(served), Status::Applied, "expired plan no longer blocks the Link");
 }

@@ -232,10 +232,11 @@ impl<S: PackageSource> Publisher<S> {
                 if selection.is_empty() {
                     return Ok(applied(None, None));
                 }
+                // Expired or consumed plans no longer hold a window slot.
+                self.plans.retain(|_, plan| !plan.consumed && plan.expires > now);
                 let window = (*window).min(self.limits.max_window);
                 let busy = self.outstanding.get(&link).copied().unwrap_or(0)
-                    + self.plans.iter().filter(|((l, _), p)| *l == link && !p.consumed).count()
-                        as u64;
+                    + self.plans.keys().filter(|(plan_link, _)| *plan_link == link).count() as u64;
                 if busy >= window {
                     return Err(RppError::LimitExceeded);
                 }

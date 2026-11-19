@@ -197,7 +197,7 @@ impl Decoder<'_> {
                 }
                 let count = self.length(argument)?;
                 if major == 4 {
-                    let mut items = Vec::with_capacity(count);
+                    let mut items = Vec::with_capacity(count.min(256));
                     for _ in 0..count {
                         items.push(self.item(depth + 1)?);
                     }
@@ -332,5 +332,14 @@ mod tests {
         ));
         let deep = [[0x81u8; 13].as_slice(), &[0x00]].concat();
         assert!(matches!(decode(&deep, 64, false), Err(RppError::Malformed(_))));
+    }
+
+    /// Nested arrays that each claim ~4M items must not reserve memory for
+    /// them up front (~1.5 GB before the fix); decoding fails on the filler.
+    #[test]
+    fn claimed_array_counts_do_not_preallocate() {
+        let mut input = [0x9a, 0x00, 0x3f, 0xff, 0xf0].repeat(MAX_DEPTH);
+        input.resize(4 * 1024 * 1024, 0xff);
+        assert!(matches!(decode(&input, 4 * 1024 * 1024, false), Err(RppError::Malformed(_))));
     }
 }

@@ -375,16 +375,6 @@ impl<S: ChunkStore> Pull<S> {
         Ok((plan_id, indexes, payload_len, bundle_digest))
     }
 
-    /// Admission check before an inbound Resource is accepted: metadata must
-    /// name an accepted plan or applied ManifestRequest with room for `size`.
-    pub fn admits_resource(&self, metadata: &RequestId, size: u64) -> bool {
-        match self.expected.get(metadata).map(|expected| &expected.kind) {
-            Some(ExpectedKind::Manifest { max }) => size <= *max,
-            Some(ExpectedKind::Bundle { payload_len, .. }) => size == *payload_len,
-            None => false,
-        }
-    }
-
     /// Verifies and stores a completed native Resource.
     pub fn on_resource(&mut self, metadata: &RequestId, payload: &[u8]) -> Result<()> {
         if let Some(expected) = self.expected.get_mut(metadata) {
