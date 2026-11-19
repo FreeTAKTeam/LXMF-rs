@@ -170,6 +170,19 @@ impl ShareNode {
         name: &str,
         media_type: Option<&str>,
     ) -> Result<SharedPackage> {
+        let shared = self.prepare_file(path, name, media_type)?;
+        self.serve(&shared, path.to_path_buf(), []).await?;
+        Ok(shared)
+    }
+
+    /// Signs a one-file Package and its RDO Package record without touching
+    /// the network; call [`Self::serve`] to make it reachable.
+    pub fn prepare_file(
+        &self,
+        path: &Path,
+        name: &str,
+        media_type: Option<&str>,
+    ) -> Result<SharedPackage> {
         let package_token = random_16();
         let me = self.signer.public();
         let package_destination = lookup::object_destination(&me, &package_token);
@@ -200,9 +213,18 @@ impl ShareNode {
         .into_map()?;
         let publication =
             Revision::sign(&self.signer, package_destination, None, PACKAGE_TYPE, body)?.bytes;
-        let shared = SharedPackage { package_token, manifest: manifest.bytes.clone(), publication };
-        self.serve(&shared, path.to_path_buf(), []).await?;
-        Ok(shared)
+        Ok(SharedPackage { package_token, manifest: manifest.bytes.clone(), publication })
+    }
+
+    /// Lets the identity with hash `recipient` READ and pull the Package.
+    pub fn allow(&self, shared: &SharedPackage, recipient: Destination) {
+        let package = lookup::object_destination(&self.signer.public(), &shared.package_token);
+        lock(&self.allowed).entry(package).or_default().insert(recipient);
+    }
+
+    /// The Package Destination of a shared Package.
+    pub fn package_destination(&self, shared: &SharedPackage) -> Destination {
+        lookup::object_destination(&self.signer.public(), &shared.package_token)
     }
 
     /// Serves a published Package from `path` (also after restart) and
