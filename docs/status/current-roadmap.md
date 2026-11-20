@@ -3740,6 +3740,20 @@ cleanup. Construction allocation and cleanup/error gates remain unchanged. Its
 is separate from the earlier capture-capacity result and cannot be added into a
 combined peak/RSS or resource-acceptance claim.
 
+## RDO owner binding v1 in Rust (RDO #1; 2026-11-19)
+
+The new `rdo-core` crate implements the RDO shared-Identity owner binding v1
+and now owns the deterministic CBOR codec and Identity arithmetic `rpp-core`
+uses. It reproduces every `owner-v1` vector (Destinations, raw announce
+lookups and rejections, re-signed revisions, all six owner-operation results),
+and its `rns` feature resolves an object from only its Destination and serves
+`/rdo/1/op` over identified Links. The network gate passes Rust owner/Python
+client and Python owner/Rust client against Python RNS 1.3.8, with
+byte-identical owner signatures. Rust path responses for registered objects
+now carry the signed app data. Stamp enforcement (#768) and durable owner
+state remain open; see [rdo-core](../rpp/rdo-core.md). No Python parity row
+changes.
+
 ## RPP 0.3 RC1 engine and Resource contract (#766, #767; 2026-11-19)
 
 `reticulum-rs-transport` adds two public Resource APIs for application

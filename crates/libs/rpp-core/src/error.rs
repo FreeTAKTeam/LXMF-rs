@@ -56,6 +56,23 @@ impl RppError {
     }
 }
 
+impl From<rdo_core::RdoError> for RppError {
+    fn from(error: rdo_core::RdoError) -> Self {
+        use rdo_core::RdoError as Rdo;
+        match error {
+            Rdo::Malformed(reason) => Self::Malformed(reason),
+            Rdo::Noncanonical(reason) => Self::Noncanonical(reason),
+            Rdo::LimitExceeded => Self::LimitExceeded,
+            Rdo::UnsupportedVersion(version) => Self::UnsupportedVersion(version),
+            Rdo::InvalidSignature => Self::InvalidSignature,
+            Rdo::InvalidRevision(reason) | Rdo::InvalidBinding(reason) => {
+                Self::InvalidPublication(reason)
+            }
+            Rdo::Transport(reason) => Self::Transport(reason),
+        }
+    }
+}
+
 impl From<std::io::Error> for RppError {
     fn from(error: std::io::Error) -> Self {
         Self::Storage(error.to_string())

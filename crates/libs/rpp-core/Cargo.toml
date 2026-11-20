@@ -11,17 +11,16 @@ description = "Reticulum Package Protocol (RPP 0.3 RC1) codec, manifest verifica
 [features]
 default = []
 # Async adapter onto reticulum-rs-transport Links and Resources.
-rns = ["dep:rns-transport", "dep:tokio", "dep:rmpv"]
+rns = ["dep:rns-transport", "dep:tokio", "dep:rmpv", "rdo-core/rns"]
 
 [dependencies]
+rdo-core.workspace = true
 rns-transport = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 rmpv = { workspace = true, optional = true }
-ed25519-dalek = { workspace = true, features = ["rand_core"] }
 log.workspace = true
 rand_core = { workspace = true, features = ["getrandom"] }
 sha2.workspace = true
-x25519-dalek = { workspace = true, features = ["static_secrets"] }
 thiserror.workspace = true
 
 [dev-dependencies]
@@ -32,6 +31,10 @@ tokio.workspace = true
 
 [[test]]
 name = "rns_transfer"
+required-features = ["rns"]
+
+[[test]]
+name = "rns_share"
 required-features = ["rns"]
 
 [lints]

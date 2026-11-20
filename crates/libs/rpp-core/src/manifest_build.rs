@@ -6,6 +6,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::cbor::{self, Value};
 use crate::error::{Result, RppError};
+use crate::identity::ReceiveDestination;
 use crate::identity::{sha256, Destination, Digest, SigningIdentity};
 use crate::manifest::{
     chunk_value, file_value, ChunkEntry, FileEntry, OwnerBinding, VerifiedManifest,

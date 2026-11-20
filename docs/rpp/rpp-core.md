@@ -49,7 +49,7 @@ no daemon, LXMF, RCH or REM code. Only the optional `rns` feature pulls in
 
 | Module | Responsibility |
 |---|---|
-| `cbor` | Strict RFC 8949 §4.2.1 deterministic codec: rejects floats, tags, negatives, indefinite lengths, duplicate/unsorted keys, overlong heads, trailing bytes, >12 nesting, >1 KiB text, and checks declared lengths before allocating. |
+| `cbor` (re-exported from `rdo-core`) | Strict RFC 8949 §4.2.1 deterministic codec: rejects floats, tags, negatives, indefinite lengths, duplicate/unsorted keys, overlong heads, trailing bytes, >12 nesting, >1 KiB text, and checks declared lengths before allocating. |
 | `manifest`, `manifest_build` | Signed manifest build/verify: package ID, owner signature, H, file/chunk partition, path safety, directory collisions, extensions/critical IDs, RDO owner binding and `rpp.receive` derivation. `FileDraft::from_reader` hashes a file one chunk at a time. |
 | `publication` | RDO revision verification for the Package, Manifest and File references, and comparison against the signed manifest. |
 | `control`, `selection` | The seven commands, header rules, RDO v1 result wrapper and index/range selections. |
@@ -82,7 +82,22 @@ policy (`Policy` closure) and the transport.
   Package Destinations with `add_destination`.
 
 Callers still resolve the Package `DestinationDesc` and owner binding through
-RDO, and register/announce Package Destinations.
+RDO, and register/announce Package Destinations. `PublisherService` ignores
+requests for Destinations it does not publish, and an already active Link to
+the Package (for example after an RDO READ) is reused instead of waited on.
+
+### One-file sharing (`rpp_core::rns_share`, feature `rns`)
+
+`ShareNode` packages the above for applications (REM peer sharing, RCH
+serving): `publish_file` signs a one-file Package (64 KiB chunks) and its RDO
+Package record; `serve` republishes from persisted `SharedPackage` bytes after
+restart; `offer` lets one recipient pull and sends an Offer to its
+`rpp.receive` inbox; the inbox resolves the Package owner through RDO before
+answering `defer`; `fetch` resolves the Package, READs the signed publication
+record over `/rdo/1/op`, pulls and returns the promoted, verified file. Only
+offered recipients may READ or pull. `tests/rns_share.rs` covers publish,
+Offer, verified fetch of a 300 KB file and refusal of a peer that was not
+offered the Package.
 
 ### Conformance evidence
 
@@ -112,8 +127,8 @@ loopback RNS test:
 
 ### Not yet done
 
-- Python/Rust network interop for RPP and the RDO network gate; the RC1
-  interoperability claim stays gated on them.
+- Python/Rust network interop for RPP itself. The RDO network gate now
+  passes in both directions; see [rdo-core](rdo-core.md).
 - Transport-level loss injection and LoRa-MTU runs of the RNS test.
 - Replay state is in memory; requests issued before a restart are refused
   through their expiry instead of persisted.

@@ -8,6 +8,7 @@ use crate::control::{
     MAX_WINDOW,
 };
 use crate::error::{Result, RppError};
+use crate::identity::ReceiveDestination;
 use crate::identity::{sha256, Destination, PublicIdentity};
 use crate::manifest::VerifiedManifest;
 use crate::replay::{ReplayCache, ReplayKey};
@@ -108,6 +109,11 @@ impl<S: PackageSource> Publisher<S> {
     /// Serves `manifest` at its canonical Package Destination.
     pub fn publish(&mut self, manifest: VerifiedManifest, source: S) {
         self.packages.insert(manifest.manifest.package_destination, Package { manifest, source });
+    }
+
+    /// True when `destination` is a Package this publisher serves.
+    pub fn publishes(&self, destination: &Destination) -> bool {
+        self.packages.contains_key(destination)
     }
 
     pub fn receipts(&self) -> &[ReceiptRecord] {

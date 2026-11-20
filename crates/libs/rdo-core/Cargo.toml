@@ -1,0 +1,48 @@
+[package]
+name = "rdo-core"
+version = "0.16.2-rc.2-linux"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+license-file.workspace = true
+repository.workspace = true
+description = "Reticulum Distributed Object (RDO) shared-Identity owner binding v1: codec, revisions, owner operations and announce lookup."
+
+[features]
+default = []
+# Raw announce validation, object resolution and the `/rdo/1/op` owner
+# service over reticulum-rs-transport Links.
+rns = ["dep:rns-core", "dep:rns-transport", "dep:tokio", "dep:rmpv", "dep:log"]
+
+[dependencies]
+rns-core = { workspace = true, optional = true }
+rns-transport = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+rmpv = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+sha2.workspace = true
+x25519-dalek = { workspace = true, features = ["static_secrets"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+hex.workspace = true
+serde_json.workspace = true
+rand_core = { workspace = true, features = ["getrandom"] }
+tokio.workspace = true
+tempfile.workspace = true
+
+[[test]]
+name = "lookup_vectors"
+required-features = ["rns"]
+
+[[test]]
+name = "rns_owner"
+required-features = ["rns"]
+
+[lints]
+workspace = true
+
+[[test]]
+name = "python_interop"
+required-features = ["rns"]

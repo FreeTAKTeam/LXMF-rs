@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::error::{Result, RppError};
+use crate::error::{RdoError, Result};
 
 pub const MAX_DEPTH: usize = 12;
 pub const MAX_TEXT_BYTES: usize = 1024;
@@ -23,39 +23,39 @@ impl Value {
     pub fn as_uint(&self) -> Result<u64> {
         match self {
             Self::Uint(value) => Ok(*value),
-            _ => Err(RppError::Malformed("expected unsigned integer")),
+            _ => Err(RdoError::Malformed("expected unsigned integer")),
         }
     }
 
     pub fn into_bytes(self) -> Result<Vec<u8>> {
         match self {
             Self::Bytes(value) => Ok(value),
-            _ => Err(RppError::Malformed("expected byte string")),
+            _ => Err(RdoError::Malformed("expected byte string")),
         }
     }
 
     pub fn into_fixed<const N: usize>(self) -> Result<[u8; N]> {
-        self.into_bytes()?.try_into().map_err(|_| RppError::Malformed("wrong byte-string length"))
+        self.into_bytes()?.try_into().map_err(|_| RdoError::Malformed("wrong byte-string length"))
     }
 
     pub fn into_text(self) -> Result<String> {
         match self {
             Self::Text(value) => Ok(value),
-            _ => Err(RppError::Malformed("expected text")),
+            _ => Err(RdoError::Malformed("expected text")),
         }
     }
 
     pub fn into_array(self) -> Result<Vec<Value>> {
         match self {
             Self::Array(value) => Ok(value),
-            _ => Err(RppError::Malformed("expected array")),
+            _ => Err(RdoError::Malformed("expected array")),
         }
     }
 
     pub fn into_map(self) -> Result<BTreeMap<u64, Value>> {
         match self {
             Self::Map(value) => Ok(value),
-            _ => Err(RppError::Malformed("expected map")),
+            _ => Err(RdoError::Malformed("expected map")),
         }
     }
 }
@@ -115,12 +115,12 @@ fn encode_into(value: &Value, out: &mut Vec<u8>) {
 /// Decodes exactly one deterministic item occupying all of `bytes`.
 pub fn decode(bytes: &[u8], max_len: usize, allow_null: bool) -> Result<Value> {
     if bytes.len() > max_len {
-        return Err(RppError::LimitExceeded);
+        return Err(RdoError::LimitExceeded);
     }
     let mut decoder = Decoder { bytes, pos: 0, allow_null };
     let value = decoder.item(0)?;
     if decoder.pos != bytes.len() {
-        return Err(RppError::Malformed("trailing bytes"));
+        return Err(RdoError::Malformed("trailing bytes"));
     }
     Ok(value)
 }
@@ -134,7 +134,7 @@ struct Decoder<'a> {
 impl Decoder<'_> {
     fn take(&mut self, len: usize) -> Result<&[u8]> {
         let end = self.pos.checked_add(len).filter(|end| *end <= self.bytes.len());
-        let end = end.ok_or(RppError::Malformed("truncated"))?;
+        let end = end.ok_or(RdoError::Malformed("truncated"))?;
         let slice = &self.bytes[self.pos..end];
         self.pos = end;
         Ok(slice)
@@ -156,11 +156,11 @@ impl Decoder<'_> {
             25 => (u64::from(u16::from_be_bytes(fixed(self.take(2)?))), 1 << 8),
             26 => (u64::from(u32::from_be_bytes(fixed(self.take(4)?))), 1 << 16),
             27 => (u64::from_be_bytes(fixed(self.take(8)?)), 1 << 32),
-            31 => return Err(RppError::Malformed("indefinite length")),
-            _ => return Err(RppError::Malformed("reserved additional information")),
+            31 => return Err(RdoError::Malformed("indefinite length")),
+            _ => return Err(RdoError::Malformed("reserved additional information")),
         };
         if value < minimum {
-            return Err(RppError::Noncanonical("overlong integer or length"));
+            return Err(RdoError::Noncanonical("overlong integer or length"));
         }
         Ok((major, value))
     }
@@ -170,14 +170,14 @@ impl Decoder<'_> {
         usize::try_from(declared)
             .ok()
             .filter(|len| *len <= self.remaining())
-            .ok_or(RppError::Malformed("declared length exceeds input"))
+            .ok_or(RdoError::Malformed("declared length exceeds input"))
     }
 
     fn item(&mut self, depth: usize) -> Result<Value> {
         let (major, argument) = self.head()?;
         match major {
             0 => Ok(Value::Uint(argument)),
-            1 => Err(RppError::Malformed("negative integer")),
+            1 => Err(RdoError::Malformed("negative integer")),
             2 => {
                 let len = self.length(argument)?;
                 Ok(Value::Bytes(self.take(len)?.to_vec()))
@@ -185,15 +185,15 @@ impl Decoder<'_> {
             3 => {
                 let len = self.length(argument)?;
                 if len > MAX_TEXT_BYTES {
-                    return Err(RppError::LimitExceeded);
+                    return Err(RdoError::LimitExceeded);
                 }
                 let text = std::str::from_utf8(self.take(len)?)
-                    .map_err(|_| RppError::Malformed("invalid UTF-8"))?;
+                    .map_err(|_| RdoError::Malformed("invalid UTF-8"))?;
                 Ok(Value::Text(text.to_owned()))
             }
             4 | 5 => {
                 if depth >= MAX_DEPTH {
-                    return Err(RppError::Malformed("nesting too deep"));
+                    return Err(RdoError::Malformed("nesting too deep"));
                 }
                 let count = self.length(argument)?;
                 if major == 4 {
@@ -208,14 +208,14 @@ impl Decoder<'_> {
                 for _ in 0..count {
                     let (key_major, key) = self.head()?;
                     if key_major != 0 {
-                        return Err(RppError::Malformed("map key is not an unsigned integer"));
+                        return Err(RdoError::Malformed("map key is not an unsigned integer"));
                     }
                     match previous {
                         Some(previous) if key == previous => {
-                            return Err(RppError::Malformed("duplicate map key"))
+                            return Err(RdoError::Malformed("duplicate map key"))
                         }
                         Some(previous) if key < previous => {
-                            return Err(RppError::Noncanonical("map keys out of order"))
+                            return Err(RdoError::Noncanonical("map keys out of order"))
                         }
                         _ => {}
                     }
@@ -224,9 +224,9 @@ impl Decoder<'_> {
                 }
                 Ok(Value::Map(entries))
             }
-            6 => Err(RppError::Malformed("tags are not allowed")),
+            6 => Err(RdoError::Malformed("tags are not allowed")),
             _ if argument == 22 && self.allow_null => Ok(Value::Null),
-            _ => Err(RppError::Malformed("float, simple value or null not allowed")),
+            _ => Err(RdoError::Malformed("float, simple value or null not allowed")),
         }
     }
 }
@@ -250,7 +250,7 @@ impl Fields {
     }
 
     pub fn required(&mut self, key: u64) -> Result<Value> {
-        self.take(key).ok_or(RppError::Malformed("missing required field"))
+        self.take(key).ok_or(RdoError::Malformed("missing required field"))
     }
 
     pub fn uint(&mut self, key: u64) -> Result<u64> {
@@ -274,7 +274,7 @@ impl Fields {
             return Ok(None);
         };
         if bytes.len() > max {
-            return Err(RppError::LimitExceeded);
+            return Err(RdoError::LimitExceeded);
         }
         Ok(Some(bytes))
     }
@@ -291,7 +291,7 @@ impl Fields {
         if self.0.is_empty() {
             Ok(())
         } else {
-            Err(RppError::Malformed("unassigned field"))
+            Err(RdoError::Malformed("unassigned field"))
         }
     }
 }
@@ -318,20 +318,20 @@ mod tests {
         ]);
         let bytes = encode(&value);
         assert_eq!(decode(&bytes, 64, false), Ok(value));
-        assert!(matches!(decode(&[0x18, 0x01], 8, false), Err(RppError::Noncanonical(_))));
+        assert!(matches!(decode(&[0x18, 0x01], 8, false), Err(RdoError::Noncanonical(_))));
         assert!(matches!(
             decode(&[0xa2, 0x01, 0x00, 0x00, 0x00], 8, false),
-            Err(RppError::Noncanonical(_))
+            Err(RdoError::Noncanonical(_))
         ));
-        assert!(matches!(decode(&[0x20], 8, false), Err(RppError::Malformed(_))));
-        assert!(matches!(decode(&[0xf6], 8, false), Err(RppError::Malformed(_))));
+        assert!(matches!(decode(&[0x20], 8, false), Err(RdoError::Malformed(_))));
+        assert!(matches!(decode(&[0xf6], 8, false), Err(RdoError::Malformed(_))));
         assert_eq!(decode(&[0xf6], 8, true), Ok(Value::Null));
         assert!(matches!(
             decode(&[0x5a, 0xff, 0xff, 0xff, 0xff], 8, false),
-            Err(RppError::Malformed(_))
+            Err(RdoError::Malformed(_))
         ));
         let deep = [[0x81u8; 13].as_slice(), &[0x00]].concat();
-        assert!(matches!(decode(&deep, 64, false), Err(RppError::Malformed(_))));
+        assert!(matches!(decode(&deep, 64, false), Err(RdoError::Malformed(_))));
     }
 
     /// Nested arrays that each claim ~4M items must not reserve memory for
@@ -340,6 +340,6 @@ mod tests {
     fn claimed_array_counts_do_not_preallocate() {
         let mut input = [0x9a, 0x00, 0x3f, 0xff, 0xf0].repeat(MAX_DEPTH);
         input.resize(4 * 1024 * 1024, 0xff);
-        assert!(matches!(decode(&input, 4 * 1024 * 1024, false), Err(RppError::Malformed(_))));
+        assert!(matches!(decode(&input, 4 * 1024 * 1024, false), Err(RdoError::Malformed(_))));
     }
 }

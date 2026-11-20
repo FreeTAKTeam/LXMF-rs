@@ -4,6 +4,7 @@ use rand_core::{OsRng, RngCore};
 
 use crate::control::{Body, Control, Header, OfferDecision, RppResult, Status};
 use crate::error::RppError;
+use crate::identity::ReceiveDestination;
 use crate::identity::{Destination, PublicIdentity};
 use crate::manifest::VerifiedManifest;
 use crate::publisher::refusal;

@@ -9,7 +9,7 @@ use std::io::Cursor;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::Duration;
 
-use rns_transport::destination::link::{unpack_response_envelope, Link, LinkEvent};
+use rns_transport::destination::link::{unpack_response_envelope, Link, LinkEvent, LinkStatus};
 use rns_transport::destination::{DestinationDesc, DestinationName};
 use rns_transport::hash::{address_hash, AddressHash};
 use rns_transport::identity::{Identity, PrivateIdentity};
@@ -147,6 +147,10 @@ impl<S: PackageSource + Send + 'static> PublisherService<S> {
                 guard.identified_peer_identity().map(public_identity),
             )
         };
+        // Another service (an `rpp.receive` inbox) owns non-Package Destinations.
+        if !lock(&self.engine).publishes(&link_bytes(&destination)) {
+            return;
+        }
         let served = lock(&self.engine).handle(
             link_bytes(&link_id),
             link_bytes(&destination),
@@ -227,8 +231,15 @@ pub async fn open_package_link(
 ) -> Result<Arc<Mutex<Link>>> {
     let mut events = transport.out_link_events();
     let link = transport.link(package).await;
-    let link_id = *link.lock().await.id();
-    tokio::time::timeout(timeout, async {
+    let (link_id, active) = {
+        let guard = link.lock().await;
+        (*guard.id(), guard.status() == LinkStatus::Active)
+    };
+    // `link` reuses an already active Link to the Package (e.g. the RDO READ).
+    let wait = async {
+        if active {
+            return Ok(());
+        }
         loop {
             match events.recv().await {
                 Ok(event) if event.id == link_id && matches!(event.event, LinkEvent::Activated) => {
@@ -238,9 +249,10 @@ pub async fn open_package_link(
                 Err(error) => lagged_or_closed("link", error)?,
             }
         }
-    })
-    .await
-    .map_err(|_| RppError::Transport("link establishment timed out".into()))??;
+    };
+    tokio::time::timeout(timeout, wait)
+        .await
+        .map_err(|_| RppError::Transport("link establishment timed out".into()))??;
     let identify = {
         let guard = link.lock().await;
         guard

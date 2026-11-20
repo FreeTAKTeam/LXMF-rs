@@ -17,6 +17,7 @@ members = [
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
+  "crates/libs/rdo-core",
   "crates/libs/rpp-core",
   "crates/libs/rns-bluetooth",
   "crates/libs/rns-rpc",
@@ -42,6 +43,7 @@ default-members = [
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
+  "crates/libs/rdo-core",
   "crates/libs/rpp-core",
   "crates/libs/rns-bluetooth",
   "crates/libs/rns-rpc",
@@ -112,6 +114,11 @@ allowed_library_edges = [
   "rns-embedded-mininode->reticulum-rs-core",
   "rns-embedded-runtime->rns-embedded-core",
   "reticulum-rs-transport->reticulum-rs-core",
+  # RPP consumes the RDO owner binding (codec, identity, revisions).
+  "rpp-core->rdo-core",
+  # Optional `rns` feature: RDO announce validation and owner service.
+  "rdo-core->reticulum-rs-core",
+  "rdo-core->reticulum-rs-transport",
   # Optional `rns` feature: RPP adapter onto public Link/Resource APIs.
   "rpp-core->reticulum-rs-transport",
   "test-support->lxmf-sdk",
@@ -155,6 +162,7 @@ reticulum-rs = { version = "0.16.2-rc.2-linux", path = "crates/libs/reticulum-rs
 rns-core = { package = "reticulum-rs-core", version = "0.16.2-rc.2-linux", path = "crates/libs/rns-core" }
 rns-rpc = { package = "reticulum-rs-rpc", version = "0.16.2-rc.2-linux", path = "crates/libs/rns-rpc" }
 rns-bluetooth = { package = "reticulum-rs-bluetooth", version = "0.16.2-rc.2-linux", path = "crates/libs/rns-bluetooth", default-features = false }
+rdo-core = { version = "0.16.2-rc.2-linux", path = "crates/libs/rdo-core" }
 rns-transport = { package = "reticulum-rs-transport", version = "0.16.2-rc.2-linux", path = "crates/libs/rns-transport" }
 aes = "0.8.4"
 base64 = "0.22"

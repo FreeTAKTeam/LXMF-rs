@@ -11,6 +11,7 @@ use rpp_core::publication::Publication;
 use rpp_core::publisher::{LinkId, PublisherLimits};
 use rpp_core::replay::ReplayCache;
 use rpp_core::store::{ChunkStore, DirSource, FsStore, MemorySource, PackageSource};
+use rpp_core::ReceiveDestination;
 use rpp_core::{
     FileDraft, ManifestDraft, PublicIdentity, Publisher, Pull, PullConfig, RppError,
     SigningIdentity, VerifiedManifest,
