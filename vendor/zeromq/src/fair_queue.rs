@@ -180,8 +180,8 @@ where
                 event: event.clone(),
             });
             let waker_ref = waker_ref(&waker);
-            let mut cx = Context::from_waker(&waker_ref);
-            match io_stream.as_mut().poll_next(&mut cx) {
+            let mut stream_cx = Context::from_waker(&waker_ref);
+            match io_stream.as_mut().poll_next(&mut stream_cx) {
                 Poll::Ready(Some(res)) => {
                     let item = Some((event.key.clone(), res));
                     let mut inner = fair_queue.inner.lock();
@@ -226,6 +226,13 @@ where
                     let mut inner = fair_queue.inner.lock();
                     if event.registration.live.load(atomic::Ordering::Acquire) {
                         inner.streams.insert(event.key, io_stream);
+                    }
+                    // A stream that woke itself while returning Pending (tokio's coop
+                    // budget does this) must not be re-polled here: only yielding resets
+                    // the budget, so looping would spin forever and starve every timeout.
+                    if event.registration.queued.load(atomic::Ordering::Acquire) {
+                        cx.waker().wake_by_ref();
+                        return Poll::Pending;
                     }
                     continue;
                 }
@@ -547,6 +554,31 @@ mod lifecycle_regressions {
         inner.lock().clear();
         waker.wake_by_ref();
         assert!(inner.lock().ready_queue.is_empty());
+    }
+    struct SelfWaking(usize);
+    impl Stream for SelfWaking {
+        type Item = ();
+        fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<()>> {
+            if self.0 == 0 {
+                return Poll::Ready(Some(()));
+            }
+            self.0 -= 1;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+    #[test]
+    fn self_wake_during_pending_poll_yields_to_executor() {
+        // Mirrors tokio coop budget exhaustion: Pending plus an immediate self-wake.
+        let mut queue = FairQueue::new(true);
+        queue.inner().lock().insert("peer", SelfWaking(1000));
+        let noop = noop_waker();
+        let mut cx = Context::from_waker(&noop);
+        let mut polls = 1;
+        while Pin::new(&mut queue).poll_next(&mut cx).is_pending() {
+            polls += 1;
+        }
+        assert_eq!(polls, 1001);
     }
     #[test]
     fn removal_during_pending_poll_cannot_reinsert_stream() {
