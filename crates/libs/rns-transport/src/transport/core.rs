@@ -303,6 +303,19 @@ impl Transport {
         self.handler.lock().await.announce_tx.subscribe()
     }
 
+    /// The last accepted announce packet for `destination`, while cached.
+    /// A caller that learns a destination after its announce arrived reads it
+    /// here: path responses repeat that announce, and the path table drops
+    /// repeats, so `recv_announces` would never report it again.
+    pub async fn cached_announce(&self, destination: &AddressHash) -> Option<Packet> {
+        self.handler
+            .lock()
+            .await
+            .announce_table
+            .shared_cached_packet_for_destination(destination)
+            .map(|packet| (*packet).clone())
+    }
+
     pub async fn send_packet(&self, packet: Packet) {
         let mut handler = self.handler.lock().await;
         handler.send_packet(packet).await;
