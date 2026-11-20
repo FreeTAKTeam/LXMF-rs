@@ -15,6 +15,7 @@ use rdo_core::rns::{
     OwnerService,
 };
 use rdo_core::{Owner, Policy, PublicIdentity, Request, Revision, Status};
+use rns_transport::hash::AddressHash;
 use rns_transport::identity::PrivateIdentity;
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::tcp_server::TcpServer;
@@ -138,4 +139,69 @@ async fn owner_operations_over_an_identified_link() {
     drop(service);
     let cached = Revision::verify(&replica_bytes, &binding.owner).expect("offline read");
     assert_eq!(cached.id, successor.id);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn resolves_an_object_whose_announce_arrived_before_the_lookup() {
+    let fixtures = fixtures();
+    let private = hex(&fixtures["fixture_identity_private_hex"]);
+    let owner_identity = PrivateIdentity::from_private_key_bytes(&private).expect("owner key");
+    let property = fixtures["bindings"]
+        .as_array()
+        .expect("bindings")
+        .iter()
+        .find(|binding| binding["label"] == "Property")
+        .expect("Property binding")
+        .clone();
+    let token = fixed(hex(&property["token_hex"]));
+    let wanted: [u8; 16] = fixed(hex(&property["destination_hex"]));
+
+    let port = free_port();
+    let server =
+        Arc::new(Transport::new(TransportConfig::new("rdo-owner", &owner_identity, false)));
+    let manager = server.iface_manager();
+    manager
+        .lock()
+        .await
+        .spawn(TcpServer::new(format!("127.0.0.1:{port}"), manager.clone()), TcpServer::spawn);
+    let destination = register_object(&server, &owner_identity, &token).await;
+
+    let client = Transport::new(TransportConfig::new(
+        "rdo-client",
+        &PrivateIdentity::new_from_rand(OsRng),
+        false,
+    ));
+    let iface = client
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpClient::new(format!("127.0.0.1:{port}")), TcpClient::spawn);
+    let mut announces = client.recv_announces().await;
+    let hash = AddressHash::new(wanted);
+    tokio::time::timeout(TIMEOUT, async {
+        loop {
+            server.send_announce(&destination, Some(&announce_app_data(&token))).await;
+            let seen = tokio::time::timeout(Duration::from_millis(500), async {
+                while let Ok(event) = announces.recv().await {
+                    if event.destination.lock().await.desc.address_hash == hash {
+                        return;
+                    }
+                }
+            });
+            if seen.await.is_ok() {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("announce reaches the client");
+
+    // The announce arrived before the lookup; with the link cut, no path
+    // request can be answered, so only the already-received announce helps.
+    assert!(client.stop_interface(iface).await);
+    let (binding, _) = resolve_object(&client, &wanted, Duration::from_secs(3))
+        .await
+        .expect("resolve from the already-received announce");
+    assert_eq!(binding.owner, owner(&fixtures).public());
+    assert_eq!(binding.token, token);
 }

@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::Duration;
 
 use rns_transport::destination::link::{unpack_response_envelope, Link, LinkEvent, LinkStatus};
-use rns_transport::destination::{DestinationDesc, DestinationName, SingleInputDestination};
+use rns_transport::destination::{
+    DestinationAnnounce, DestinationDesc, DestinationName, SingleInputDestination,
+};
 use rns_transport::hash::{address_hash, AddressHash};
 use rns_transport::identity::{Identity, PrivateIdentity};
 use rns_transport::packet::PacketContext;
@@ -172,6 +174,17 @@ pub async fn resolve_object(
     let mut announces = transport.recv_announces().await;
     // `new_from_slice` hashes its input; the Destination is used as-is.
     let hash = AddressHash::new(*wanted);
+    // The announce may have arrived before the caller learned the
+    // Destination (it races the reply that names it); use it if cached.
+    if let Some(packet) = transport.cached_announce(&hash).await {
+        if let Ok(info) = DestinationAnnounce::validate(&packet) {
+            let desc = info.destination.desc;
+            match lookup::bind(public_identity(&desc.identity), wanted, info.app_data, wanted) {
+                Ok(binding) => return Ok((binding, desc)),
+                Err(error) => log::warn!("rdo: cached announce for {hash} refused: {error}"),
+            }
+        }
+    }
     tokio::time::timeout(timeout, async {
         transport.request_path(&hash, None, None).await;
         let mut retry = tokio::time::interval(Duration::from_secs(2));
