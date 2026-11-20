@@ -17,5 +17,10 @@ connections/frames close with a codec/socket error, so SDK mutations remain
 Unknown and reconcile by operation ID. Dropping the accept owner closes its
 uncompleted handshakes. No libzmq HWM option is assumed.
 
+The fair queue yields when a stream wakes itself while returning Pending. Tokio
+does this once a task's coop budget is spent (about 1 MiB of 8 KiB reads), and
+re-polling in place spun at 100% CPU without ever reaching the caller's timeout
+(RCH #363).
+
 These are finite protocol/work bounds, not a process RSS guarantee. The runtime,
 allocator and OS socket buffers need separate measurement in a paired soak.
