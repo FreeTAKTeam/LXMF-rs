@@ -1,5 +1,13 @@
 # Current Roadmap Status
 
+The 2026-11-22 Fabric v0.17.0 release aligns the daemon, SDK and public
+packages on `0.17.0` and is the first release under the Fabric project name
+(formerly LXMF-rs; repository and crate names are unchanged). It adds the
+`rpp-core` RPP 0.3 RC1 engine and ShareNode, `rdo-core` owner binding v1 and
+the ZeroMQ fair-queue livelock fix; release assets use the `fabric_` prefix.
+See the [v0.17.0 release notes](../release-notes-v0.17.0.md). It does not
+promote any parity row.
+
 The 2026-11-06 full release preparation aligns the daemon, SDK and 22 public
 packages on `0.16.1`, adding the shared `r3akt-event-broker` package while
 preserving legacy RPC/SDK broker imports. The release train includes the Linux

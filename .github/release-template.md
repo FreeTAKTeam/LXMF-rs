@@ -6,12 +6,12 @@ the stable OCI `latest` tag, crates.io, or the Homebrew tap.
 
 ## Download
 
-- Linux x64: `lxmf-rs_<version>_linux-x86_64.tar.gz`
-- Linux ARM64: `lxmf-rs_<version>_linux-aarch64.tar.gz`
-- Linux ARMv7: `lxmf-rs_<version>_linux-armv7.tar.gz`
-- macOS universal: `lxmf-rs_<version>_macos-universal.tar.gz`
-- Windows x64: `lxmf-rs_<version>_windows-x86_64.zip`
-- Windows MSI: `lxmf-rs_<version>_x64.msi`
+- Linux x64: `fabric_<version>_linux-x86_64.tar.gz`
+- Linux ARM64: `fabric_<version>_linux-aarch64.tar.gz`
+- Linux ARMv7: `fabric_<version>_linux-armv7.tar.gz`
+- macOS universal: `fabric_<version>_macos-universal.tar.gz`
+- Windows x64: `fabric_<version>_windows-x86_64.zip`
+- Windows MSI: `fabric_<version>_x64.msi`
 - Debian/RPM packages: architecture-specific `.deb` and `.rpm` assets
 - OCI image: `ghcr.io/freetakteam/lxmf-rs:<version>`
 - SBOMs, `SHA256SUMS.txt`, checksum signature bundle, and provenance attestations

@@ -8,11 +8,11 @@ retained as a manual-only legacy workflow and does not trigger on release tags.
 
 | Deliverable | Artifacts | Produced by |
 |---|---|---|
-| Linux static binaries (musl) | `lxmf-rs_<ver>_linux-x86_64.tar.gz`, `…_linux-aarch64.tar.gz`, `…_linux-armv7.tar.gz` | `build` job |
+| Linux static binaries (musl) | `fabric_<ver>_linux-x86_64.tar.gz`, `…_linux-aarch64.tar.gz`, `…_linux-armv7.tar.gz` | `build` job |
 | Raspberry Pi | aarch64 (Pi 4/5, 64-bit OS) and armv7/armhf (32-bit OS) static builds above | `build` job |
-| Debian / RPM packages | `lxmf-rs_<ver>_{amd64,arm64,armhf}.{deb,rpm}` (nfpm) | `package-linux` job |
-| Windows | `lxmf-rs_<ver>_windows-x86_64.zip` + `lxmf-rs_<ver>_x64.msi` (native signing when credentials are configured) | `package-windows` job |
-| macOS universal | `lxmf-rs_<ver>_macos-universal.tar.gz` (lipo universal2, optional codesign; notarization is not wired) | `macos-universal` job |
+| Debian / RPM packages | `fabric_<ver>_{amd64,arm64,armhf}.{deb,rpm}` (nfpm) | `package-linux` job |
+| Windows | `fabric_<ver>_windows-x86_64.zip` + `fabric_<ver>_x64.msi` (native signing when credentials are configured) | `package-windows` job |
+| macOS universal | `fabric_<ver>_macos-universal.tar.gz` (lipo universal2, optional codesign; notarization is not wired) | `macos-universal` job |
 | OCI container | `ghcr.io/freetakteam/lxmf-rs:<ver>` (and `:latest` for stable releases only), multi-arch (amd64 + arm64) | `container` job |
 | SBOM | CycloneDX per app crate (`sbom-reticulumd.cdx.json`, `sbom-lxmf-cli.cdx.json`, `sbom-rns-tools.cdx.json`) + `sbom-container.cdx.json` | `sbom` and `container` jobs |
 | Checksums | `SHA256SUMS.txt` + `SHA256SUMS.txt.cosign.bundle` (keyless sigstore signature) | `release` job |
