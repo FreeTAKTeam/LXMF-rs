@@ -231,7 +231,7 @@ impl OutboundBridge for TransportBridge {
 
 fn outbound_peer_identity(
     daemon: &RpcDaemon,
-    peer_crypto: &Mutex<HashMap<String, PeerCrypto>>,
+    peer_crypto: &Mutex<PeerCryptoCache>,
     destination_hex: &str,
     destination: [u8; 16],
     local_delivery_identity: Option<Identity>,
@@ -280,7 +280,7 @@ mod tests {
                 1_781_964_554,
             )
             .expect("record announce identity");
-        let peer_crypto = Mutex::new(HashMap::new());
+        let peer_crypto = Mutex::new(PeerCryptoCache::default());
 
         let identity = outbound_peer_identity(
             &daemon,
@@ -308,7 +308,7 @@ mod tests {
         .address_hash;
         let mut destination = [0u8; 16];
         destination.copy_from_slice(delivery_hash.as_slice());
-        let peer_crypto = Mutex::new(HashMap::new());
+        let peer_crypto = Mutex::new(PeerCryptoCache::default());
 
         let identity = outbound_peer_identity(
             &daemon,

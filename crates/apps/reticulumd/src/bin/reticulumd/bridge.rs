@@ -95,7 +95,7 @@ pub(super) struct TransportBridge {
     propagation_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     propagation_announce_app_data: Option<Vec<u8>>,
     control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-    peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    peer_crypto: Arc<Mutex<PeerCryptoCache>>,
     outbound_propagation_identities: Arc<Mutex<HashMap<String, Identity>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
     outbound_resource_map: OutboundResourceMap,
@@ -108,6 +108,8 @@ pub(super) struct TransportBridge {
     runtime_handle: tokio::runtime::Handle,
     probe_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
 }
+
+pub(super) use identity_resolver::PeerCryptoCache;
 
 #[derive(Clone, Copy)]
 pub(super) struct PeerCrypto {
@@ -128,7 +130,7 @@ impl TransportBridge {
         propagation_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
         propagation_announce_app_data: Option<Vec<u8>>,
         control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-        peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+        peer_crypto: Arc<Mutex<PeerCryptoCache>>,
         receipt_map: Arc<Mutex<HashMap<String, String>>>,
         outbound_resource_map: OutboundResourceMap,
         receipt_tx: impl Into<reticulum_daemon::receipt_bridge::ReceiptPublisher>,

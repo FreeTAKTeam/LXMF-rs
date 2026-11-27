@@ -122,7 +122,7 @@ async fn prepare_payload_builds_propagation_stamp_before_delivery_lane() {
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon: daemon.clone(),
         transport,
-        peer_crypto: Arc::new(Mutex::new(HashMap::new())),
+        peer_crypto: Arc::new(Mutex::new(PeerCryptoCache::default())),
         outbound_propagation_identities: Arc::new(Mutex::new(HashMap::new())),
         receipt_map: Arc::new(Mutex::new(HashMap::new())),
         outbound_resource_map: Arc::new(Mutex::new(HashMap::new())),
