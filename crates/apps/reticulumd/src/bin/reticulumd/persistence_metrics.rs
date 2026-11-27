@@ -2,12 +2,11 @@
 //! Rust heap bytes, persistence costs and transport table occupancy. No
 //! destinations, packet bytes or file names.
 
-use super::bridge::PeerCrypto;
+use super::bridge::PeerCryptoCache;
 use rns_rpc::MetricsProvider;
 use rns_transport::hash::AddressHash;
 use rns_transport::transport::{AnnounceCacheCleanupReport, PathTableSaveReport, Transport};
 use serde_json::{json, Value as JsonValue};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -157,15 +156,12 @@ impl MetricsProvider for PersistenceMetrics {
 /// Transport table sizes, read without blocking the network reactor.
 pub(crate) struct TransportTablesProvider {
     transport: Arc<Transport>,
-    peers: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    peers: Arc<Mutex<PeerCryptoCache>>,
     peers_removed_total: AtomicU64,
 }
 
 impl TransportTablesProvider {
-    pub(crate) fn new(
-        transport: Arc<Transport>,
-        peers: Arc<Mutex<HashMap<String, PeerCrypto>>>,
-    ) -> Self {
+    pub(crate) fn new(transport: Arc<Transport>, peers: Arc<Mutex<PeerCryptoCache>>) -> Self {
         Self { transport, peers, peers_removed_total: AtomicU64::new(0) }
     }
 
@@ -178,7 +174,7 @@ impl TransportTablesProvider {
             }
         };
         let before = peers.len();
-        peers.retain(|peer, _| {
+        peers.retain(|peer| {
             let mut bytes = [0; 16];
             if let Err(error) = hex::decode_to_slice(peer, &mut bytes) {
                 log::warn!("[daemon] malformed destination in peer identity cache: {error}");
@@ -227,6 +223,7 @@ fn unix_now_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bridge::PeerCrypto;
     use rns_transport::destination::{DestinationName, SingleOutputDestination};
     use rns_transport::identity::PrivateIdentity;
     use rns_transport::packet::Packet;
@@ -262,10 +259,13 @@ mod tests {
             )
             .await
             .expect("prepared recipient");
-        let peers = Arc::new(Mutex::new(HashMap::from([
-            (hex::encode(address.as_slice()), PeerCrypto { identity: *remote.as_identity() }),
-            (hex::encode([0x77; 16]), PeerCrypto { identity: *local.as_identity() }),
-        ])));
+        let mut cache = PeerCryptoCache::default();
+        cache.insert(
+            hex::encode(address.as_slice()),
+            PeerCrypto { identity: *remote.as_identity() },
+        );
+        cache.insert(hex::encode([0x77; 16]), PeerCrypto { identity: *local.as_identity() });
+        let peers = Arc::new(Mutex::new(cache));
         let metrics = TransportTablesProvider::new(transport, peers.clone());
         assert_eq!(metrics.snapshot()["peer_crypto"], 2);
         metrics.prune_peers();

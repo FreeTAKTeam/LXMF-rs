@@ -15,7 +15,7 @@ pub(super) struct DeliveryTask {
     pub(super) deferred_dispatch: Arc<std::sync::atomic::AtomicBool>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) transport: Arc<Transport>,
-    pub(super) peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    pub(super) peer_crypto: Arc<Mutex<PeerCryptoCache>>,
     pub(super) outbound_propagation_identities: Arc<Mutex<HashMap<String, Identity>>>,
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
     pub(super) outbound_resource_map: OutboundResourceMap,

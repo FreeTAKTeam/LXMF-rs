@@ -1,4 +1,4 @@
-use super::bridge::PeerCrypto;
+use super::bridge::{PeerCrypto, PeerCryptoCache};
 use reticulum_daemon::announce_names::{
     delivery_stamp_cost_from_app_data, lxmf_aspect_from_name_hash, parse_peer_name_from_app_data,
     pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data,
@@ -7,13 +7,12 @@ use reticulum_daemon::announce_names::{
 use rns_rpc::RpcDaemon;
 use rns_transport::time::now_epoch_secs_i64;
 use rns_transport::transport::AnnounceEvent;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub(super) async fn ingest_announce_event(
     daemon: &Arc<RpcDaemon>,
     event: AnnounceEvent,
-    peer_crypto: &Mutex<HashMap<String, PeerCrypto>>,
+    peer_crypto: &Mutex<PeerCryptoCache>,
 ) {
     let dest = event.destination.lock().await;
     let peer = hex::encode(dest.desc.address_hash.as_slice());

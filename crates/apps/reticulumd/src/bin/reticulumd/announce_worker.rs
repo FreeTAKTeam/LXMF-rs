@@ -2,7 +2,7 @@ use super::announce_ingest::ingest_announce_event;
 use super::announce_persistence::{
     spawn_path_table_persistence_worker, PathTablePersistenceContext,
 };
-use super::bridge::PeerCrypto;
+use super::bridge::PeerCryptoCache;
 use rand_core::OsRng;
 use rns_rpc::RpcDaemon;
 use rns_transport::destination::DestinationName;
@@ -15,7 +15,6 @@ use rns_transport::ratchets::{decrypt_with_identity, encrypt_for_public_key};
 use rns_transport::time::now_epoch_secs_u64;
 use rns_transport::transport::AnnounceEvent;
 use rns_transport::transport::Transport;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -33,7 +32,7 @@ pub(super) struct DiscoveryWorkerConfig {
 pub(super) fn spawn_announce_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
-    peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    peer_crypto: Arc<Mutex<PeerCryptoCache>>,
     path_table_persistence: Option<PathTablePersistenceContext>,
     discovery: Option<DiscoveryWorkerConfig>,
 ) {

@@ -25,7 +25,7 @@ mod tcp_startup;
 mod tests;
 #[path = "bootstrap_transport_destinations.rs"]
 mod transport_destinations;
-use crate::bridge::PeerCrypto;
+use crate::bridge::PeerCryptoCache;
 use crate::interfaces::common::interface_label;
 use crate::Args;
 pub(crate) use interface_startup::LoraRuntimeStatusSource;
@@ -111,7 +111,7 @@ pub(super) async fn start_transport_and_interfaces(
 
     let mut transport: Option<Arc<Transport>> = None;
     let mut configured_startup = None;
-    let peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>> = Arc::new(Mutex::new(HashMap::new()));
+    let peer_crypto: Arc<Mutex<PeerCryptoCache>> = Arc::new(Mutex::new(PeerCryptoCache::default()));
     let mut announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
     let mut propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
     let mut control_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;

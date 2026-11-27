@@ -238,7 +238,7 @@ pub(crate) async fn test_transport_bridge_fixture_with_peer_at(
 
     let receipt_map = Arc::new(Mutex::new(HashMap::new()));
     let outbound_resource_map = Arc::new(Mutex::new(HashMap::new()));
-    let peer_crypto = Arc::new(Mutex::new(HashMap::new()));
+    let peer_crypto = Arc::new(Mutex::new(crate::bridge::PeerCryptoCache::default()));
     let recipient = PrivateIdentity::new_from_rand(rand_core::OsRng);
     let recipient_hex = hex::encode(recipient.address_hash().as_slice());
     peer_crypto.lock().expect("peer map").insert(

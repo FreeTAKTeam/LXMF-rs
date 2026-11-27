@@ -45,7 +45,7 @@ async fn opportunistic_packet_delivery_reports_status_hash_and_bytes() {
         deferred_dispatch: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         daemon,
         transport,
-        peer_crypto: Arc::new(Mutex::new(HashMap::new())),
+        peer_crypto: Arc::new(Mutex::new(PeerCryptoCache::default())),
         outbound_propagation_identities: Arc::new(Mutex::new(HashMap::new())),
         receipt_map: receipt_map.clone(),
         outbound_resource_map: Arc::new(Mutex::new(HashMap::new())),
